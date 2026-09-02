@@ -24,13 +24,14 @@ class ROSConfig:
         "traffic_light": "/GetTrafficLightStatus",
         "ego_state":     "/Ego_topic",
     })
-    sync_slop_sec: float = 0.02          # message_filters.ApproximateTimeSynchronizer slop
-    sync_queue_size: int = 10
+    sync_slop_sec: float = 0.05          # message_filters.ApproximateTimeSynchronizer slop
+    sync_queue_size: int = 50
+    ego_buffer_size: int = 200            # 센서 timestamp에 가장 가까운 Ego 선택용 이력
 
 
 @dataclass
 class GrpcConfig:
-    host: str = "127.0.0.1"              # WSL에서 Windows 호스트(MORAI gRPC) 접속 시 다른 IP 필요
+    host: str = "172.24.176.1"           # WSL에서 확인한 Windows 호스트(MORAI gRPC) 주소
     port: int = 7789
     client_key: str = "MoraiDataCollector"
     map_name: str = ""                   # 비우면 MORAI SIM에 이미 로드된 맵/ego 사용
@@ -40,8 +41,12 @@ class GrpcConfig:
 
 @dataclass
 class DatasetConfig:
-    output_root: str = "./output"
+    dataset_root: str = "../dataset"  # data_collection/에서 실행 시 MoraiDrive/dataset
+    job_name: str = "morai_collection"
     route_name: str = "route_moraiA_scenario1"
+    append_timestamp: bool = True
+    map_id: str = "unknown"
+    map_source_dir: str = ""          # MGeo JSON 파일들이 있는 디렉터리
     # 저장 Hz는 이제 wall-clock이 아니라 GrpcConfig.tick_period_ms가 결정한다
     # (매 gRPC tick마다 한 프레임 저장). collect_hz는 참고용 표시값 — 실제로
     # 바꾸려면 tick_period_ms를 바꿔야 한다.

@@ -11,11 +11,13 @@ ros_manager.py가 message_filters로 미리 동기화해둔 최신 묶음을 매
 Run: python collect.py --route route_moraiA_scenario1 --duration 120
 """
 import argparse
+from dataclasses import asdict
 import math
 import time
 
 from config import ROS, GRPC, DATASET
 from ros.ros_manager import ROSManager
+from ros.sensor_types import EgoTelemetry
 from grpc_ctrl.morai_grpc_client import MoraiGrpcClient
 from writer.dataset_writer import DatasetWriter
 from writer.image_writer import ImageWriter
@@ -37,9 +39,28 @@ def _actor_data(obj) -> ActorData:
     )
 
 
+def _update_grpc_ego(ros_mgr: ROSManager, grpc_client: MoraiGrpcClient) -> bool:
+    state = grpc_client.get_ego_state()
+    if state is None:
+        return False
+    ros_mgr.update_ego(EgoTelemetry(
+        timestamp_ns=time.time_ns(),
+        x=state["x"], y=state["y"], z=state["z"],
+        yaw=math.radians(state["heading_deg"]),
+        speed=math.sqrt(state["vel_x"] ** 2 + state["vel_y"] ** 2),
+        steer=state["steer"],
+    ))
+    return True
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--route", default=DATASET.route_name)
+    ap.add_argument("--job", default=DATASET.job_name)
+    ap.add_argument("--map-id", default=DATASET.map_id)
+    ap.add_argument("--map-dir", default=DATASET.map_source_dir,
+                    help="directory containing MORAI MGeo JSON files")
+    ap.add_argument("--no-route-timestamp", action="store_true")
     ap.add_argument("--duration", type=float, default=120.0, help="seconds")
     args = ap.parse_args()
 
@@ -47,36 +68,61 @@ def main():
         "topics": ROS.topics,
         "sync_slop_sec": ROS.sync_slop_sec,
         "sync_queue_size": ROS.sync_queue_size,
+        "ego_buffer_size": ROS.ego_buffer_size,
     })
-    ros_mgr.start()
-
     grpc_client = MoraiGrpcClient({
         "host": GRPC.host, "port": GRPC.port, "client_key": GRPC.client_key,
         "map_name": GRPC.map_name, "ego_vehicle_model": GRPC.ego_vehicle_model,
         "tick_period_ms": GRPC.tick_period_ms,
     })
-    grpc_client.connect()
-    grpc_client.start_sync_mode()
-
-    ds_writer = DatasetWriter(DATASET.output_root, args.route)
-    img_writer = ImageWriter(ds_writer.output_dir, view_names=CAMERA_VIEW_NAMES,
-                              ext=DATASET.image_ext, quality=DATASET.image_quality)
-    lidar_writer = LidarWriter(ds_writer.output_dir)
-
-    print("[collect] 센서 데이터 대기 중...")
-    if not ros_mgr.wait_for_data(timeout_sec=10.0):
-        print("[collect] 센서 데이터 타임아웃 — MORAI ROS 브릿지/토픽 설정 확인 필요")
-        ros_mgr.stop()
-        grpc_client.stop()
-        return
-
     frame_id = 0
-    t_end = time.time() + args.duration
+    ds_writer = None
+    collection_completed = False
 
     try:
+        ros_mgr.start()
+        grpc_client.connect()
+        grpc_client.start_sync_mode()
+
+        # 동기 모드에서는 tick 전까지 새 센서가 발행되지 않을 수 있으므로,
+        # 센서를 수동 대기하지 않고 tick을 진행시키며 첫 동기화 묶음을 기다린다.
+        print("[collect] gRPC tick을 진행하며 첫 센서 데이터 대기 중...")
+        print("[collect] gRPC Start 후 MORAI ROS 연결이 풀렸다면 지금 Disconnect → Connect 하세요.")
+        sensor_deadline = time.time() + 30.0
+        next_status_time = time.time() + 2.0
+        sensor_ready = False
+        while time.time() < sensor_deadline:
+            if ros_mgr.wait_for_data(timeout_sec=0.05):
+                sensor_ready = True
+                break
+            if not grpc_client.tick(1):
+                raise RuntimeError("초기 센서 대기 중 gRPC tick 실패")
+            _update_grpc_ego(ros_mgr, grpc_client)
+            if time.time() >= next_status_time:
+                print(f"[collect] 센서 대기 상태: {ros_mgr.readiness()}")
+                next_status_time = time.time() + 2.0
+        if not sensor_ready:
+            raise RuntimeError(
+                f"30초 안에 동기화 센서+Ego 데이터가 들어오지 않음: "
+                f"{ros_mgr.readiness()}"
+            )
+
+        ds_writer = DatasetWriter(
+            DATASET.dataset_root, args.job, args.route,
+            map_id=args.map_id, map_source_dir=args.map_dir,
+            append_timestamp=DATASET.append_timestamp and not args.no_route_timestamp,
+        )
+        img_writer = ImageWriter(ds_writer.output_dir, view_names=CAMERA_VIEW_NAMES,
+                                  ext=DATASET.image_ext, quality=DATASET.image_quality)
+        lidar_writer = LidarWriter(ds_writer.output_dir)
+
+        t_end = time.time() + args.duration
         while time.time() < t_end:
             sync_ts = grpc_client.tick(1)
             if not sync_ts:
+                continue
+            if not _update_grpc_ego(ros_mgr, grpc_client):
+                print("frame skipped: gRPC Ego Actor State unavailable")
                 continue
 
             snap = ros_mgr.get_snapshot(
@@ -85,7 +131,7 @@ def main():
                 sim_elapsed_ns=sync_ts.elapsed_time,
             )
             if snap is None or snap.ego is None:
-                print("frame skipped: waiting for fresh sensor data")
+                print("frame skipped: waiting for a new synchronized sensor frame")
                 continue
 
             ego = EgoState(
@@ -97,7 +143,34 @@ def main():
             } if snap.gt_objects else None
 
             measurement = build_measurement_dict(ego, actors)
-            ds_writer.write_frame(frame_id, measurement)
+            sensor_timestamps = {
+                "cam_" + name: cam.timestamp_ns for name, cam in snap.cameras.items()
+            }
+            sensor_timestamps.update({
+                "gnss": snap.gnss.timestamp_ns if snap.gnss else None,
+                "imu": snap.imu.timestamp_ns if snap.imu else None,
+                "lidar": snap.lidar.timestamp_ns if snap.lidar else None,
+                "ego": snap.ego.timestamp_ns,
+            })
+            full_measurement = dict(measurement)
+            full_measurement.update({
+                "frame_id": frame_id, "timestamp_ns": snap.timestamp_ns,
+                "tick_count": snap.tick_count, "sim_elapsed_ns": snap.sim_elapsed_ns,
+                "is_longtail": False,
+                "sensor_timestamps_ns": sensor_timestamps,
+                "ego_raw": asdict(snap.ego),
+                "gnss_raw": asdict(snap.gnss) if snap.gnss else None,
+                "imu_raw": asdict(snap.imu) if snap.imu else None,
+                "traffic_lights": [asdict(light) for light in snap.tl_states],
+                "navigation": {"current_link_id": None, "route_index": None,
+                               "distance_to_stopline": None},
+            })
+            traffic_light_state = snap.tl_states[0].state if snap.tl_states else None
+            ds_writer.write_frame(
+                frame_id, measurement, full_measurement,
+                gnss=snap.gnss, imu=snap.imu, actors=measurement["actors_data"],
+                traffic_light_state=traffic_light_state,
+            )
 
             images = {name: cam.image for name, cam in snap.cameras.items()}
             img_writer.write(frame_id, images)
@@ -105,11 +178,14 @@ def main():
                 lidar_writer.write(frame_id, snap.lidar.points)
 
             frame_id += 1
+        collection_completed = True
     finally:
-        ds_writer.finalize()
+        if ds_writer is not None:
+            ds_writer.finalize(success=collection_completed)
         ros_mgr.stop()
         grpc_client.stop()
-        print(f"done. {frame_id} frames written to {ds_writer.output_dir}")
+        if ds_writer is not None:
+            print(f"done. {frame_id} frames written to {ds_writer.output_dir}")
 
 
 if __name__ == "__main__":

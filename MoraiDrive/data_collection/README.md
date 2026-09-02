@@ -61,14 +61,28 @@ MoraiDrive/data_collection/
 2. `MoraiGrpcClient.start_sync_mode()` — gRPC로 동기 모드 전환 (`tick_period_ms`).
 3. 메인 루프: `grpc_client.tick(1)`이 프레임 트리거 — tick마다
    `ros_mgr.get_snapshot()`으로 이미 동기화된 센서 묶음을 꺼내옴
-   (아직 새 동기화 묶음이 안 왔으면 직전 값을 재사용, 완전 새 데이터면 스킵).
+   (아직 새 동기화 묶음이 안 왔으면 해당 tick은 스킵하여 이미지/LiDAR 중복 저장 방지).
+   Ego는 최근 이력 중 센서 기준 timestamp와 가장 가까운 샘플을 결합.
 4. 스냅샷을 `EgoState`/`ActorData`로 감싸 `schema.build_measurement_dict()`로
    LMDrive JSON 스키마에 맞게 변환 후 각 writer가 디스크에 기록.
-5. 라우트 종료 시 `finalize()`가 `measurements_all.json`, `dataset_index.txt`를 마무리.
+5. 라우트 종료 시 `finalize()`가 `measurements_all.json`, `dataset_index.txt`,
+   `results/episode_summary.json`을 마무리. 실패한 수집은 index에는 등록하지 않고
+   summary에만 `failed`로 남김.
 
 ```bash
-python collect.py --route route_moraiA_scenario1 --duration 120
+python collect.py \
+  --job competition_train \
+  --route route_moraiA_scenario1 \
+  --map-id kcity \
+  --map-dir /mnt/c/Users/Autonav/Downloads \
+  --duration 120
 ```
+
+결과는 기본적으로 `MoraiDrive/dataset/<job>/data/<route>_<timestamp>/`에 저장된다.
+작업 루트에는 LMDrive용 세 목록 파일과 `results/`, `maps/`가 생성되고, route 아래에는
+RGB 4뷰, LiDAR, raw GNSS/IMU, `measurements`, `measurements_full`, `actors_data`,
+`affordances`, `3d_bbs`가 프레임 번호로 정렬되어 저장된다. `birdview`와 `topdown`은
+후처리 결과를 받을 빈 디렉터리로 생성된다.
 
 ## JSON 포맷에 들어가는 것 (`measurements_full/%04d.json`)
 

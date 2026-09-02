@@ -24,6 +24,7 @@ Windows ROS1 Noetic 환경에서 MORAI 센서 토픽을 구독.
 
 import threading
 import time
+from collections import deque
 from typing import Dict, Optional
 
 import numpy as np
@@ -62,12 +63,14 @@ class ROSManager:
 
     def __init__(self, config: dict):
         """
-        config: {"topics": {...}, "sync_slop_sec": 0.02, "sync_queue_size": 10}
+        config: {"topics": {...}, "sync_slop_sec": 0.05, "sync_queue_size": 50,
+                 "ego_buffer_size": 200}
                 (config.py의 ROSConfig를 dict로 넘기면 됨)
         """
         self.topics = config["topics"]
         self.slop_sec       = float(config.get("sync_slop_sec", 0.02))
         self.queue_size     = int(config.get("sync_queue_size", 10))
+        self.ego_buffer_size = int(config.get("ego_buffer_size", 200))
         self.sync_window_ns = int(self.slop_sec * 1_000_000_000)
 
         self._lock = threading.Lock()
@@ -83,13 +86,19 @@ class ROSManager:
 
         # 동기화 그룹 밖 — 최신값만 버퍼링
         self._ego:        Optional[EgoTelemetry] = None
+        self._ego_history = deque(maxlen=self.ego_buffer_size)
         self._gt_objects  = []
         self._tl_states   = []
+
+        # get_snapshot()이 이미 반환한 센서 묶음을 다시 저장하지 않도록 추적한다.
+        self._last_returned_synced_ts: Optional[int] = None
 
         # message_filters.Subscriber / ApproximateTimeSynchronizer GC 방지용 보관
         self._mf_subs = []
         self._sync = None
         self._sync_member_keys = []
+        self._sync_input_counts = {}
+        self._sync_input_latest_ts = {}
 
         self._initialized = False
 
@@ -124,6 +133,12 @@ class ROSManager:
             message_filters.Subscriber(topic, msg_type)
             for _, topic, msg_type in sync_members
         ]
+        self._sync_input_counts = {key: 0 for key in self._sync_member_keys}
+        self._sync_input_latest_ts = {key: None for key in self._sync_member_keys}
+        for key, subscriber in zip(self._sync_member_keys, self._mf_subs):
+            # 이 콜백은 ApproximateTimeSynchronizer가 등록되기 전에 추가된다.
+            # 따라서 혼합 clock을 먼저 정규화한 동일 메시지를 synchronizer가 받는다.
+            subscriber.registerCallback(self._prepare_sync_input, key)
         self._sync = message_filters.ApproximateTimeSynchronizer(
             self._mf_subs, queue_size=self.queue_size, slop=self.slop_sec
         )
@@ -157,19 +172,27 @@ class ROSManager:
     def get_snapshot(self, frame_id: int, tick_count: int = 0,
                       sim_elapsed_ns: int = 0) -> Optional[SensorSnapshot]:
         """
-        브리징 정책: _on_synced(push)가 아직 새 묶음을 못 만든 tick에 get_snapshot
-        (pull)이 호출되면, 직전에 동기화된 값을 그대로 재사용한다(프레임 드롭 대신).
-        한 번도 동기화된 적 없으면 None.
+        새 동기화 묶음만 한 번 반환한다. gRPC tick 시점에 아직 새 ROS 묶음이 없으면
+        None을 반환하여 동일 이미지/LiDAR가 여러 frame_id로 저장되는 것을 막는다.
+
+        Ego는 최신값을 무조건 붙이지 않고, 보관한 timestamp 이력 중 front camera
+        기준시각과 가장 가까운 샘플을 선택한다.
         """
         with self._lock:
             if not self._cameras or self._synced_ts is None:
                 return None
 
             ref_ts = self._synced_ts
+            if ref_ts == self._last_returned_synced_ts:
+                return None
 
-            ego = self._ego
+            ego = min(
+                self._ego_history,
+                key=lambda sample: abs(sample.timestamp_ns - ref_ts),
+                default=None,
+            )
             if ego is not None and abs(ego.timestamp_ns - ref_ts) > self.sync_window_ns:
-                print(f"[ROSManager] WARNING: ego 데이터가 동기화 기준(front 카메라)보다 "
+                print(f"[ROSManager] WARNING: 가장 가까운 ego 데이터가 동기화 기준(front 카메라)과 "
                       f"{abs(ego.timestamp_ns - ref_ts) / 1e6:.1f}ms 벗어남")
 
             snap = SensorSnapshot(
@@ -185,6 +208,7 @@ class ROSManager:
                 tick_count     = tick_count,
                 sim_elapsed_ns = sim_elapsed_ns,
             )
+            self._last_returned_synced_ts = ref_ts
 
         self._warn_if_sync_stale()
         return snap
@@ -196,6 +220,51 @@ class ROSManager:
                 return True
             time.sleep(0.05)
         return False
+
+    def readiness(self) -> dict:
+        """라이브 시작 실패 시 어느 입력이 아직 비어 있는지 보여주는 상태 요약."""
+        with self._lock:
+            return {
+                "sensor_sync": self._synced_ts is not None,
+                "cameras": sorted(self._cameras.keys()),
+                "gnss": self._gnss is not None,
+                "imu": self._imu is not None,
+                "lidar": self._lidar is not None,
+                "ego": self._ego is not None,
+                "input_counts": dict(self._sync_input_counts),
+                "input_latest_ts": dict(self._sync_input_latest_ts),
+            }
+
+    def _prepare_sync_input(self, msg, key: str):
+        """공통 수신시각으로 header clock을 정규화하고 도착 상태를 기록한다.
+
+        MORAI gRPC External Sync에서는 카메라는 Unix epoch를, GNSS/IMU/LiDAR는
+        simulation elapsed time을 header.stamp에 넣는다. gRPC tick은 wall clock과
+        다른 속도로 진행될 수 있어 고정 offset으로 두 clock을 변환할 수 없다.
+        따라서 같은 로컬 clock의 ROS 수신시각으로 동기화한다.
+        """
+        stamp = getattr(getattr(msg, "header", None), "stamp", None)
+        source_timestamp_ns = None
+        if stamp is not None:
+            source_timestamp_ns = stamp.secs * 1_000_000_000 + stamp.nsecs
+        arrival_timestamp_ns = time.time_ns()
+        with self._lock:
+            if stamp is not None:
+                msg.header.stamp = rospy.Time(
+                    secs=arrival_timestamp_ns // 1_000_000_000,
+                    nsecs=arrival_timestamp_ns % 1_000_000_000,
+                )
+            self._sync_input_counts[key] += 1
+            self._sync_input_latest_ts[key] = {
+                "arrival": arrival_timestamp_ns,
+                "source": source_timestamp_ns,
+            }
+
+    def update_ego(self, ego: EgoTelemetry):
+        """gRPC Actor State 등 ROS 외부에서 얻은 Ego 샘플을 이력에 추가한다."""
+        with self._lock:
+            self._ego = ego
+            self._ego_history.append(ego)
 
     # ── message_filters 동기화 콜백 ───────────────────────────
 
@@ -333,7 +402,7 @@ class ROSManager:
             speed_mps   = float(np.sqrt(msg.velocity.x ** 2 + msg.velocity.y ** 2))
 
             with self._lock:
-                self._ego = EgoTelemetry(
+                ego = EgoTelemetry(
                     timestamp_ns = ts,
                     x     = msg.position.x,
                     y     = msg.position.y,
@@ -342,5 +411,7 @@ class ROSManager:
                     speed = speed_mps,
                     steer = getattr(msg, "front_steer_angle", 0.0),
                 )
+                self._ego = ego
+                self._ego_history.append(ego)
         except Exception as e:
             print(f"[ROSManager] Ego 콜백 오류: {e}")
