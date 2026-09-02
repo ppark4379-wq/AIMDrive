@@ -12,7 +12,19 @@ from PIL import Image
 from .base_io_dataset import BaseIODataset
 from .heatmap_utils import generate_heatmap, generate_future_waypoints, get_yaw_angle
 from .det_utils import generate_det_data
-from skimage.measure import block_reduce
+try:
+    from skimage.measure import block_reduce
+except ImportError:
+    def block_reduce(array, block_size, func=np.mean):
+        """Dependency-free fallback for the 2-D mean reduction used below."""
+        if func is not np.mean or array.ndim != 2:
+            raise ImportError("install scikit-image for this block_reduce configuration")
+        by, bx = block_size
+        height = array.shape[0] // by * by
+        width = array.shape[1] // bx * bx
+        return array[:height, :width].reshape(
+            height // by, by, width // bx, bx
+        ).mean(axis=(1, 3))
 
 _logger = logging.getLogger(__name__)
 
@@ -26,7 +38,7 @@ def rotate_lidar(lidar, angle):
         [0,0,0,1]
     ]
 
-def lidar_to_raw_features(lidar):
+def lidar_to_raw_features(lidar, rotation_deg=-90):
     def preprocess(lidar_xyzr, lidar_painted=None):
 
         idx = (lidar_xyzr[:,0] > -1.2)&(lidar_xyzr[:,0] < 1.2)&(lidar_xyzr[:,1]>-1.2)&(lidar_xyzr[:,1]<1.2)
@@ -51,7 +63,7 @@ def lidar_to_raw_features(lidar):
     lidar[np.isnan(lidar)] = 0
     lidar[lidar>100] = 0
     lidar[lidar<-100] = 0
-    lidar = rotate_lidar(lidar, -90).astype(np.float32)
+    lidar = rotate_lidar(lidar, rotation_deg).astype(np.float32)
     return lidar, num_points
 
 def check_data(data, info):
@@ -176,23 +188,38 @@ class CarlaMVDetDataset(BaseIODataset):
     def _get_frames_paths(self, root, weathers, towns):
         route_frames = []
         route_dir_nums = 0
-        dataset_indexs = self._load_text(os.path.join(root, 'dataset_index_test.txt')).split('\n')
+        index_path = os.path.join(root, 'dataset_index_test.txt')
+        if not os.path.isfile(index_path):
+            index_path = os.path.join(root, 'dataset_index.txt')
+        dataset_indexs = self._load_text(index_path).split('\n')
         pattern = re.compile('town(\d\d).*w(\d+)')
         for line in dataset_indexs:
             if len(line.split()) != 2:
                 continue
             path, frames = line.split()
+            if path.startswith('data/'):
+                path = path[len('data/'):]
             path = os.path.join(root, 'data', path)
             frames = int(frames)
             res = pattern.findall(path)
-            if len(res) != 1:
-                continue
-            town = int(res[0][0])
-            weather = int(res[0][1])
-            if weather not in weathers or town not in towns:
+            if len(res) == 1:
+                town = int(res[0][0])
+                weather = int(res[0][1])
+                if weather not in weathers or town not in towns:
+                    continue
+            elif not os.path.isfile(os.path.join(path, 'route.json')):
                 continue
             route_dir_nums += 1
             for i in range(0, frames):
+                if os.path.isfile(os.path.join(path, 'route.json')):
+                    measurement_path = os.path.join(
+                        path, 'measurements_full', '%04d.json' % i
+                    )
+                    if os.path.isfile(measurement_path):
+                        with open(measurement_path) as measurement_file:
+                            navigation = json.load(measurement_file).get('navigation', {})
+                        if navigation.get('route_valid') is False:
+                            continue
                 route_frames.append((path, i, route_dir_nums))
         _logger.info("Sub route dir nums: %d" % len(route_frames))
         return route_frames
@@ -209,13 +236,19 @@ class CarlaMVDetDataset(BaseIODataset):
     def _extract_data_item(self, route_dir, frame_id, route_dir_id, with_actor_infos=False, cached_measurements=None):
         data = {}
         # You can use tools/data/batch_merge_data.py to generate FULL image (including front, left, right) for reducing io cost
-        rgb_full_image = self._load_image(
-            os.path.join(route_dir, "rgb_full", "%04d.jpg" % frame_id)
-        )
-        rgb_image = rgb_full_image.crop((0, 0, 800, 600))
-        rgb_left_image = rgb_full_image.crop((0, 600, 800, 1200))
-        rgb_right_image = rgb_full_image.crop((0, 1200, 800, 1800))
-        rgb_rear_image = rgb_full_image.crop((0, 1800, 800, 2400))
+        morai_route = os.path.isfile(os.path.join(route_dir, "route.json"))
+        rgb_full_path = os.path.join(route_dir, "rgb_full", "%04d.jpg" % frame_id)
+        if os.path.isfile(rgb_full_path):
+            rgb_full_image = self._load_image(rgb_full_path)
+            rgb_image = rgb_full_image.crop((0, 0, 800, 600))
+            rgb_left_image = rgb_full_image.crop((0, 600, 800, 1200))
+            rgb_right_image = rgb_full_image.crop((0, 1200, 800, 1800))
+            rgb_rear_image = rgb_full_image.crop((0, 1800, 800, 2400))
+        else:
+            rgb_image = self._load_image(os.path.join(route_dir, "rgb_front", "%04d.jpg" % frame_id))
+            rgb_left_image = self._load_image(os.path.join(route_dir, "rgb_left", "%04d.jpg" % frame_id))
+            rgb_right_image = self._load_image(os.path.join(route_dir, "rgb_right", "%04d.jpg" % frame_id))
+            rgb_rear_image = self._load_image(os.path.join(route_dir, "rgb_rear", "%04d.jpg" % frame_id))
 
         '''
         rgb_image = self._load_image(
@@ -295,11 +328,17 @@ class CarlaMVDetDataset(BaseIODataset):
             lidar_unprocessed_front = self._load_npy(
                 os.path.join(route_dir, "lidar", "%04d.npy" % frame_id)
             )[..., :4]
-            lidar_unprocessed_back = self._load_npy(
-                os.path.join(route_dir, "lidar_odd", "%04d.npy" % max(frame_id - 1, 0))
-            )[..., :4]
-            lidar_unprocessed = np.concatenate([lidar_unprocessed_front, lidar_unprocessed_back])
-            lidar_processed, num_points= lidar_to_raw_features(lidar_unprocessed)
+            lidar_odd_path = os.path.join(
+                route_dir, "lidar_odd", "%04d.npy" % max(frame_id - 1, 0)
+            )
+            if os.path.isfile(lidar_odd_path):
+                lidar_unprocessed_back = self._load_npy(lidar_odd_path)[..., :4]
+                lidar_unprocessed = np.concatenate([lidar_unprocessed_front, lidar_unprocessed_back])
+            else:
+                lidar_unprocessed = lidar_unprocessed_front
+            lidar_processed, num_points = lidar_to_raw_features(
+                lidar_unprocessed, rotation_deg=0 if morai_route else -90
+            )
             data['lidar'] = lidar_processed
             data['num_points'] = num_points
 
@@ -442,4 +481,3 @@ class CarlaMVDetDataset(BaseIODataset):
             stop_sign,
             reduced_heatmap,
         )
-
