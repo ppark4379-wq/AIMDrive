@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package morai_sim_api.simulation;
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Simulation";
+
+enum SyncModeType
+{
+    SYNC_MODE_TYPE_UNSPECIFIED = 0;
+    SYNC_MODE_TYPE_TIME_MANAGEMENT = 1;
+    SYNC_MODE_TYPE_SYNCHRONOUS = 2;
+}
+
+enum SimulationModeType
+{
+    SIMULATION_MODE_TYPE_NORMAL = 0;
+    SIMULATION_MODE_TYPE_SCENARIO_RUNNER = 1;
+    SIMULATION_MODE_TYPE_DATAGEN = 2;
+}
+
+enum ResimRecordStatusType
+{
+    RESIM_RECORD_STATUS_INIT = 0;    
+    RESIM_RECORD_STATUS_START = 1;
+    RESIM_RECORD_STATUS_STOP = 2;
+}
+
+enum ResimReplayStatusType
+{
+    RESIM_REPLAY_STATUS_INIT = 0;
+    RESIM_REPLAY_STATUS_RUN = 1;
+    RESIM_REPLAY_STATUS_DONE = 2;
+    RESIM_REPLAY_STATUS_ERROR = 3;
+}

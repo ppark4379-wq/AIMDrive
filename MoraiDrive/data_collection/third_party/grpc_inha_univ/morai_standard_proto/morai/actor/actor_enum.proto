@@ -1,0 +1,378 @@
+syntax = "proto3";
+
+package morai_sim_api.actor;
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Actor";
+
+enum VehicleClass
+{	
+    VEHICLE_CLASS_UNSPECIFIED = 0;
+    VEHICLE_CLASS_SEDAN = 1;
+    VEHICLE_CLASS_SUV = 2;
+    VEHICLE_CLASS_BUS = 3;
+    VEHICLE_CLASS_TRUCK = 4;
+    VEHICLE_CLASS_WAGON = 5;
+    VEHICLE_CLASS_MISC = 6;
+    VEHICLE_CLASS_MPV = 7;
+    VEHICLE_CLASS_CUSTOM = 8;
+    VEHICLE_CLASS_RANDOM = 9;
+    VEHICLE_CLASS_END = 10;
+}
+
+enum NetworkCommType
+{
+    NETWORK_COMM_TYPE_UNSPECIFIED = 0;
+    NETWORK_COMM_TYPE_UDP = 1;
+    NETWORK_COMM_TYPE_TCP = 2;
+    NETWORK_COMM_TYPE_ROS = 3;
+    NETWORK_COMM_TYPE_LCM = 4;
+    NETWORK_COMM_TYPE_SERIAL = 5;
+    NETWORK_COMM_TYPE_ROS_AUTO = 6;
+    NETWORK_COMM_TYPE_APOLLO = 7;
+    NETWORK_COMM_TYPE_END = 8;
+}
+
+enum NetworkItemType
+{
+    NETWORK_ITEM_TYPE_UNSPECIFIED = 0;
+    NETWORK_ITEM_TYPE_HOST_IP = 1;
+    NETWORK_ITEM_TYPE_DESTINATION_IP = 2;
+    NETWORK_ITEM_TYPE_BRIDGE_IP = 3;
+    NETWORK_ITEM_TYPE_HOST_PORT = 4;
+    NETWORK_ITEM_TYPE_DESTINATION_PORT = 5;
+    NETWORK_ITEM_TYPE_BRIDGE_PORT = 6;
+    NETWORK_ITEM_TYPE_MESSAGE_TYPE = 7;
+    NETWORK_ITEM_TYPE_MESSAGE_TOPIC = 8;
+    NETWORK_ITEM_TYPE_MESSAGE_CHANNEL = 9;
+    NETWORK_ITEM_TYPE_SERIAL_FIELD = 10;
+    NETWORK_ITEM_TYPE_SERIAL_PORTNUMBER = 11;
+    NETWORK_ITEM_TYPE_SERIAL_BAUDRATE = 12;
+    NETWORK_ITEM_TYPE_SERIAL_PARITY = 13;
+    NETWORK_ITEM_TYPE_SERIAL_DATABITS = 14;
+    NETWORK_ITEM_TYPE_SERIAL_STOPBITS = 15;
+    NETWORK_ITEM_TYPE_SERIAL_FLOWCONTROL = 16;
+    NETWORK_ITEM_TYPE_SERVCIE_NAME = 17;
+    NETWORK_ITEM_TYPE_SRV = 18;
+    NETWORK_ITEM_TYPE_FRAME_ID = 19;
+    NETWORK_ITEM_TYPE_CHILDFRAME_ID = 20;
+    NETWORK_ITEM_TYPE_END = 21;
+}
+
+enum PUBSUB_TYPE
+{
+    PUBSUB_TYPE_UNSPECIFIED = 0;
+
+    PUBSUB_TYPE_Common = 256;
+    PUBSUB_TYPE_ObjectInfoPublisher = 257;
+    PUBSUB_TYPE_TLStatusPublisher = 258;
+    PUBSUB_TYPE_TLCtrlSubscriber = 259;
+    PUBSUB_TYPE_MultiEgoTransformHandler = 260;
+    PUBSUB_TYPE_CollisionData = 261;
+    PUBSUB_TYPE_SensorPosSubscriber = 262;
+    PUBSUB_TYPE_GlobalIntersectionPublisher = 263;
+    PUBSUB_TYPE_IntersectionControlSubscriber = 264;
+    PUBSUB_TYPE_IntersectionStatusPublisher = 265;
+    PUBSUB_TYPE_SensorSyncDataSubscriber = 266;
+    PUBSUB_TYPE_TF2Publisher = 267;
+    PUBSUB_TYPE_VehicleCollisionInfoPublisher = 268;
+    PUBSUB_TYPE_SyncModeCmdServiceProvider = 269;
+    PUBSUB_TYPE_SyncModeWaitForTickServiceProvider = 270;
+    PUBSUB_TYPE_SyncModeInfoPublisher = 271;
+    PUBSUB_TYPE_SyncModeAddObjectSubscriber = 272;
+    PUBSUB_TYPE_SyncModeRemoveObjectSubscriber = 273;
+    PUBSUB_TYPE_SyncModeSetGearServiceProvider = 274;
+    PUBSUB_TYPE_SyncModeCtrlCmdServiceProvider = 275;
+    PUBSUB_TYPE_SyncModeSaveSensorDataServiceProvider = 276;
+    PUBSUB_TYPE_SyncModeMoraiSLServiceProvider = 277;
+    PUBSUB_TYPE_MandoObjectInfoPublisher = 278;
+    PUBSUB_TYPE_HILSMoraiInfoPublisher = 279;
+    PUBSUB_TYPE_FaultStatusPublisher = 280;
+    PUBSUB_TYPE_FaultStatusVehicleSubscriber = 281;
+    PUBSUB_TYPE_AutoeverIFSSubscriber = 282;
+    PUBSUB_TYPE_FaultStatusWheelSubscriber = 283;
+    PUBSUB_TYPE_FaultStatusSensorSubscriber = 284;
+    PUBSUB_TYPE_AutoeverInfoSubscriber = 285;
+    PUBSUB_TYPE_CustomMessage = 286;
+    PUBSUB_TYPE_SyncModeAddObjectServiceProvider = 287;
+    PUBSUB_TYPE_SyncModeRemoveObjectServiceProvider = 288;
+    PUBSUB_TYPE_XyCarCmdController = 289;
+    PUBSUB_TYPE_NpcGhostSubscriberExtended = 290;
+    PUBSUB_TYPE_TLStatusPublisher_SIM = 291;
+    PUBSUB_TYPE_TLCtrlSubscriber_SIM = 292;
+    PUBSUB_TYPE_IntersectionControlSubscriber_SIM = 293;
+    PUBSUB_TYPE_IntersectionStatusPublisher_SIM = 294;
+
+    PUBSUB_TYPE_ERP = 512;
+    PUBSUB_TYPE_ERPInfoPublisher = 513;
+    PUBSUB_TYPE_ERPSerialInfoPublisher = 514;
+    PUBSUB_TYPE_ERPCmdController = 515;
+    PUBSUB_TYPE_ERPObjectInfoPublisher = 516;
+
+    PUBSUB_TYPE_MORAI = 768;
+    PUBSUB_TYPE_MoraiAutowareInfoPublisher = 769;
+    PUBSUB_TYPE_MoraiInfoPublisher = 770;
+    PUBSUB_TYPE_MoraiCmdController = 771;
+    PUBSUB_TYPE_MoraiObjectInfoPublisher = 772;
+    PUBSUB_TYPE_MoraiSimProcHandleSubscriber = 773;
+    PUBSUB_TYPE_MoraiSimProcStatusPublisher = 774;
+    PUBSUB_TYPE_MoraiSLServiceProvider = 775;
+    PUBSUB_TYPE_MoraiLampsSubscriber = 776;
+    PUBSUB_TYPE_MoraiSimProcServiceProvider = 777;
+    PUBSUB_TYPE_MoraiTLServiceProvider = 778;
+    PUBSUB_TYPE_MoraiReplayInfoPublisher = 779;
+    PUBSUB_TYPE_MoraiEventCmdServiceProvider = 780;
+    PUBSUB_TYPE_MoraiVehicleSpecServiceProvider = 781;
+    PUBSUB_TYPE_MoraiMapSpecServiceProvider = 782;
+    PUBSUB_TYPE_MoraiSLSubscriber = 783;
+
+    PUBSUB_TYPE_AUTOWARE = 1024;
+    PUBSUB_TYPE_MoraiAutowareCmdController = 1025;
+    PUBSUB_TYPE_MoraiAutowareGear = 1026;
+
+    PUBSUB_TYPE_NAVER = 1280;
+    PUBSUB_TYPE_NaverSLSubscriber = 1281;
+    PUBSUB_TYPE_NaverSimProcHandleSubscriber = 1282;
+    PUBSUB_TYPE_NaverInfoPublisher_ObdAcceleratorPedal = 1283;
+    PUBSUB_TYPE_NaverInfoPublisher_ObdGear = 1284;
+    PUBSUB_TYPE_NaverInfoPublisher_ObdLamps = 1285;
+    PUBSUB_TYPE_NaverInfoPublisher_ObdSteeringAngle = 1286;
+    PUBSUB_TYPE_NaverInfoPublisher_ObdWheelSpeeds = 1287;
+    PUBSUB_TYPE_NaverInfoPublisher_ObdYawRate = 1288;
+    PUBSUB_TYPE_NaverInfoPublisher_VehiclePose = 1289;
+    PUBSUB_TYPE_NaverObjectInfoPublisher = 1290;
+    PUBSUB_TYPE_NaverSimProcStatusPublisher = 1291;
+    PUBSUB_TYPE_NaverTrafficLightPublisher = 1292;
+    PUBSUB_TYPE_NaverCmdController = 1293;
+    PUBSUB_TYPE_NaverSubscriber_ObdLamps = 1294;
+    PUBSUB_TYPE_NaverSLServiceProvider = 1295;
+    PUBSUB_TYPE_NaverSimProcServiceProvider = 1296;
+    PUBSUB_TYPE_NaverTLServiceProvider = 1297;
+
+    PUBSUB_TYPE_CBNU = 1536;
+    PUBSUB_TYPE_CBNUSLSubscriber = 1537;
+    PUBSUB_TYPE_CBNUCmdController = 1538;
+    PUBSUB_TYPE_CBNUInfoPublisher = 1539;
+    PUBSUB_TYPE_CBNUObjectInfoPublisher = 1540;
+
+    PUBSUB_TYPE_KAIST = 1792;
+    PUBSUB_TYPE_KaistSLSubscriber = 1793;
+    PUBSUB_TYPE_KaistCmdController = 1794;
+    PUBSUB_TYPE_KaistInfoPublisher = 1795;
+    PUBSUB_TYPE_KaistObjectInfoPublisher = 1796;
+
+    PUBSUB_TYPE_WECAR = 2048;
+    PUBSUB_TYPE_WeCarCmdController = 2049;
+    PUBSUB_TYPE_WeCarInfoPublisher = 2050;
+    PUBSUB_TYPE_WeCarInfoVescStatePublisher = 2051;
+    PUBSUB_TYPE_WeCarInfoSteerPublisher = 2052;
+
+    PUBSUB_TYPE_SSAFY = 2304;
+    PUBSUB_TYPE_SSAFYCmdController = 2305;
+    PUBSUB_TYPE_SSAFYTurtleBotInfoPublisher = 2306;
+    PUBSUB_TYPE_SSAFYObjectStatusPublisher = 2307;
+    PUBSUB_TYPE_SSAFYObjectControlSubscriber = 2308;
+    PUBSUB_TYPE_SSAFYEnviromentInfoPublisher = 2309;
+    PUBSUB_TYPE_SSAFYStuffObjectControlSubscriber = 2310;
+    PUBSUB_TYPE_SSAFYStuffObjectInfoPublisher = 2311;
+
+    PUBSUB_TYPE_KAISTGHOST = 2560;
+    PUBSUB_TYPE_KaistGhostCmdController = 2561;
+
+    PUBSUB_TYPE_MORAIGHOST = 2816;
+    PUBSUB_TYPE_MoraiGhostCmdController = 2817;
+    PUBSUB_TYPE_MoraiNpcGhostController = 2818;
+
+    PUBSUB_TYPE_SCOUTMINI = 3072;
+    PUBSUB_TYPE_ScoutCmdController = 3073;
+    PUBSUB_TYPE_ScoutInfoPublisher = 3074;
+    PUBSUB_TYPE_ScoutLightCmdSubscriber = 3075;
+
+    PUBSUB_TYPE_CYBER = 3328;
+    PUBSUB_TYPE_CyberCmdController = 3329;
+    PUBSUB_TYPE_CyberChassisPublisher = 3330;
+    PUBSUB_TYPE_CyberBestPosePublisher = 3331;
+    PUBSUB_TYPE_CyberInsStatPublisher = 3332;
+    PUBSUB_TYPE_CyberOdometryPublisher = 3333;
+    PUBSUB_TYPE_CyberCorrectedImuPublisher = 3334;
+    PUBSUB_TYPE_CyberImuPublisher = 3335;
+
+    PUBSUB_TYPE_ERPV2 = 3584;
+    PUBSUB_TYPE_ERPv2CmdController = 3585;
+    PUBSUB_TYPE_ERPv2InfoPublisher = 3586;
+    PUBSUB_TYPE_ERPv2ObjectInfoPublisher = 3587;
+    PUBSUB_TYPE_ERPv2SerialInfoPublisher = 3588;
+
+    PUBSUB_TYPE_WEBOT = 3840;
+    PUBSUB_TYPE_WeBOTCmdController = 3841;
+    PUBSUB_TYPE_WeBOTInfoSteerPublisher = 3842;
+    PUBSUB_TYPE_WeBOTInfoVescStatePublisher = 3843;
+
+    PUBSUB_TYPE_PR = 4096;
+    PUBSUB_TYPE_PRCmdController = 4097;
+    PUBSUB_TYPE_PRStatusPublisher = 4098;
+    PUBSUB_TYPE_PREventServiceProvider = 4099;
+
+    PUBSUB_TYPE_DIFFERETIAL_DRIVE = 4352;
+    PUBSUB_TYPE_MoraiDdCmdController = 4353;
+    PUBSUB_TYPE_MoraiDdInfoPublisher = 4354;
+
+    PUBSUB_TYPE_AUTOEVERGHOST = 4608;
+    PUBSUB_TYPE_GhostCmdControllerExtended = 4809;
+
+    PUBSUB_TYPE_GRPC = 4864;
+    PUBSUB_TYPE_MoraiService = 4865;
+    PUBSUB_TYPE_AnsysAVxIntegrationService = 4866;
+
+    PUBSUB_TYPE_END = 4867;
+}
+
+enum NetworkConnetType
+{
+    NETWORK_CONNECT_TYPE_UNSPECIFIED = 0;
+    NETWORK_CONNECT_TYPE_EGO = 1;
+    NETWORK_CONNECT_TYPE_PUBSUB = 2;
+    NETWORK_CONNECT_TYPE_SIM = 3;
+    NETWORK_CONNECT_TYPE_END = 4;
+}
+
+enum VehicleLimiterType
+{
+    VEHICLE_LIMITER_TYPE_ACCEL = 0;
+    VEHICLE_LIMITER_TYPE_BREAK = 1;
+    VEHICLE_LIMITER_TYPE_STEER = 2;
+}
+
+enum GearMode 
+{
+    GEAR_MODE_M = 0;
+    GEAR_MODE_P = 1;
+    GEAR_MODE_R = 2;
+    GEAR_MODE_N = 3;
+    GEAR_MODE_D = 4;
+    GEAR_MODE_L = 5;
+}
+
+enum PathOffsetType 
+{
+    PATH_OFFSET_TYPE_UNSPECIFIED = 0;
+    PATH_OFFSET_TYPE_FIX = 1;								// 설정 값으로 고정
+    PATH_OFFSET_TYPE_RANDOM_GAUSSIAN = 2;					// Gaussian distribution (zero mean, unit variance)
+    PATH_OFFSET_TYPE_END = 3;
+}
+
+enum DisturbanceLocation
+{
+    // Accel 장애
+    DISTURBANCE_LOCATION_ACCEL = 0;
+
+    // Brake 장애
+    DISTURBANCE_LOCATION_BRAKE = 1;
+
+    // Steering 장애
+    DISTURBANCE_LOCATION_STEER = 2;
+
+    // Hand brake 장애
+    DISTURBANCE_LOCATION_HAND_BRAKE = 3;
+}
+
+enum DisturbanceType
+{
+    // continuous
+    DISTURBANCE_TYPE_NONE = 0;
+
+    // instantaneous	
+    DISTURBANCE_TYPE_PULSE = 1;
+}
+
+enum VehicleFaultType
+{
+    VEHICLE_FAULT_TYPE_CONTROL = 0;
+    VEHICLE_FAULT_TYPE_TIRE = 1;
+    VEHICLE_FAULT_TYPE_SENSOR = 2;
+}
+
+enum VehicleFaultClass
+{
+    VEHICLE_FAULT_CLASS_UNSPECIFIED = 0;
+    VEHICLE_FAULT_CLASS_TIMING = 1;
+    VEHICLE_FAULT_CLASS_DATA = 2;
+    VEHICLE_FAULT_CLASS_HARDWARE = 3;
+}
+
+enum VehicleFaultSubclass
+{
+    // 최상위 digit은 fault class와 일치하여야 한다
+    VEHICLE_FAULT_SUBCLASS_UNSPECIFIED = 0;
+
+    VEHICLE_FAULT_SUBCLASS_LOSS_AND_TIMEOUT = 101;
+    VEHICLE_FAULT_SUBCLASS_DELAYED = 102;
+
+    VEHICLE_FAULT_SUBCLASS_OPEN = 201;
+    VEHICLE_FAULT_SUBCLASS_SHORT = 202;
+    VEHICLE_FAULT_SUBCLASS_OFFSET = 203;
+    VEHICLE_FAULT_SUBCLASS_STUCK_IN_RANGE = 204;
+    VEHICLE_FAULT_SUBCLASS_OUT_OF_DATA = 205;
+    VEHICLE_FAULT_SUBCLASS_DRIFT_AND_OSCILLATION = 206;
+
+    VEHICLE_FAULT_SUBCLASS_PUNCTURE = 301;
+    VEHICLE_FAULT_SUBCLASS_TRANSFORM = 302;
+}
+
+enum VehicleFaultLocation
+{
+    VEHICLE_FAULT_LOCATION_UNSPECIFIED = 0;
+    VEHICLE_FAULT_LOCATION_ACCEL = 2;
+    VEHICLE_FAULT_LOCATION_BRAKE = 3;
+    VEHICLE_FAULT_LOCATION_STEERING = 4;
+}
+
+enum EgoCruiseType
+{
+    EGO_CRUISE_TYPE_UNSPECIFIED = 0;
+    EGO_CRUISE_TYPE_LINK = 1;
+    EGO_CRUISE_TYPE_CONSTANT = 2;
+    EGO_CRUISE_TYPE_END = 3;
+}
+
+enum LongCmdType
+{
+    LONG_CMD_TYPE_UNSPECIFIED = 0;
+    LONG_CMD_TYPE_THROTTLE = 1;
+    LONG_CMD_TYPE_SPEED = 2;
+    LONG_CMD_TYPE_ACCELERATION = 3;
+    LONG_CMD_TYPE_GHOST = 4;
+}
+
+enum VehicleControlMode
+{
+    VEHICLE_CONTROL_UNSPECIFIED = 0;
+    VEHICLE_CONTROL_KEYBOARD = 1;
+    VEHICLE_CONTROL_GAME_WHEEL = 2;
+    VEHICLE_CONTROL_AUTO_MODE = 3;
+    VEHICLE_CONTROL_AUTO_MODE_LATERAL = 4;
+    VEHICLE_CONTROL_AUTO_MODE_LONGITUDINAL = 5;
+    VEHICLE_CONTROL_CRUISE_MODE = 6;
+    VEHICLE_CONTROL_SYNCHRONOUS_MODE = 7;
+}
+
+enum VehicleTurnSignal
+{
+    VEHICLE_TURN_SIGNAL_UNSPECIFIED = 0;
+    VEHICLE_TURN_SIGNAL_LEFT = 1;
+    VEHICLE_TURN_SIGNAL_RIGHT = 2;
+    VEHICLE_TURN_SIGNAL_ALL = 3;
+}
+
+enum AnimationObjectType
+{
+    ANIMATION_OBJECT_TYPE_UNSPECIFIED = 0;
+    ANIMATION_OBJECT_TYPE_CROSSING_GATE = 1;
+}
+
+enum ObjectControlModeType
+{
+    OBJECT_CONTROL_MODE_NORMAL = 0;
+    OBJECT_CONTROL_MODE_WAYPOINT = 1;
+    OBJECT_CONTROL_MODE_KINEMATICS = 2;
+}

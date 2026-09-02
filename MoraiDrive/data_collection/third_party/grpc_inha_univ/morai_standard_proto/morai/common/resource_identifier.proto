@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package morai_sim_api;
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI";
+
+/**
+ * 리소스를 식별하기 위한 유일한 아이디
+ */
+message ResourceIdentifier
+{
+    string value = 1;
+}

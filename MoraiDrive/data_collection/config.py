@@ -1,31 +1,51 @@
 """
 Central config for the MORAI -> LMDrive dataset conversion pipeline.
 
-TODO: replace the port numbers below with MORAI's actual UDP port
-assignment (SDK docs / competition-kit network setting).
+센서 데이터는 ROS1(message_filters로 동기화), 시뮬레이션 tick 제어는 gRPC로 받는다
+(자세한 배경은 ros/ros_manager.py, grpc_ctrl/morai_grpc_client.py 참고).
 """
 from dataclasses import dataclass, field
 from typing import Dict
 
 
 @dataclass
-class NetworkConfig:
-    ego_info_port: int = 9091
-    object_info_port: int = 9092
-    camera_port: Dict[str, int] = field(default_factory=lambda: {
-        "front": 9093, "left": 9094, "right": 9095, "rear": 9096,
+class ROSConfig:
+    master_uri: str = ""                # 비우면 기본 ROS_MASTER_URI 환경변수 사용
+    topics: Dict[str, str] = field(default_factory=lambda: {
+        # rostopic list로 확인된 실제 토픽명 (2026-09-02, 카메라4+GPS+IMU 센서 추가 후)
+        "camera_front": "/camera_front",
+        "camera_left":  "/camera_left",
+        "camera_right": "/camera_right",
+        "camera_rear":  "/camera_rear",
+        "gnss":          "/gps",
+        "imu":           "/imu",
+        "lidar":         "/lidar3D",
+        "gt_objects":    "/Object_topic",
+        "traffic_light": "/GetTrafficLightStatus",
+        "ego_state":     "/Ego_topic",
     })
-    lidar_port: int = 9097
-    bind_ip: str = "0.0.0.0"
-    recv_buffer_size: int = 65536       # UDP datagram 최대 크기 여유값
-    max_staleness_sec: float = 0.15     # 프레임 동기화 시 센서값 최대 허용 지연
+    sync_slop_sec: float = 0.02          # message_filters.ApproximateTimeSynchronizer slop
+    sync_queue_size: int = 10
+
+
+@dataclass
+class GrpcConfig:
+    host: str = "127.0.0.1"              # WSL에서 Windows 호스트(MORAI gRPC) 접속 시 다른 IP 필요
+    port: int = 7789
+    client_key: str = "MoraiDataCollector"
+    map_name: str = ""                   # 비우면 MORAI SIM에 이미 로드된 맵/ego 사용
+    ego_vehicle_model: str = ""
+    tick_period_ms: int = 100            # 100ms = 10Hz, 프레임 저장 Hz를 사실상 결정
 
 
 @dataclass
 class DatasetConfig:
     output_root: str = "./output"
     route_name: str = "route_moraiA_scenario1"
-    collect_hz: float = 10.0            # LMDrive 원본 데이터셋과 동일하게 ~10Hz
+    # 저장 Hz는 이제 wall-clock이 아니라 GrpcConfig.tick_period_ms가 결정한다
+    # (매 gRPC tick마다 한 프레임 저장). collect_hz는 참고용 표시값 — 실제로
+    # 바꾸려면 tick_period_ms를 바꿔야 한다.
+    collect_hz: float = 10.0
     image_ext: str = "jpg"
     image_quality: int = 92
 
@@ -82,6 +102,7 @@ class SensorConfig:
     )
 
 
-NETWORK = NetworkConfig()
+ROS = ROSConfig()
+GRPC = GrpcConfig()
 DATASET = DatasetConfig()
 SENSORS = SensorConfig()

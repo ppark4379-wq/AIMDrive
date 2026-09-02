@@ -1,56 +1,70 @@
 # MoraiDrive / data_collection
 
-MORAI 시뮬레이터에서 UDP로 받은 센서/차량 데이터를 LMDrive(vision_encoder)가
-바로 읽을 수 있는 CARLA 스타일 데이터셋 포맷으로 변환하는 실시간 수집 파이프라인.
+MORAI 시뮬레이터에서 gRPC(시뮬레이션 tick 제어) + ROS1(센서 토픽, message_filters로
+동기화)로 받은 센서/차량 데이터를 LMDrive(vision_encoder)가 바로 읽을 수 있는 CARLA
+스타일 데이터셋 포맷으로 변환하는 실시간 수집 파이프라인.
 
 [MoraiDrive](../) 프로젝트의 세 축(데이터 수집 / 학습 / 대회 배포) 중 데이터 수집
 부분입니다. 전체 프로젝트 구조는 상위 [README](../README.md) 참고.
 
-## 지금 당장 해야 할 일 (막혀있는 부분)
+> 이전에는 순수 UDP로 센서를 받았습니다 (`legacy_udp/` 참고, git에 보존만 하고
+> 더는 안 씀). 출력 포맷(LMDrive JSON + 이미지 + lidar)은 그대로 두고, 전송 계층만
+> gRPC+ROS1로 교체했습니다 — 시나리오/tick 제어는 gRPC, 센서 데이터는 ROS1으로 받고
+> 카메라4+GNSS+IMU+LiDAR 동기화는 ROS1 내장 `message_filters.ApproximateTimeSynchronizer`
+> 를 씁니다.
 
-`udp/parsers.py`의 `parse_ego_info()` / `parse_object_info()`는 **아직 구현 안 됨**
-(`NotImplementedError`). MORAI의 UDP 패킷 바이트 레이아웃(필드 순서/타입/오프셋)을 정확히
-모르는 상태에서 struct 포맷을 추측해서 채우면, 에러 없이 조용히 잘못된 숫자가 쌓이는
-게 훨씬 위험해서 비워뒀습니다. 다음 중 하나를 주시면 바로 채울 수 있습니다.
+## 지금 당장 확인해야 할 일 (막혀있는 부분)
 
-- MORAI SDK/경진대회 킷에 포함된 패킷 구조체 정의 (`ctypes.Structure` 코드나 스펙 문서)
-- 또는 사용 중인 MORAI 버전/경진대회 킷 이름 (알려진 레퍼런스가 있으면 참고해서 작성)
-
-`parse_camera_jpeg()` / `parse_lidar_points()`는 "JPEG 바이트" / "flat float32 xyzI
-배열"이라는 일반적인 관례를 가정하고 작성했습니다. 이것도 MORAI 쪽 실제 인코딩과 다르면
-알려주세요.
+- `ros/ros_manager.py`의 `_cb_gnss`/`_cb_imu`/`_cb_objects`/`_cb_ego` 콜백은
+  `third_party/morai_msgs`의 `.msg` 정의를 보고 필드명을 맞췄지만, 실제 MORAI ROS
+  브릿지가 런타임에 그 필드들(특히 `header.stamp`)을 유효하게 채우는지는 라이브
+  시뮬레이터 없이는 확인 못 했습니다. `rostopic echo /Ego_topic` 등으로 확인 필요.
+- `config.py`의 `ROS.topics`, `GRPC.host/port/map_name/ego_vehicle_model`은 실제
+  MORAI 환경값으로 채워야 합니다 (WSL에서 Windows 호스트 접속 시 `GRPC.host`는
+  `127.0.0.1`이 아닐 수 있음).
+- `collect.py`의 `_actor_data()`에서 `box`(바운딩박스)는 자리표시자 `[2.0, 1.0]`입니다
+  — MORAI GT가 실제 크기를 준다면 `ros/ros_manager.py._cb_objects()`에서 채워서
+  넘겨주세요.
 
 ## 폴더 구조
 
 ```
 MoraiDrive/data_collection/
-├── config.py              # UDP 포트/IP, 수집 주기(Hz), 이미지 저장 옵션
-├── schema.py               # LMDrive가 기대하는 JSON 필드 정의 + 기본값
-├── collect.py               # 메인 실행 스크립트
-├── udp/
-│   ├── socket_receiver.py  # 범용 non-blocking UDP 수신 스레드 (완성)
-│   ├── reassembler.py      # 큰 payload(이미지/라이다) 청크 재조립 (필요시 사용, 헤더 포맷 TODO)
-│   └── parsers.py          # 패킷 바이트 -> dict/ndarray 파싱 (ego/object는 TODO)
-├── sync/
-│   └── frame_sync.py       # 비동기 UDP 토픽들을 하나의 프레임으로 정렬 (완성)
-└── writer/
-    ├── image_writer.py     # rgb_<view>/%04d.jpg 저장 (완성)
-    ├── lidar_writer.py     # lidar/%04d.npy 저장 (완성)
-    └── dataset_writer.py   # measurements_full/%04d.json, measurements_all.json, dataset_index.txt (완성)
+├── config.py                # ROS 토픽/gRPC 접속 정보, 수집 주기, 이미지 저장 옵션
+├── schema.py                 # LMDrive가 기대하는 JSON 필드 정의 + 기본값 (변경 없음)
+├── collect.py                 # 메인 실행 스크립트
+├── ros/
+│   ├── ros_manager.py        # ROS1 구독 + message_filters 동기화 (카메라4+GNSS+IMU+LiDAR)
+│   └── sensor_types.py       # ROSManager가 주고받는 센서 데이터 컨테이너
+├── grpc_ctrl/
+│   └── morai_grpc_client.py  # gRPC 연결 + 동기 모드 전환 + tick (프레임 트리거)
+├── third_party/
+│   ├── grpc_inha_univ/       # MORAI 팀 제공 gRPC 클라이언트 (proto/api)
+│   └── morai_msgs/           # MORAI ROS1 메시지 정의 (참고용, 실행 시엔 시스템 설치본 사용)
+├── writer/
+│   ├── image_writer.py       # rgb_<view>/%04d.jpg 저장 (변경 없음)
+│   ├── lidar_writer.py       # lidar/%04d.npy 저장 (변경 없음)
+│   └── dataset_writer.py     # measurements_full/%04d.json 등 (변경 없음)
+├── tests/
+│   └── test_ros_manager_sync.py   # rospy 없이 도는 message_filters 브리징 모킹 테스트
+└── legacy_udp/                # 이전 UDP 파이프라인 보존 (collect.py/config.py/sync/udp/writer 구버전)
 ```
 
 ## 실행 흐름
 
 `collect.py`가 하는 일:
 
-1. 토픽별로 `UdpTopicReceiver` 5~8개(ego, object, camera×N, lidar)를 각자 스레드로 띄움
-   → 각 토픽은 "가장 최근 값 + 수신 시각"만 캐싱 (히스토리 불필요)
-2. `FrameSynchronizer.tick()`을 `collect_hz`(기본 10Hz) 주기로 호출
-   → ego/lidar/카메라가 전부 `max_staleness_sec` 이내에 신선하면 프레임 하나로 스냅샷,
-     아니면 그 틱은 스킵 (오래된 값을 억지로 끼워맞추지 않음)
-3. 스냅샷된 프레임을 `EgoState`/`ActorData`로 감싸 `schema.build_measurement_dict()`로
-   LMDrive JSON 스키마에 맞게 변환 후 각 writer가 디스크에 기록
-4. 라우트 종료 시 `finalize()`가 `measurements_all.json`, `dataset_index.txt`를 마무리
+1. `ROSManager.start()` — 카메라4(front/left/right/rear) + GNSS + IMU + LiDAR를
+   `message_filters.ApproximateTimeSynchronizer`(slop=`ROS.sync_slop_sec`)로 묶어 구독.
+   ego/gt_objects/traffic_light는 최신값만 별도 버퍼링 (자세한 설계는
+   `ros/ros_manager.py` 상단 docstring 참고).
+2. `MoraiGrpcClient.start_sync_mode()` — gRPC로 동기 모드 전환 (`tick_period_ms`).
+3. 메인 루프: `grpc_client.tick(1)`이 프레임 트리거 — tick마다
+   `ros_mgr.get_snapshot()`으로 이미 동기화된 센서 묶음을 꺼내옴
+   (아직 새 동기화 묶음이 안 왔으면 직전 값을 재사용, 완전 새 데이터면 스킵).
+4. 스냅샷을 `EgoState`/`ActorData`로 감싸 `schema.build_measurement_dict()`로
+   LMDrive JSON 스키마에 맞게 변환 후 각 writer가 디스크에 기록.
+5. 라우트 종료 시 `finalize()`가 `measurements_all.json`, `dataset_index.txt`를 마무리.
 
 ```bash
 python collect.py --route route_moraiA_scenario1 --duration 120
@@ -104,8 +118,10 @@ LMDrive의 `vision_encoder/timm/data/carla_dataset.py`가 `measurements["key"]` 
 
 ## 다음 단계
 
-1. `udp/parsers.py`의 ego/object 파서를 MORAI 실제 스펙으로 채우기 (막힌 지점)
-2. `python collect.py`로 짧게 돌려서 JSON/이미지/lidar가 정상적으로 쌓이는지 확인
-3. `future_waypoints` 후처리 스크립트 작성
-4. LMDrive `vision_encoder/timm/data/carla_dataset.py`를 참고한 축소판 Dataset 클래스 작성
+1. `config.py`의 `ROS.topics`/`GRPC.*`를 실제 MORAI 환경값으로 채우고, 실 MORAI SIM +
+   ROS1 브릿지 환경에서 `python collect.py`로 짧게 돌려 JSON/이미지/lidar가 정상적으로
+   쌓이는지 확인 (`tests/test_ros_manager_sync.py`는 이미 통과했지만, rospy 없이 도는
+   모킹 테스트라 실제 토픽 신선도/필드명까지는 검증 못 함)
+2. `future_waypoints` 후처리 스크립트 작성
+3. LMDrive `vision_encoder/timm/data/carla_dataset.py`를 참고한 축소판 Dataset 클래스 작성
    (Phase 1: waypoint loss만 사용하는 버전) — `MoraiDrive/vision_encoder/`에 위치 예정

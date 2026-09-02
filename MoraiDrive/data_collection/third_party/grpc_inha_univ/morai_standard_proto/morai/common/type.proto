@@ -1,0 +1,106 @@
+syntax = "proto3";
+
+package morai_sim_api;
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI";
+
+message Empty
+{
+
+}
+
+message Point 
+{
+  double x = 1;
+  double y = 2;
+  double z = 3;
+}
+
+message Vector3
+{
+    double x = 1;
+    double y = 2;
+    double z = 3;
+}
+
+message Transform
+{
+    /**
+     * ENU 좌표계를 사용
+     */
+    Vector3 location = 1;
+
+    /**
+     * x : Roll
+     * y : Pitch
+     * z : Yaw
+     * CCW이며 동쪽이 0도
+     */
+    Vector3 rotation = 2;
+}
+
+message BoundingBox
+{
+    Vector3 extent = 1;
+    Vector3 location = 2;
+    Vector3 rotation = 3;
+}
+
+message StringValue
+{
+    string value = 1;
+}
+
+message StringList
+{
+    repeated string values = 1;
+}
+
+message Int32Value
+{
+    int32 value = 1; 
+}
+
+message Int32List
+{
+    repeated int32 values = 1;
+}
+
+message Int64Value
+{
+    int64 value = 1;
+}
+
+message Uint32Value
+{
+    uint32 value = 1;
+}
+
+message Uint64Value
+{
+    uint64 value = 1;
+}
+
+message FloatValue
+{
+    float value = 1;
+}
+
+message DoubleValue
+{
+    double value = 1;
+}
+
+message BoolValue
+{
+    bool value = 1;
+}
+
+message UintColor
+{
+    uint32 r = 1;
+    uint32 g = 2;
+    uint32 b = 3;
+    uint32 a = 4;
+}

@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package morai_sim_api.infrastructure;
+
+import "morai/common/result.proto";
+import "morai/common/object_identifier.proto";
+import "morai/infrastructure/traffic_light.proto";
+import "morai/infrastructure/intersection.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Infrastructure";
+
+
+/**
+ * 신호등, RSU(Road Side Unit)등 시뮬레이션 인프라의 상태를 조회하고 제어하는 기능
+ */
+service Infrastructure
+{
+    // 링크 또는 신호등의 아이디를 통해 신호등 상태 획득
+    rpc GetTrafficLightInfo(GetTrafficLightInfoParam) returns (TrafficLightInfo);
+   
+    // 신호등의 상태 변경
+    rpc SetTrafficLightState(TrafficLightStateParam) returns (Result);
+
+    // 교차로 신호등 상태 획득
+    rpc GetIntersectionTLInfo(ObjectIdentifier) returns (IntersectionState);
+    
+    // 교차로 phase 변경
+    rpc SetIntersectionPhase(IntersectionPhase) returns (Result);
+
+    // 교차로 schedule 변경
+    rpc SetIntersectionSchedule(IntersectionSchedule) returns (Result);
+}

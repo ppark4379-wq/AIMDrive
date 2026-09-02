@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+package sungsimdang_city_message;
+option optimize_for = SPEED;
+
+service city_information
+{
+    // request population movement data
+    rpc GetPopulationMovement(RequestParam) returns (PopulationMovement);
+   
+    // request wattage data
+    rpc GetWattage(RequestParam) returns (Wattage);
+}
+
+message RequestParam
+{
+    RequestType request_type = 1;
+    //Datetime date_time 2;
+    google.protobuf.Timestamp timestamp = 2;
+}
+
+message Datetime
+{
+    uint32 year = 1;
+    uint32 month = 2;
+    uint32 day = 3;
+}
+
+message PopulationMovement
+{    
+    double Latitude = 1;
+    double Longitude = 2;
+    float camera_id = 3;
+    float camera_name = 4;
+    float density = 5;
+    uint32 population_count = 6;
+    string location_desc = 7;
+    google.protobuf.Timestamp timestamp = 8;
+}
+
+message Wattage
+{
+    Datetime datetime = 1;
+    string snsrseq = 2;
+    string snsrid = 3;
+    repeated float datas = 4;
+}
+
+enum RequestType
+{	
+    UNSPECIFIED = 0;
+    POPULATION_MOVEMENT = 1;
+    WATTAGE = 2;
+}

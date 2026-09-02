@@ -1,0 +1,140 @@
+syntax = "proto3";
+
+package morai_sim_api.actor;
+
+import "morai/common/type.proto";
+import "morai/common/object_identifier.proto";
+import "morai/common/object_info.proto";
+import "morai/actor/actor_enum.proto";
+import "morai/map/link_info.proto";
+import "morai/infrastructure/infrastructure_enum.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Actor";
+
+/**
+ * Actor 상태
+ */
+message ActorState
+{
+    ObjectInfo actor_info = 1;
+    BoundingBox bounding_box = 2;
+    Transform transform = 3;
+
+    // local
+    Vector3 velocity = 4;
+    Vector3 angular_velocity = 5;
+    Vector3 acceleration = 6;
+
+    // Actor가 차량인 경우에만 존재
+    VehicleState vehicle_state = 7;
+        
+    Vector3 global_velocity = 8;
+}
+
+/**
+ * Actor 상태 
+ */ 
+message ActorStates
+{
+    repeated ActorState states = 1;
+    uint64 sync_mode_tick_count = 2;
+    int64 timestamp = 3;
+}
+
+/**
+ * 모든 Actor들의 상태를 요청하기 위한 필터 
+ */
+ message GetAllActorsFilter
+ {
+    /**
+     * 요청할 클라이언트의 키. 
+     * 키가 설정되지 않으면 MORAI SIM에서 관리하는 아이디로 상태값을 전달한다.
+     */
+    string client_key = 1;
+    
+    // 차량 타입 actor의 상태 수신 여부
+    bool vehicle = 2;
+
+    // 보행자 타입 actor의 상태 수신 여부
+    bool pedestrian = 3;
+
+    // 장애물 타입 actor의 상태 수신 여부
+    bool obstacle = 4;
+ }
+
+/**
+ * 차량 상태
+ */
+message VehicleState
+{
+    float throttle = 1;
+    float steer = 2;        // -1~1
+    float brake = 3;
+    float front_wheel_angle = 4;
+    GearMode gear_mode = 5;
+    morai_sim_api.map.LinkInfo current_link_info = 6;
+    float remaining_distance = 7;
+    int32 remaining_link_count = 8;
+    bool is_pass_des_pos = 9;
+    ObjectIdentifier tl_id = 10;
+    infrastructure.TrafficLightColor tl_color = 11;
+    repeated string collision_objects = 12;
+}
+
+/**
+ * 차량 제원
+ */
+message VehicleSpec
+{
+	VehicleClass sub_category = 1;
+
+	// [Unit : m]
+	float length = 2;
+
+	// [Unit : m]
+	float width = 3;
+
+	// [Unit : m]
+	float height = 4;
+
+	// [Unit : m]
+	float wheel_base = 5;
+
+	// [Unit : m]
+	float front_overhang = 6;
+
+	// [Unit : m]
+	float rear_overhang = 7;
+
+	repeated DynamicsLevel dynamics_level = 8;
+
+	// [Unit : Deg]
+	float max_steering_angle = 9;
+
+    // [Unit : m]
+    float wheel_radius = 10;
+}
+
+/**
+ * MORAI SIM에 설정된 차량의 정보 
+ */
+message DynamicsLevel
+{
+    // dynamics 구현 정도
+	int32 level = 1;
+
+    // 적합성
+	string ego = 2;
+
+    // 적합성
+	string npc = 3;
+}
+
+/**
+ * 차량의 현재 제어 모드
+ */
+message CurVehicleControlMode
+{
+    VehicleControlMode mode = 1;
+}

@@ -1,0 +1,99 @@
+syntax = "proto3";
+
+package morai_sim_api.simulation;
+
+import "morai/common/type.proto";
+import "morai/common/result.proto";
+import "morai/simulation/sync_mode.proto";
+import "morai/simulation/start_param.proto";
+import "morai/simulation/resim.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Simulation";
+
+/**
+ * 시뮬레이션 시 사용하는 서비스
+ */
+service Simulation
+{
+    /** 
+     * 시뮬레이션 시작
+     */
+    rpc Start(StartParam) returns (Result);
+
+    /**
+     * 시뮬레이션 종료
+     * client_key 값으로 생성된 차량을 삭제함
+     */
+    rpc Stop(StringValue) returns (Result);
+
+    /**
+     * 시뮬레이션 일시 정지
+     */
+    rpc Pause(Empty) returns (Result);
+
+    /**
+     * 시뮬레이션 재개
+     */
+    rpc Resume(Empty) returns (Result);
+
+    /**
+     * 시뮬레이션 모드 조회
+     */ 
+    rpc GetSynchronousMode(Empty) returns (SyncMode);
+
+    /**
+     * 시뮬레이션 모드 설정
+     */
+    rpc SetSynchronousMode(SyncMode) returns (Result);
+
+    /**
+     * 동기 모드일 때 설정한 횟수만큼 Tick 진행
+     *   unit : tick count
+     *   response : frame index
+     */
+    rpc Tick(Int32Value) returns (SyncTimestamp);
+
+    /**
+     * 비동기 모드일 때 사용하는 rpc로 다음 틱이 돌아오면 리턴
+     *   response : timestamp (msec)
+     */
+    rpc WaitForTick(Empty) returns (Int64Value);
+
+    /**
+    * Simulation Mode setting
+    * // 1. Normal, 2. Scenario runner, 3. Datagen, 4.....
+    */
+    rpc SetSimulationMode(SimulationModeParam) returns (Result);
+
+    /**
+    * Resim Record 
+    */
+    rpc SetResimRecordMode(ResimRecordParam) returns (Result);
+
+    rpc GetResimRecordStatus(Empty) returns (ResimRecordStatusParam);
+
+    /**
+    * Resim Replay
+    */
+    //rpc SetResimReplayMode(ResimReplayParam) returns (Result);    
+
+    rpc ResimReplayInit(ResimReplayInitParam) returns (Result);
+
+    rpc ResimReplayStart(Empty) returns (Result);
+
+    rpc GetResimReplayStatus(Empty) returns (ResimReplayStatusParam);
+
+    rpc AddResimReplayRange(ResimReplayRangeParam) returns (Result);
+
+
+    /**
+    * General message
+    */
+    rpc SendMessage(SendMessageParam) returns (Result);
+
+    /*
+    * String List for Custom
+    */
+    rpc SendStringListMessage(StringListParam) returns (Result);
+}

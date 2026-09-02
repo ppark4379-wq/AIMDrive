@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package morai_sim_api.simualtor;
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Simulator";
+
+// List of Available Object for the user account info
+message AvailableObject
+{
+	repeated string ego_vehicle = 1;
+	repeated string surround_vehicle = 2;
+	repeated string pedestrian = 3;
+	repeated string obstacle = 4;
+	repeated string spawn_point = 5;
+	repeated string map_object = 6;
+}

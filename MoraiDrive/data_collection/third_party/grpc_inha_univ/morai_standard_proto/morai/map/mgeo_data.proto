@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package morai_sim_api.map;
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Map";
+
+
+// MGeo 데이터
+message MGeoData
+{    
+    repeated MGeoObject objects = 1;
+}
+
+message MGeoObject
+{
+    string filename = 1;
+    string compressed_data = 2;
+}

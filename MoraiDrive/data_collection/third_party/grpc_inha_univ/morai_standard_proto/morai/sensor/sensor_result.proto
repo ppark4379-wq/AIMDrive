@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package morai_sim_api.sensor;
+
+import "morai/sensor/sensor_enum.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Sensor";
+
+message FaultResult
+{
+	SensorType sensor_type = 1;
+	DataQualifier data_qualifier = 2;
+	FaultType fault_type = 3;
+	bool is_done = 4;
+	string Log = 5;
+}
+
+message WeatherEffectResult
+{
+	SensorType sensor_type = 1;
+	bool is_done = 2;
+	string Log = 3;
+}

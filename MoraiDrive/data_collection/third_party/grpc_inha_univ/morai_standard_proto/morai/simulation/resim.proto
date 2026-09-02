@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package morai_sim_api.simulation;
+
+//import "morai/common/type.proto";
+import "morai/simulation/simulation_enum.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Simulation";
+
+/**
+ * 시뮬레이션을 시작하기 위해 필요한 설정
+ */
+message ResimRecordParam {
+    ResimRecordStatusType status = 1;
+    int32 interval = 2;
+    string filepath = 3;
+}
+
+message ResimRecordStatusParam{
+    ResimRecordStatusType status = 1;
+}
+
+message ResimReplayInitParam {
+    repeated string weather_list =1;
+    repeated int64 time_list = 2;
+    string scenario_file_path = 3;
+    string resim_file_Path = 4;
+    string save_sensor_file_path = 5;    
+}
+
+message ResimReplayRangeParam{
+    int32 start = 1;
+    int32 end = 2;
+}
+
+message ResimReplayParam {
+    string filepath = 1;   
+    string frame_range = 2;
+}
+
+message ResimReplayStatusParam {    
+    int32 frame_number = 1;
+    ResimReplayStatusType replay_status = 2;
+}
+

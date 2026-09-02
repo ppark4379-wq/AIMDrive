@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package morai_sim_api.environment;
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Environment";
+
+
+enum WeatherType
+{
+    WEATHER_TYPE_SUNNY = 0;
+    WEATHER_TYPE_CLOUDY = 1;
+    WEATHER_TYPE_FOGGY = 2;
+    WEATHER_TYPE_STORM = 3;
+    WEATHER_TYPE_RAINY = 4;
+    WEATHER_TYPE_SNOWY = 5;
+}
+
+enum SeasonType
+{
+    SEASON_TYPE_WINTER = 0;
+    SEASON_TYPE_SPRING = 1;
+    SEASON_TYPE_SUMMER = 2;
+    SEASON_TYPE_FALL = 3;
+}
+
+enum EnvVisibilityType
+{
+    ENV_VISIBILITY_TYPE_PUDDLE = 0;
+}

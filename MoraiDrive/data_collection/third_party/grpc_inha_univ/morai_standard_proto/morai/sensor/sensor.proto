@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package morai_sim_api.sensor;
+
+import "morai/common/type.proto";
+import "morai/common/result.proto";
+import "morai/sensor/sensor_settings.proto";
+import "morai/sensor/sensor_info.proto";
+import "morai/sensor/sensor_data_save_config.proto";
+import "morai/sensor/sensor_data.proto";
+import "morai/sensor/add_sensor_param.proto";
+import "morai/sensor/sensor_result.proto";
+import "morai/common/object_info.proto";
+import "morai/common/object_identifier.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Sensor";
+
+
+/**
+ * Sensor 관련 서비스
+ */
+service Sensor
+{
+    // Install the sensor on the vehicle
+    rpc AddSensor(AddSensorParam) returns (Result);
+
+	// Remove the sensors installed on the vehicle
+	rpc RemoveSensor(SensorInfo) returns (Result);
+
+	// set sensor setting (GT sensor only)
+	rpc SetSensorSetting(SensorSetting) returns (Result);
+
+	// get sensor setting info (GT Sensor only)
+	rpc GetSensorData(SensorInfo) returns (SensorData);
+
+	// Save all sensor settings to a file
+	rpc SaveSensorData(SensorDataSaveConfig) returns (Result);
+
+	// Load a preset sensor setup file
+	rpc LoadSensorFile(StringValue) returns (Result);
+
+	// List of Sensors installed on the vehicle
+	rpc GetSensorInfos(ObjectInfo) returns (SensorInfos);
+
+	// Turn on sensor capture mode 
+	rpc SetSensorCaptureMode(SensorCaptureModeParam) returns (Result);
+
+	// Get sens
+	rpc GetSensorCaptureMode(ObjectIdentifier) returns (Result);
+
+	// Sensor Mute
+	rpc SetSensorMuteByType(SensorMuteByTypeParam) returns (Result);
+
+	// Sensor Fault
+	rpc SetSensorFault(SensorFault) returns (FaultResult);
+
+	// Sensor Weather Effect
+	rpc SetWeatherEffect(WeatherEffect) returns (WeatherEffectResult);
+}
+
+

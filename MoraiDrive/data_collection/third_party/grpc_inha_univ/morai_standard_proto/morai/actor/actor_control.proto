@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package morai_sim_api.actor;
+
+import "morai/common/type.proto";
+import "morai/common/object_info.proto";
+import "morai/actor/actor_enum.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Actor";
+
+/**
+ * 차량 제어 명령
+ */
+message VehicleCtrlCmd 
+{
+    // 차량 아이디
+    ObjectInfo actor_info = 1;
+
+    // 1: Throttle control, 2: Velocity control, 3: Acceleration control
+    LongCmdType long_cmd_type = 2;
+
+    // 차량의 가속 패달 값을 의미하며 0~1 범위를 가진다
+    double throttle = 3;
+
+    // 차량의 브레이크 패달 값을 의미하며 0~1범위를 가진다
+    double brake = 4;
+
+    // 횡방향 제어 입력값, range : [-1,1], 원하는 스티어링 값(radian) / 최대 조향각
+    double steer = 5;
+
+    // (Only active if CmdType == 2)
+    double velocity = 6;
+
+    // (Only active if CmdType == 3)
+    double acceleration = 7;
+
+    // sync mode일 때만 의미 있음. 명령이 실행될 frame 지정
+    uint32 frame = 8;
+}
+
+/**
+ * 보행자 제어 명령
+ */
+message PedestrianCtrlCmd 
+{
+    // 보행자 아이디
+    ObjectInfo actor_info = 1;
+
+    /**
+     * x : Roll
+     * y : Pitch
+     * z : Yaw
+     * CCW이며 동쪽이 0도
+     */
+    Vector3 direction = 2;
+
+    // 속도 (m/s)
+    float speed = 3;
+}
+
+/**
+ * 장애물 제어 명령
+ */
+ message ObstacleCtrlCmd
+ {
+     // 오브젝트 아이디
+     ObjectInfo actor_info = 1;
+
+    // 0. default 1. waypoint 2. kinematics
+    ObjectControlModeType mode = 2;
+ 
+     // sync mode일 때만 의미 있음. 명령이 실행될 frame 지정
+     uint32 frame = 3;
+ 
+     // 제어 명령
+     double velocity_x = 4;
+     double velocity_y = 5;
+     double yaw_rate = 6;
+
+     double height = 7;
+ }

@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package morai_sim_api.infrastructure;
+
+import "morai/common/object_identifier.proto";
+import "morai/infrastructure/traffic_light.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Infrastructure";
+
+/**
+ * 교차로 상태(Phase) 설정
+ */
+message IntersectionPhase
+{
+    // 교차로 아이디
+    ObjectIdentifier id = 1;
+
+    // 변경할 교차로의 상태(Phase)
+    int32 phase = 2;
+}
+
+/**
+ * 교차로 스케쥴
+ */
+message IntersectionSchedule
+{
+    // 교차로 아이디
+    ObjectIdentifier id = 1;
+
+    // 차량 신호등 스케쥴
+    repeated TrafficLightSchedule.Vehicle vehicle = 2;
+
+    // 노랑 신호등 스케즁
+    repeated TrafficLightSchedule.Yellow yellow = 3;
+
+    // 보행자 신호등 스케쥴
+    repeated TrafficLightSchedule.Pedestrian pedestrian = 4;
+}
+
+/**
+ * 교차로 상태
+ */
+message IntersectionState
+{
+    // 교차로의 신호등 정보
+    repeated TrafficLightInfo traffic_lights = 1;
+
+    // 교차로 스케쥴 phase
+    int32 phase = 2;
+}

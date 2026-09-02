@@ -1,0 +1,34 @@
+# MkDocs build output
+site/
+
+# Generated documentation (rebuilt by docs/generate_docs.py)
+docs/messages/*.md
+!docs/messages/index.md
+docs/services/*.md
+!docs/services/index.md
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environment
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# MkDocs cache
+.cache/

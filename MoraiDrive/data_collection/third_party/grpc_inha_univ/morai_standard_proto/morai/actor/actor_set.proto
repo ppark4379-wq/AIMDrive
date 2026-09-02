@@ -1,0 +1,282 @@
+syntax = "proto3";
+
+package morai_sim_api.actor;
+
+import "morai/common/type.proto";
+import "morai/common/object_info.proto";
+import "morai/actor/actor_enum.proto";
+import "morai/actor/actor_network.proto";
+import "morai/map/link_info.proto";
+import "morai/infrastructure/infrastructure_enum.proto";
+import "morai/actor/actor_spawn.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Actor";
+
+/**
+ * Actor의 Transform 설정
+ */
+message SetTransformParam
+{
+    ObjectInfo actor_info = 1;
+    Transform transform = 2;
+}
+
+/**
+ * Actor Enable
+ */ 
+message EnableActor
+{
+    ObjectInfo actor_info = 1;
+    bool enable = 2;
+}
+
+/**
+ * Actor의 속도 설정
+ */
+ message SetVelocityParam
+ {
+    ObjectInfo actor_info = 1;
+    float velocity = 2;
+ }
+
+/**
+ * 차량의 리미터 설정
+ */
+message VehicleLimiter
+{
+    ObjectInfo actor_info = 1;
+
+    // limiter type 
+    VehicleLimiterType limiter_type = 2;
+
+    /**
+     * Acc, Break: 최소값 0
+     * steer: 최소값 -1
+     */
+    float min_saturation = 3;
+    
+    /**
+     * Acc, Break: 최대값 1
+     * steer: 최대값 1
+     */
+    float max_saturation = 4;
+    
+    /**
+     * Acc, Break: negative value
+     * steer: -rad/s
+     */
+    float falling_rate = 5;
+
+    /**
+     * Acc, Break: positive value
+     * steer: rad/s
+     */
+    float rising_rate = 6;
+
+    bool reset = 7;
+}
+
+/**
+ * 차량 앞바퀴의 최대 조향각 설정
+ */
+message VehicleDynamicsSteer
+{
+    ObjectInfo actor_info = 1;
+    float max_steer_angle = 2;
+    bool reset = 3;
+}
+
+/**
+ * 차량의 최고 속도 설정
+ */
+message VehicleDynamicsSpeedLimit
+{
+    ObjectInfo actor_info = 1;
+
+    // 속력 제한 flag. True : 적용, False 해제.
+    bool speed_limiter = 2;
+
+    // 제한 하려는 속력 (m/s)
+    float speed_limit = 3;
+
+    bool reset = 4;
+}
+
+/**
+ * 차량의 질량 설정
+ */
+message VehicleDynamicsMass
+{
+    ObjectInfo actor_info = 1;
+
+    // kg
+    float mass = 2;
+
+    bool reset = 3;
+}
+
+message VehiclePathOffset
+{
+	ObjectInfo actor_info = 1;
+	float value = 2;
+	PathOffsetType lat_bias_mode = 3;
+}
+
+message VehicleDisturbance
+{   
+    ObjectInfo actor_info = 1; 
+
+    // 장애 발생 위치
+	DisturbanceLocation situation = 2;
+    
+    // 장애 유형
+	DisturbanceType behavior = 3;
+    
+    // 지속 시간 (초)
+	float duration = 4;
+    
+    // 장애 정도
+	float magnitude = 5;
+}
+
+message VehicleFaultInjection
+{
+    ObjectInfo actor_info = 1;
+    VehicleFaultType type = 2;
+    
+    repeated FaultInjectionCtrl control = 3;
+    repeated FaultInjectionTire tire = 4;
+    repeated FaultInjectionSensor sensor = 5;
+}
+
+message FaultInjectionCtrl
+{   
+    // 차량의 fault 발생 장치
+	VehicleFaultLocation fault_location = 1;					
+
+    // fault 대분류
+	VehicleFaultClass fault_class = 2;						
+
+	// fault 소분류
+	VehicleFaultSubclass fault_subclass = 4;
+}
+
+message FaultInjectionTire
+{
+	int32 tire_index = 1;				
+	VehicleFaultClass fault_class = 2;			
+	VehicleFaultSubclass fault_subclass = 3;	
+}
+
+message FaultInjectionSensor
+{
+	string sensor_id = 1;				
+	VehicleFaultClass fault_class = 2;
+	VehicleFaultSubclass fault_subclass = 3;
+	Vector3 local_position_offset = 4;
+	Vector3 local_rotation_offset = 5;
+}
+
+message VehicleRoute
+{
+    ObjectInfo actor_info = 1;
+    float decision_range = 2;
+    repeated morai_sim_api.map.LinkInfo links = 3;
+}
+
+message VehicleDestination
+{
+    ObjectInfo actor_info = 1;
+    float decision_range = 2;
+    Vector3 position = 3;
+}
+
+
+message EgoCruiseControl
+{
+    ObjectInfo actor_info = 1;
+	bool cruise_on = 2;	
+	EgoCruiseType cruise_type = 3;
+	int32 link_speed_ratio = 4;
+	float constant_velocity = 5;
+}
+
+message NetworkConfig
+{
+    ObjectInfo actor_info = 1;
+    bool enabled = 2;
+    NetworkCommType comm_type = 3;
+    int32 frame_rate = 4;
+    NetworkProtocolSetting protocol_settings = 5;
+    repeated NetworkIpSetting ip_settings = 6;
+}
+
+message VehicleSteer
+{
+    ObjectInfo actor_info = 1;
+    float steer = 2;
+}
+
+message VehicleControlModeParam
+{
+    ObjectInfo actor_info = 1;
+    VehicleControlMode mode = 2;
+}
+
+message ActorScale
+{
+    ObjectInfo actor_info = 1;
+    Vector3 scale = 2;
+}
+
+message VehicleGear
+{
+    ObjectInfo actor_info = 1;
+    GearMode gear = 2;
+}
+
+message VehicleTailLight
+{
+    ObjectInfo actor_info = 1;
+    VehicleTurnSignal signal = 2;
+}
+
+/**
+ * Animation 설정 
+ */
+message AnimationParam
+{
+    ObjectInfo actor_info = 1;
+    bool enabled = 2;
+    AnimationObjectType object_type = 3;
+    string animation_key = 4;
+}
+
+message TrainSignalLightInfo
+{
+    ObjectInfo actor_info = 1;
+
+    infrastructure.TrafficLightColor color = 2;
+}
+
+message EgoSetting
+{
+    // Client에서 호출할 Ego 차량의 아이디
+    string ego_id = 1;
+
+    // 화면에 표출할 Ego 차량의 label
+    string label = 2;
+
+    string client_key = 3;
+}
+
+/**
+ * 보행자 이동 경로 매개변수
+ */
+message PedestrianWaypointInfo
+{
+    ObjectInfo actor_info = 1;
+    bool is_create = 2;
+    PedestrianWaypoints waypoints = 3;
+}

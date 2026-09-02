@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package morai_sim_api.simualtor;
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Simulator";
+
+message CategoryObstacles
+{
+	bool vehicle = 1;
+	bool pedestrian = 2;
+	bool obstacle = 3;
+	bool spawn_point = 4;
+	bool map_object = 5;
+}

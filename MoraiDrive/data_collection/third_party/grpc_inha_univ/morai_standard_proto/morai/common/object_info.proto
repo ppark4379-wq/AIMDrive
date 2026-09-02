@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package morai_sim_api;
+
+import "morai/common/object_identifier.proto";
+import "morai/common/enum.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI";
+
+/**
+ * Object의 정보를 담는 메시지
+ */
+message ObjectInfo
+{
+    // Object의 아이디
+    ObjectIdentifier id = 1;
+
+    // Object 종류
+    ObjectType object_type = 2;
+
+    // 클라이언트가 발행하는 Key로 임의의 문자열을 입력하면 됨
+    string client_key = 3;
+}
+
+message ObjectInfos
+{
+    repeated ObjectInfo values = 1;
+}

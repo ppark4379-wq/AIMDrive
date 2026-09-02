@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package morai_sim_api.environment;
+
+import "morai/common/type.proto";
+import "morai/common/result.proto";
+import "morai/environment/weather.proto";
+import "morai/environment/season.proto";
+import "morai/environment/time.proto";
+import "morai/environment/env_visibility.proto";
+import "morai/environment/force.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Environment";
+
+
+/**
+ * 시뮬레이션 환경 관련 서비스
+ */
+service Environment
+{
+    /**
+     * 시뮬레이션 시간 조회
+     */
+    rpc GetTime(Empty) returns (SimulationTime);
+
+    /**
+     * 시뮬레이션 시간 설정
+     */
+    rpc SetTime(SimulationTime) returns (Result);
+
+    /**
+     * 날씨 조회
+     */
+    rpc GetWeather(Empty) returns (Weather);
+
+    /**
+     * 날씨 설정
+     */
+    rpc SetWeather(Weather) returns (Result);
+
+    /**
+     * 계절 조회
+     */
+    rpc GetSeason(Empty) returns (Season);
+
+    /**
+     * 계절 변경
+     */
+    rpc SetSeason(Season) returns (Result);
+
+    /**
+     * 도로면 마찰 조회
+     */
+    rpc GetRoadFriction(Empty) returns (FloatValue);
+
+    /**
+     * 도로면 마찰 변경
+     */
+    rpc SetRoadFriction(FloatValue) returns (Result);
+
+    /**
+     * 맵 환경 요소 가시화
+     */
+    rpc SetVisibility(EnvVisibility) returns (Result);
+
+    /**
+     * 물체에 외력 주입
+     */
+    rpc SetExternalForce(ExternalForce) returns (Result);
+}
