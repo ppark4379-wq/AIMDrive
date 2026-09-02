@@ -71,6 +71,9 @@ class ROSManager:
         self.slop_sec       = float(config.get("sync_slop_sec", 0.02))
         self.queue_size     = int(config.get("sync_queue_size", 10))
         self.ego_buffer_size = int(config.get("ego_buffer_size", 200))
+        self.normalize_ego_to_arrival = bool(
+            config.get("normalize_ego_to_arrival", False)
+        )
         self.sync_window_ns = int(self.slop_sec * 1_000_000_000)
 
         self._lock = threading.Lock()
@@ -169,8 +172,14 @@ class ROSManager:
 
     # ── 스냅샷 반환 ──────────────────────────────────────────
 
-    def get_snapshot(self, frame_id: int, tick_count: int = 0,
-                      sim_elapsed_ns: int = 0) -> Optional[SensorSnapshot]:
+    def latest_sync_timestamp(self) -> Optional[int]:
+        """현재까지 수신한 가장 최신 동기화 묶음의 front-camera timestamp."""
+        with self._lock:
+            return self._synced_ts
+
+    def get_snapshot(self, frame_id: int, grpc_frame_count_raw: int = 0,
+                     grpc_elapsed_time_raw: int = 0,
+                     after_timestamp_ns: Optional[int] = None) -> Optional[SensorSnapshot]:
         """
         새 동기화 묶음만 한 번 반환한다. gRPC tick 시점에 아직 새 ROS 묶음이 없으면
         None을 반환하여 동일 이미지/LiDAR가 여러 frame_id로 저장되는 것을 막는다.
@@ -183,6 +192,8 @@ class ROSManager:
                 return None
 
             ref_ts = self._synced_ts
+            if after_timestamp_ns is not None and ref_ts <= after_timestamp_ns:
+                return None
             if ref_ts == self._last_returned_synced_ts:
                 return None
 
@@ -205,13 +216,31 @@ class ROSManager:
                 ego           = ego,
                 gt_objects    = list(self._gt_objects),
                 tl_states     = list(self._tl_states),
-                tick_count     = tick_count,
-                sim_elapsed_ns = sim_elapsed_ns,
+                grpc_frame_count_raw = grpc_frame_count_raw,
+                grpc_elapsed_time_raw = grpc_elapsed_time_raw,
             )
             self._last_returned_synced_ts = ref_ts
 
         self._warn_if_sync_stale()
         return snap
+
+    def wait_for_snapshot(self, frame_id: int, grpc_frame_count_raw: int = 0,
+                          grpc_elapsed_time_raw: int = 0,
+                          after_timestamp_ns: Optional[int] = None,
+                          timeout_sec: float = 0.5) -> Optional[SensorSnapshot]:
+        """기준 timestamp보다 새로운 동기화 센서 묶음이 올 때까지 기다린다."""
+        deadline = time.monotonic() + timeout_sec
+        while time.monotonic() < deadline:
+            snap = self.get_snapshot(
+                frame_id, grpc_frame_count_raw=grpc_frame_count_raw,
+                grpc_elapsed_time_raw=grpc_elapsed_time_raw,
+                after_timestamp_ns=after_timestamp_ns,
+            )
+            if snap is not None:
+                return snap
+            time.sleep(0.002)
+        self._warn_if_sync_stale()
+        return None
 
     def wait_for_data(self, timeout_sec: float = 5.0) -> bool:
         deadline = time.time() + timeout_sec
@@ -356,21 +385,30 @@ class ROSManager:
                 objects.append(GTObject(
                     obj_id=npc.unique_id, obj_type="vehicle",
                     x=npc.position.x, y=npc.position.y, z=npc.position.z,
-                    vel_x=npc.velocity.x, vel_y=npc.velocity.y,
+                    vel_x=npc.velocity.x / 3.6, vel_y=npc.velocity.y / 3.6,
                     heading_deg=getattr(npc, "heading", 0.0),
+                    width=getattr(npc.size, "x", 0.0),
+                    length=getattr(npc.size, "y", 0.0),
+                    height=getattr(npc.size, "z", 0.0),
                 ))
             for ped in getattr(msg, "pedestrian_list", []):
                 objects.append(GTObject(
                     obj_id=ped.unique_id, obj_type="pedestrian",
                     x=ped.position.x, y=ped.position.y, z=ped.position.z,
-                    vel_x=ped.velocity.x, vel_y=ped.velocity.y,
+                    vel_x=ped.velocity.x / 3.6, vel_y=ped.velocity.y / 3.6,
                     heading_deg=getattr(ped, "heading", 0.0),
+                    width=getattr(ped.size, "x", 0.0),
+                    length=getattr(ped.size, "y", 0.0),
+                    height=getattr(ped.size, "z", 0.0),
                 ))
             for obs in getattr(msg, "obstacle_list", []):
                 objects.append(GTObject(
                     obj_id=getattr(obs, "unique_id", -1), obj_type="static",
                     x=obs.position.x, y=obs.position.y, z=obs.position.z,
                     vel_x=0.0, vel_y=0.0,
+                    width=getattr(obs.size, "x", 0.0),
+                    length=getattr(obs.size, "y", 0.0),
+                    height=getattr(obs.size, "z", 0.0),
                 ))
             with self._lock:
                 self._gt_objects = objects
@@ -394,9 +432,11 @@ class ROSManager:
         수신 시각으로 대체한다.
         """
         try:
-            ts = int(time.time() * 1e9)
+            arrival_ts = time.time_ns()
+            source_ts = None
             if hasattr(msg, "header") and (msg.header.stamp.secs or msg.header.stamp.nsecs):
-                ts = msg.header.stamp.secs * 1_000_000_000 + msg.header.stamp.nsecs
+                source_ts = msg.header.stamp.secs * 1_000_000_000 + msg.header.stamp.nsecs
+            ts = arrival_ts if self.normalize_ego_to_arrival else (source_ts or arrival_ts)
 
             heading_rad = msg.heading * (np.pi / 180.0)
             speed_mps   = float(np.sqrt(msg.velocity.x ** 2 + msg.velocity.y ** 2))
@@ -410,6 +450,7 @@ class ROSManager:
                     yaw   = heading_rad,
                     speed = speed_mps,
                     steer = getattr(msg, "front_steer_angle", 0.0),
+                    source_timestamp_ns = source_ts,
                 )
                 self._ego = ego
                 self._ego_history.append(ego)

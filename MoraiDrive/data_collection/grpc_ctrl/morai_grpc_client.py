@@ -21,6 +21,7 @@ world.tick(1)이 데이터 수집 루프의 프레임 트리거라는 게 핵심
 """
 
 import sys
+import time
 from pathlib import Path
 
 _GRPC_SRC = Path(__file__).resolve().parent.parent / "third_party" / "grpc_inha_univ" / "src"
@@ -101,7 +102,23 @@ class MoraiGrpcClient:
             response = self._sim_client._sim_adapter.set_synchronous_mode(sync_mode)
             if response is None or response.status != STATUS_CODE_SUCCESS:
                 description = getattr(response, "description", "응답 없음")
-                raise RuntimeError(f"MORAI SetSynchronousMode 실패: {description}")
+                # 일부 MORAI 버전은 모드 전환은 적용하면서 RPC 결과만
+                # Unknown error로 돌려준다. 응답 대신 실제 SIM 상태를 재조회한다.
+                applied_mode = None
+                for _ in range(5):
+                    applied_mode = self._sim_client._sim_adapter.get_synchronous_mode()
+                    if (applied_mode is not None and
+                            applied_mode.type == SYNC_MODE_TYPE_SYNCHRONOUS and
+                            applied_mode.tick_period > 0):
+                        break
+                    time.sleep(0.05)
+                if (applied_mode is None or
+                        applied_mode.type != SYNC_MODE_TYPE_SYNCHRONOUS or
+                        applied_mode.tick_period <= 0):
+                    raise RuntimeError(f"MORAI SetSynchronousMode 실패: {description}")
+                print(f"[gRPC] SetSynchronousMode 응답은 '{description}'였지만 "
+                      f"SIM 적용 상태를 확인함 "
+                      f"(tick_period={applied_mode.tick_period}ms)")
             self._attached_existing_sync = True
             self._enabled_sync_mode = True
             print(f"[gRPC] 실행 중인 SIM을 동기 모드로 전환 "

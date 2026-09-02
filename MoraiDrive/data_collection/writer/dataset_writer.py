@@ -23,7 +23,7 @@ MAP_FILES = (
 class DatasetWriter:
     def __init__(self, dataset_root: str, job_name: str, route_name: str,
                  map_id: str = "unknown", map_source_dir: str = "",
-                 append_timestamp: bool = True):
+                 append_timestamp: bool = True, route_metadata: Optional[dict] = None):
         self.dataset_root = os.path.abspath(dataset_root)
         self.job_name = job_name
         self.job_dir = os.path.join(self.dataset_root, job_name)
@@ -38,7 +38,7 @@ class DatasetWriter:
 
         self._ensure_job_files()
         self._install_map(map_source_dir)
-        self._write_route_metadata()
+        self._write_route_metadata(route_metadata)
         self._all_frames = []
         self._frame_count = 0
         self._finalized = False
@@ -67,7 +67,10 @@ class DatasetWriter:
                 if not os.path.isfile(source):
                     continue
                 destination = os.path.join(map_dir, filename)
-                shutil.copy2(source, destination)
+                # Windows mapped/network drives can reject copystat() even when
+                # ordinary file writes work. Dataset maps only need their bytes;
+                # provenance and integrity are recorded in manifest.json.
+                shutil.copyfile(source, destination)
                 copied[filename] = self._sha256(destination)
 
         manifest_path = os.path.join(map_dir, "manifest.json")
@@ -79,12 +82,18 @@ class DatasetWriter:
         if copied or not os.path.exists(manifest_path):
             self._write_json(manifest_path, manifest)
 
-    def _write_route_metadata(self):
-        self._write_json(os.path.join(self.route_dir, "route.json"), {
+    def _write_route_metadata(self, route_metadata: Optional[dict] = None):
+        metadata = {
             "map_id": self.map_id,
             "map_path": f"../../maps/{self.map_id}",
             "nav_link_ids": [], "nav_node_ids": [], "nav_waypoints": [],
-        })
+        }
+        if route_metadata:
+            metadata.update(route_metadata)
+            # Dataset route metadata must remain relocatable.
+            metadata["map_id"] = self.map_id
+            metadata["map_path"] = f"../../maps/{self.map_id}"
+        self._write_json(os.path.join(self.route_dir, "route.json"), metadata)
 
     def write_frame(self, frame_id: int, measurement: dict, full_measurement: dict,
                     gnss=None, imu=None, actors: Optional[Dict] = None,
@@ -109,10 +118,17 @@ class DatasetWriter:
         np.save(os.path.join(self.route_dir, "affordances", name + ".npy"), {
             "traffic_light": traffic_light_state, "stop_sign": False,
         }, allow_pickle=True)
-        # MORAI ObjectStatus has no reliable extents yet: preserve LMDrive's
-        # container shape without fabricating 3D boxes.
+        vehicles = []
+        pedestrians = []
+        for actor_id, actor in actors.items():
+            box = {
+                "id": int(actor_id), "loc": actor["loc"], "ori": actor["ori"],
+                "box": actor["box"], "vel": actor["vel"], "tpe": actor["tpe"],
+            }
+            (vehicles if actor["tpe"] == 0 else pedestrians).append(box)
         np.save(os.path.join(self.route_dir, "3d_bbs", name + ".npy"), {
-            "traffic_lights": [], "stop_signs": [], "vehicles": [], "pedestrians": [],
+            "traffic_lights": [], "stop_signs": [],
+            "vehicles": vehicles, "pedestrians": pedestrians,
         }, allow_pickle=True)
 
         self._all_frames.append(full_measurement)
@@ -121,6 +137,7 @@ class DatasetWriter:
     def finalize(self, success: bool = True):
         if self._finalized:
             return
+        self._backfill_future_waypoints()
         self._write_json(os.path.join(self.route_dir, "measurements_all.json"), self._all_frames)
         if self._frame_count > 0 and success:
             relative_route = os.path.relpath(self.route_dir, self.job_dir).replace(os.sep, "/") + "/"
@@ -146,6 +163,24 @@ class DatasetWriter:
                 })
             self._write_json(summary_path, {"episodes": episodes})
         self._finalized = True
+
+    def _backfill_future_waypoints(self, count: int = 50):
+        """Fill LMDrive future_waypoints after future frames become available."""
+        for index, full in enumerate(self._all_frames):
+            future = [
+                [frame["gps_x"], frame["gps_y"], frame.get("command", 4)]
+                for frame in self._all_frames[index:min(len(self._all_frames), index + count)]
+            ]
+            full["future_waypoints"] = future
+            name = f"{index:04d}.json"
+            full_path = os.path.join(self.route_dir, "measurements_full", name)
+            measurement_path = os.path.join(self.route_dir, "measurements", name)
+            self._write_json(full_path, full)
+            if os.path.isfile(measurement_path):
+                with open(measurement_path, encoding="utf-8") as f:
+                    measurement = json.load(f)
+                measurement["future_waypoints"] = future
+                self._write_json(measurement_path, measurement)
 
     @staticmethod
     def _write_json(path: str, value):

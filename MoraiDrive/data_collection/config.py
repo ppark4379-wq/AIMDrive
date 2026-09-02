@@ -41,7 +41,8 @@ class GrpcConfig:
 
 @dataclass
 class DatasetConfig:
-    dataset_root: str = "../dataset"  # data_collection/에서 실행 시 MoraiDrive/dataset
+    # Windows Z:\DCM\data_collector. WSL에서는 Z: 드라이브를 /mnt/z에 mount해야 한다.
+    dataset_root: str = "/mnt/z/DCM/data_collector"
     job_name: str = "morai_collection"
     route_name: str = "route_moraiA_scenario1"
     append_timestamp: bool = True

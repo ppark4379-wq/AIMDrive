@@ -37,6 +37,9 @@ class DatasetWriterLayoutTest(unittest.TestCase):
                 self.assertEqual(f.read(), "data/route/ 1\n")
             self.assertTrue(os.path.isfile(os.path.join(root, "job", "maps", "kcity", "manifest.json")))
             self.assertTrue(os.path.isfile(os.path.join(root, "job", "results", "episode_summary.json")))
+            with open(os.path.join(writer.output_dir, "measurements", "0000.json"),
+                      encoding="utf-8") as f:
+                self.assertEqual(json.load(f)["future_waypoints"], [[1.0, 2.0, 4]])
 
     def test_empty_or_double_finalize_does_not_duplicate_index(self):
         with tempfile.TemporaryDirectory() as root:

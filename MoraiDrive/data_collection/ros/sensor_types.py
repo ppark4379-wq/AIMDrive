@@ -57,6 +57,8 @@ class EgoTelemetry:
     yaw: float                 # rad
     speed: float                # m/s
     steer: float = 0.0          # rad
+    # 동기화에는 timestamp_ns를 사용하고 MORAI header 원본은 별도로 보존한다.
+    source_timestamp_ns: Optional[int] = None
 
 
 @dataclass
@@ -69,6 +71,9 @@ class GTObject:
     vel_x: float
     vel_y: float
     heading_deg: float = 0.0
+    width: float = 0.0
+    length: float = 0.0
+    height: float = 0.0
 
 
 @dataclass
@@ -91,5 +96,6 @@ class SensorSnapshot:
     gt_objects: List[GTObject] = field(default_factory=list)
     tl_states: List[TrafficLightState] = field(default_factory=list)
 
-    tick_count: int = 0          # gRPC SyncTimestamp.frame_count
-    sim_elapsed_ns: int = 0      # gRPC SyncTimestamp.elapsed_time
+    # MORAI proto가 단위/센서 프레임 대응을 명시하지 않으므로 원본값으로만 보존한다.
+    grpc_frame_count_raw: int = 0
+    grpc_elapsed_time_raw: int = 0
