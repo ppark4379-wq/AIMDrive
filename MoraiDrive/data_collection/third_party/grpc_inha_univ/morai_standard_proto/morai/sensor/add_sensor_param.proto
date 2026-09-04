@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package morai_sim_api.sensor;
+
+import "morai/common/type.proto";
+import "morai/common/object_info.proto";
+import "morai/sensor/sensor_enum.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Sensor";
+
+
+// 센서를 추가하기 위한 설정
+message AddSensorParam
+{
+	// 센서를 추가할 차량의 아이디
+	ObjectInfo vehicle_id = 1;
+
+	// 센서의 종류
+	SensorType sensor_type = 2;
+
+	// 센서의 위치
+	Transform transform = 3;
+}
+
+message AddSensorParamList
+{
+	repeated AddSensorParam req_list = 1;
+}

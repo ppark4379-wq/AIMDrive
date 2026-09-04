@@ -1,0 +1,11 @@
+# data_collection 문서
+
+| 문서 | 내용 |
+|---|---|
+| [architecture.md](architecture.md) | 소스 구조, ROS 동기화, 수집 흐름, MGeo route 라벨 |
+| [dataset-format.md](dataset-format.md) | 최종 데이터셋 트리, JSON/NPY/JPEG 형식, LMDrive 차이 |
+| [validation.md](validation.md) | 구현 상태, 실주행 검증 결과, 제약 및 검증 명령 |
+| [expert-sync.md](expert-sync.md) | Expert 연결과 ROS SyncMode 기반 최종 수집 명세 |
+| [roadmap.md](roadmap.md) | navigation/notice부터 최종 학습까지 남은 작업 |
+
+처음 실행하는 경우 상위 [README](../README.md)의 빠른 실행부터 확인합니다.

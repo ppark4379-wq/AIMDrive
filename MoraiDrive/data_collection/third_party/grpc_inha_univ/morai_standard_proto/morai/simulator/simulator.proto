@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package morai_sim_api.simualtor;
+
+import "morai/common/type.proto";
+import "morai/common/result.proto";
+import "morai/simulator/available_object.proto";
+import "morai/simulator/category_obstacles.proto";
+import "morai/simulator/rendering.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Simulator";
+
+
+/**
+ * MORAI SIM의 정보 확인을 위한 서비스
+ */
+service Simulator
+{
+    // 시뮬레이터 버전 확인
+    rpc GetSimulatorVersion(Empty) returns (StringValue);
+
+    // 시뮬레이터의 Timestamp 확인
+    rpc GetTimestamp(Empty) returns (Int64Value);
+
+    // 현재 사용자가 사용 가능한 맵 리스트 조회
+    rpc GetAvailableMaps(Empty) returns (StringList);
+
+    // Get Available Object matched to the user account info
+    rpc GetAvailableObject(CategoryObstacles) returns (AvailableObject);
+
+    // 데이터 저장 경로 획득
+    rpc GetDataPath(Empty) returns (StringValue);
+
+    // 랜더링 모드 변경
+    rpc SetRenderingMode(RenderingMode) returns (Result);
+
+    // latency check
+    rpc CheckLatency(Empty) returns (Empty);
+}
+
+

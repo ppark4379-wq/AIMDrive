@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package morai_sim_api.environment;
+
+import "morai/environment/environment_enum.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Environment";
+
+message Season
+{
+    SeasonType type = 1;
+}

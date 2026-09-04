@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package morai_sim_api.scenario;
+
+import "morai/common/type.proto";
+import "morai/common/result.proto";
+import "morai/scenario/spawn_point.proto";
+import "morai/scenario/scenario_object.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Scenario";
+
+
+/**
+ * 시나리오 관련 기능을 제공하는 서비스
+ */
+service Scenario
+{
+    // MORAI SIM: Drive의 Built-in 시나리오 파일 로드
+    rpc LoadMoraiScenario(StringValue) returns (Result);
+
+    // Vehicle Spawn Point 생성
+    rpc CreateVehicleSpawnPoint(CreateVehicleSpawnPointParam) returns (Result);
+
+    // Pedestrian Spawn Point 생성
+    rpc CreatePedestrianSpawnPoint(CreatePedestrianSpawnPointParam) returns (Result);
+
+    // Spawn Point Enable/Disable
+    rpc EnableSpawnPoint(EnableSpawnPointParam) returns (Result);
+    
+    // 시나리오 객체 생성
+    rpc CreateFrictionControlArea(CreateFrictionControlAreaParam) returns (Result);
+}

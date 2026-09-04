@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package morai_sim_api.map;
+
+import "morai/common/resource_identifier.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Map";
+
+message LinkInfo
+{
+	ResourceIdentifier id = 1;
+	int32 waypoint_idx = 2;
+}
+
+/**
+ * 특정 링크 위의 waypoint 를 나타내는 데이터 
+ id : 링크 ID
+ waypoint_idx : 링크 내 몇 번째 지점인지
+ */

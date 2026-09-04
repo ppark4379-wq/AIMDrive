@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package morai_sim_api.util;
+
+import "morai/common/type.proto";
+import "morai/util/raycast.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Util";
+
+// 시뮬레이션 시 사용하는 서비스
+service Util
+{
+    // Raycast
+    // response : hit distance (meter). if failed, return -1
+    rpc RayCast(RaycastParam) returns (FloatValue);
+}

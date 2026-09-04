@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package morai_sim_api.map;
+
+import "morai/common/resource_identifier.proto";
+import "morai/map/map_enum.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Map";
+
+/**
+ * 타겟 링크의 주변 링크 조회 
+ * 타입이 FROM 또는 TO일 때는 링크 리스트를 조회한다.
+ */
+message GetNeighborLinkParam
+{
+    NeighborLinkType type = 1;
+    ResourceIdentifier target_link_id = 2;
+}

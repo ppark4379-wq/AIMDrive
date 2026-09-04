@@ -1,0 +1,147 @@
+syntax = "proto3";
+
+package morai_sim_api.actor;
+
+import "morai/common/type.proto";
+import "morai/common/result.proto";
+import "morai/common/object_info.proto";
+import "morai/actor/actor_spawn.proto";
+import "morai/actor/actor_control.proto";
+import "morai/actor/actor_get.proto";
+import "morai/actor/actor_network.proto";
+import "morai/actor/actor_set.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Actor";
+
+
+/**
+ * Actor (차량, 보행자, 장애물) 관련 서비스
+ */
+service Actor
+{
+    // 차량 스폰
+    rpc SpawnVehicle(VehicleSpawnParam) returns (Result);
+
+    // 보행자 스폰
+    rpc SpawnPedestrian(PedestrianSpawnParam) returns (Result);
+
+    // 장애물 스폰
+    rpc SpawnObstacle(ObstacleSpawnParam) returns (Result);
+
+
+    // 선택한 Actor 제거
+    rpc DestroyActor(ObjectInfo) returns (Result);
+
+    /**
+     * 모든 Actor 제거
+     * Client key를 넣으면 해당 key로 관리하는 actor만,
+     * 비어있는 문자열을 넣으면 모든 actor를 제거한다.
+     */
+    rpc DestroyAllActors(StringValue) returns (Result);
+
+
+    // 차량 제어
+    rpc ControlVehicle(VehicleCtrlCmd) returns (Result);
+
+    // 보행자 제어
+    rpc ControlPedestrian(PedestrianCtrlCmd) returns (Result);
+
+    // 오브젝트 제어
+    rpc ControlObstacle(ObstacleCtrlCmd) returns (Result);
+
+
+    // // 모든 Actor의 상태를 주기적으로 스트리밍
+    // rpc GetActorStateStream(Empty) returns (stream ActorStates);
+
+    // 특정 Actor의 상태를 수신
+    rpc GetActorState(ObjectInfo) returns (ActorState);
+
+    // 모든 Actor의 상태를 수신
+    rpc GetAllActorsState(GetAllActorsFilter) returns (ActorStates);
+
+    // 차량 제원
+    rpc GetVehicleSpec(ObjectInfo) returns (VehicleSpec);
+
+    // 객체의 옵션명 반환
+    rpc GetOptionName(ObjectInfo) returns (StringValue);
+
+    // 차량 네트워크 설정 조회 (단, 현재는 ROS 설정만 지원)
+    rpc GetVehicleNetworkSetting(ObjectInfo) returns (NetworkProtocolSetting);
+    
+    // 차량의 제어 모드 조회
+    rpc GetVehicleControlMode(ObjectInfo) returns (CurVehicleControlMode);
+
+
+    // Scale 설정
+    rpc SetScale(ActorScale) returns (Result);
+
+    // Transform 설정
+    rpc SetTransform(SetTransformParam) returns (Result);
+
+    // Animation On/Off
+    rpc SetObstacleAnimation(AnimationParam) returns (Result);
+
+    // 기차 신호등 설정
+    rpc SetTrainSignalLight(TrainSignalLightInfo) returns (Result);
+
+    // Pause/Resume
+    rpc SetPause(EnableActor) returns (Result);
+
+    // AI On/Off
+    rpc SetAI(EnableActor) returns (Result);
+
+    // Physics On/Off
+    rpc SetPhysics(EnableActor) returns (Result);
+
+    // Set Velocity
+    rpc SetVelocity(SetVelocityParam) returns (Result);
+
+    // 차량의 Limiter 설정
+    rpc SetVehicleLimiter(VehicleLimiter) returns (Result);
+
+    // 차량의 Dynamics steer 설정
+    rpc SetVehicleDynamicsSteer(VehicleDynamicsSteer) returns (Result);
+
+    // 차량의 Dynamics 최대 속도 설정
+    rpc SetVehicleDynamicsSpeedLimit(VehicleDynamicsSpeedLimit) returns (Result);
+
+    // 차량의 Dynamics mass 설정
+    rpc SetVehicleDynamicsMass(VehicleDynamicsMass) returns (Result);
+    
+    // 차량의 Path offset 설정
+    rpc SetVehiclePathOffset(VehiclePathOffset) returns (Result);
+    
+    // 차량의 Disturbance 설정
+    rpc SetVehicleDisturbance(VehicleDisturbance) returns (Result);
+    
+    // 차량의 Fault injection 설정
+    rpc SetVehicleFaultInjection(VehicleFaultInjection) returns (Result);
+
+    // 차량의 Route 설정
+    rpc SetVehicleRoute(VehicleRoute) returns (Result);
+    
+    // 차량의 Destination 설정
+    rpc SetVehicleDestination(VehicleDestination) returns (Result);
+    
+    // Ego 차량의 Cruise 설정
+    rpc SetVehicleEgoCruise(EgoCruiseControl) returns (Result);
+    
+    // 차량의 Network 설정 (단, 현재는 ROS 설정만 지원)
+    rpc SetVehicleNetwork(NetworkConfig) returns (Result);
+
+    // 차량의 Steer 설정
+    rpc SetVehicleSteer(VehicleSteer) returns (Result);
+
+    // 차량의 제어 모드 설정
+    rpc SetVehicleControlMode(VehicleControlModeParam) returns (Result);
+
+    // 차량의 기어 설정
+    rpc SetVehicleGear(VehicleGear) returns (Result);
+
+    // 차량의 후미등 설정
+    rpc SetVehicleTailLight(VehicleTailLight) returns (Result);
+
+    // Spawn한 보행자의 이동 경로 설정
+    rpc SetPedestrianWaypoint(PedestrianWaypointInfo) returns (Result);
+}

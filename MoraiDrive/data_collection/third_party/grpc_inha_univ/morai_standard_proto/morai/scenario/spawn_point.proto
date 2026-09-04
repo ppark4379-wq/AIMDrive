@@ -1,0 +1,171 @@
+syntax = "proto3";
+
+package morai_sim_api.scenario;
+
+import "morai/common/type.proto";
+import "morai/common/object_info.proto";
+import "morai/scenario/scenario_enum.proto";
+import "morai/map/link_info.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Scenario";
+
+/**
+ * 차량 spawn point 생성을 위한 파라미터
+ */
+message CreateVehicleSpawnPointParam
+{
+    SpawnPointInfo spawn_point_info = 1;
+
+    VehicleSpawnPointConfig config = 2;
+}
+
+/**
+ * 보행자 spawn point 생성을 위한 파라미터
+ */
+message CreatePedestrianSpawnPointParam
+{
+    SpawnPointInfo spawn_point_info = 1;
+
+    PedestrianSpawnPointConfig config = 2;
+}
+
+/**
+ * spawn point 생성 정보
+ */
+message SpawnPointInfo
+{
+    // spawn point unique id
+	ObjectInfo object_info = 1;
+
+    // spawn point 생성 좌표
+	Vector3 location = 2;
+
+    // spawn할 object의 model name
+    string model_name = 3;
+
+    // pause 여부
+    bool pause = 4;
+}
+
+/**
+ * spawn point 활성화 여부 설정
+ */
+message EnableSpawnPointParam
+{
+    // spawn point, pedestrian spawn point unique id
+	ObjectInfo object_info = 1;
+    
+    // True : enable, False : diable
+	bool is_active = 2;
+}
+
+/**
+ * 차량 스폰포인트 설정
+ */
+message VehicleSpawnPointConfig
+{
+    // ex) LengthType.MINI
+	repeated LengthType list_vehicle_length_type = 1;	
+
+    // spawn 차량 주행 경로 옵션
+	bool is_close_loop = 2;
+
+    // spawn 차량 주행 경로 옵션
+	bool is_lane_change = 3;												
+
+    // ex) VEHICLE_DRIVING_PARAM_TYPE_CONSTANT
+    DrivingParamType parameter_type = 4;
+
+    // 최대 spawn 수
+	int32 maximum_spawn_vehicle = 5;
+
+    // spawn 주기 설정
+	float min_spawn_period = 6;												
+
+    // spawn 주기 설정
+	float max_spawn_period = 7;
+
+    // ex) VelocityType.LINKVELOCITY
+	VelocityType spawn_velocity_type = 8;
+
+    // spawn 차량의 초기 속도 설정
+	float min_spawn_velocity_custom = 9;
+
+    // spawn 차량의 초기 속도 설정
+	float max_spawn_velocity_custom = 10;
+
+    // spawn 차량의 초기 속도 설정
+	float min_spawn_velocity_link = 11;
+
+    // spawn 차량의 초기 속도 설정										
+	float max_spawn_velocity_link = 12;
+
+    // ex) VelocityType.LINKVELOCITY
+	VelocityType desired_velocity_type = 13;
+    
+    // spawn 차량의 목표 속도 설정
+	float min_desired_velocity_custom = 14;
+    
+    // spawn 차량의 목표 속도 설정
+	float max_desired_velocity_custom = 15;
+
+    // spawn 차량의 목표 속도 설정
+	float min_desired_velocity_link = 16;
+
+    // spawn 차량의 목표 속도 설정
+	float max_desired_velocity_link = 17;
+
+    // 목적지 unique id	
+	int32 destination_obj_unique_id = 18;									
+
+    // 주행 시작점의 link 정보	
+	morai_sim_api.map.LinkInfo start_link_info = 19;
+
+    // 주행 완료점의 link 정보, Target Link Index --> empty 이면 NO Destination mode
+	morai_sim_api.map.LinkInfo end_link_info = 20;				                            
+
+    // lateral bias 설정 ex) LatBiasMode.FIX
+	LatBiasMode lateral_bias_mode = 21;							
+
+    // lateral bias 설정
+	float min_lateral_bias = 22;
+
+	// lateral bias 설정											
+	float max_lateral_bias = 23;
+}
+
+/**
+ * 보행자 스폰포인트 설정
+ */
+message PedestrianSpawnPointConfig
+{
+    // 보행자 목적지 설정
+	repeated PedestrianDestinationPoint pedestrian_destination_points = 1;		
+
+    // spawn random 모델
+	bool pedestrian_random_mode = 2;								
+
+    // ex) PedestrianBehavior.STAND				
+	PedestrianBehavior select_mode = 3;								
+
+    // 최소 spawn 수
+	int32 min_count = 4;
+
+    // 최대 spawn 수															
+	int32 max_count = 5;
+
+    // spawn 주기 (Unit : Seconds?)
+	float spawn_time = 6;
+}
+
+/**
+ * 보행자 목적지
+ */
+message PedestrianDestinationPoint
+{
+	Transform transform = 1;
+
+    // TODO: 여기에 반드시 스케일이 필요한지 확인 -> 필요 없으면 삭제
+	Vector3 scale = 2;
+}

@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.pyo
+
+# Data collection outputs (not code)
+MoraiDrive/dataset/
+MoraiDrive/data_collection/routes/generated/
+MoraiDrive/data_collection/output/

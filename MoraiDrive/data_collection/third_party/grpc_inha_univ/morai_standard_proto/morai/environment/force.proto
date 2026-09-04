@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package morai_sim_api.environment;
+
+import "morai/common/type.proto";
+import "morai/common/object_info.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Environment";
+
+message ExternalForce
+{    
+    ObjectInfo target_info = 1;     // 타겟 info
+    Vector3 position = 2;           // 적용 위치
+    Vector3 force = 3;              // 적용 방향 & N    ex. x=10, y=0, z=0 이면 x축으로 10N
+    double active_period = 4;       // 작용 시간
+    double rest_period = 5;         // 비작용 시간
+    uint32 repetition = 6;          // 반복 횟수
+}

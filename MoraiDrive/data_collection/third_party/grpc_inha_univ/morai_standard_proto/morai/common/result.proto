@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package morai_sim_api;
+
+import "morai/common/enum.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI";
+
+message Result
+{
+    // rpc 호출 결과
+    StatusCode status = 1;
+
+    // rpc 호출 결과에 의한 메시지
+    string description = 2;
+
+    // 추가 메시지
+    string custom_message = 3;
+}
+
+message Results
+{
+    repeated Result results = 1;
+}

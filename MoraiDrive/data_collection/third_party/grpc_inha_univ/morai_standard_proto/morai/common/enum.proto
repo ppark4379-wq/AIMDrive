@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package morai_sim_api;
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI";
+
+enum StatusCode
+{
+    // MORAI SIM side에서 실패
+    STATUS_CODE_UNKNOWN_FAILURE = 0;
+
+    // rpc 호출 성공
+    STATUS_CODE_SUCCESS = 1;
+}
+
+enum ObjectType
+{
+    OBJECT_TYPE_UNSPECIFIED = 0;
+    OBJECT_TYPE_VEHICLE = 1;
+    OBJECT_TYPE_PEDESTRIAN = 2;
+    OBJECT_TYPE_OBSTACLE = 3;
+    OBJECT_TYPE_SPAWN_POINT = 4;
+}

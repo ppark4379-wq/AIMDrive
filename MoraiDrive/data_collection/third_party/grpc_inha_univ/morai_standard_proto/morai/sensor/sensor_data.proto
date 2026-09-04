@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package morai_sim_api.sensor;
+
+import "morai/common/object_identifier.proto";
+import "morai/common/type.proto";
+import "morai/sensor/sensor_info.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Sensor";
+
+
+// 센서 데이터
+message SensorData
+{
+    // 센서의 정보
+    SensorInfo sensor_info = 1;
+    
+    // sensor_info.sensor_type에 따라 달라지며, 일단은 ground truth만 존재함
+    oneof Value 
+    {
+        GroundTruth ground_truth = 2;
+    }
+}
+
+// 오브젝트 상태
+message ObjectStatus
+{
+    // 오브젝트의 아이디
+	ObjectIdentifier id = 1;
+
+    // 오브젝트의 종류 (Enum 값이 있어야 할 것 같다.)
+	int32 type = 2;
+
+    // 오브젝트의 이름
+	string name = 3;
+
+    // 오브젝트의 방향 (Unit: deg?)
+	double heading = 4;
+
+    // 오브젝트의 위치
+	Vector3 position = 5;
+
+    // 오브젝트의 가속도
+	Vector3 acceleration = 6;
+
+    // 오브젝트의 속도
+	Vector3 velocity = 7;
+
+    // 오브젝트의 크기
+	Vector3 size = 8;
+}
+
+// GroundTruth 센서의 데이터로, MORAI SIM의 오브젝트 상태로 구성되어 있음
+message GroundTruth
+{
+	repeated ObjectStatus data = 1;
+}
+

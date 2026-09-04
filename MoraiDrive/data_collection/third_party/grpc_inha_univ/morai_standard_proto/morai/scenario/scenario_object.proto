@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package morai_sim_api.scenario;
+
+import "morai/common/type.proto";
+import "morai/common/object_info.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Scenario";
+
+message CreateFrictionControlAreaParam
+{
+    ObjectInfo object_info = 1;
+    Transform transform = 2;
+    string object_name = 3;
+    float vertical_radius = 4;
+	float horizontal_radius = 5;
+	float height = 6;
+	float multiplier = 7;
+}

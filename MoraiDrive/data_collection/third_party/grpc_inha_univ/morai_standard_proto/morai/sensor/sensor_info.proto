@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package morai_sim_api.sensor;
+
+import "morai/common/object_info.proto";
+import "morai/common/resource_identifier.proto";
+import "morai/sensor/sensor_enum.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Sensor";
+
+// 센서 정보
+message SensorInfo
+{
+	// 센서가 붙어있는 차량의 정보
+	ObjectInfo vehicle_info = 1;
+
+	// 센서의 아이디
+	ResourceIdentifier sensor_id = 2;
+
+	// 센서 종류
+	SensorType sensor_type = 3;
+}
+
+// 센서 정보 리스트
+message SensorInfos
+{
+	repeated SensorInfo values = 1;
+}

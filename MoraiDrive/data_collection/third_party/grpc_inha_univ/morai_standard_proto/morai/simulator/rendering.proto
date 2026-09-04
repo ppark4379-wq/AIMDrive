@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package morai_sim_api.simualtor;
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Simulator";
+
+/**
+ * MORAI SIM의 렌더링 설정
+ */
+message RenderingMode
+{
+    // Rendering mode 활성화 여부
+    bool enable = 1;
+
+    // None이 아니면, 설정한 사이즈로 MORAI SIM window 크기를 조정한다.
+    WindowSize size = 2;
+}
+
+message WindowSize
+{
+    int32 width = 1;
+    int32 height = 2;
+}

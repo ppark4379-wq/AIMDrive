@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package morai_sim_api.scenario;
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Scenario";
+
+enum SpawnPointType
+{    
+    SPAWN_POINT_TYPE_UNSPECIFIED = 0;
+    SPAWN_POINT_TYPE_VEHICLE_SPAWN_POINT = 1;
+    SPAWN_POINT_TYPE_PEDESTRIAN_SPAWN_POINT = 2;
+}
+
+enum PedestrianBehavior
+{
+    PEDESTRIAN_BEHAVIOR_UNSPECIFIED = 0;
+
+    // 도착 후 그 자리에 서 있음
+    PEDESTRIAN_BEHAVIOR_ONCE  = 1;				
+
+    // 도착 후 삭제
+    PEDESTRIAN_BEHAVIOR_CLOSED_LOOP = 2;		
+
+    // 도착 후 처음 위치로 돌아가서 반복
+    PEDESTRIAN_BEHAVIOR_REPEAT = 3;				
+
+    // 처음 위치와 도착지점 사이를 반복
+    PEDESTRIAN_BEHAVIOR_LOOP = 4;				
+
+    // 도착 위치에서 새로운 길로 이동
+    PEDESTRIAN_BEHAVIOR_NEW_PATH = 5;			
+
+    // 제 자리에 서 있음
+    PEDESTRIAN_BEHAVIOR_STAND = 6;			
+
+    PEDESTRIAN_BEHAVIOR_END = 7;
+}
+
+// 차량 크기
+enum LengthType
+{
+    LENGTH_TYPE_MINI = 0;			
+    LENGTH_TYPE_COMPACT = 1;		
+    LENGTH_TYPE_MIDDLE_SIZE = 2;	
+    LENGTH_TYPE_LARGE = 3;			
+}
+
+enum LatBiasMode
+{
+    LAT_BIAS_UNSPECIFIED = 0;
+
+    // 설정 값으로 고정
+    LAT_BIAS_FIX = 1;								
+
+    // Gaussian distribution (zero mean, unit variance)
+    LAT_BIAS_RANDOM_GAUSSIAN = 2;					
+    
+    LAT_BIAS_END = 3;
+}
+
+enum VelocityType
+{
+    VELOCITY_TYPE_UNSPECIFIED = 0;
+    VELOCITY_TYPE_LINKVELOCITY = 1;
+    VELOCITY_TYPE_CUSTOMVELOCITY = 2;
+    VELOCITY_TYPE_END = 3;
+}
+
+enum DrivingParamType
+{
+    VEHICLE_DRIVING_PARAM_TYPE_UNSPECIFIED = 0;
+    VEHICLE_DRIVING_PARAM_TYPE_CONSTANT = 1;
+    VEHICLE_DRIVING_PARAM_TYPE_VARIABLE = 2;
+    VEHICLE_DRIVING_PARAM_TYPE_END = 3;
+}

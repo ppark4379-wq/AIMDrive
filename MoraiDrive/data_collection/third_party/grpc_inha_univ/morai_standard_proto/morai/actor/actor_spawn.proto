@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+package morai_sim_api.actor;
+
+import "morai/common/type.proto";
+import "morai/common/object_info.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Actor";
+
+/**
+ * 차량 스폰 매개변수
+ */
+message VehicleSpawnParam
+{
+    ActorSpawnInfo spawn_info = 1;
+    double velocity = 2;
+	bool pause = 3;
+    bool multi_ego = 4;    
+}
+
+/**
+ * 보행자 스폰 매개변수
+ */
+message PedestrianSpawnParam
+{
+    ActorSpawnInfo spawn_info = 1;
+    float velocity = 2;
+	float active_dist = 3;
+	float move_dist = 4;
+	bool start_action = 5;
+    PedestrianWaypoints waypoints = 6;    
+}
+
+/**
+ * 장애물 스폰 매개변수
+ */
+ message ObstacleSpawnParam
+ {
+    ActorSpawnInfo spawn_info = 1;
+    Vector3 scale = 2;    
+ }
+
+/**
+ * Actor spawn을 위한 공통 변수
+ */
+message ActorSpawnInfo
+{
+    // Actor 정보
+    ObjectInfo actor_info = 1;
+
+    // Actor의 위치와 자세
+    Transform transform = 2;
+    
+    // Actor의 모델 명
+    string model_name = 3;
+
+    // MORAI SIM에서 보여줄 Actor의 Label
+    string label = 4;
+
+    // 
+    bool is_multi_object_one_mode = 5;     // true : merged   false : seperate
+
+    // vehicle color
+    UintColor color = 6;
+
+    // label color
+    UintColor label_color = 7;
+
+    float mass = 8;
+}
+
+message PedestrianWaypoints
+{
+    repeated PedestrianWaypoint waypoints = 1;
+}
+message PedestrianWaypoint
+{
+    // waypoint 좌표
+    Vector3 waypoint = 1;
+
+    // waypoint 도달 시 정지해있는 시간 unit : sec
+    float pause_time = 2;
+
+    // 보행 속도 kph
+    float speed = 3;
+}

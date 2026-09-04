@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package morai_sim_api;
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI";
+
+/**
+ * 시뮬레이션 오브젝트를 식별하기 위한 유일한 아이디
+ */
+message ObjectIdentifier
+{
+    string value = 1;
+}

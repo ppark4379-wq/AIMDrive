@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package morai_sim_api.map;
+
+import "morai/common/type.proto";
+import "morai/common/object_info.proto";
+import "morai/map/get_neighbor_link_param.proto";
+import "morai/map/mgeo_data.proto";
+import "morai/map/link_info.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Map";
+
+
+// 지도 관련 서비스
+service Map
+{
+    /**
+     * MGeo 데이터를 가져옴
+     * Extra scene map의 경우, "V_EXTRA_SCENE,맵이름" 으로 넣어야 한다.
+     */
+    rpc GetMGeo(StringValue) returns (MGeoData) { }
+
+    /** 
+     * 주변 링크 정보를 가져옴
+     * 성공하면 링크 아이디, 실패하면 비어있는 문자열 리스트 리턴
+     */
+    rpc GetNeighborLink(GetNeighborLinkParam) returns (StringList) { }
+    
+    /**
+     * 링크에 있는 차량 정보를 가져옴
+     */
+    rpc GetVehiclesOnLink(LinkInfo) returns (ObjectInfos) { }
+
+    // 시나리오 러너에서 TC 외에는 사용하지 않고 있어 후순위로 미룸
+    // rpc GetBoundedLinks(QueryDistance) returns (ServiceResponse) {}
+
+    // 시나리오 러너에서 TC 외에는 사용하지 않고 있어 후순위로 미룸
+    // rpc GetNPCSpawnLinks(LinkSearchParams) returns (morai_openscenario_msgs.SpawnLinkSearchResponse) {}
+}

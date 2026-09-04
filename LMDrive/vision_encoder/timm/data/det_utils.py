@@ -8,7 +8,18 @@ from PIL import Image
 import cv2
 import numpy as np
 
-from skimage.measure import block_reduce
+try:
+    from skimage.measure import block_reduce
+except ImportError:
+    def block_reduce(array, block_size, func=np.mean):
+        if func is not np.mean or array.ndim != 2:
+            raise ImportError("install scikit-image for this block_reduce configuration")
+        by, bx = block_size
+        height = array.shape[0] // by * by
+        width = array.shape[1] // bx * bx
+        return array[:height, :width].reshape(
+            height // by, by, width // bx, bx
+        ).mean(axis=(1, 3))
 from .heatmap_utils import generate_heatmap, get_yaw_angle
 
 

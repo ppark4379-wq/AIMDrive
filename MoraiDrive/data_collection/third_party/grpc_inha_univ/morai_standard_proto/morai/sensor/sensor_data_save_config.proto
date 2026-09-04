@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Sensor";
+
+option optimize_for = SPEED;
+package morai_sim_api.sensor;
+
+// MORAI SIM 의 센서 데이터 저장 기능을 이용해 센서 데이터를 저장하기 위한 설정
+message SensorDataSaveConfig
+{
+	bool is_custom_file_name = 1;
+	string custom_file_name = 2;
+	string file_dir = 3;
+}

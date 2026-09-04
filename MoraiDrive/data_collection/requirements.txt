@@ -1,2 +1,13 @@
 numpy
 opencv-python
+pyyaml
+
+# gRPC (third_party/grpc_inha_univ가 요구)
+grpcio>=1.50.0
+grpcio-tools>=1.50.0
+
+# ROS1 관련은 apt으로 별도 설치 (pip 패키지 아님)
+# sudo apt install ros-noetic-cv-bridge
+# sudo apt install ros-noetic-sensor-msgs
+# sudo apt install ros-noetic-message-filters   # ApproximateTimeSynchronizer
+# rospy, sensor_msgs, message_filters, morai_msgs는 여기서 설치 안 함

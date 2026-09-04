@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+package morai_sim_api.sensor;
+
+import "morai/sensor/sensor_info.proto";
+import "morai/sensor/sensor_enum.proto";
+import "morai/common/object_identifier.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Sensor";
+
+
+// 센서 설정을 위한 설정 값
+message SensorSetting
+{
+    SensorInfo sensor_info = 1;
+
+    // sensor_info.sensor_type에 따라 달라지며, 일단은 ground truth만 존재함
+    oneof Settings 
+    {
+        GroundTruthSensorSetting gt_sensor = 2;
+    }
+}
+
+message SensorSettingList
+{
+    repeated SensorSetting settings = 1;
+}
+
+// GroundTruth 센서 설정을 위한 값
+message GroundTruthSensorSetting
+{
+    GTShapeType shape_type = 1;
+	GTCylinderSetting cylinder_setting = 2;
+	GTConeSetting cone_setting = 3;
+	repeated GTObstacleObjType filter = 4;
+	int32 max_count = 5;
+    bool viz_range = 6;
+}
+
+message GTCylinderSetting
+{
+	int32 segments = 1;
+	float vertical_fov = 2;
+	float range = 3;
+}
+
+message GTConeSetting
+{
+	int32 segments = 1;
+	float vertical_fov = 2;
+	float horizontal_fov = 3;
+	float range_min = 4;
+	float range_max = 5;
+	int32 resolution = 7;
+}
+
+message SensorCaptureModeParam {
+	ObjectIdentifier sensor_id = 1;
+	bool is_sensor_capture_mode_on = 2;
+}
+
+message SensorMuteByTypeParam {	
+	SensorType sensor_type = 1;
+	bool is_mute = 2;
+}
+
+message SensorFault {
+	ObjectIdentifier sensor_id = 1;
+	DataQualifier data_qualifier = 2;
+	FaultType type = 3;
+}
+
+message WeatherEffect {
+	ObjectIdentifier sensor_id = 1;
+	bool is_true = 2;
+}

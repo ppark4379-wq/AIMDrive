@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package morai_sim_api.actor;
+
+import "morai/actor/actor_enum.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Actor";
+
+/**
+ * 아이피 설정
+ */
+message NetworkIpSetting
+{
+    NetworkConnetType connect_type = 1;
+    repeated NetworkItem items = 2;
+}
+
+/**
+ * 프로토콤 설정
+ */
+message NetworkProtocolSetting
+{
+    NetworkCommType comm_type = 1;
+    repeated NetworkProtocolItem items = 2;
+}
+
+/**
+ * 프로토콜 아이템
+ */
+message NetworkProtocolItem
+{
+    PUBSUB_TYPE protocol = 1;
+    repeated NetworkItem items = 2;
+}
+
+/**
+ * 네트워크 아이템
+ */
+message NetworkItem
+{
+    NetworkItemType type = 1;
+    string value = 2;
+}

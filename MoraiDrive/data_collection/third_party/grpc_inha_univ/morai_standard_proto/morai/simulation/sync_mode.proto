@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package morai_sim_api.simulation;
+
+import "morai/simulation/simulation_enum.proto";
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Simulation";
+
+// MORAI SIM의 Synchronous 모드
+message SyncMode
+{
+    SyncModeType type = 1;
+
+    // 단위는 msec이며 범위는 1~100
+    int32 tick_period = 2;
+}
+
+// Synchronous 모드에서 사용하는 timestamp
+message SyncTimestamp
+{
+    uint64 frame_count = 1;
+    int64 elapsed_time = 2;
+}
