@@ -44,8 +44,14 @@ python3 tools/validate_route_labels.py "$ROUTE_DIR"
 python3 tools/validate_semantic_labels.py "$ROUTE_DIR"
 python3 tools/validate_object_labels.py "$ROUTE_DIR"
 python3 tools/validate_lmdrive_adapter.py "$ROUTE_DIR"
+python3 tools/validate_lmdrive_batch.py "$DATASET_ROOT/$JOB" --batch-size 2 --batches 2
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
+
+`validate_lmdrive_batch.py`는 loader를 흉내 내지 않고 `MoraiDrive/vision_encoder`의
+`create_morai_dataset("morai")`와 `create_morai_loader()`를 직접 호출한다. 여러
+독립 프레임이 RGB `(B,C,H,W)`, LiDAR `(B,40000,4)` 및 batched GT로 정상
+collate되는지와 모든 Tensor의 NaN/Inf 여부를 검사한다.
 
 route 검증이 전체 `FAIL`이어도 `on-route ...` 값은 `route_valid=true`인 프레임만 센
 결과입니다. 손 주행 중 route를 이탈한 프레임은 원본에는 보존하지만 학습에서는 제외합니다.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Load one MORAI frame through LMDrive's real CarlaMVDetDataset extraction."""
+"""Load one MORAI frame through MoraiDrive's MoraiMVDetDataset adapter."""
 import argparse
 import glob
 import importlib
@@ -17,7 +17,7 @@ def main():
     parser.add_argument("--frame", type=int, default=0)
     args = parser.parse_args()
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
-    timm_root = os.path.join(repo_root, "LMDrive", "vision_encoder", "timm")
+    timm_root = os.path.join(repo_root, "MoraiDrive", "vision_encoder", "timm")
     # Load only timm.data, avoiding model-only torch_scatter during data validation.
     timm = types.ModuleType("timm")
     timm.__path__ = [timm_root]
@@ -25,10 +25,10 @@ def main():
     data_pkg = types.ModuleType("timm.data")
     data_pkg.__path__ = [os.path.join(timm_root, "data")]
     sys.modules["timm.data"] = data_pkg
-    dataset_module = importlib.import_module("timm.data.carla_dataset")
+    dataset_module = importlib.import_module("timm.data.morai_dataset")
 
-    dataset = dataset_module.CarlaMVDetDataset.__new__(
-        dataset_module.CarlaMVDetDataset
+    dataset = dataset_module.MoraiMVDetDataset.__new__(
+        dataset_module.MoraiMVDetDataset
     )
     dataset.root_path = ""
     dataset.with_waypoints = dataset.with_seg = dataset.with_depth = False

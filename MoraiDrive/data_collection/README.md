@@ -13,8 +13,13 @@ MORAI의 ROS1 센서·차량 데이터를 동기화하고, LMDrive가 읽을 수
 - LMDrive 호환 RGB/NPY/JSON 및 job/map/route 저장 구조 완료
 - GNSS→MGeo 좌표 변환과 route command 생성 완료
 - junction·정지선·신호등·객체·3D BB 실주행 검증 완료
-- LMDrive RGB/LiDAR/measurement adapter 검증 완료
+- LMDrive 파이프라인을 재사용하는 `MoraiMVDetDataset` RGB/LiDAR/measurement
+  단일 프레임 adapter 검증 완료
 - navigation/notice instruction과 Expert ROS SyncMode 수집은 미구현
+- 현재 `collect.py` 1회 실행은 episode 1개만 생성하며 시나리오 자동 로드·NPC/날씨
+  변경·Ego respawn은 하지 않음
+- 시나리오 에디터 기능이 저장소에 추가되면 load/reset API를 연결해 episode별
+  `<route>_<timestamp>`를 생성하는 다중 시나리오 batch 수집기를 구현할 예정
 
 세부 구현 현황과 실주행 수치는 [검증 현황](docs/validation.md)을 참고하세요.
 
@@ -61,6 +66,7 @@ python3 tools/validate_route_labels.py "$ROUTE_DIR"
 python3 tools/validate_semantic_labels.py "$ROUTE_DIR"
 python3 tools/validate_object_labels.py "$ROUTE_DIR"
 python3 tools/validate_lmdrive_adapter.py "$ROUTE_DIR"
+python3 tools/validate_lmdrive_batch.py "$DATASET_ROOT/$JOB" --batch-size 2 --batches 2
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 

@@ -1,6 +1,6 @@
 """
 JSON schema for measurements_full/%04d.json, matching what
-LMDrive/vision_encoder/timm/data/carla_dataset.py reads.
+MoraiDrive/vision_encoder/timm/data/morai_dataset.py reads.
 
 IMPORTANT: that loader does plain `measurements["key"]` lookups with no
 .get()/default fallback -- every key below must exist in EVERY frame's

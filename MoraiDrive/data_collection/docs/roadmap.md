@@ -43,6 +43,29 @@
 - 작은 batch로 vision encoder와 LLM forward/loss 확인
 - 통과 후 전체 route·시나리오 batch 수집
 
+## 7. 시나리오 에디터 연동 및 다중 episode 자동 수집
+
+현재 `collect.py`는 실행할 때 `DatasetWriter`를 한 번만 생성하므로
+`collect.py` 1회 실행이 `<route>_<timestamp>` 폴더 1개, 즉 episode 1개에
+대응한다. 실행 중 MORAI에 이미 설정되어 있는 NPC·날씨·Ego 시작 위치를 그대로
+수집하며, 시나리오를 로드하거나 조건을 바꾸고 Ego를 respawn하는 기능은 없다.
+
+시나리오 에디터 기능이 저장소에 추가되면 다음 기능을 `collect.py` 또는 별도의
+상위 batch runner에 연결한다.
+
+- 시나리오 파일/ID를 인자로 받아 MORAI에 명시적으로 로드
+- episode마다 NPC 구성, 날씨·시간대, Ego 시작 위치와 route를 적용
+- 시나리오 로드 완료와 센서 준비 상태를 확인한 뒤 수집 시작
+- route 완주, timeout, 충돌, 센서 오류를 episode 종료 조건으로 처리
+- episode 종료 후 `DatasetWriter.finalize()`를 호출하고 다음 시나리오 전에 Ego/NPC를 reset
+- 매 episode마다 새로운 `<route>_<timestamp>` 폴더와 `dataset_index.txt` 항목 생성
+- scenario ID와 NPC·날씨·spawn 설정을 `route.json` 및 `episode_summary.json`에 기록
+- reset/respawn 경계를 하나의 episode 데이터에 섞지 않음
+- 여러 scenario와 반복 횟수를 선언하는 batch 설정 파일 지원
+
+시나리오 에디터 코드가 들어오기 전에는 인터페이스를 추측해 구현하지 않고,
+추가된 API의 load/reset/status 계약을 확인한 뒤 연동한다.
+
 권장 순서:
 
 ```text
@@ -51,5 +74,6 @@ navigation/notice 생성기
 → Expert 출력 인터페이스
 → ROS SyncMode 1:1 수집
 → LMDrive 학습 smoke test
+→ 시나리오 에디터 연동 및 다중 episode runner
 → 본 수집
 ```

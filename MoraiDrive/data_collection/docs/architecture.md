@@ -41,6 +41,21 @@ MoraiDrive/data_collection/
 기본 `realtime` 모드는 gRPC를 사용하지 않고 새 센서 묶음마다 한 프레임을 저장합니다.
 `grpc_legacy`는 이전 tick 검증 경로이며 최종 Expert 수집 방식이 아닙니다.
 
+## Episode와 시나리오 실행 단위
+
+현재 `collect.py`는 한 프로세스에서 `DatasetWriter` 하나만 생성한다. 따라서 실행
+1회가 `<route>_<timestamp>` 디렉터리 하나와 episode 하나에 대응한다. `--duration`
+동안 현재 MORAI에 로드된 시나리오를 수집할 뿐, NPC 재배치, 날씨 변경, Ego respawn,
+다음 시나리오 로드를 자동으로 수행하지 않는다. 실행 도중 외부에서 reset/respawn하면
+불연속인 두 주행이 같은 episode와 `future_waypoints`에 섞일 수 있으므로 현재 운용에서는
+수집을 종료한 다음 조건을 변경하고 새로 실행해야 한다.
+
+향후 시나리오 에디터 기능이 저장소에 추가되면 해당 load/reset/status API를
+`collect.py` 또는 별도의 batch runner에 연동한다. 이때 시나리오 반복마다 writer를
+새로 생성하고 finalize하여 episode 경계를 보존해야 한다. 구체적인 연동 요구사항은
+[roadmap의 시나리오 에디터 항목](roadmap.md#7-시나리오-에디터-연동-및-다중-episode-자동-수집)을
+따른다.
+
 ## MGeo route 라벨
 
 `--route-spec`을 지정하면 각 프레임에 다음 값이 기록됩니다.
