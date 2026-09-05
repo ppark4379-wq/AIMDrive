@@ -1,0 +1,17 @@
+grpc:
+  host: 172.19.0.1
+  port: 7789
+  client_key: kcity26_scenario_runner
+
+morai:
+  map_name: R_KR_PR_K-city_2025
+  ego_vehicle_model: 2023_Hyundai_Ioniq5
+
+paths:
+  # Resolved automatically in both layouts:
+  # - current repo: ../third_party/{grpc_inha_univ,GT_BEV}
+  # - AIMDrive: ../{data_collection/third_party/grpc_inha_univ,expert}
+  grpc_src: auto
+  expert_root: auto
+  mgeo_root: data/R_KR_PR_K-city_2025
+  runtime_root: .runtime

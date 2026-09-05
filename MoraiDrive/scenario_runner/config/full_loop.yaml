@@ -1,0 +1,179 @@
+zone: full_loop
+
+scenarios:
+  full_loop:
+    global_path: data/R_KR_PR_K-city_2025/2026_molit_comp_global_path.txt
+    route_definition_path: config/full_loop_links.yaml
+    route_definition_key: full_loop
+    profile_state_path: .runtime/full_loop_profile.json
+    # Test mode starts just after the static obstacle while keeping the same
+    # actors, environment, and original START/END destination.
+    after_static_start_path_index: 703
+
+    # Focused verification starts at checkpoint 12 and drives only the final
+    # highway section, tunnel event, and original destination.
+    highway_tunnel_test_start_path_index: 3231
+
+    profiles:
+      - name: scenario_sunny
+        weather: SUNNY
+      - name: scenario_foggy
+        weather: FOGGY
+
+    # Pick once at scenario setup. A new automatic run picks again.
+    scenario_times:
+      - 11
+      - 13
+      - 15
+    scenario_time_verify_period_sec: 30.0
+
+    # MORAI's obstacle category also contains full-size vehicles, trucks,
+    # construction equipment, trees, and other objects that can block the
+    # entire intersection. Randomize only among compact, avoidable objects.
+    static_obstacle_models:
+      - WoodBox
+      - CargoBox
+      - RedBarrel
+      - YellowBarrel
+      - TrafficBarrel
+      - PE_Drum
+      - Scooter_02
+      - ElectricScooter1
+      - ElectricScooter2
+      - Bicycle_city
+      - Bicycle_mountain
+      - Steel_Barricade
+      - Lane_Separation_Bar
+      - Tree01
+      - Tree02
+      - Tree03
+
+    # The official sample scale [2, 3, 2] remains the default for compact
+    # boxes/barrels. Use natural or reduced scale for taller/wider assets.
+    static_obstacle_model_scales:
+      Scooter_02: [1.0, 1.0, 1.0]
+      ElectricScooter1: [1.0, 1.0, 1.0]
+      ElectricScooter2: [1.0, 1.0, 1.0]
+      Bicycle_city: [1.0, 1.0, 1.0]
+      Bicycle_mountain: [1.0, 1.0, 1.0]
+      Steel_Barricade: [1.0, 1.0, 1.0]
+      Lane_Separation_Bar: [1.0, 1.0, 1.0]
+      Tree01: [0.5, 0.5, 0.5]
+      Tree02: [0.5, 0.5, 0.5]
+      Tree03: [0.5, 0.5, 0.5]
+
+    # 26.R1 live-verified movable dynamic models. police1 and NCAP_EPTc are
+    # intentionally excluded because they failed spawn/movement verification.
+    dynamic_obstacle_models:
+      - Man1
+      - Man2
+      - Man3
+      - Woman1
+      - Woman2
+      - Woman3
+      - Man4
+      - Man5
+      - Man6
+      - Man7
+      - Man8
+      - Woman4
+      - Woman5
+      - Woman6
+      - Woman7
+      - Woman8
+      - NCAP_EBT
+      - NCAP_EPTa
+      - police_m_2
+      - worker_f_1
+      - worker_m_1
+      - Bicycle_Female1
+      - Boy1
+      - Girl1
+      - Girl2
+      - Deer1
+      - Dog1
+      - Dog2
+      - Dog10
+      - Ped_Pet1
+    # npc_vehicle_models: [VEHICLE_1, VEHICLE_2]
+
+    roundabout_npc:
+      count: 6
+      speed_mps: 4.0
+      route_laps: 100
+      # Restrict roundabout traffic to a passenger-car-sized model.
+      model: DEFAULT_SEDAN
+
+    highway_npc:
+      # Fixed to a model already verified to spawn on this map via 26.R1 gRPC.
+      model: DEFAULT_SEDAN
+      count_min: 6
+      count_max: 9
+      speed_min_mps: 13.0
+      speed_max_mps: 18.0
+      lead_gap_m: 32.0
+      lead_speed_mps: 12.0
+      lead_min_follow_sec: 2.0
+      lead_brake_trigger_gap_m: 24.0
+      lead_brake_min_ego_speed_mps: 5.0
+      lead_brake_speed_mps: 3.0
+      lead_brake_duration_sec: 2.5
+      background_offsets_m: [20.0, 65.0, 110.0, -30.0, 155.0, -35.0, 200.0, -42.0]
+      spawn_retry_attempts: 5
+      spawn_retry_offset_step_m: 4.0
+
+    tunnel_sudden_brake:
+      enabled: true
+      # The model is inherited from highway_npc.model.
+      spawn_trigger_before_entry_m: 40.0
+      spawn_offset_inside_m: 5.0
+      minimum_spawn_gap_m: 40.0
+      cruise_speed_mps: 9.0
+      approach_speed_mps: 7.0
+      brake_zone_start_fraction: 0.62
+      brake_zone_end_fraction: 0.82
+      brake_trigger_gap_m: 35.0
+      minimum_brake_gap_m: 20.0
+      reaction_max_gap_m: 40.0
+      emergency_destroy_gap_m: 8.0
+      stopped_speed_threshold_mps: 0.5
+      stop_confirm_timeout_sec: 1.0
+      stop_hold_sec: 2.0
+      ego_reaction_speed_drop: 5.0
+      resume_speed_mps: 10.0
+      despawn_after_exit_m: 100.0
+      despawn_goal_margin_m: 30.0
+      spawn_position_tolerance_m: 3.0
+      verification_report_path: .runtime/verification_reports/tunnel_sudden_brake_latest.json
+
+    npc_decision_range_m: 30.0
+
+    drive_control_mode: aimdrive_expert
+    expert_map_name: R_KR_PR_K-city_2025
+    expert_max_velocity_kmh: 60.0
+    expert_traffic_light_control: false
+    expert_is_closed_path: true
+    # 기본값 50(~25m 반경 창)은 체크포인트1 직후 급커브(반경 약 15m)를
+    # 감지하기엔 너무 넓어서 감속이 부족했다. 더 좁은 창으로 곡률을 더
+    # 국소적으로 계산해 진입 전에 충분히 감속하도록 함.
+    expert_velocity_profile_window_size: 15
+    expert_ros_remaps:
+      - /ctrl_cmd:=/ctrl_cmd
+    expert_arrival_stop_distance_m: 2.0
+    expert_max_cross_track_error_m: 10.0
+
+
+    route_setup_attempts: 5
+    route_debug_enabled: true
+    route_debug_dir: .runtime/debug_routes
+    max_loop_closure_error_m: 0.5
+    minimum_completion_progress_ratio: 0.95
+
+    goal_tolerance_m: 2.0
+    timeout_sec: 900.0
+    check_period_sec: 0.05
+    off_route_timeout_sec: 3.0
+    off_route_grace_sec: 3.0
+    max_laps: 1
+    auto_repeat: true
+    repeat_delay_sec: 1.0
