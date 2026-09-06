@@ -34,6 +34,7 @@ def main():
     parser.add_argument("--batches", type=int, default=2)
     parser.add_argument("--input-size", type=int, default=224)
     parser.add_argument("--multi-view-input-size", type=int, default=128)
+    parser.add_argument("--index-file", default="dataset_index.txt")
     args = parser.parse_args()
     if args.batch_size < 2:
         parser.error("--batch-size must be at least 2 for multi-frame validation")
@@ -51,6 +52,7 @@ def main():
         with_seg=False,
         with_depth=False,
         multi_view=True,
+        index_filename=args.index_file,
     )
     loader = morai_loader.create_morai_loader(
         dataset,

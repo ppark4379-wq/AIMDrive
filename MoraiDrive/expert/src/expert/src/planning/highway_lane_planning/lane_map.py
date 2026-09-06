@@ -34,6 +34,7 @@ class HighwayLaneMap:
 
         self.links = {}
         for raw, section_index in selected:
+            link_id = str(raw.get("idx") or "")
             points = [Point(float(p[0]), float(p[1])) for p in raw.get("points", [])]
             if len(points) < 2:
                 continue
@@ -41,7 +42,10 @@ class HighwayLaneMap:
             for start, end in zip(points[:-1], points[1:]):
                 cumulative_s.append(cumulative_s[-1] + start.distance(end))
             lane_number = int(raw.get("ego_lane") or 1)
-            excluded = section_index > 0 and lane_number == 1
+            excluded = (
+                (section_index > 0 and lane_number == 1)
+                or link_id in parameters.PROHIBITED_LINK_IDS
+            )
             lane_link = HighwayLaneLink(
                 raw, section_index, points, cumulative_s, excluded
             )
@@ -123,7 +127,11 @@ class HighwayLaneMap:
             ("right", lane_link.right_id, lane_link.can_move_right),
         ):
             target = self.links.get(str(target_id)) if target_id else None
-            if target is None or not allowed or target.excluded:
+            if (
+                target is None
+                or not allowed
+                or target.excluded
+            ):
                 continue
             if target.section_index != lane_link.section_index:
                 continue

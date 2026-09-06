@@ -62,6 +62,20 @@ class EgoTelemetry:
 
 
 @dataclass
+class ControlCommand:
+    timestamp_ns: int
+    steer: float
+    throttle: float
+    brake: float
+
+
+@dataclass
+class TargetVelocity:
+    timestamp_ns: int
+    speed_mps: float
+
+
+@dataclass
 class GTObject:
     obj_id: int
     obj_type: str               # "vehicle" | "pedestrian" | "static"
@@ -83,6 +97,20 @@ class TrafficLightState:
 
 
 @dataclass
+class GTObjectsSample:
+    timestamp_ns: int
+    objects: List[GTObject]
+    source_timestamp_ns: Optional[int] = None
+
+
+@dataclass
+class TrafficLightSample:
+    timestamp_ns: int
+    states: List[TrafficLightState]
+    source_timestamp_ns: Optional[int] = None
+
+
+@dataclass
 class SensorSnapshot:
     frame_id: int
     timestamp_ns: int           # 동기화 기준(front 카메라 header.stamp)
@@ -93,8 +121,12 @@ class SensorSnapshot:
     lidar: Optional[LidarFrame]
 
     ego: Optional[EgoTelemetry] = None
+    control: Optional[ControlCommand] = None
+    target_velocity: Optional[TargetVelocity] = None
     gt_objects: List[GTObject] = field(default_factory=list)
     tl_states: List[TrafficLightState] = field(default_factory=list)
+    gt_objects_timestamp_ns: Optional[int] = None
+    traffic_light_timestamp_ns: Optional[int] = None
 
     # MORAI proto가 단위/센서 프레임 대응을 명시하지 않으므로 원본값으로만 보존한다.
     grpc_frame_count_raw: int = 0

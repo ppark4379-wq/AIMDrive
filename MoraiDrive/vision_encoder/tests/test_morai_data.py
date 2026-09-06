@@ -44,6 +44,17 @@ class RouteTests(unittest.TestCase):
         frames = routes.get_route_frames(self.root, ["alpha"])
         self.assertEqual([frame for _, frame in frames], [0, 2])
 
+    def test_separate_validation_index(self):
+        (self.root / "dataset_index_test.txt").write_text("beta/ 1\n")
+        frames = routes.get_route_frames(self.root, ["beta"], index_filename="dataset_index_test.txt")
+        self.assertEqual(frames, [(str(self.root / "data" / "beta"), 0)])
+        with self.assertRaisesRegex(ValueError, "Unknown"):
+            routes.get_route_frames(self.root, ["alpha"], index_filename="dataset_index_test.txt")
+
+    def test_missing_validation_index_does_not_fall_back(self):
+        with self.assertRaises(FileNotFoundError):
+            routes.get_route_frames(self.root, ["beta"], index_filename="dataset_index_test.txt")
+
     def test_data_prefix_and_split_selection(self):
         frames = routes.get_route_frames(self.root, ["data/beta/"])
         self.assertEqual(frames, [(str(self.root / "data" / "beta"), 0)])
@@ -95,6 +106,12 @@ class LidarTests(unittest.TestCase):
         self.assertEqual(result.dtype, np.float32)
         np.testing.assert_array_equal(result[0], points[0])
         self.assertFalse(result[1:].any())
+
+    def test_intensity_is_not_clipped_with_coordinates(self):
+        points = np.array([[150, -150, 3, 240]], dtype=np.float32)
+        result, count = self.preprocess(points)
+        self.assertEqual(count, 1)
+        np.testing.assert_array_equal(result[0], [0, 0, 3, 240])
 
     def test_empty_cloud(self):
         result, count = self.preprocess(np.empty((0, 4), dtype=np.float32))

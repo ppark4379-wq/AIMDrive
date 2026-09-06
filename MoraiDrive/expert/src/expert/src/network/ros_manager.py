@@ -6,6 +6,7 @@ import numpy as np
 import time
 from nav_msgs.msg import Path, Odometry
 from geometry_msgs.msg import PoseStamped, Point, Quaternion
+from std_msgs.msg import Float32
 from morai_msgs.msg import EgoVehicleStatus, ObjectStatusList, CtrlCmd, GetTrafficLightStatus, SetTrafficLight
 from ..vehicle_state import VehicleState
 from ..obstacle.object_info import ObjectInfo
@@ -51,6 +52,9 @@ class RosManager:
         self.global_path_pub = rospy.Publisher('/global_path', Path, queue_size=1)
         self.local_path_pub = rospy.Publisher('/local_path', Path, queue_size=1)
         self.ctrl_pub = rospy.Publisher('/ctrl_cmd', CtrlCmd, queue_size=1)
+        self.target_velocity_pub = rospy.Publisher(
+            '/expert_target_velocity', Float32, queue_size=1
+        )
         self.traffic_light_pub = rospy.Publisher("/SetTrafficLight", SetTrafficLight, queue_size=1)
         self.odom_pub = rospy.Publisher('/odom', Odometry, queue_size=1)
         self.lattice_visualizer = LatticeRvizVisualizer()
@@ -62,6 +66,9 @@ class RosManager:
 
     def _send_data(self, control_input, local_path):
         self.ctrl_pub.publish(CtrlCmd(**control_input.__dict__))
+        self.target_velocity_pub.publish(Float32(
+            data=float(self.autonomous_driving.previous_target_velocity)
+        ))
         self.local_path_pub.publish(self.convert_to_ros_path(local_path, 'map'))
         self.odom_pub.publish(self.convert_to_odometry(self.vehicle_state))
         try:

@@ -23,10 +23,18 @@ class ROSConfig:
         "gt_objects":    "/Object_topic",
         "traffic_light": "/GetTrafficLightStatus",
         "ego_state":     "/Ego_topic",
+        "control":       "/ctrl_cmd",
+        "target_velocity": "/expert_target_velocity",
     })
     sync_slop_sec: float = 0.05          # message_filters.ApproximateTimeSynchronizer slop
     sync_queue_size: int = 50
     ego_buffer_size: int = 200            # 센서 timestamp에 가장 가까운 Ego 선택용 이력
+    object_buffer_size: int = 200
+    traffic_light_buffer_size: int = 200
+    control_buffer_size: int = 200
+    target_velocity_buffer_size: int = 200
+    control_max_steer_deg: float = 40.0
+    morai_to_lmdrive_steer_sign: float = 1.0
 
 
 @dataclass

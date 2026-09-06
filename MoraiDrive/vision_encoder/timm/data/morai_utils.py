@@ -26,6 +26,7 @@ def lidar_to_raw_features(lidar):
     lidar[:num_points,:4] = lidar_xyzr[:num_points, :4]
     lidar[np.isinf(lidar)] = 0
     lidar[np.isnan(lidar)] = 0
-    lidar[lidar>100] = 0
-    lidar[lidar<-100] = 0
+    # Limit coordinates only; intensity may legitimately exceed 100.
+    xyz = lidar[:, :3]
+    xyz[(xyz > 100) | (xyz < -100)] = 0
     return lidar, num_points

@@ -13,11 +13,24 @@ class Pid:
         self.previous_error = 0
         self.integral_error = 0
 
+    def reset(self):
+        """Discard accumulated control error after an abrupt mode change."""
+        self.previous_error = 0
+        self.integral_error = 0
+
     def get_output(self, target_value, current_value):
         error = target_value-current_value
-        self.integral_error += error*self.sampling_time
+        candidate_integral = self.integral_error + error*self.sampling_time
         derivative_error = (error-self.previous_error)/self.sampling_time
 
-        output = self.p_gain*error + self.i_gain*self.integral_error + self.d_gain*derivative_error
+        output = self.p_gain*error + self.i_gain*candidate_integral + self.d_gain*derivative_error
+        # Do not wind the integrator farther into actuator saturation.  This is
+        # especially important when a long acceleration phase is followed by a
+        # merge-yield or emergency-stop target.
+        if not (
+            (output > 1.0 and error > 0.0)
+            or (output < -1.0 and error < 0.0)
+        ):
+            self.integral_error = candidate_integral
         self.previous_error = error
-        return output
+        return float(np.clip(output, -1.0, 1.0))

@@ -97,11 +97,29 @@ class DatasetWriter:
 
     def write_frame(self, frame_id: int, measurement: dict, full_measurement: dict,
                     gnss=None, imu=None, actors: Optional[Dict] = None,
-                    traffic_light_state=None):
+                    affordances: Optional[Dict] = None):
         name = f"{frame_id:04d}"
         actors = actors or {}
+        affordances = dict(affordances or {
+            "traffic_light": None,
+            "stop_sign": False,
+        })
+        affordances.setdefault("traffic_light", None)
+        affordances.setdefault("stop_sign", False)
+
+        # measurements_full은 LMDrive preprocessing과 동일하게 measurements,
+        # actors_data, affordances를 한 frame JSON으로 합친 loader 입력이다.
+        merged_measurement = dict(measurement)
+        merged_measurement.update(full_measurement)
+        merged_measurement["actors_data"] = actors
+        merged_measurement["traffic_light"] = affordances["traffic_light"]
+        merged_measurement["stop_sign"] = affordances["stop_sign"]
+
         self._write_json(os.path.join(self.route_dir, "measurements", name + ".json"), measurement)
-        self._write_json(os.path.join(self.route_dir, "measurements_full", name + ".json"), full_measurement)
+        self._write_json(
+            os.path.join(self.route_dir, "measurements_full", name + ".json"),
+            merged_measurement,
+        )
         self._write_json(os.path.join(self.route_dir, "actors_data", name + ".json"), actors)
 
         if gnss is not None:
@@ -115,9 +133,11 @@ class DatasetWriter:
                 imu.gyro_x, imu.gyro_y, imu.gyro_z,
             ], dtype=np.float32))
 
-        np.save(os.path.join(self.route_dir, "affordances", name + ".npy"), {
-            "traffic_light": traffic_light_state, "stop_sign": False,
-        }, allow_pickle=True)
+        np.save(
+            os.path.join(self.route_dir, "affordances", name + ".npy"),
+            affordances,
+            allow_pickle=True,
+        )
         vehicles = []
         pedestrians = []
         for actor_id, actor in actors.items():
@@ -131,7 +151,7 @@ class DatasetWriter:
             "vehicles": vehicles, "pedestrians": pedestrians,
         }, allow_pickle=True)
 
-        self._all_frames.append(full_measurement)
+        self._all_frames.append(merged_measurement)
         self._frame_count = max(self._frame_count, frame_id + 1)
 
     def finalize(self, success: bool = True):

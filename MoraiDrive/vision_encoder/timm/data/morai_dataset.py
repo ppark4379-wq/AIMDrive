@@ -61,6 +61,7 @@ class MoraiMVDetDataset(BaseIODataset):
         with_seg=False,
         with_depth=False,
         waypoint_interval=5,
+        index_filename="dataset_index.txt",
         with_lidar=True,
         multi_view=True,
         **kwargs,
@@ -83,6 +84,7 @@ class MoraiMVDetDataset(BaseIODataset):
         self.with_waypoints = with_waypoints
         self.with_lidar = with_lidar
         self.multi_view = multi_view
+        self.index_filename = index_filename
 
         self.route_frames = self._get_frames_paths(root, routes)
 
@@ -94,7 +96,7 @@ class MoraiMVDetDataset(BaseIODataset):
         town/weather 정규식 없이 dataset_index.txt의 "경로 프레임수" 줄을 그대로 사용.
         routes(라우트 이름 리스트)가 주어지면 그 라우트만 필터링 (train/val 분리용).
         """
-        route_frames = get_route_frames(root, routes)
+        route_frames = get_route_frames(root, routes, index_filename=self.index_filename)
         _logger.info("Loaded %d valid frames from %d routes", len(route_frames),
                      len({path for path, _ in route_frames}))
         return route_frames

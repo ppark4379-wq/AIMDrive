@@ -100,6 +100,8 @@ parser.add_argument(
 
 
 parser = argparse.ArgumentParser(description="PyTorch ImageNet Training")
+parser.add_argument("--train-index", default="dataset_index.txt", help="MORAI training index filename")
+parser.add_argument("--val-index", default="dataset_index_test.txt", help="MORAI validation index filename")
 parser.add_argument("--train-routes", nargs="+", help="MORAI training route names from dataset_index.txt")
 parser.add_argument("--val-routes", nargs="+", help="MORAI validation route names (disjoint from training)")
 parser.add_argument("--waypoint-interval", type=int, default=5,
@@ -1134,6 +1136,7 @@ def main():
             multi_view=args.multi_view,
             augment_prob=args.augment_prob,
             temporal_frames=args.temporal_frames,
+            index_filename=args.train_index,
         )
         dataset_eval = dataset_factory(
             args.dataset,
@@ -1146,6 +1149,7 @@ def main():
             multi_view=args.multi_view,
             augment_prob=args.augment_prob,
             temporal_frames=args.temporal_frames,
+            index_filename=args.val_index,
         )
     else:
         dataset_train = create_dataset(

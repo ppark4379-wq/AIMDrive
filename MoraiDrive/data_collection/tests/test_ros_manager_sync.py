@@ -67,6 +67,27 @@ def _fake_ego(secs, nsecs=0):
     )
 
 
+def _fake_objects(secs, obj_id):
+    obj = SimpleNamespace(
+        unique_id=obj_id,
+        position=_v3(float(obj_id), 0.0, 0.0),
+        velocity=_v3(0.0, 0.0, 0.0),
+        heading=0.0,
+        size=_v3(2.0, 1.0, 1.0),
+    )
+    return SimpleNamespace(
+        header=_fake_header(secs), npc_list=[obj],
+        pedestrian_list=[], obstacle_list=[],
+    )
+
+
+def _fake_traffic_light(secs, light_id, status):
+    return SimpleNamespace(
+        header=_fake_header(secs), trafficLightIndex=light_id,
+        trafficLightStatus=status,
+    )
+
+
 def _make_manager(normalize_ego_to_arrival=False):
     config = {
         "topics": {
@@ -74,7 +95,8 @@ def _make_manager(normalize_ego_to_arrival=False):
             "camera_right": "/right", "camera_rear": "/back",
             "gnss": "/gps", "imu": "/imu", "lidar": "/lidar",
             "gt_objects": "/Object_topic", "traffic_light": "/GetTrafficLightStatus",
-            "ego_state": "/Ego_topic",
+            "ego_state": "/Ego_topic", "control": "/ctrl_cmd",
+            "target_velocity": "/expert_target_velocity",
         },
         "sync_slop_sec": 0.02,
         "sync_queue_size": 10,
@@ -186,6 +208,43 @@ def test_lidar_included_in_sync_group():
     print("PASS: LiDAR가 동기화 그룹에 포함되어 카메라와 동일 타임스탬프를 가짐")
 
 
+def test_async_labels_select_nearest_frame_sample():
+    mgr = _make_manager()
+    ctrl = SimpleNamespace(front_steer=0.0, accel=0.3, brake=0.0)
+    with patch("ros.ros_manager.time.time_ns", return_value=500_005_000_000):
+        mgr._cb_objects(_fake_objects(1, 101))
+        mgr._cb_traffic_light(_fake_traffic_light(1, "TL-near", 1))
+        mgr._cb_control(ctrl)
+        mgr._cb_target_velocity(SimpleNamespace(data=8.0))
+    with patch("ros.ros_manager.time.time_ns", return_value=500_100_000_000):
+        mgr._cb_objects(_fake_objects(2, 202))
+        mgr._cb_traffic_light(_fake_traffic_light(2, "TL-latest", 16))
+
+    mgr._on_synced(*_synced_bundle(500))
+    snap = mgr.get_snapshot(frame_id=1)
+
+    assert [obj.obj_id for obj in snap.gt_objects] == [101]
+    assert [light.tl_id for light in snap.tl_states] == ["TL-near"]
+    assert snap.control is not None and snap.target_velocity is not None
+    assert snap.gt_objects_timestamp_ns == 500_005_000_000
+    assert snap.traffic_light_timestamp_ns == 500_005_000_000
+
+
+def test_stale_async_labels_are_not_reused():
+    mgr = _make_manager()
+    ctrl = SimpleNamespace(front_steer=0.0, accel=0.3, brake=0.0)
+    with patch("ros.ros_manager.time.time_ns", return_value=600_000_000_000):
+        mgr._cb_objects(_fake_objects(1, 101))
+        mgr._cb_traffic_light(_fake_traffic_light(1, "TL", 1))
+        mgr._cb_control(ctrl)
+        mgr._cb_target_velocity(SimpleNamespace(data=8.0))
+    mgr._on_synced(*_synced_bundle(601))
+    snap = mgr.get_snapshot(frame_id=1)
+
+    assert snap.gt_objects == [] and snap.tl_states == []
+    assert snap.control is None and snap.target_velocity is None
+
+
 if __name__ == "__main__":
     test_no_snapshot_before_first_sync()
     test_on_synced_populates_snapshot()
@@ -194,4 +253,6 @@ if __name__ == "__main__":
     test_nearest_ego_is_selected_from_history()
     test_realtime_ego_uses_arrival_clock_and_preserves_source_stamp()
     test_lidar_included_in_sync_group()
+    test_async_labels_select_nearest_frame_sample()
+    test_stale_async_labels_are_not_reused()
     print("\nAll ROSManager sync bridging tests passed.")

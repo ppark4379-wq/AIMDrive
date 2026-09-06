@@ -9,10 +9,9 @@ Windows ROS1 Noetic 환경에서 MORAI 센서 토픽을 구독.
     LiDAR도 동기화 그룹에 포함되어 신선도가 보장된다(카메라/GNSS/IMU와 slop 이내로
     맞춰진 값만 쓰게 됨).
 
-    gt_objects / traffic_light / ego_state는 morai_msgs 정의상 Header를 갖고 있지만
-    (third_party/morai_msgs의 .msg 파일로 확인됨), 매 tick 필수 항목이 아니라 동기화
-    그룹에는 넣지 않고 최신값 버퍼로만 유지한다. 카메라 기준 타임스탬프와 너무
-    벌어지면 로그만 남긴다(get_snapshot 참고).
+    gt_objects / traffic_light / ego_state는 동기화 그룹 밖에서 timestamp 이력으로
+    관리한다. /ctrl_cmd와 /expert_target_velocity는 Header가 없으므로 ROS 도착시각을
+    기록한다. snapshot에서는 모두 front camera 기준시각의 최근접 샘플을 선택한다.
 
 프레임 트리거는 gRPC world.tick()이다 — 이 클래스는 ROS 토픽을 계속 구독/버퍼링만
 하고, "언제 한 프레임을 뽑아 저장할지"는 collect.py의 메인 루프가 get_snapshot()을
@@ -36,11 +35,13 @@ try:
     import message_filters
     from sensor_msgs.msg import CompressedImage, Imu, PointCloud2
     from sensor_msgs import point_cloud2
+    from std_msgs.msg import Float32
     from morai_msgs.msg import (
         EgoVehicleStatus,
         ObjectStatusList,
         GPSMessage,
         GetTrafficLightStatus,
+        CtrlCmd,
     )
     ROS_AVAILABLE = True
 except ImportError:
@@ -48,8 +49,9 @@ except ImportError:
     rospy = None
 
 from ros.sensor_types import (
-    CameraFrame, GNSSData, IMUData, EgoTelemetry, LidarFrame,
-    GTObject, TrafficLightState, SensorSnapshot,
+    CameraFrame, GNSSData, IMUData, EgoTelemetry, ControlCommand,
+    TargetVelocity, LidarFrame, GTObject, TrafficLightState,
+    GTObjectsSample, TrafficLightSample, SensorSnapshot,
 )
 
 
@@ -71,6 +73,16 @@ class ROSManager:
         self.slop_sec       = float(config.get("sync_slop_sec", 0.02))
         self.queue_size     = int(config.get("sync_queue_size", 10))
         self.ego_buffer_size = int(config.get("ego_buffer_size", 200))
+        self.object_buffer_size = int(config.get("object_buffer_size", 200))
+        self.traffic_light_buffer_size = int(config.get("traffic_light_buffer_size", 200))
+        self.control_buffer_size = int(config.get("control_buffer_size", 200))
+        self.target_velocity_buffer_size = int(config.get("target_velocity_buffer_size", 200))
+        self.control_max_steer_rad = np.deg2rad(
+            float(config.get("control_max_steer_deg", 40.0))
+        )
+        self.morai_to_lmdrive_steer_sign = float(
+            config.get("morai_to_lmdrive_steer_sign", 1.0)
+        )
         self.normalize_ego_to_arrival = bool(
             config.get("normalize_ego_to_arrival", False)
         )
@@ -90,6 +102,10 @@ class ROSManager:
         # 동기화 그룹 밖 — 최신값만 버퍼링
         self._ego:        Optional[EgoTelemetry] = None
         self._ego_history = deque(maxlen=self.ego_buffer_size)
+        self._gt_objects_history = deque(maxlen=self.object_buffer_size)
+        self._tl_states_history = deque(maxlen=self.traffic_light_buffer_size)
+        self._control_history = deque(maxlen=self.control_buffer_size)
+        self._target_velocity_history = deque(maxlen=self.target_velocity_buffer_size)
         self._gt_objects  = []
         self._tl_states   = []
 
@@ -157,6 +173,12 @@ class ROSManager:
         if self.topics.get("ego_state"):
             rospy.Subscriber(self.topics["ego_state"], EgoVehicleStatus,
                              self._cb_ego, queue_size=5)
+        if self.topics.get("control"):
+            rospy.Subscriber(self.topics["control"], CtrlCmd,
+                             self._cb_control, queue_size=20)
+        if self.topics.get("target_velocity"):
+            rospy.Subscriber(self.topics["target_velocity"], Float32,
+                             self._cb_target_velocity, queue_size=20)
 
         self._initialized = True
         print(f"[ROSManager] 구독 시작 완료 "
@@ -176,6 +198,23 @@ class ROSManager:
         """현재까지 수신한 가장 최신 동기화 묶음의 front-camera timestamp."""
         with self._lock:
             return self._synced_ts
+
+    def _nearest_within_sync_window(self, history, ref_ts: int, label: str):
+        sample = min(
+            history,
+            key=lambda item: abs(item.timestamp_ns - ref_ts),
+            default=None,
+        )
+        if sample is None:
+            return None
+        delta_ns = abs(sample.timestamp_ns - ref_ts)
+        if delta_ns > self.sync_window_ns:
+            print(
+                f"[ROSManager] WARNING: 가장 가까운 {label}가 front camera 기준시각과 "
+                f"{delta_ns / 1e6:.1f}ms 벗어남"
+            )
+            return None
+        return sample
 
     def get_snapshot(self, frame_id: int, grpc_frame_count_raw: int = 0,
                      grpc_elapsed_time_raw: int = 0,
@@ -206,6 +245,19 @@ class ROSManager:
                 print(f"[ROSManager] WARNING: 가장 가까운 ego 데이터가 동기화 기준(front 카메라)과 "
                       f"{abs(ego.timestamp_ns - ref_ts) / 1e6:.1f}ms 벗어남")
 
+            object_sample = self._nearest_within_sync_window(
+                self._gt_objects_history, ref_ts, "/Object_topic"
+            )
+            light_sample = self._nearest_within_sync_window(
+                self._tl_states_history, ref_ts, "/GetTrafficLightStatus"
+            )
+            control = self._nearest_within_sync_window(
+                self._control_history, ref_ts, "/ctrl_cmd"
+            )
+            target_velocity = self._nearest_within_sync_window(
+                self._target_velocity_history, ref_ts, "/expert_target_velocity"
+            )
+
             snap = SensorSnapshot(
                 frame_id      = frame_id,
                 timestamp_ns  = ref_ts,
@@ -214,8 +266,12 @@ class ROSManager:
                 imu           = self._imu,
                 lidar         = self._lidar,
                 ego           = ego,
-                gt_objects    = list(self._gt_objects),
-                tl_states     = list(self._tl_states),
+                control       = control,
+                target_velocity = target_velocity,
+                gt_objects    = list(object_sample.objects) if object_sample else [],
+                tl_states     = list(light_sample.states) if light_sample else [],
+                gt_objects_timestamp_ns = object_sample.timestamp_ns if object_sample else None,
+                traffic_light_timestamp_ns = light_sample.timestamp_ns if light_sample else None,
                 grpc_frame_count_raw = grpc_frame_count_raw,
                 grpc_elapsed_time_raw = grpc_elapsed_time_raw,
             )
@@ -260,6 +316,10 @@ class ROSManager:
                 "imu": self._imu is not None,
                 "lidar": self._lidar is not None,
                 "ego": self._ego is not None,
+                "gt_objects": bool(self._gt_objects_history),
+                "traffic_light": bool(self._tl_states_history),
+                "control": bool(self._control_history),
+                "target_velocity": bool(self._target_velocity_history),
                 "input_counts": dict(self._sync_input_counts),
                 "input_latest_ts": dict(self._sync_input_latest_ts),
             }
@@ -380,6 +440,11 @@ class ROSManager:
     def _cb_objects(self, msg: "ObjectStatusList"):
         """morai_msgs/ObjectStatusList: npc_list/pedestrian_list/obstacle_list로 이미 분리돼서 옴."""
         try:
+            arrival_ts = time.time_ns()
+            stamp = getattr(getattr(msg, "header", None), "stamp", None)
+            source_ts = None
+            if stamp is not None and (stamp.secs or stamp.nsecs):
+                source_ts = stamp.secs * 1_000_000_000 + stamp.nsecs
             objects = []
             for npc in getattr(msg, "npc_list", []):
                 objects.append(GTObject(
@@ -412,16 +477,32 @@ class ROSManager:
                 ))
             with self._lock:
                 self._gt_objects = objects
+                self._gt_objects_history.append(GTObjectsSample(
+                    timestamp_ns=arrival_ts,
+                    source_timestamp_ns=source_ts,
+                    objects=objects,
+                ))
         except Exception as e:
             print(f"[ROSManager] GT Objects 콜백 오류: {e}")
 
     def _cb_traffic_light(self, msg: "GetTrafficLightStatus"):
         try:
+            arrival_ts = time.time_ns()
+            stamp = getattr(getattr(msg, "header", None), "stamp", None)
+            source_ts = None
+            if stamp is not None and (stamp.secs or stamp.nsecs):
+                source_ts = stamp.secs * 1_000_000_000 + stamp.nsecs
+            states = [TrafficLightState(
+                tl_id=str(getattr(msg, "trafficLightIndex", 0)),
+                state=int(getattr(msg, "trafficLightStatus", 0)),
+            )]
             with self._lock:
-                self._tl_states = [TrafficLightState(
-                    tl_id = str(getattr(msg, "trafficLightIndex", 0)),
-                    state = int(getattr(msg, "trafficLightStatus", 0)),
-                )]
+                self._tl_states = states
+                self._tl_states_history.append(TrafficLightSample(
+                    timestamp_ns=arrival_ts,
+                    source_timestamp_ns=source_ts,
+                    states=states,
+                ))
         except Exception as e:
             print(f"[ROSManager] 신호등 콜백 오류: {e}")
 
@@ -456,3 +537,37 @@ class ROSManager:
                 self._ego_history.append(ego)
         except Exception as e:
             print(f"[ROSManager] Ego 콜백 오류: {e}")
+
+    def _cb_control(self, msg: "CtrlCmd"):
+        """Expert가 실제 publish한 /ctrl_cmd 명령을 ROS 도착시각과 함께 보관한다."""
+        try:
+            if self.control_max_steer_rad <= 0:
+                raise ValueError("control_max_steer_deg must be positive")
+            sample = ControlCommand(
+                timestamp_ns=time.time_ns(),
+                steer=float(np.clip(
+                    self.morai_to_lmdrive_steer_sign
+                    * float(getattr(msg, "front_steer", 0.0))
+                    / self.control_max_steer_rad,
+                    -1.0,
+                    1.0,
+                )),
+                throttle=float(np.clip(getattr(msg, "accel", 0.0), 0.0, 1.0)),
+                brake=float(np.clip(getattr(msg, "brake", 0.0), 0.0, 1.0)),
+            )
+            with self._lock:
+                self._control_history.append(sample)
+        except Exception as e:
+            print(f"[ROSManager] /ctrl_cmd 콜백 오류: {e}")
+
+    def _cb_target_velocity(self, msg: "Float32"):
+        """Expert 최종 target_velocity[m/s]를 ROS 도착시각과 함께 보관한다."""
+        try:
+            sample = TargetVelocity(
+                timestamp_ns=time.time_ns(),
+                speed_mps=max(0.0, float(msg.data)),
+            )
+            with self._lock:
+                self._target_velocity_history.append(sample)
+        except Exception as e:
+            print(f"[ROSManager] /expert_target_velocity 콜백 오류: {e}")

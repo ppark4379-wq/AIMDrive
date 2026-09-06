@@ -28,6 +28,11 @@ class DatasetWriterLayoutTest(unittest.TestCase):
                 0, measurement, dict(measurement, timestamp_ns=123),
                 gnss=GNSSData(1, 37.0, 126.0, 10.0),
                 imu=IMUData(1, 1, 2, 3, 4, 5, 6),
+                actors={"7": {
+                    "loc": [1, 2, 0], "ori": [1, 0], "box": [2, 1],
+                    "vel": [0, 0, 0], "tpe": 0,
+                }},
+                affordances={"traffic_light": 4, "stop_sign": False},
             )
             writer.finalize()
 
@@ -40,6 +45,12 @@ class DatasetWriterLayoutTest(unittest.TestCase):
             with open(os.path.join(writer.output_dir, "measurements", "0000.json"),
                       encoding="utf-8") as f:
                 self.assertEqual(json.load(f)["future_waypoints"], [[1.0, 2.0, 4]])
+            with open(os.path.join(writer.output_dir, "measurements_full", "0000.json"),
+                      encoding="utf-8") as f:
+                merged = json.load(f)
+            self.assertEqual(merged["actors_data"]["7"]["tpe"], 0)
+            self.assertEqual(merged["traffic_light"], 4)
+            self.assertFalse(merged["stop_sign"])
 
     def test_empty_or_double_finalize_does_not_duplicate_index(self):
         with tempfile.TemporaryDirectory() as root:

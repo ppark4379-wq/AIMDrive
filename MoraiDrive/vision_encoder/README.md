@@ -9,7 +9,7 @@ Run from this directory in an environment with `requirements.txt` installed:
 ```bash
 python train_pretrain.py /path/to/output --dataset morai \
   --train-routes train_route_a train_route_b --val-routes validation_route \
-  --waypoint-interval 5 --model memfuser_baseline_e1d3 \
+  --val-index dataset_index.txt --waypoint-interval 5 --model memfuser_baseline_e1d3 \
   --multi-view --with-lidar --multi-view-input-size 3 128 128 \
   --no-prefetcher --eval-metric l1_error --saver-decreasing \
   --batch-size 4 --epochs 25
@@ -44,3 +44,10 @@ python -m unittest discover -s tests -v
 Before a full run, validate one real batch and a forward/backward pass in the
 training environment. The local Windows environment used for integration has no
 PyTorch installation.
+
+Separate index files are supported with `--train-index` (default
+`dataset_index.txt`) and `--val-index` (default `dataset_index_test.txt`).
+For a shared index with explicit disjoint route lists, pass
+`--val-index dataset_index.txt` as in the example above. A missing index raises
+an error instead of silently falling back to the training index.
+LiDAR coordinate clipping affects XYZ only and preserves finite intensity values.
