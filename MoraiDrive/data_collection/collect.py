@@ -105,6 +105,26 @@ def _morai_light_to_lmdrive_state(status: int) -> int:
     return 4
 
 
+def _affected_light_state(affected_light_raw, observed_lights):
+    """Return (raw_status, LMDrive_state) for the currently affecting light.
+
+    LMDrive uses two distinct meanings:
+      * None: no traffic light currently affects ego.
+      * 4/Unknown: an affecting MGeo light exists, but no fresh live status was
+        available from /GetTrafficLightStatus for this frame.
+
+    ROSManager already removes stale /GetTrafficLightStatus samples.  Therefore
+    a missing entry in `observed_lights` means "unknown now", not "reuse the old
+    signal state".
+    """
+    if not affected_light_raw:
+        return None, None
+    affected_state_raw = observed_lights.get(affected_light_raw)
+    if affected_state_raw is None:
+        return None, 4
+    return affected_state_raw, _morai_light_to_lmdrive_state(affected_state_raw)
+
+
 def _maybe_print_rate_status(skip_reasons: Counter, frame_id: int,
                              last_status_time: float, last_status_frame: int):
     now = time.monotonic()
@@ -427,11 +447,8 @@ def main():
             )
             affected_light_id = stable_mgeo_id(affected_light_raw)
             observed_lights = {light.tl_id: light.state for light in snap.tl_states}
-            affected_state_raw = observed_lights.get(affected_light_raw)
-            affected_state = (
-                _morai_light_to_lmdrive_state(affected_state_raw)
-                if affected_state_raw is not None else
-                (4 if affected_light_raw else None)
+            affected_state_raw, affected_state = _affected_light_state(
+                affected_light_raw, observed_lights
             )
             is_red = affected_state == 0
             hazard_ids = (

@@ -258,6 +258,18 @@ def test_traffic_light_status_is_held_for_low_rate_topic():
     assert snap.traffic_light_timestamp_ns == 700_500_000_000
 
 
+def test_traffic_light_status_expires_after_max_age():
+    mgr = _make_manager()
+    with patch("ros.ros_manager.time.time_ns", return_value=800_000_000_000):
+        mgr._cb_traffic_light(_fake_traffic_light(800, "TL-stale", 1))
+    mgr._on_synced(*_synced_bundle(801, 100_000_000))
+    snap = mgr.get_snapshot(frame_id=1)
+
+    assert snap.tl_states == []
+    assert snap.traffic_light_timestamp_ns is None
+    print("PASS: max age를 넘긴 TrafficLightStatus는 snapshot에서 제외")
+
+
 if __name__ == "__main__":
     test_no_snapshot_before_first_sync()
     test_on_synced_populates_snapshot()
@@ -269,4 +281,5 @@ if __name__ == "__main__":
     test_async_labels_select_nearest_frame_sample()
     test_stale_async_labels_are_not_reused()
     test_traffic_light_status_is_held_for_low_rate_topic()
+    test_traffic_light_status_expires_after_max_age()
     print("\nAll ROSManager sync bridging tests passed.")
