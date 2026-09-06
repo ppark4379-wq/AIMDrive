@@ -68,6 +68,20 @@ class RouteTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 routes.validate_route_split(train, val)
 
+    def test_split_routes_can_be_derived_from_indexes(self):
+        (self.root / "dataset_index.txt").write_text("alpha/ 3\n")
+        (self.root / "dataset_index_test.txt").write_text("data/beta/ 1\n")
+        self.assertEqual(routes.resolve_route_split(
+            self.root, "dataset_index.txt", "dataset_index_test.txt"),
+            (["alpha"], ["beta"]))
+
+    def test_shared_index_requires_disjoint_explicit_selection(self):
+        with self.assertRaisesRegex(ValueError, "overlap"):
+            routes.resolve_route_split(self.root, "dataset_index.txt", "dataset_index.txt")
+        self.assertEqual(routes.resolve_route_split(
+            self.root, "dataset_index.txt", "dataset_index.txt", ["alpha"], ["beta"]),
+            (["alpha"], ["beta"]))
+
     def test_disjoint_routes_are_accepted(self):
         routes.validate_route_split(["alpha"], ["beta"])
 

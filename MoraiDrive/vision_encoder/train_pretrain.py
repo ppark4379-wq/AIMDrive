@@ -39,7 +39,7 @@ from timm.data import (
     AugMixDataset,
 )
 from timm.data import create_carla_dataset, create_carla_loader, create_morai_dataset, create_morai_loader
-from timm.data.morai_routes import validate_route_split
+from timm.data.morai_routes import resolve_route_split
 from timm.models import (
     create_model,
     safe_model_name,
@@ -762,7 +762,7 @@ parser.add_argument(
     metavar="N",
     help="Test/inference time augmentation (oversampling) factor. 0=None (default: 0)",
 )
-parser.add_argument("--local-rank", default=0, type=int)
+parser.add_argument("--local-rank", "--local_rank", default=int(os.environ.get("LOCAL_RANK", "0")), type=int)
 parser.add_argument(
     "--use-multi-epochs-loader",
     action="store_true",
@@ -888,12 +888,17 @@ def _parse_args():
     args = parser.parse_args(remaining)
     if args.dataset == "morai":
         try:
-            validate_route_split(args.train_routes, args.val_routes)
+            args.train_routes, args.val_routes = resolve_route_split(
+                args.data_dir, args.train_index, args.val_index,
+                args.train_routes, args.val_routes,
+            )
+            if args.model.startswith("memfuser") and not (args.multi_view and args.with_lidar):
+                raise ValueError("Memfuser requires --multi-view and --with-lidar")
             if args.waypoint_interval < 1:
                 raise ValueError("--waypoint-interval must be positive")
             if args.with_seg or args.with_depth:
                 raise ValueError("MORAI raw data does not provide segmentation or depth")
-        except ValueError as exc:
+        except (ValueError, OSError) as exc:
             parser.error(str(exc))
 
     # Cache the args as a text string to save them in the output dir later
@@ -1015,7 +1020,7 @@ def main():
         model = torch.jit.script(model)
 
     linear_scaled_lr = (
-        args.lr * args.batch_size * torch.distributed.get_world_size() / 512.0
+        args.lr * args.batch_size * args.world_size / 512.0
     )
     args.lr = linear_scaled_lr
     if args.with_backbone_lr:
@@ -1026,7 +1031,7 @@ def main():
         backbone_linear_scaled_lr = (
             args.backbone_lr
             * args.batch_size
-            * torch.distributed.get_world_size()
+            * args.world_size
             / 512.0
         )
         backbone_weights = []

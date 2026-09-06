@@ -31,6 +31,7 @@ def main():
         dataset_module.MoraiMVDetDataset
     )
     dataset.root_path = ""
+    dataset.waypoint_interval = 5
     dataset.with_waypoints = dataset.with_seg = dataset.with_depth = False
     dataset.with_lidar = dataset.multi_view = True
     dataset.seg_transform = dataset.depth_transform = dataset.lidar_transform = None
@@ -43,7 +44,7 @@ def main():
     dataset.rgb_center_transform = image_to_tensor
     dataset.multi_view_transform = image_to_tensor
     data, targets = dataset._extract_data_item(
-        os.path.abspath(args.route_dir), args.frame, 1
+        os.path.abspath(args.route_dir), args.frame
     )
     expected = {
         "rgb_front": 3, "rgb_left": 3, "rgb_right": 3, "rgb_rear": 3,

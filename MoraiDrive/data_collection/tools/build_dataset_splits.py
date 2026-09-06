@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """완료된 MORAI route를 검사해 LMDrive train/validation index를 생성한다."""
 import argparse
+import json
 import random
 from pathlib import Path
 
@@ -41,8 +42,19 @@ def main():
 
     root = Path(args.dataset_root).resolve()
     data_dir = root / "data"
+    summary_path = root / "results" / "episode_summary.json"
+    completed = None
+    if summary_path.is_file():
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        completed = {
+            Path(entry["route"].replace("\\", "/").rstrip("/")).name
+            for entry in summary.get("episodes", [])
+            if entry.get("status") == "completed"
+        }
     routes = []
     for route_dir in sorted(path for path in data_dir.iterdir() if path.is_dir()):
+        if completed is not None and route_dir.name not in completed:
+            continue
         if not (route_dir / "route.json").is_file():
             continue
         frames = contiguous_frame_count(route_dir)

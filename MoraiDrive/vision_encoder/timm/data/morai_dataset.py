@@ -160,7 +160,6 @@ class MoraiMVDetDataset(BaseIODataset):
             local_command_point[np.isnan(local_command_point)] = np.mean(local_command_point)
 
         # command_waypoints: measurements_all.json에서 미래 프레임 위치를 직접 참조
-        # (measurements["future_waypoints"]는 아직 비어있음 -- 후처리 스크립트 없이도 동작)
         command_waypoints = []
         for i in range(5):
             fid = min(len(measurements_all) - 1, frame_id + self.waypoint_interval * (i + 1))
@@ -169,11 +168,12 @@ class MoraiMVDetDataset(BaseIODataset):
             command_waypoints.append(new_loc.reshape(1, 2))
         command_waypoints = torch.from_numpy(np.concatenate(command_waypoints)).float()
 
-        # heatmap / det_data: actors_data.box가 placeholder라 형태만 맞고
-        # 실제 supervision은 아직 약함 (command_waypoints에는 영향 없음)
-        heatmap = generate_heatmap(copy.deepcopy(measurements), copy.deepcopy(actors_data))
+        # Match waypoint/image BEV axes: lateral +x, forward -y.
+        bev_measurements = copy.deepcopy(measurements)
+        bev_measurements["theta"] = ego_theta + np.pi / 2
+        heatmap = generate_heatmap(bev_measurements, copy.deepcopy(actors_data))
         det_data = (
-            generate_det_data(heatmap, copy.deepcopy(measurements), copy.deepcopy(actors_data))
+            generate_det_data(heatmap, bev_measurements, copy.deepcopy(actors_data))
             .reshape(2500, -1)
             .astype(np.float32)
         )
@@ -184,7 +184,6 @@ class MoraiMVDetDataset(BaseIODataset):
         heatmap_mask = heatmap_mask.reshape(50, 50)
 
         img_traffic = heatmap[:250, 25:275, None]
-        # future_waypoints가 빈 리스트인 동안엔 img_traj가 항상 빈 이미지 (에러는 없음)
         img_traj = generate_future_waypoints(measurements)[:250, 25:275, None]
 
         return {

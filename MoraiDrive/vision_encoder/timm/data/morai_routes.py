@@ -54,3 +54,16 @@ def get_route_frames(root, routes=None, index_filename="dataset_index.txt"):
     if not frames_out:
         raise ValueError("No valid MORAI frames remain in the selected routes")
     return frames_out
+
+
+def resolve_route_split(root, train_index, val_index, train_routes=None, val_routes=None):
+    """Accept explicit route lists or derive disjoint lists from split indexes."""
+    if train_routes is None and val_routes is None:
+        def read_routes(filename):
+            lines = (Path(root) / filename).read_text(encoding="utf-8").splitlines()
+            return [normalize_route(parts[0]) for line in lines
+                    if len(parts := line.split()) == 2 and int(parts[1]) > 0]
+        train_routes = read_routes(train_index)
+        val_routes = read_routes(val_index)
+    validate_route_split(train_routes, val_routes)
+    return train_routes, val_routes

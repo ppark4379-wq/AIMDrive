@@ -46,8 +46,6 @@ def main():
     dataset = dataset_factory.create_morai_dataset(
         "morai",
         root=dataset_root,
-        towns=[],
-        weathers=[],
         with_lidar=True,
         with_seg=False,
         with_depth=False,
@@ -69,7 +67,7 @@ def main():
 
     print(f"dataset class: {type(dataset).__name__}")
     print(f"eligible route frames: {len(dataset.route_frames)}")
-    print(f"dataset samples after /5 sampling: {len(dataset)}")
+    print(f"dataset samples (all valid frames): {len(dataset)}")
     print(f"loader batches: {len(loader)}")
 
     failures = []
