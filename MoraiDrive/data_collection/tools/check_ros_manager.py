@@ -104,6 +104,7 @@ def main():
         "topics": ROS.topics,
         "sync_slop_sec": ROS.sync_slop_sec,
         "sync_queue_size": ROS.sync_queue_size,
+        "ego_buffer_size": ROS.ego_buffer_size,
     })
     ros_mgr.start()
 
@@ -128,20 +129,19 @@ def main():
     while time.time() - t_start < args.duration:
         snap = ros_mgr.get_snapshot(frame_id)
         if snap is None:
-            print("  (아직 동기화된 스냅샷 없음)")
+            n_stale += 1
+            print("  (새 동기화 프레임 없음 — 이전 프레임은 중복 반환하지 않음)")
         else:
             is_new = snap.timestamp_ns != last_ts
-            n_new += int(is_new)
-            n_stale += int(not is_new)
+            n_new += 1
             print(_fmt_snapshot(snap, time.time() - t_start))
             if not is_new:
-                print("    ^ 직전 호출과 timestamp_ns 동일 — 이 구간엔 새 동기화 프레임이 안 들어옴 "
-                      "(message_filters 매칭이 안 되고 있을 수 있음)")
+                print("    ^ ERROR: 소비된 timestamp가 중복 반환됨")
             last_ts = snap.timestamp_ns
             frame_id += 1
         time.sleep(args.interval)
 
-    print(f"\n[check_ros_manager] 종료. 새 동기화 프레임 {n_new}회 / 직전 값 재사용 {n_stale}회 "
+    print(f"\n[check_ros_manager] 종료. 새 동기화 프레임 {n_new}회 / 새 프레임 없음 {n_stale}회 "
           f"(폴링 간격 {args.interval}s 기준)")
     if n_new == 0:
         print("[check_ros_manager] 새 동기화 프레임이 한 번도 없었음 — slop/queue_size 또는 "
