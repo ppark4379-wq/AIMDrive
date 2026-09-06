@@ -1,0 +1,9 @@
+# Optional machine-specific overrides. Copy to local.yaml when needed.
+grpc:
+  host: 172.19.0.1
+  port: 7789
+
+paths:
+  # Keep "auto" when the standard current-repo or AIMDrive layout is used.
+  grpc_src: auto
+  expert_root: auto
