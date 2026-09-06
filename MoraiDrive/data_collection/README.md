@@ -62,13 +62,19 @@ sudo mount -t drvfs Z: /mnt/z
 ## 기본 검증
 
 ```bash
+python3 tools/build_dataset_splits.py "$DATASET_ROOT/$JOB"
 python3 tools/validate_route_labels.py "$ROUTE_DIR"
 python3 tools/validate_semantic_labels.py "$ROUTE_DIR"
 python3 tools/validate_object_labels.py "$ROUTE_DIR"
 python3 tools/validate_lmdrive_adapter.py "$ROUTE_DIR"
 python3 tools/validate_lmdrive_batch.py "$DATASET_ROOT/$JOB" --batch-size 2 --batches 2
+python3 tools/validate_lmdrive_batch.py "$DATASET_ROOT/$JOB" \
+  --index-file dataset_index_test.txt --batch-size 2 --batches 1
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
+
+MORAI loader는 해상도가 서로 다른 4-view JPEG를 직접 읽으므로 `rgb_full`은 생성하지
+않습니다. `dataset_index.txt`는 train, `dataset_index_test.txt`는 validation route입니다.
 
 ## 문서
 

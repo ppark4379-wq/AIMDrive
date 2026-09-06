@@ -52,6 +52,10 @@ class EgoState:
     y_command: float = 0.0
     gps_x: Optional[float] = None    # None이면 x와 동일하게 채움
     gps_y: Optional[float] = None
+    steer: float = 0.0
+    throttle: float = 0.0
+    brake: float = 0.0
+    target_speed: float = 0.0
 
 
 def build_measurement_dict(
@@ -92,6 +96,10 @@ def build_measurement_dict(
         "command": ego.command,
         "x_command": ego.x_command,
         "y_command": ego.y_command,
+        "steer": ego.steer,
+        "throttle": ego.throttle,
+        "brake": ego.brake,
+        "target_speed": ego.target_speed,
         # Phase 1.5
         "is_red_light_present": is_red_light_present or [],
         # Phase 2

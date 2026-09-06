@@ -105,6 +105,12 @@ def main():
         "sync_slop_sec": ROS.sync_slop_sec,
         "sync_queue_size": ROS.sync_queue_size,
         "ego_buffer_size": ROS.ego_buffer_size,
+        "object_buffer_size": ROS.object_buffer_size,
+        "traffic_light_buffer_size": ROS.traffic_light_buffer_size,
+        "control_buffer_size": ROS.control_buffer_size,
+        "target_velocity_buffer_size": ROS.target_velocity_buffer_size,
+        "control_max_steer_deg": ROS.control_max_steer_deg,
+        "morai_to_lmdrive_steer_sign": ROS.morai_to_lmdrive_steer_sign,
         # realtime 센서는 ROS 도착시각으로 동기화하므로 Ego도 동일 clock을 사용한다.
         "normalize_ego_to_arrival": args.mode == "realtime",
     })
@@ -232,6 +238,12 @@ def main():
             if snap is None or snap.ego is None:
                 no_new_sensor_count += 1
                 continue
+            if args.mode == "realtime" and (
+                snap.control is None or snap.target_velocity is None
+            ):
+                no_new_sensor_count += 1
+                print("frame skipped: synchronized Expert control/target unavailable")
+                continue
             if (grpc_client is not None and last_grpc_frame_count_raw is not None and
                     sync_ts.frame_count <= last_grpc_frame_count_raw):
                 duplicate_tick_observed += 1
@@ -263,6 +275,12 @@ def main():
                 y_command=route_progress.target_y if route_progress else 0.0,
                 gps_x=gps_local[0] if gps_local else None,
                 gps_y=gps_local[1] if gps_local else None,
+                steer=snap.control.steer if snap.control else 0.0,
+                throttle=snap.control.throttle if snap.control else 0.0,
+                brake=snap.control.brake if snap.control else 0.0,
+                target_speed=(
+                    snap.target_velocity.speed_mps if snap.target_velocity else 0.0
+                ),
             )
             actors = {
                 str(o.obj_id): _actor_data(o) for o in snap.gt_objects
@@ -291,6 +309,12 @@ def main():
                 "imu": snap.imu.timestamp_ns if snap.imu else None,
                 "lidar": snap.lidar.timestamp_ns if snap.lidar else None,
                 "ego": snap.ego.timestamp_ns,
+                "gt_objects": snap.gt_objects_timestamp_ns,
+                "traffic_light": snap.traffic_light_timestamp_ns,
+                "control": snap.control.timestamp_ns if snap.control else None,
+                "target_velocity": (
+                    snap.target_velocity.timestamp_ns if snap.target_velocity else None
+                ),
             })
             full_measurement = dict(measurement)
             full_measurement.update({
@@ -300,6 +324,10 @@ def main():
                 "is_longtail": False,
                 "sensor_timestamps_ns": sensor_timestamps,
                 "ego_raw": asdict(snap.ego),
+                "expert_control_raw": asdict(snap.control) if snap.control else None,
+                "expert_target_velocity_raw": (
+                    asdict(snap.target_velocity) if snap.target_velocity else None
+                ),
                 "localization": {
                     "source": "gnss_mgeo" if localization else "ego_status",
                     "heading_source": localization.heading_source if localization else "ego_status",
@@ -346,11 +374,14 @@ def main():
                     "affected_light_state_raw": affected_state,
                 },
             })
-            traffic_light_state = snap.tl_states[0].state if snap.tl_states else None
+            affordances = {
+                "traffic_light": affected_state,
+                "stop_sign": False,
+            }
             ds_writer.write_frame(
                 frame_id, measurement, full_measurement,
                 gnss=snap.gnss, imu=snap.imu, actors=measurement["actors_data"],
-                traffic_light_state=traffic_light_state,
+                affordances=affordances,
             )
 
             images = {name: cam.image for name, cam in snap.cameras.items()}

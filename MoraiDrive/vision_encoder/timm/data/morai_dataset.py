@@ -61,8 +61,10 @@ def lidar_to_raw_features(lidar, rotation_deg=-90):
     lidar[:num_points,:4] = lidar_xyzr
     lidar[np.isinf(lidar)] = 0
     lidar[np.isnan(lidar)] = 0
-    lidar[lidar>100] = 0
-    lidar[lidar<-100] = 0
+    # 좌표 범위 제한은 XYZ에만 적용한다. intensity는 별도 센서 필드이므로
+    # 100보다 큰 값도 좌표 clipping 때문에 0으로 지우지 않는다.
+    xyz = lidar[:, :3]
+    xyz[(xyz > 100) | (xyz < -100)] = 0
     lidar = rotate_lidar(lidar, rotation_deg).astype(np.float32)
     return lidar, num_points
 
@@ -163,6 +165,7 @@ class MoraiMVDetDataset(BaseIODataset):
         with_depth=False,
         with_lidar=False,
         multi_view=False,
+        index_filename="dataset_index.txt",
         **kwargs,
     ):
         super().__init__()
@@ -182,15 +185,16 @@ class MoraiMVDetDataset(BaseIODataset):
         self.with_depth = with_depth
         self.with_lidar = with_lidar
         self.multi_view = multi_view
+        self.index_filename = index_filename
 
         self.route_frames = self._get_frames_paths(root, weathers, towns)
 
     def _get_frames_paths(self, root, weathers, towns):
         route_frames = []
         route_dir_nums = 0
-        index_path = os.path.join(root, 'dataset_index_test.txt')
+        index_path = os.path.join(root, self.index_filename)
         if not os.path.isfile(index_path):
-            index_path = os.path.join(root, 'dataset_index.txt')
+            raise FileNotFoundError("MORAI dataset index not found: %s" % index_path)
         dataset_indexs = self._load_text(index_path).split('\n')
         pattern = re.compile('town(\d\d).*w(\d+)')
         for line in dataset_indexs:

@@ -1117,6 +1117,7 @@ def main():
             multi_view=args.multi_view,
             augment_prob=args.augment_prob,
             temporal_frames=args.temporal_frames,
+            index_filename="dataset_index.txt",
         )
         dataset_eval = create_morai_dataset(
             args.dataset,
@@ -1130,6 +1131,7 @@ def main():
             multi_view=args.multi_view,
             augment_prob=args.augment_prob,
             temporal_frames=args.temporal_frames,
+            index_filename="dataset_index_test.txt",
         )
     else:
         dataset_train = create_dataset(
