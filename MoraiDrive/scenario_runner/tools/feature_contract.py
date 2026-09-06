@@ -66,15 +66,27 @@ def verify_feature_contract(package_root, scenario_cfg):
     )
 
     highway = scenario_cfg.get("highway_npc", {})
+    spawn_points = list(highway.get("spawn_points", []))
     require(
-        int(highway.get("count_min", 0)) >= 1
-        and int(highway.get("count_max", 0))
-        >= int(highway.get("count_min", 0)),
-        "Highway NPC count range is invalid",
+        [int(spec.get("id", -1)) for spec in spawn_points] == [10, 6, 8],
+        "Highway SpawnPoints must exclude the roundabout-area sample point",
     )
     require(
-        float(highway.get("lead_gap_m", 0.0)) > 0.0,
-        "Highway lead interaction settings are missing",
+        all(not bool(spec.get("is_lane_change", True)) for spec in spawn_points),
+        "Highway native SpawnPoints must keep lane changes disabled",
+    )
+    require(
+        all(int(spec.get("maximum_spawn_vehicle", 0)) == 50 for spec in spawn_points),
+        "Highway native SpawnPoint maximum vehicle count changed",
+    )
+    require(
+        float(highway.get("reference_safety_distance_m", 0.0)) == 5.0
+        and float(highway.get("reference_ttc_sec", 0.0)) == 1.0,
+        "Competition reference SafetyDist/TTC values changed",
+    )
+    require(
+        not any(str(key).startswith("lead_") for key in highway),
+        "Scripted highway lead settings must stay removed",
     )
     require(
         bool(scenario_cfg.get("tunnel_sudden_brake", {}).get("enabled")),

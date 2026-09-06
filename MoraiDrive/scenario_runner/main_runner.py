@@ -163,6 +163,24 @@ def build_parser():
         help="Run one scenario only even when automatic repeat is enabled.",
     )
     parser.add_argument(
+        "--max-runs",
+        type=int,
+        default=None,
+        help=(
+            "Stop after exactly this many completed scenario runs. "
+            "Only applies while automatic repeat is enabled."
+        ),
+    )
+    parser.add_argument(
+        "--highway-object-audit",
+        action="store_true",
+        help=(
+            "With full_loop_highway_tunnel_test, drive checkpoint 10 to "
+            "checkpoint 13 before the tunnel and compare /Object_topic "
+            "against live gRPC vehicle actors."
+        ),
+    )
+    parser.add_argument(
         "--check",
         action="store_true",
         help="Validate paths, imports, route, and configuration without MORAI.",
@@ -182,8 +200,24 @@ def run_offline_check(global_cfg, scenario_cfg, scenario_name):
 
 
 def main():
-    args = build_parser().parse_args()
+    parser = build_parser()
+    args = parser.parse_args()
+    if args.max_runs is not None and args.max_runs < 1:
+        parser.error("--max-runs must be at least 1")
+
     global_cfg, zone_cfg, base_scenario_cfg = load_configuration()
+    if (
+        args.highway_object_audit
+        and args.scenario != "full_loop_highway_tunnel_test"
+    ):
+        parser.error(
+            "--highway-object-audit requires "
+            "--scenario full_loop_highway_tunnel_test"
+        )
+    if args.highway_object_audit:
+        base_scenario_cfg.setdefault("highway_object_audit", {})[
+            "enabled"
+        ] = True
 
     if args.check:
         run_offline_check(global_cfg, base_scenario_cfg, args.scenario)
@@ -196,7 +230,10 @@ def main():
 
     scenario_class = SUPPORTED_SCENARIOS[args.scenario]
     automatic_repeat = (
-        args.scenario in {"full_loop", "full_loop_after_static"}
+        (
+            args.scenario in {"full_loop", "full_loop_after_static"}
+            or args.highway_object_audit
+        )
         and bool(base_scenario_cfg.get("auto_repeat", False))
         and not args.once
     )
@@ -219,6 +256,12 @@ def main():
                 f"sequence={run_number}"
             )
             scenario.run()
+            if args.max_runs is not None and run_number >= args.max_runs:
+                print(
+                    f"[KCityRunner] completed requested runs: "
+                    f"{run_number}/{args.max_runs}"
+                )
+                break
             if not automatic_repeat:
                 break
 

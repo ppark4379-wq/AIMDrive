@@ -277,11 +277,29 @@ class FullLoopDriveBase(BaseScenario):
             self.cfg.get("off_route_grace_sec", 2.0)
         )
         max_laps = int(self.cfg.get("max_laps", 0))
+        progress_watchdog = dict(self.cfg.get("progress_watchdog", {}))
+        progress_watchdog_enabled = bool(
+            progress_watchdog.get("enabled", True)
+        )
+        progress_watchdog_timeout_sec = max(
+            1.0,
+            float(progress_watchdog.get("timeout_sec", 120.0)),
+        )
+        progress_watchdog_grace_sec = max(
+            0.0,
+            float(progress_watchdog.get("startup_grace_sec", 30.0)),
+        )
+        progress_watchdog_min_progress_m = max(
+            0.1,
+            float(progress_watchdog.get("minimum_progress_m", 2.0)),
+        )
 
         print(
             "[KCityFullLoop] AIMDrive expert running. "
             f"arrival_stop={arrival_stop_distance_m}m, "
-            f"timeout={'disabled' if not use_timeout else str(timeout_sec) + 's'}"
+            f"timeout={'disabled' if not use_timeout else str(timeout_sec) + 's'}, "
+            f"progress_watchdog="
+            f"{'disabled' if not progress_watchdog_enabled else str(progress_watchdog_timeout_sec) + 's'}"
         )
 
         lap = 0
@@ -289,6 +307,8 @@ class FullLoopDriveBase(BaseScenario):
         last_print_time = 0.0
         off_route_enter_time = None
         self.expert_last_s = 0.0
+        progress_anchor_s = None
+        last_progress_time = lap_start_time
 
         while True:
             elapsed = time.time() - lap_start_time
@@ -317,6 +337,16 @@ class FullLoopDriveBase(BaseScenario):
             )
             self.expert_last_s = current_s
             remaining_s = max(0.0, self.route_length_m - current_s)
+
+            if progress_anchor_s is None:
+                progress_anchor_s = current_s
+                last_progress_time = time.time()
+            elif (
+                current_s - progress_anchor_s
+                >= progress_watchdog_min_progress_m
+            ):
+                progress_anchor_s = current_s
+                last_progress_time = time.time()
 
             tick_hook = getattr(self, "on_expert_timeline_tick", None)
             if tick_hook is not None:
@@ -377,6 +407,42 @@ class FullLoopDriveBase(BaseScenario):
                     f"elapsed={elapsed:.1f}s"
                 )
 
+            stalled_sec = time.time() - last_progress_time
+            if (
+                progress_watchdog_enabled
+                and elapsed >= progress_watchdog_grace_sec
+                and stalled_sec >= progress_watchdog_timeout_sec
+                and remaining_s > arrival_stop_distance_m
+            ):
+                dynamic_phase = getattr(
+                    self,
+                    "dynamic_obstacle_phase",
+                    "not_available",
+                )
+                tunnel_phase = getattr(
+                    self,
+                    "tunnel_event_phase",
+                    "not_available",
+                )
+                reason = (
+                    "reason=no_route_progress "
+                    f"stalled={stalled_sec:.1f}s "
+                    f"threshold={progress_watchdog_timeout_sec:.1f}s "
+                    f"ego=({ego_x:.2f},{ego_y:.2f}) "
+                    f"link={ego_state['current_link']} "
+                    f"s={current_s:.1f}/{self.route_length_m:.1f} "
+                    f"remain={remaining_s:.1f}m "
+                    f"speed={ego_state['speed']:.1f} "
+                    f"dynamic_phase={dynamic_phase} "
+                    f"tunnel_phase={tunnel_phase}"
+                )
+                print(
+                    f"[KCityFullLoop] FATAL_STALL {reason}",
+                    flush=True,
+                )
+                self.stop_drive_control()
+                raise RuntimeError(f"EGO progress watchdog abort: {reason}")
+
             if goal_reached:
                 lap += 1
                 print(
@@ -395,6 +461,8 @@ class FullLoopDriveBase(BaseScenario):
                 last_print_time = 0.0
                 off_route_enter_time = None
                 self.expert_last_s = 0.0
+                progress_anchor_s = None
+                last_progress_time = lap_start_time
                 continue
 
             if use_timeout and elapsed >= float(timeout_sec):

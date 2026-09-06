@@ -10,9 +10,21 @@ scenarios:
     # actors, environment, and original START/END destination.
     after_static_start_path_index: 703
 
-    # Focused verification starts at checkpoint 12 and drives only the final
-    # highway section, tunnel event, and original destination.
-    highway_tunnel_test_start_path_index: 3231
+    # Focused verification starts at checkpoint 10 and drives the complete
+    # native-SpawnPoint highway section, tunnel event, and original destination.
+    highway_tunnel_test_start_path_index: 2275
+
+    # Optional read-only audit for a repeated highway-only run. It starts at
+    # checkpoint 10 and ends at checkpoint 13, before tunnel checkpoint 14.
+    # ROS /Object_topic reports are spatially compared with live gRPC actors.
+    highway_object_audit:
+      enabled: false
+      end_path_index: 3529
+      sample_period_sec: 0.5
+      match_distance_m: 5.0
+      ros_max_age_sec: 1.0
+      candidate_samples: 3
+      output_subdir: object_audit
 
     profiles:
       - name: scenario_sunny
@@ -107,20 +119,100 @@ scenarios:
     highway_npc:
       # Fixed to a model already verified to spawn on this map via 26.R1 gRPC.
       model: DEFAULT_SEDAN
-      count_min: 6
-      count_max: 9
-      speed_min_mps: 13.0
-      speed_max_mps: 18.0
-      lead_gap_m: 32.0
-      lead_speed_mps: 12.0
-      lead_min_follow_sec: 2.0
-      lead_brake_trigger_gap_m: 24.0
-      lead_brake_min_ego_speed_mps: 5.0
-      lead_brake_speed_mps: 3.0
-      lead_brake_duration_sec: 2.5
-      background_offsets_m: [20.0, 65.0, 110.0, -30.0, 155.0, -35.0, 200.0, -42.0]
-      spawn_retry_attempts: 5
-      spawn_retry_offset_step_m: 4.0
+
+      # MORAI may allocate a runtime SpawnPoint ID before the object is ready
+      # for EnableSpawnPoint. Stabilize, retry, and recreate only that point.
+      spawn_point_lifecycle:
+        create_attempts: 3
+        create_settle_sec: 0.5
+        enable_attempts: 5
+        enable_retry_delay_sec: 0.5
+        disable_attempts: 3
+        disable_retry_delay_sec: 0.5
+        recreate_delay_sec: 1.0
+        max_runtime_replacements: 3
+        cleanup_settle_sec: 1.5
+
+      # Reference values stored in the official competition JSON. The 26.R1
+      # VehicleSpawnPointConfig protobuf does not expose these two fields, so
+      # native MORAI following/safety defaults provide the closest behavior.
+      reference_safety_distance_m: 5.0
+      reference_ttc_sec: 1.0
+
+      # Create SpawnPoints at setup but enable them only as Ego approaches.
+      # This avoids accumulating irrelevant traffic for several minutes before
+      # the full-loop Ego reaches the highway.
+      background_warmup_distance_m: 300.0
+      spawn_point_activation_retry_period_sec: 1.0
+
+      # Highway-only native SpawnPoints copied from the competition sample.
+      # competition_spawn_4 starts beside/through the roundabout, so it is
+      # intentionally excluded: roundabout traffic is owned exclusively by
+      # roundabout_npc and must remain exactly six equally spaced vehicles.
+      # Enum values follow scenario_enum.proto:
+      #   vehicle length 2=MIDDLE_SIZE, parameter 2=VARIABLE,
+      #   velocity type 2=CUSTOM, lateral bias 1=FIX.
+      spawn_point_defaults: &highway_spawn_point_defaults
+        vehicle_length_types: [2]
+        is_close_loop: false
+        is_lane_change: false
+        parameter_type: 2
+        maximum_spawn_vehicle: 50
+        pause: false
+        spawn_velocity_type: 2
+        min_spawn_velocity_custom_kmh: 0.0
+        max_spawn_velocity_custom_kmh: 0.0
+        min_spawn_velocity_link_percent: 0.0
+        max_spawn_velocity_link_percent: 10.0
+        desired_velocity_type: 2
+        min_desired_velocity_link_percent: 85.0
+        max_desired_velocity_link_percent: 100.0
+        lateral_bias_mode: 1
+        min_lateral_bias_m: 0.0
+        max_lateral_bias_m: 0.0
+
+      spawn_points:
+        - <<: *highway_spawn_point_defaults
+          name: competition_spawn_10
+          id: 10
+          destination_id: 11
+          position: {x: 73.00800323486328, y: 265.6050109863281, z: 28.34600067138672}
+          model_name: ''
+          reference_vehicle_type_id: -1
+          min_spawn_period_sec: 10.0
+          max_spawn_period_sec: 10.0
+          min_desired_velocity_custom_kmh: 60.0
+          max_desired_velocity_custom_kmh: 60.0
+          start_link: {id: A2256W000029, point_idx: 167}
+          end_link: {id: A2256W000432, point_idx: 246}
+
+        - <<: *highway_spawn_point_defaults
+          name: competition_spawn_6
+          id: 6
+          destination_id: 7
+          position: {x: 65.76899719238281, y: 309.2770080566406, z: 28.28800010681152}
+          model_name: ''
+          reference_vehicle_type_id: -1
+          min_spawn_period_sec: 10.0
+          max_spawn_period_sec: 10.0
+          min_desired_velocity_custom_kmh: 40.0
+          max_desired_velocity_custom_kmh: 40.0
+          start_link: {id: A2256W000406, point_idx: 78}
+          end_link: {id: A2256W001105, point_idx: 83}
+
+        - <<: *highway_spawn_point_defaults
+          name: competition_spawn_8
+          id: 8
+          destination_id: 9
+          position: {x: 69.322998046875, y: 309.6799926757812, z: 28.32099914550781}
+          model_name: ''
+          reference_vehicle_type_id: -1
+          min_spawn_period_sec: 10.0
+          max_spawn_period_sec: 10.0
+          min_desired_velocity_custom_kmh: 50.0
+          max_desired_velocity_custom_kmh: 50.0
+          start_link: {id: A2256W000175, point_idx: 78}
+          end_link: {id: A2256W000422, point_idx: 59}
 
     tunnel_sudden_brake:
       enabled: true
@@ -172,8 +264,16 @@ scenarios:
     goal_tolerance_m: 2.0
     timeout_sec: 900.0
     check_period_sec: 0.05
+    # Abort a failed batch run instead of waiting forever when the EGO cannot
+    # make route progress (for example, an orphan pedestrian blocks the road).
+    # 120s is longer than a normal K-City signal wait observed in testing.
+    progress_watchdog:
+      enabled: true
+      timeout_sec: 120.0
+      startup_grace_sec: 30.0
+      minimum_progress_m: 2.0
     off_route_timeout_sec: 3.0
     off_route_grace_sec: 3.0
     max_laps: 1
     auto_repeat: true
-    repeat_delay_sec: 1.0
+    repeat_delay_sec: 2.0

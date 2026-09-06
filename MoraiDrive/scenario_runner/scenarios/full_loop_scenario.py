@@ -5,6 +5,7 @@ import random
 import time
 
 import yaml
+from ..adapters.object_ghost_audit import ObjectGhostAudit
 
 from ..utils.link_graph import LinkGraph
 from ..utils.transform_utils import (
@@ -31,13 +32,12 @@ class FullLoopScenario(FullLoopDriveBase):
         self.random_route_pool = None
         self.scenario_actors = []
         self.highway_npcs = []
-        self.highway_npcs_activated = False
+        self.highway_spawn_points = []
+        self.highway_spawn_points_active = False
+        self.highway_spawn_point_activation_started = False
+        self.highway_spawn_point_next_retry_at = 0.0
+        self.highway_traffic_cleared = False
         self.highway_npc_planned_count = 0
-        self.highway_lead = None
-        self.highway_interaction_phase = "uninitialized"
-        self.highway_interaction_started_at = None
-        self.highway_interaction_min_gap_m = float("inf")
-        self.highway_interaction_last_print_sec = -1
         self.tunnel_npc = None
         self.tunnel_event_phase = "uninitialized"
         self.tunnel_event_result = {}
@@ -55,7 +55,13 @@ class FullLoopScenario(FullLoopDriveBase):
             else int.from_bytes(os.urandom(8), "big")
         )
         self.random = random.Random(self.run_seed)
-        print(f"[FullLoop] run_seed={self.run_seed}")
+        self.run_instance_id = (
+            f"{int(time.time() * 1000)}_{self.run_seed & 0xFFFFFFFF:08x}"
+        )
+        print(
+            f"[FullLoop] run_seed={self.run_seed}, "
+            f"run_instance_id={self.run_instance_id}"
+        )
 
         self.route_definition = self.load_route_definition()
         self.prepare_full_loop_route()
@@ -463,6 +469,24 @@ class FullLoopScenario(FullLoopDriveBase):
 
     def _spawn_active_dynamic_obstacle(self, yaw_offset_deg=0.0):
         start = self.dynamic_obstacle_start
+        stale_ids = self.grpc.destroy_pedestrians_near(
+            start["x"],
+            start["y"],
+            max_dist_m=3.0,
+        )
+        if stale_ids:
+            time.sleep(0.2)
+            remaining = self.grpc.find_spawned_pedestrian_near(
+                start["x"],
+                start["y"],
+                max_dist_m=3.0,
+            )
+            if remaining is not None:
+                raise RuntimeError(
+                    "Failed to clear stale pedestrian at dynamic obstacle "
+                    f"start: actor_id={remaining.get_id()}"
+                )
+
         actor = None
         selected_model = None
         models = [self.dynamic_obstacle_model] + [
@@ -598,21 +622,29 @@ class FullLoopScenario(FullLoopDriveBase):
                 f"ego_distance={ego_distance:.2f}m"
             )
 
-        if (
-            not self.dynamic_obstacle_direction_checked
-            and elapsed >= 0.8
-            and abs(along) >= 0.4
-        ):
+        displacement = math.hypot(
+            x - float(start["x"]),
+            y - float(start["y"]),
+        )
+        if elapsed >= 2.0 and displacement < 0.4:
+            details = (
+                "Dynamic obstacle did not leave spawn B: "
+                f"model={self.dynamic_obstacle_model}, "
+                f"displacement={displacement:.2f}m, elapsed={elapsed:.1f}s"
+            )
+            self._destroy_dynamic_obstacle_actor()
+            raise RuntimeError(details)
+
+        if not self.dynamic_obstacle_direction_checked and displacement >= 0.4:
             self.dynamic_obstacle_direction_checked = True
-            if along < 0.0 and not self.dynamic_obstacle_direction_respawned:
-                self.dynamic_obstacle_direction_respawned = True
-                print(
-                    f"[FullLoop] dynamic obstacle moved opposite direction "
-                    f"along={along:.2f}m; respawn with yaw+180"
+            if along < -0.2 or lateral_error > 1.0:
+                details = (
+                    "Dynamic obstacle left the required B->A crossing: "
+                    f"model={self.dynamic_obstacle_model}, "
+                    f"along={along:.2f}m, lateral={lateral_error:.2f}m"
                 )
                 self._destroy_dynamic_obstacle_actor()
-                self._spawn_active_dynamic_obstacle(yaw_offset_deg=180.0)
-                return
+                raise RuntimeError(details)
 
         if distance_to_end <= self.dynamic_obstacle_arrival_tolerance_m:
             self._finish_dynamic_obstacle("reached_dest")
@@ -736,21 +768,73 @@ class FullLoopScenario(FullLoopDriveBase):
             )
             self.scenario_actors.append(actor)
 
+
     def spawn_highway_npcs(self):
-        """Arm delayed highway spawning so traffic is near Ego at entry time."""
+        """Create native MORAI SpawnPoints and let them settle while disabled."""
         cfg = self.cfg["highway_npc"]
-        self.highway_npc_planned_count = self.random.randint(
-            int(cfg["count_min"]), int(cfg["count_max"])
-        )
         model = str(cfg.get("model", "DEFAULT_SEDAN"))
         if model not in self.vehicle_models():
             raise RuntimeError(f"Configured highway NPC model is unavailable: {model}")
         self.highway_fixed_model = model
-        self.highway_interaction_phase = "armed"
+
+        specs = list(cfg.get("spawn_points", []))
+        if not specs:
+            raise RuntimeError("No native highway SpawnPoint definitions configured")
+
+        lifecycle = dict(cfg.get("spawn_point_lifecycle", {}))
+        create_attempts = max(1, int(lifecycle.get("create_attempts", 3)))
+        create_settle_sec = max(
+            0.0,
+            float(lifecycle.get("create_settle_sec", 0.5)),
+        )
+        recreate_delay_sec = max(
+            0.0,
+            float(lifecycle.get("recreate_delay_sec", 1.0)),
+        )
+
+        for spec in specs:
+            spawn_name = spec.get("name", spec.get("id"))
+            created_point = None
+            for create_attempt in range(1, create_attempts + 1):
+                spawn_point_id = self.grpc.create_vehicle_spawn_point(spec)
+                if spawn_point_id is not None:
+                    if create_settle_sec > 0.0:
+                        time.sleep(create_settle_sec)
+                    created_point = {
+                        "id": str(spawn_point_id),
+                        "name": str(spawn_name),
+                        "enabled": False,
+                        "retired": False,
+                        "generation": 0,
+                        "activation_failures": 0,
+                        "spec": dict(spec),
+                    }
+                    self.highway_spawn_points.append(created_point)
+                    break
+
+                print(
+                    f"[FullLoop] SpawnPoint create recovery: name={spawn_name}, "
+                    f"attempt={create_attempt}/{create_attempts}"
+                )
+                if create_attempt < create_attempts and recreate_delay_sec > 0.0:
+                    time.sleep(recreate_delay_sec)
+
+            if created_point is None:
+                raise RuntimeError(
+                    f"Failed to create native SpawnPoint {spawn_name} "
+                    f"after {create_attempts} attempts"
+                )
+
+        self.highway_spawn_points_active = False
+        self.highway_npc_planned_count = len(self.highway_spawn_points)
+        reference_safety = float(cfg.get("reference_safety_distance_m", 5.0))
+        reference_ttc = float(cfg.get("reference_ttc_sec", 1.0))
         print(
-            f"[FullLoop] highway traffic armed: model={model}, "
-            f"count={self.highway_npc_planned_count}, "
-            f"activation_s={self.highway_activation_s:.1f}m"
+            f"[FullLoop] native highway SpawnPoints created inactive: "
+            f"count={self.highway_npc_planned_count}, lane_change=False, "
+            f"reference_safety={reference_safety:.1f}m, "
+            f"reference_ttc={reference_ttc:.1f}s; "
+            f"activation is delayed until Ego approaches the highway"
         )
 
     def _route_geometry(self, route):
@@ -790,11 +874,24 @@ class FullLoopScenario(FullLoopDriveBase):
         return best
 
     def _spawn_highway_vehicle(
-        self, transform, route, waypoint, label, speed, end_waypoint=None
+        self,
+        transform,
+        route,
+        waypoint,
+        label,
+        speed,
+        end_waypoint=None,
+        request_id="",
+        recover_ambiguous=False,
     ):
         actor = self.grpc.spawn_vehicle(
-            transform=transform, model_name=self.highway_fixed_model,
-            label=label, velocity=0.0, multi_ego=False,
+            transform=transform,
+            model_name=self.highway_fixed_model,
+            label=label,
+            velocity=0.0,
+            multi_ego=False,
+            request_id=request_id,
+            recover_ambiguous=recover_ambiguous,
         )
         if actor is None:
             return None
@@ -816,200 +913,203 @@ class FullLoopScenario(FullLoopDriveBase):
         self.scenario_actors.append(actor)
         return actor
 
-    def _spawn_highway_lead(self, current_s):
-        cfg = self.cfg["highway_npc"]
-        gap = float(cfg.get("lead_gap_m", 32.0))
-        speed = float(cfg.get("lead_speed_mps", 12.0))
-        spawn_s = min(float(current_s)+gap, self.route_length_m-5.0)
-        x, y, z, yaw = interpolate_on_polyline(self.route_points, spawn_s)
-        _, link_index, waypoint = self._nearest_official_link(x, y)
-        highway_zone = self.route_definition["zones"]["highway"]
-        exit_id = str(highway_zone["ego_exit_checkpoint"])
-        exit_checkpoint = next(
-            checkpoint
-            for checkpoint in self.route_definition["checkpoints"]
-            if str(checkpoint["id"]) == exit_id
-        )
-        _, exit_link_index, exit_waypoint = self._nearest_official_link(
-            float(exit_checkpoint["x"]), float(exit_checkpoint["y"])
-        )
-        if exit_link_index < link_index:
-            raise RuntimeError(
-                f"Highway exit link precedes lead spawn link: "
-                f"{exit_link_index} < {link_index}"
-            )
-        route = list(self.route_links[link_index:exit_link_index+1])
-        actor = self._spawn_highway_vehicle(
-            self.grpc.make_transform(x,y,z,yaw), route, waypoint,
-            "highway_lead", speed, end_waypoint=exit_waypoint,
-        )
-        if actor is None:
-            raise RuntimeError("Failed to spawn highway lead vehicle")
-        self.highway_lead = {
-            "actor":actor, "model":self.highway_fixed_model, "speed_mps":speed,
-            "route":route, "spawn_route_s":spawn_s, "spawn_xy":(x,y),
-            "role":"lead",
-        }
-        self.highway_npcs.append(self.highway_lead)
-        print(
-            f"[FullLoop] highway LEAD spawned route_s={spawn_s:.1f}m, "
-            f"initial_gap={spawn_s-float(current_s):.1f}m, speed={speed:.1f}m/s"
-        )
+    def activate_highway_spawn_points(self, elapsed, current_s):
+        active_points = [
+            point
+            for point in self.highway_spawn_points
+            if not point.get("retired", False)
+        ]
+        if self.highway_spawn_points_active or not active_points:
+            return self.highway_spawn_points_active
 
-    def _spawn_highway_background(self, ego_state, count):
         cfg = self.cfg["highway_npc"]
-        pool = [list(r) for r in self.route_definition["zones"]["highway"]["npc_routes"]]
-        offsets = list(cfg.get(
-            "background_offsets_m",
-            [20.0,65.0,110.0,-30.0,155.0,-35.0,200.0,-42.0],
-        ))
-        ego_x, ego_y = float(ego_state["x"]), float(ego_state["y"])
-        attempts = int(cfg.get("spawn_retry_attempts",5))
-        retry_step = float(cfg.get("spawn_retry_offset_step_m",4.0))
-        for index in range(count):
-            route = list(pool[index % len(pool)])
-            points, ranges, length = self._route_geometry(route)
-            ego_s = project_distance_on_polyline(points, ego_x, ego_y)
-            relative = float(offsets[index % len(offsets)])
-            target_s = min(max(8.0,ego_s+relative),max(8.0,length-8.0))
-            speed = self.random.uniform(float(cfg["speed_min_mps"]),
-                                        float(cfg["speed_max_mps"]))
-            deltas = [0.0]
-            for retry in range(1,max(1,attempts)):
-                sign = 1.0 if retry%2 else -1.0
-                deltas.append(sign*((retry+1)//2)*retry_step)
-            actor = used_s = used_route = None
-            for delta in deltas:
-                attempt_s = min(max(8.0,target_s+delta),max(8.0,length-8.0))
-                x,y,z,yaw = interpolate_on_polyline(points,attempt_s)
-                segment = next(
-                    (item for item in ranges if attempt_s<=item[1]+1e-6),
-                    ranges[-1],
+        lifecycle = dict(cfg.get("spawn_point_lifecycle", {}))
+        warmup_distance = max(
+            0.0,
+            float(cfg.get("background_warmup_distance_m", 300.0)),
+        )
+        activation_s = max(0.0, self.highway_activation_s - warmup_distance)
+        if float(current_s) < activation_s:
+            return False
+        if float(elapsed) < self.highway_spawn_point_next_retry_at:
+            return False
+
+        self.highway_spawn_point_activation_started = True
+        changed = self._set_highway_spawn_points_enabled(True)
+        pending = [
+            point
+            for point in self.highway_spawn_points
+            if not point.get("retired", False)
+            and not point.get("enabled", False)
+        ]
+
+        # MORAI 26.R1 can allocate a runtime ID (observed repeatedly as ID 5)
+        # that never accepts EnableSpawnPoint. Retrying the same ID cannot heal
+        # that state, so replace only the failed runtime object and preserve the
+        # three healthy SpawnPoints.
+        max_replacements = max(
+            1,
+            int(lifecycle.get("max_runtime_replacements", 3)),
+        )
+        create_attempts = max(1, int(lifecycle.get("create_attempts", 3)))
+        create_settle_sec = max(
+            0.0,
+            float(lifecycle.get("create_settle_sec", 0.5)),
+        )
+        recreate_delay_sec = max(
+            0.0,
+            float(lifecycle.get("recreate_delay_sec", 1.0)),
+        )
+        replacements = 0
+        for point in list(pending):
+            point["activation_failures"] = (
+                int(point.get("activation_failures", 0)) + 1
+            )
+            generation = int(point.get("generation", 0))
+            if generation >= max_replacements:
+                continue
+
+            replacement_id = None
+            for create_attempt in range(1, create_attempts + 1):
+                replacement_id = self.grpc.create_vehicle_spawn_point(
+                    point["spec"]
                 )
-                seg_start,_,link_index,link_points = segment
-                lx,ly,_,_ = interpolate_on_polyline(link_points,attempt_s-seg_start)
-                waypoint = self._nearest_waypoint(link_points,lx,ly)
-                suffix = route[link_index:]
-                actor = self._spawn_highway_vehicle(
-                    self.grpc.make_transform(x,y,z,yaw),suffix,waypoint,
-                    f"highway_background_{index}",speed,
-                )
-                if actor is not None:
-                    used_s,used_route = attempt_s,suffix
+                if replacement_id is not None:
+                    if create_settle_sec > 0.0:
+                        time.sleep(create_settle_sec)
                     break
                 print(
-                    f"[FullLoop] highway background {index} spawn retry "
-                    f"route={index%len(pool)}, s={attempt_s:.1f}m"
+                    f"[FullLoop] SpawnPoint replacement create retry: "
+                    f"name={point['name']}, "
+                    f"attempt={create_attempt}/{create_attempts}"
                 )
-            if actor is None:
-                raise RuntimeError(f"Failed to spawn highway background NPC {index}")
-            npc = {
-                "actor":actor, "model":self.highway_fixed_model, "speed_mps":speed,
-                "route":used_route, "route_pool_index":index%len(pool),
-                "relative_offset_m":relative, "spawn_route_s":used_s,
-                "spawn_xy":(x,y), "role":"background",
+                if create_attempt < create_attempts and recreate_delay_sec > 0.0:
+                    time.sleep(recreate_delay_sec)
+
+            if replacement_id is None:
+                continue
+
+            point["retired"] = True
+            replacement = {
+                "id": str(replacement_id),
+                "name": str(point["name"]).split("#runtime-")[0],
+                "enabled": False,
+                "retired": False,
+                "generation": generation + 1,
+                "activation_failures": 0,
+                "spec": dict(point["spec"]),
             }
-            self.highway_npcs.append(npc)
+            self.highway_spawn_points.append(replacement)
+            replacements += 1
             print(
-                f"[FullLoop] highway background {index} spawned "
-                f"lane_route={npc['route_pool_index']}, "
-                f"ego_relative_s={relative:+.1f}m, speed={speed:.1f}m/s"
+                f"[FullLoop] SpawnPoint runtime replacement: "
+                f"name={replacement['name']}, old_id={point['id']}, "
+                f"new_id={replacement['id']}, "
+                f"generation={replacement['generation']}/{max_replacements}"
             )
 
-    def activate_highway_npcs(self, ego_state, current_s, elapsed):
-        if self.highway_npcs_activated:
-            return
-        self._spawn_highway_lead(current_s)
-        self._spawn_highway_background(
-            ego_state,max(0,int(self.highway_npc_planned_count)-1)
+        if replacements:
+            changed += self._set_highway_spawn_points_enabled(True)
+
+        active_points = [
+            point
+            for point in self.highway_spawn_points
+            if not point.get("retired", False)
+        ]
+        pending = [
+            point["name"]
+            for point in active_points
+            if not point.get("enabled", False)
+        ]
+        self.highway_spawn_points_active = bool(active_points) and not pending
+        if self.highway_spawn_points_active:
+            print(
+                f"[FullLoop] native highway SpawnPoints ACTIVE: "
+                f"count={len(active_points)}, "
+                f"warmup_distance={warmup_distance:.1f}m, "
+                f"runtime_replacements={replacements}"
+            )
+            return True
+
+        retry_period = max(
+            0.2,
+            float(cfg.get("spawn_point_activation_retry_period_sec", 1.0)),
         )
-        self.highway_npcs_activated = True
-        self.highway_interaction_phase = "cruising"
-        self.highway_interaction_started_at = float(elapsed)
-        print(f"[FullLoop] highway NPCs activated near Ego: {len(self.highway_npcs)}")
+        self.highway_spawn_point_next_retry_at = float(elapsed) + retry_period
+        print(
+            f"[FullLoop] SpawnPoint activation pending: "
+            f"enabled_now={changed}, pending={pending}, "
+            f"retry_in={retry_period:.1f}s"
+        )
+        return False
 
-    def update_highway_interaction(self, elapsed, ego_state, current_s):
-        if self.highway_lead is None:
-            return
-        phase = self.highway_interaction_phase
-        if phase not in ("cruising","braking","resumed"):
-            return
-        try:
-            state = self.highway_lead["actor"].get_actor_state()
-        except Exception as exc:
-            print(f"[FullLoop] highway LEAD state unavailable: {exc}")
-            return
-        if state is None:
-            return
-        x = float(state.transform.location.x)
-        y = float(state.transform.location.y)
-        gap = project_distance_on_polyline(self.route_points,x,y)-float(current_s)
-        euclid = math.hypot(x-float(ego_state["x"]),y-float(ego_state["y"]))
-        if gap > 0.0:
-            self.highway_interaction_min_gap_m = min(
-                self.highway_interaction_min_gap_m,gap
+    def _set_highway_spawn_points_enabled(self, enabled):
+        changed = 0
+        lifecycle = self.cfg.get('highway_npc', {}).get(
+            'spawn_point_lifecycle',
+            {},
+        )
+        if enabled:
+            attempts = max(1, int(lifecycle.get('enable_attempts', 5)))
+            retry_delay_sec = max(
+                0.0,
+                float(lifecycle.get('enable_retry_delay_sec', 0.5)),
             )
-        cfg = self.cfg["highway_npc"]
-        since = float(elapsed)-float(self.highway_interaction_started_at)
-        ego_speed = float(ego_state.get("speed",0.0))
-        if (
-            phase=="cruising"
-            and since>=float(cfg.get("lead_min_follow_sec",2.0))
-            and 0.0<gap<=float(cfg.get("lead_brake_trigger_gap_m",24.0))
-            and ego_speed>=float(cfg.get("lead_brake_min_ego_speed_mps",5.0))
-        ):
-            speed = float(cfg.get("lead_brake_speed_mps",3.0))
-            self.grpc.set_vehicle_speed_limit(self.highway_lead["actor"],speed,True)
-            self.grpc.set_vehicle_velocity(self.highway_lead["actor"],speed)
-            self.highway_interaction_phase = phase = "braking"
-            self.highway_brake_started_at = float(elapsed)
-            print(
-                f"[FullLoop] highway LEAD BRAKE gap={gap:.1f}m, "
-                f"euclid={euclid:.1f}m, ego_speed={ego_speed:.1f}m/s, "
-                f"target_speed={speed:.1f}m/s"
+        else:
+            attempts = max(1, int(lifecycle.get('disable_attempts', 3)))
+            retry_delay_sec = max(
+                0.0,
+                float(lifecycle.get('disable_retry_delay_sec', 0.5)),
             )
-        if (
-            phase=="braking"
-            and float(elapsed)-float(self.highway_brake_started_at)
-                >=float(cfg.get("lead_brake_duration_sec",2.5))
-        ):
-            speed = float(cfg.get("lead_speed_mps",12.0))
-            self.grpc.set_vehicle_speed_limit(self.highway_lead["actor"],speed,True)
-            self.grpc.set_vehicle_velocity(self.highway_lead["actor"],speed)
-            self.highway_interaction_phase = phase = "resumed"
-            print(
-                f"[FullLoop] highway LEAD RESUME gap={gap:.1f}m, "
-                f"ego_speed={ego_speed:.1f}m/s, target_speed={speed:.1f}m/s"
+
+        for point in self.highway_spawn_points:
+            if point.get("retired", False):
+                continue
+            if point.get('enabled') == bool(enabled):
+                continue
+            point_name = point['name']
+            ok = self.grpc.enable_vehicle_spawn_point(
+                point['id'],
+                enabled,
+                attempts=attempts,
+                retry_delay_sec=retry_delay_sec,
             )
-        second = int(since)
-        if second != self.highway_interaction_last_print_sec:
-            self.highway_interaction_last_print_sec = second
-            print(
-                f"[FullLoop] highway interaction phase={phase}, "
-                f"route_gap={gap:.1f}m, euclid_gap={euclid:.1f}m, "
-                f"ego_speed={ego_speed:.1f}m/s"
-            )
+            if not ok:
+                print(
+                    f'[FullLoop] SpawnPoint state warning: '
+                    f'name={point_name}, active={bool(enabled)}'
+                )
+                continue
+            point['enabled'] = bool(enabled)
+            changed += 1
+        active_points = [
+            point
+            for point in self.highway_spawn_points
+            if not point.get("retired", False)
+        ]
+        self.highway_spawn_points_active = bool(active_points) and all(
+            point.get("enabled", False) for point in active_points
+        )
+        return changed
 
     def deactivate_highway_npcs(self, current_s):
-        destroyed = 0
-        for npc in self.highway_npcs:
-            actor = npc.get("actor")
-            if actor is None or npc.get("destroyed_at_highway_exit", False):
-                continue
-            try:
-                actor.destroy()
-                destroyed += 1
-            except Exception as exc:
-                print(f"[FullLoop] highway NPC exit cleanup warning: {exc}")
-            finally:
-                npc["destroyed_at_highway_exit"] = True
-                if actor in self.scenario_actors:
-                    self.scenario_actors.remove(actor)
-        self.highway_interaction_phase = "completed"
+        disabled = self._set_highway_spawn_points_enabled(False)
+        # Native SpawnPoint-generated vehicles do not have Python actor
+        # handles. Remove every object owned by this scenario client at the
+        # highway boundary so none can enter or block the tunnel event.
+        self.grpc.reset_actors()
+        self.scenario_actors = []
+        self.roundabout_npcs = []
+        self.highway_npcs = []
+        self.static_obstacle = None
+        self.dynamic_obstacle = None
+        self.highway_spawn_points = []
+        self.highway_spawn_points_active = False
+        self.highway_traffic_cleared = True
         print(
             f"[FullLoop] highway traffic CLEARED at exit "
-            f"s={current_s:.1f}m, destroyed={destroyed}, "
-            f"min_gap={self.highway_interaction_min_gap_m:.1f}m"
+            f"s={current_s:.1f}m, spawn_points_disabled={disabled}, "
+            f"run_owned_reset=True"
         )
 
     def arm_tunnel_sudden_brake(self):
@@ -1591,19 +1691,13 @@ class FullLoopScenario(FullLoopDriveBase):
                 self.apply_time()
             self.scenario_time_last_verify_elapsed = float(elapsed)
         self.update_dynamic_obstacle(ego_state,current_s)
-        if not self.highway_npcs_activated and current_s>=self.highway_activation_s:
-            self.activate_highway_npcs(ego_state,current_s,elapsed)
+        self.activate_highway_spawn_points(elapsed, current_s)
         if (
-            self.highway_npcs_activated
-            and self.highway_interaction_phase != "completed"
+            self.highway_spawn_point_activation_started
+            and not self.highway_traffic_cleared
             and current_s >= self.highway_exit_s
         ):
             self.deactivate_highway_npcs(current_s)
-        if (
-            self.highway_npcs_activated
-            and self.highway_interaction_phase != "completed"
-        ):
-            self.update_highway_interaction(elapsed,ego_state,current_s)
         self.update_tunnel_sudden_brake(elapsed, ego_state, current_s)
 
     def persist_profile_state(self):
@@ -1641,12 +1735,33 @@ class FullLoopScenario(FullLoopDriveBase):
         )
 
     def cleanup_spawned_actors(self):
+        try:
+            self._set_highway_spawn_points_enabled(False)
+        except Exception as e:
+            print(f'[FullLoop] SpawnPoint disable warning: {e}')
         for actor in reversed(getattr(self, "scenario_actors", [])):
             try:
                 actor.destroy()
             except Exception as e:
                 print(f"[FullLoop] actor cleanup warning: {e}")
         self.scenario_actors = []
+        try:
+            # Native SpawnPoints and every vehicle they generated share this
+            # client's key. Wait for MORAI to apply run-owned cleanup before
+            # the next sequence creates new runtime SpawnPoint IDs.
+            lifecycle = self.cfg.get('highway_npc', {}).get(
+                'spawn_point_lifecycle',
+                {},
+            )
+            cleanup_settle_sec = max(
+                0.0,
+                float(lifecycle.get('cleanup_settle_sec', 1.5)),
+            )
+            self.grpc.reset_actors(settle_sec=cleanup_settle_sec)
+        except Exception as e:
+            print(f'[FullLoop] run-owned SpawnPoint cleanup warning: {e}')
+        self.highway_spawn_points = []
+        self.highway_spawn_points_active = False
 
     def cleanup(self):
         super().cleanup()
@@ -1729,16 +1844,113 @@ class FullLoopAfterStaticScenario(FullLoopScenario):
             self.dump_route_debug()
 
 class FullLoopHighwayTunnelTestScenario(FullLoopAfterStaticScenario):
-    """Focused run from checkpoint 12 through the highway exit and tunnel."""
+    """Focused run from checkpoint 10 through the highway exit and tunnel."""
 
     scenario_name = "full_loop_highway_tunnel_test"
 
+    def highway_object_audit_enabled(self):
+        return bool(
+            self.cfg.get("highway_object_audit", {}).get("enabled", False)
+        )
+
+    def setup(self):
+        self.object_ghost_audit = None
+        super().setup()
+        if not self.highway_object_audit_enabled():
+            return
+
+        audit_cfg = dict(self.cfg.get("highway_object_audit", {}))
+        runtime_root = os.path.abspath(
+            self.global_cfg["paths"]["runtime_root"]
+        )
+        output_dir = os.path.abspath(
+            os.path.join(
+                runtime_root,
+                str(audit_cfg.get("output_subdir", "object_audit")),
+            )
+        )
+        if os.path.commonpath([runtime_root, output_dir]) != runtime_root:
+            raise RuntimeError(
+                f"Object audit output escapes runtime root: {output_dir}"
+            )
+        self.object_ghost_audit = ObjectGhostAudit(
+            grpc_client=self.grpc,
+            output_dir=output_dir,
+            run_instance_id=self.run_instance_id,
+            sample_period_sec=audit_cfg.get("sample_period_sec", 0.5),
+            match_distance_m=audit_cfg.get("match_distance_m", 5.0),
+            ros_max_age_sec=audit_cfg.get("ros_max_age_sec", 1.0),
+            candidate_samples=audit_cfg.get("candidate_samples", 3),
+        )
+        self.object_ghost_audit.start()
+
     def prepare_full_loop_route(self):
+        audit_enabled = self.highway_object_audit_enabled()
+        route_debug_enabled = bool(
+            self.cfg.get("route_debug_enabled", False)
+        )
+        if audit_enabled:
+            self.cfg["route_debug_enabled"] = False
         start_index = int(
-            self.cfg.get("highway_tunnel_test_start_path_index", 3231)
+            self.cfg.get("highway_tunnel_test_start_path_index", 2275)
         )
         self.cfg["after_static_start_path_index"] = start_index
-        super().prepare_full_loop_route()
+        try:
+            super().prepare_full_loop_route()
+        finally:
+            if audit_enabled:
+                self.cfg["route_debug_enabled"] = route_debug_enabled
+
+        if audit_enabled:
+            end_index = int(
+                self.cfg["highway_object_audit"].get(
+                    "end_path_index",
+                    3529,
+                )
+            )
+            if (
+                end_index <= start_index
+                or end_index >= len(self._full_route_points)
+            ):
+                raise RuntimeError(
+                    "Invalid highway object audit path range: "
+                    f"{start_index}..{end_index}"
+                )
+            local_end_index = end_index - start_index
+            self.route_points = self.route_points[: local_end_index + 1]
+            self.route_length_m = polyline_length(self.route_points)
+            last = self.route_points[-1]
+            previous = next(
+                point for point in reversed(self.route_points[:-1])
+                if math.hypot(
+                    point[0] - last[0],
+                    point[1] - last[1],
+                ) > 1e-3
+            )
+            self.goal_x, self.goal_y, self.goal_z = last[:3]
+            self.goal_yaw = math.degrees(
+                math.atan2(
+                    last[1] - previous[1],
+                    last[0] - previous[0],
+                )
+            )
+            endpoint_match = self._nearest_official_link(
+                self.goal_x,
+                self.goal_y,
+            )
+            if endpoint_match is not None:
+                self.end_link = self.route_links[endpoint_match[1]]
+            self.cfg["expert_is_closed_path"] = False
+            print(
+                "[FullLoopHighwayObjectAudit] route "
+                f"global_index={start_index}..{end_index}, "
+                f"length={self.route_length_m:.1f}m, "
+                f"goal=({self.goal_x:.2f},{self.goal_y:.2f}), "
+                f"end_link={self.end_link}; tunnel excluded"
+            )
+            if route_debug_enabled:
+                self.dump_route_debug()
+
         print(
             f"[FullLoopHighwayTunnelTest] start_path_index={start_index}, "
             f"start_yaw={self.start_tf.rotation.z:.1f}deg, "
@@ -1769,17 +1981,54 @@ class FullLoopHighwayTunnelTestScenario(FullLoopAfterStaticScenario):
         print("[FullLoopHighwayTunnelTest] roundabout traffic skipped")
 
     def spawn_highway_npcs(self):
-        cfg = self.cfg["highway_npc"]
-        model = str(cfg.get("model", "DEFAULT_SEDAN"))
-        if model not in self.vehicle_models():
-            raise RuntimeError(
-                f"Configured tunnel/highway NPC model is unavailable: {model}"
-            )
-        self.highway_fixed_model = model
-        self.highway_npc_planned_count = 0
-        self.highway_npcs_activated = True
-        self.highway_interaction_phase = "completed"
-        print(
-            f"[FullLoopHighwayTunnelTest] background highway traffic skipped; "
-            f"tunnel model={model}"
+        FullLoopScenario.spawn_highway_npcs(self)
+        event_text = (
+            "object audit ends before the tunnel"
+            if self.highway_object_audit_enabled()
+            else "tunnel event remains enabled"
         )
+        print(
+            f"[FullLoopHighwayTunnelTest] native highway SpawnPoints included; "
+            f"{event_text}"
+        )
+
+    def arm_tunnel_sudden_brake(self):
+        if not self.highway_object_audit_enabled():
+            return super().arm_tunnel_sudden_brake()
+        self.tunnel_npc = None
+        self.tunnel_event_phase = "disabled"
+        self.tunnel_event_result = {
+            "disabled_reason": "highway object audit ends before tunnel"
+        }
+        print("[FullLoopHighwayObjectAudit] tunnel event skipped")
+
+    def on_expert_timeline_tick(
+        self,
+        elapsed,
+        ego_state,
+        current_s,
+        remaining_s,
+    ):
+        super().on_expert_timeline_tick(
+            elapsed=elapsed,
+            ego_state=ego_state,
+            current_s=current_s,
+            remaining_s=remaining_s,
+        )
+        audit = getattr(self, "object_ghost_audit", None)
+        if audit is not None:
+            audit.sample(
+                elapsed=elapsed,
+                ego_state=ego_state,
+                current_s=current_s,
+            )
+
+    def cleanup(self):
+        audit = getattr(self, "object_ghost_audit", None)
+        if audit is not None:
+            try:
+                audit.stop()
+            except Exception as error:
+                print(f"[ObjectAudit] cleanup warning: {error}")
+            self.object_ghost_audit = None
+        super().cleanup()

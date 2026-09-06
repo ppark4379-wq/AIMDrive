@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 
 
 class _ActorHandleUnavailable:
@@ -137,25 +138,248 @@ class MoraiGrpcClient:
         def make_wrapper(name, original_fn):
             def wrapper(param):
                 response = original_fn(param)
+                if name == "spawn_vehicle":
+                    self._last_spawn_vehicle_response = response
                 if response is not None and response.status != STATUS_CODE_SUCCESS:
+                    custom_message = str(
+                        getattr(response, "custom_message", "")
+                    ).strip()
                     print(
                         f"[MORAI] {name} failed: status={response.status} "
-                        f"description={response.description!r}"
+                        f"description={response.description!r} "
+                        f"custom_message={custom_message!r}"
                     )
                 return response
 
             return wrapper
 
-        for method_name in ("spawn_vehicle", "spawn_pedestrian", "spawn_obstacle"):
+        for method_name in (
+            'spawn_vehicle',
+            'spawn_pedestrian',
+            'spawn_obstacle',
+            'create_vehicle_spawn_point',
+            'enable_spawn_point',
+        ):
             original = getattr(adapter, method_name)
             setattr(adapter, method_name, make_wrapper(method_name, original))
 
         adapter._scenario_runner_spawn_diagnostics_patched = True
 
-    def reset_actors(self):
-        if self.world is not None:
-            self.world.destroy_all_actors()
-            print("[MORAI] actors destroyed")
+    def reset_actors(self, settle_sec=0.0):
+        if self.world is None:
+            return False
+
+        from proto.morai.common.enum_pb2 import STATUS_CODE_SUCCESS
+        from proto.morai.common.type_pb2 import StringValue
+
+        param = StringValue()
+        param.value = self.client_key
+        response = self.world._sim_adapter.destroy_all_actors(param)
+        ok = response is not None and response.status == STATUS_CODE_SUCCESS
+        if not ok:
+            description = getattr(response, 'description', 'no response')
+            print(f"[MORAI] destroy_all_actors warning: {description}")
+
+        settle_sec = max(0.0, float(settle_sec))
+        if settle_sec > 0.0:
+            time.sleep(settle_sec)
+        print(
+            f"[MORAI] actors destroyed: ok={ok}, "
+            f"settle={settle_sec:.2f}s"
+        )
+        return ok
+
+    def get_all_vehicle_states(self):
+        """Return current vehicle states for spatially scoped cleanup."""
+        if self.world is None:
+            return []
+        try:
+            response = self.world.get_all_actors_state(
+                vehicle=True,
+                pedestrian=False,
+                obstacle=False,
+            )
+        except Exception as exc:
+            print(f"[MORAI] get_all_vehicle_states warning: {exc}")
+            return []
+        return list(getattr(response, "states", []))
+
+    def destroy_vehicle_by_id(self, actor_id):
+        """Destroy one explicitly identified non-Ego vehicle."""
+        if self.world is None:
+            return False
+        actor_id = str(actor_id or "").strip()
+        if not actor_id or actor_id.lower() == "ego":
+            return False
+
+        from proto.morai.common.enum_pb2 import (
+            OBJECT_TYPE_VEHICLE,
+            STATUS_CODE_SUCCESS,
+        )
+        from proto.morai.common.object_info_pb2 import ObjectInfo
+
+        info = ObjectInfo()
+        info.id.value = actor_id
+        info.object_type = OBJECT_TYPE_VEHICLE
+        info.client_key = self.client_key
+        try:
+            response = self.world._sim_adapter.destroy_actor(info)
+        except Exception as exc:
+            print(
+                f"[MORAI] destroy vehicle id={actor_id}: False ({exc})"
+            )
+            return False
+        ok = (
+            response is not None
+            and response.status == STATUS_CODE_SUCCESS
+        )
+        description = getattr(response, "description", "no response")
+        print(
+            f"[MORAI] destroy vehicle id={actor_id}: "
+            f"{ok} ({description})"
+        )
+        return ok
+
+    def create_vehicle_spawn_point(self, spec):
+        '''Create one native MORAI vehicle SpawnPoint from a YAML spec.'''
+        if self.world is None:
+            raise RuntimeError('world is None. Call start_world() first.')
+
+        from proto.morai.common.enum_pb2 import (
+            OBJECT_TYPE_SPAWN_POINT,
+            STATUS_CODE_SUCCESS,
+        )
+        from proto.morai.scenario.spawn_point_pb2 import (
+            CreateVehicleSpawnPointParam,
+        )
+
+        param = CreateVehicleSpawnPointParam()
+        info = param.spawn_point_info
+        reference_id = str(spec['id'])
+        # MORAI 26.R1 allocates the runtime SpawnPoint ID. Supplying the
+        # scenario JSON UNIQUEID here is rejected with status=0/Unknown error.
+        info.object_info.id.value = str(spec.get('request_id', ''))
+        info.object_info.object_type = OBJECT_TYPE_SPAWN_POINT
+        info.object_info.client_key = self.client_key
+        info.location.x = float(spec['position']['x'])
+        info.location.y = float(spec['position']['y'])
+        info.location.z = float(spec['position']['z'])
+        info.model_name = str(spec.get('model_name', ''))
+        info.pause = bool(spec.get('pause', False))
+
+        cfg = param.config
+        cfg.list_vehicle_length_type.extend(
+            int(value) for value in spec.get('vehicle_length_types', [2])
+        )
+        cfg.is_close_loop = bool(spec.get('is_close_loop', False))
+        cfg.is_lane_change = bool(spec.get('is_lane_change', False))
+        cfg.parameter_type = int(spec.get('parameter_type', 2))
+        cfg.maximum_spawn_vehicle = int(spec['maximum_spawn_vehicle'])
+        cfg.min_spawn_period = float(spec['min_spawn_period_sec'])
+        cfg.max_spawn_period = float(spec['max_spawn_period_sec'])
+        cfg.spawn_velocity_type = int(spec.get('spawn_velocity_type', 2))
+        cfg.min_spawn_velocity_custom = float(
+            spec.get('min_spawn_velocity_custom_kmh', 0.0)
+        )
+        cfg.max_spawn_velocity_custom = float(
+            spec.get('max_spawn_velocity_custom_kmh', 0.0)
+        )
+        cfg.min_spawn_velocity_link = float(
+            spec.get('min_spawn_velocity_link_percent', 0.0)
+        )
+        cfg.max_spawn_velocity_link = float(
+            spec.get('max_spawn_velocity_link_percent', 0.0)
+        )
+        cfg.desired_velocity_type = int(spec.get('desired_velocity_type', 2))
+        cfg.min_desired_velocity_custom = float(
+            spec['min_desired_velocity_custom_kmh']
+        )
+        cfg.max_desired_velocity_custom = float(
+            spec['max_desired_velocity_custom_kmh']
+        )
+        cfg.min_desired_velocity_link = float(
+            spec.get('min_desired_velocity_link_percent', 0.0)
+        )
+        cfg.max_desired_velocity_link = float(
+            spec.get('max_desired_velocity_link_percent', 0.0)
+        )
+        cfg.destination_obj_unique_id = int(spec['destination_id'])
+        cfg.start_link_info.id.value = str(spec['start_link']['id'])
+        cfg.start_link_info.waypoint_idx = int(spec['start_link']['point_idx'])
+        cfg.end_link_info.id.value = str(spec['end_link']['id'])
+        cfg.end_link_info.waypoint_idx = int(spec['end_link']['point_idx'])
+        cfg.lateral_bias_mode = int(spec.get('lateral_bias_mode', 1))
+        cfg.min_lateral_bias = float(spec.get('min_lateral_bias_m', 0.0))
+        cfg.max_lateral_bias = float(spec.get('max_lateral_bias_m', 0.0))
+
+        spawn_name = spec.get('name', reference_id)
+        response = self.world._sim_adapter.create_vehicle_spawn_point(param)
+        if response is None or response.status != STATUS_CODE_SUCCESS:
+            description = getattr(response, 'description', 'no response')
+            print(
+                f'[SpawnPoint] create {spawn_name}: '
+                f'False ({description})'
+            )
+            return None
+
+        # EnableSpawnPoint must use the runtime ID allocated by MORAI.
+        spawn_point_id = str(getattr(response, 'custom_message', '')).strip()
+        if not spawn_point_id:
+            print(
+                f'[SpawnPoint] create {spawn_name}: '
+                f'False (MORAI returned no runtime ID)'
+            )
+            return None
+
+        print(
+            f'[SpawnPoint] create {spawn_name}: True, '
+            f'reference_id={reference_id}, runtime_id={spawn_point_id}, period='
+            f'{cfg.min_spawn_period:.1f}-{cfg.max_spawn_period:.1f}s, '
+            f'desired={cfg.min_desired_velocity_custom:.1f}-'
+            f'{cfg.max_desired_velocity_custom:.1f}km/h, '
+            f'lane_change={cfg.is_lane_change}'
+        )
+        return spawn_point_id
+
+    def enable_vehicle_spawn_point(
+        self,
+        spawn_point_id,
+        enabled,
+        attempts=1,
+        retry_delay_sec=0.0,
+    ):
+        if self.world is None:
+            return False
+        spawn_point_id = str(spawn_point_id)
+        attempts = max(1, int(attempts))
+        retry_delay_sec = max(0.0, float(retry_delay_sec))
+
+        for attempt in range(1, attempts + 1):
+            try:
+                ok = bool(
+                    self.world.enable_spawn_point(
+                        spawn_point_id,
+                        bool(enabled),
+                    )
+                )
+            except Exception as exc:
+                ok = False
+                print(
+                    f'[SpawnPoint] enable exception id={spawn_point_id}, '
+                    f'active={bool(enabled)}, attempt={attempt}/{attempts}: '
+                    f'{exc}'
+                )
+
+            print(
+                f'[SpawnPoint] enable id={spawn_point_id}, '
+                f'active={bool(enabled)}, attempt={attempt}/{attempts}: {ok}'
+            )
+            if ok:
+                return True
+            if attempt < attempts and retry_delay_sec > 0.0:
+                time.sleep(retry_delay_sec)
+
+        return False
 
     def get_ego(self):
         if self.world is None:
@@ -382,14 +606,74 @@ class MoraiGrpcClient:
         print(f"[Ego] set_gear D: {ok}")
         return ok
 
-    def spawn_vehicle(self, transform, model_name, label, velocity=0.0, multi_ego=True):
+    def get_vehicle_by_id_if_present(self, actor_id):
+        """Return a handle when MORAI owns actor_id, otherwise None.
+
+        SpawnVehicle can occasionally create an actor server-side while its RPC
+        result reports Unknown error. A deterministic request ID lets the
+        scenario recover that actor instead of spawning a duplicate.
+        """
+        actor_id = str(actor_id or "").strip()
+        if self.world is None or not actor_id:
+            return None
+
+        from api.vehicle import Vehicle
+
+        actor = Vehicle(self.world._sim_adapter, self.client_key, actor_id)
+        try:
+            state = actor.get_actor_state()
+        except Exception as exc:
+            print(f"[MORAI] actor lookup {actor_id}: unavailable ({exc})")
+            return None
+        if state is None:
+            return None
+
+        returned_id = str(
+            getattr(
+                getattr(getattr(state, "actor_info", None), "id", None),
+                "value", "",
+            )
+        ).strip()
+        if returned_id and returned_id != actor_id:
+            return None
+        self.world._actors[actor_id] = actor
+        print(f"[MORAI] recovered existing vehicle actor_id={actor_id}")
+        return actor
+
+    def spawn_vehicle(
+        self,
+        transform,
+        model_name,
+        label,
+        velocity=0.0,
+        multi_ego=True,
+        request_id="",
+        recover_ambiguous=False,
+        lookup_before_create=True,
+    ):
+        request_id = str(request_id or "").strip()
+        if recover_ambiguous and request_id and lookup_before_create:
+            existing = self.get_vehicle_by_id_if_present(request_id)
+            if existing is not None:
+                print(f"[Spawn] vehicle {label}: recovered-before-create")
+                return existing
+
         vehicle = self.world.spawn_vehicle(
             transform=transform,
             model_name=model_name,
             label=label,
+            request_id=request_id,
             velocity=velocity,
             multi_ego=multi_ego,
         )
+        if vehicle is None and recover_ambiguous and request_id:
+            # Give MORAI time to publish an actor that was created despite an
+            # ambiguous RPC failure response.
+            time.sleep(0.35)
+            vehicle = self.get_vehicle_by_id_if_present(request_id)
+            if vehicle is not None:
+                print(f"[Spawn] vehicle {label}: recovered-after-create")
+                return vehicle
         print(f"[Spawn] vehicle {label}: {vehicle is not None}")
         return vehicle
 
@@ -403,6 +687,13 @@ class MoraiGrpcClient:
         move_dist=20.0,
         start_action=False,
     ):
+        before_ids = {
+            str(state.actor_info.id.value)
+            for state in self.get_all_pedestrian_states()
+            if str(state.actor_info.id.value).strip()
+        }
+        spawn_x = float(transform.location.x)
+        spawn_y = float(transform.location.y)
         pedestrian = self.world.spawn_pedestrian(
             transform=transform,
             model_name=model_name,
@@ -412,6 +703,31 @@ class MoraiGrpcClient:
             move_dist=float(move_dist),
             start_action=bool(start_action),
         )
+        if pedestrian is None:
+            # MORAI 26.R1 can create the pedestrian server-side while returning
+            # status=0/Unknown error with no actor ID. Poll the actual actor
+            # list before trying another model so no untracked actor remains
+            # at the crossing start and permanently blocks the EGO.
+            for attempt in range(5):
+                if attempt:
+                    time.sleep(0.1)
+                pedestrian = self.find_spawned_pedestrian_near(
+                    spawn_x,
+                    spawn_y,
+                    max_dist_m=3.0,
+                    exclude_ids=before_ids,
+                )
+                if pedestrian is not None:
+                    setattr(
+                        pedestrian,
+                        "_scenario_runner_ambiguous_recovery",
+                        True,
+                    )
+                    print(
+                        f"[Spawn] pedestrian {label}: "
+                        "recovered-after-create"
+                    )
+                    return pedestrian
         print(f"[Spawn] pedestrian {label}: {pedestrian is not None}")
         return pedestrian
 
@@ -490,34 +806,99 @@ class MoraiGrpcClient:
         print(f"[Spawn] pedestrian_with_waypoints {label} dest=({dest_x:.2f},{dest_y:.2f}): ok")
         return ped
 
-    def find_spawned_pedestrian_near(self, x, y, max_dist_m=5.0):
-        from api.pedestrian import Pedestrian
+    def get_all_pedestrian_states(self):
+        if self.world is None:
+            return []
         try:
-            states = self.world.get_all_actors_state(vehicle=False, pedestrian=True, obstacle=False)
-        except Exception as e:
-            print(f"[Spawn] pedestrian actor search failed: {e}")
-            return None
-        if states is None:
-            return None
+            response = self.world.get_all_actors_state(
+                vehicle=False,
+                pedestrian=True,
+                obstacle=False,
+            )
+        except Exception as exc:
+            print(f"[Spawn] pedestrian actor search failed: {exc}")
+            return []
+        return list(getattr(response, "states", []))
 
+    def find_spawned_pedestrian_near(
+        self,
+        x,
+        y,
+        max_dist_m=5.0,
+        exclude_ids=None,
+    ):
+        from api.pedestrian import Pedestrian
+
+        excluded = {str(value) for value in (exclude_ids or ())}
         best = None
         best_dist = float("inf")
-        for state in states.states:
-            actor_id = state.actor_info.id.value
-            if not actor_id:
+        for state in self.get_all_pedestrian_states():
+            actor_id = str(state.actor_info.id.value).strip()
+            if not actor_id or actor_id in excluded:
                 continue
             dx = float(state.transform.location.x) - float(x)
             dy = float(state.transform.location.y) - float(y)
             dist = (dx * dx + dy * dy) ** 0.5
-            if dist < best_dist:
+            if dist <= float(max_dist_m) and dist < best_dist:
                 best = actor_id
                 best_dist = dist
 
-        if best is None or best_dist > float(max_dist_m):
+        if best is None:
             return None
-        ped = Pedestrian(self.world._sim_adapter, self.world._client_key, best)
+        ped = Pedestrian(self.world._sim_adapter, self.client_key, best)
         self.world._actors[best] = ped
         return ped
+
+    def destroy_pedestrian_by_id(self, actor_id):
+        if self.world is None:
+            return False
+        actor_id = str(actor_id or "").strip()
+        if not actor_id:
+            return False
+
+        from proto.morai.common.enum_pb2 import (
+            OBJECT_TYPE_PEDESTRIAN,
+            STATUS_CODE_SUCCESS,
+        )
+        from proto.morai.common.object_info_pb2 import ObjectInfo
+
+        info = ObjectInfo()
+        info.id.value = actor_id
+        info.object_type = OBJECT_TYPE_PEDESTRIAN
+        info.client_key = self.client_key
+        try:
+            response = self.world._sim_adapter.destroy_actor(info)
+        except Exception as exc:
+            print(f"[MORAI] destroy pedestrian id={actor_id}: False ({exc})")
+            return False
+        ok = response is not None and response.status == STATUS_CODE_SUCCESS
+        if ok:
+            self.world._actors.pop(actor_id, None)
+        description = getattr(response, "description", "no response")
+        print(
+            f"[MORAI] destroy pedestrian id={actor_id}: "
+            f"{ok} ({description})"
+        )
+        return ok
+
+    def destroy_pedestrians_near(self, x, y, max_dist_m=3.0):
+        removed = []
+        for state in self.get_all_pedestrian_states():
+            actor_id = str(state.actor_info.id.value).strip()
+            if not actor_id:
+                continue
+            dx = float(state.transform.location.x) - float(x)
+            dy = float(state.transform.location.y) - float(y)
+            if (dx * dx + dy * dy) ** 0.5 > float(max_dist_m):
+                continue
+            if self.destroy_pedestrian_by_id(actor_id):
+                removed.append(actor_id)
+        if removed:
+            print(
+                f"[MORAI] cleared stale dynamic pedestrians near "
+                f"({float(x):.2f},{float(y):.2f}): {removed}"
+            )
+        return removed
 
     def set_pedestrian_waypoint(self, pedestrian, dest_x, dest_y, dest_z, speed):
         """보행자에게 월드 좌표 목적지를 지정해 이동시킴 (SetPedestrianWaypoint RPC)."""
@@ -736,13 +1117,36 @@ class MoraiGrpcClient:
         print(f"[Vehicle] set_physics {enabled}: {ok}")
         return ok
 
-    def set_vehicle_ai(self, vehicle, enabled):
+    def set_vehicle_ai(
+        self,
+        vehicle,
+        enabled,
+        attempts=1,
+        retry_delay_sec=0.0,
+    ):
         if vehicle is None or not hasattr(vehicle, "set_ai"):
             return False
 
-        ok = vehicle.set_ai(bool(enabled))
-        print(f"[Vehicle] set_ai {enabled}: {ok}")
-        return ok
+        attempts = max(1, int(attempts))
+        retry_delay_sec = max(0.0, float(retry_delay_sec))
+        for attempt in range(1, attempts + 1):
+            try:
+                ok = bool(vehicle.set_ai(bool(enabled)))
+            except Exception as exc:
+                ok = False
+                print(
+                    f"[Vehicle] set_ai {enabled} exception "
+                    f"attempt={attempt}/{attempts}: {exc}"
+                )
+            print(
+                f"[Vehicle] set_ai {enabled} "
+                f"attempt={attempt}/{attempts}: {ok}"
+            )
+            if ok:
+                return True
+            if attempt < attempts and retry_delay_sec > 0.0:
+                time.sleep(retry_delay_sec)
+        return False
 
     def stop_vehicle(self, vehicle):
         if vehicle is None:
