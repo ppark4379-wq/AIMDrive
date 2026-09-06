@@ -4,8 +4,11 @@ import heapq
 import bisect
 import zlib
 import math
+import os
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
+
+import yaml
 
 
 @dataclass(frozen=True)
@@ -23,13 +26,75 @@ class RouteProgress:
     route_link_index: int
     current_link_id: str
     distance_to_route_m: float
+    near_x: float
+    near_y: float
+    near_route_index: int
     target_x: float
     target_y: float
     target_route_index: int
     command: int
+    gt_command: int
     is_junction: bool
     distance_to_stopline_m: Optional[float]
     affected_light_id: Optional[str]
+    future_waypoints: List[List[float]]
+
+
+def load_official_route(route_definition_path: str, global_path_path: str,
+                        route_key: str = "full_loop") -> dict:
+    """Load the exact route links and dense path used by Scenario Runner.
+
+    Unlike a checkpoint route, this function never performs link matching or a
+    shortest-path search.  The two Scenario Runner files are the source of
+    truth, so collector labels cannot silently take a different branch.
+    """
+    with open(route_definition_path, encoding="utf-8-sig") as f:
+        definitions = yaml.safe_load(f) or {}
+    definition = definitions.get(route_key)
+    if not isinstance(definition, dict):
+        raise ValueError(
+            f"route definition '{route_key}' not found: {route_definition_path}"
+        )
+
+    link_ids = [str(link_id) for link_id in definition.get("route_links", [])]
+    if len(link_ids) < 2:
+        raise ValueError(f"official route needs at least two links: {route_key}")
+
+    waypoints = []
+    with open(global_path_path, encoding="utf-8-sig") as f:
+        for line_no, line in enumerate(f, 1):
+            text = line.strip()
+            if not text or text.startswith("#"):
+                continue
+            fields = text.split()
+            if len(fields) < 2:
+                raise ValueError(
+                    f"{global_path_path}:{line_no}: expected x y [z]"
+                )
+            waypoints.append([
+                float(fields[0]), float(fields[1]),
+                float(fields[2]) if len(fields) >= 3 else 0.0,
+            ])
+    if len(waypoints) < 2:
+        raise ValueError(f"official global path is empty: {global_path_path}")
+
+    for checkpoint in definition.get("checkpoints", []):
+        index = int(checkpoint["path_index"])
+        if index < 0 or index >= len(waypoints):
+            raise ValueError(
+                f"checkpoint {checkpoint.get('id')} has invalid path_index={index}"
+            )
+
+    return {
+        "route_id": route_key,
+        "map_id": definition.get("map_name"),
+        "route_source": "scenario_runner_official",
+        "route_definition_source": os.path.abspath(route_definition_path),
+        "global_path_source": os.path.abspath(global_path_path),
+        "nav_link_ids": link_ids,
+        "nav_waypoints": waypoints,
+        "checkpoints": definition.get("checkpoints", []),
+    }
 
 
 def stable_mgeo_id(value: Optional[str]) -> int:
@@ -92,9 +157,17 @@ class MGeoMap:
             with open(node_set_path, encoding="utf-8") as f:
                 self.nodes = {str(node["idx"]): node for node in json.load(f)}
         self.grid_size_m = grid_size_m
+        self.incoming_by_node: Dict[str, List[str]] = {}
+        self.outgoing_by_node: Dict[str, List[str]] = {}
         self._segments: List[Tuple[str, float, float, float, float, float]] = []
         self._grid: Dict[Tuple[int, int], List[int]] = {}
         for link in links:
+            self.outgoing_by_node.setdefault(str(link.get("from_node_idx")), []).append(
+                str(link["idx"])
+            )
+            self.incoming_by_node.setdefault(str(link.get("to_node_idx")), []).append(
+                str(link["idx"])
+            )
             for a, b in zip(link.get("points", []), link.get("points", [])[1:]):
                 ax, ay = float(a[0]), float(a[1])
                 dx, dy = float(b[0]) - ax, float(b[1]) - ay
@@ -245,6 +318,8 @@ class MGeoRouteTracker:
 
     def __init__(self, mgeo_map: MGeoMap, route_metadata: dict,
                  target_distance_m: float = 25.0,
+                 near_distance_m: float = 4.0,
+                 traffic_light_lookahead_m: float = 45.0,
                  command_lookahead_m: float = 30.0,
                  initial_route_index: Optional[int] = None):
         self.map = mgeo_map
@@ -252,18 +327,43 @@ class MGeoRouteTracker:
         if not self.link_ids:
             raise ValueError("route has no nav_link_ids")
         self.target_distance_m = target_distance_m
+        # LMDrive RoutePlanner(4.0, 50)는 지나간 route point 제거 threshold에
+        # 가깝다. MORAI route는 0.5 m dense point라서 현재 index 기준 약 4 m
+        # 앞 tracking point를 near_node로 쓰는 의도적 compatibility approximation이다.
+        self.near_distance_m = near_distance_m
+        self.traffic_light_lookahead_m = traffic_light_lookahead_m
+        # Kept for callers that still pass the legacy argument. Commands are
+        # now pre-annotated per link and no longer searched 30 m ahead.
         self.command_lookahead_m = command_lookahead_m
-        self.points: List[Tuple[float, float]] = []
-        self.point_link_indices: List[int] = []
-        self.link_end_point_indices: List[int] = []
+        missing = [link_id for link_id in self.link_ids if link_id not in mgeo_map.links]
+        if missing:
+            raise ValueError(f"route contains unknown MGeo links: {missing}")
+
+        self.points: List[Tuple[float, float]] = [
+            (float(point[0]), float(point[1]))
+            for point in route_metadata.get("nav_waypoints", [])
+        ]
+        reference_points: List[Tuple[float, float]] = []
+        reference_link_indices: List[int] = []
+        reference_link_end_distances: List[float] = []
+        reference_distance = 0.0
         for link_index, link_id in enumerate(self.link_ids):
             points = mgeo_map.links[link_id].get("points", [])
-            if self.points and points and self.points[-1] == tuple(points[0][:2]):
-                points = points[1:]
             for point in points:
-                self.points.append((float(point[0]), float(point[1])))
-                self.point_link_indices.append(link_index)
-            self.link_end_point_indices.append(len(self.points) - 1)
+                xy = (float(point[0]), float(point[1]))
+                if reference_points:
+                    reference_distance += math.hypot(
+                        xy[0] - reference_points[-1][0],
+                        xy[1] - reference_points[-1][1],
+                    )
+                reference_points.append(xy)
+                reference_link_indices.append(link_index)
+            reference_link_end_distances.append(reference_distance)
+
+        if not self.points:
+            # Checkpoint-route compatibility fallback. Official Scenario Runner
+            # routes always provide nav_waypoints and therefore never enter here.
+            self.points = reference_points
         if not self.points:
             raise ValueError("route has no points")
         self.cumulative_m = [0.0]
@@ -271,6 +371,48 @@ class MGeoRouteTracker:
             self.cumulative_m.append(
                 self.cumulative_m[-1] + math.hypot(b[0] - a[0], b[1] - a[1])
             )
+
+        # The current K-City official global path is the exact concatenation of
+        # route link points. Keep that exact per-point association when possible.
+        exact_official_alignment = len(self.points) == len(reference_points) and all(
+            math.hypot(point[0] - reference[0], point[1] - reference[1]) <= 1e-3
+            for point, reference in zip(self.points, reference_points)
+        )
+        if (route_metadata.get("route_source") == "scenario_runner_official" and
+                not exact_official_alignment):
+            raise ValueError(
+                "official global path does not match the selected MGeo link_set; "
+                "use the same map data as Scenario Runner"
+            )
+        if exact_official_alignment:
+            self.point_link_indices = reference_link_indices
+        else:
+            # Generic precomputed dense routes may resample the same MGeo path.
+            # Associate them monotonically by route distance instead of doing a
+            # new spatial link search at crossings.
+            self.point_link_indices = [
+                min(
+                    bisect.bisect_left(reference_link_end_distances, distance),
+                    len(self.link_ids) - 1,
+                )
+                for distance in self.cumulative_m
+            ]
+        self.link_end_point_indices = []
+        for link_index in range(len(self.link_ids)):
+            indices = [
+                index for index, value in enumerate(self.point_link_indices)
+                if value == link_index
+            ]
+            self.link_end_point_indices.append(
+                indices[-1] if indices else (
+                    self.link_end_point_indices[-1]
+                    if self.link_end_point_indices else 0
+                )
+            )
+        self.point_road_options = [
+            self._link_command(self.link_ids[link_index])
+            for link_index in self.point_link_indices
+        ]
         if initial_route_index is not None and initial_route_index < 0:
             raise ValueError("initial_route_index must be >= 0")
         self._route_index: Optional[int] = initial_route_index
@@ -294,30 +436,119 @@ class MGeoRouteTracker:
             + 2.0 * self.map._angle_error(self._point_heading(i), heading_rad)
         ))
 
-    def _command(self, route_index: int) -> int:
-        current_distance = self.cumulative_m[route_index]
-        end = bisect.bisect_right(
-            self.cumulative_m, current_distance + self.command_lookahead_m
-        )
-        seen = set()
-        for point_index in range(route_index, min(end, len(self.points))):
-            link_index = self.point_link_indices[point_index]
-            if link_index in seen:
-                continue
-            seen.add(link_index)
-            signal = str(self.map.links[self.link_ids[link_index]].get("related_signal") or "")
-            if "left" in signal:
-                return self.COMMAND_LEFT
-            if "right" in signal:
-                return self.COMMAND_RIGHT
-            if signal == "straight":
-                return self.COMMAND_STRAIGHT
+    def _link_command(self, link_id: str) -> int:
+        """Annotate a route link once with LMDrive RoadOption semantics."""
+        signal = str(self.map.links[link_id].get("related_signal") or "").lower()
+        if "left" in signal:
+            return self.COMMAND_LEFT
+        if "right" in signal:
+            return self.COMMAND_RIGHT
+        if signal == "straight":
+            return self.COMMAND_STRAIGHT
         return self.COMMAND_LANEFOLLOW
+
+    def get_future_waypoints(self, route_index: int,
+                             count: int = 50) -> List[List[float]]:
+        """Return the planned dense route ahead, never future Ego samples."""
+        start = route_index
+        end = min(route_index + count, len(self.points))
+        return [
+            [
+                float(self.points[index][0]),
+                float(self.points[index][1]),
+                int(self.point_road_options[index]),
+            ]
+            for index in range(start, end)
+        ]
+
+    def _index_at_distance_ahead(self, route_index: int, distance_m: float) -> int:
+        target_distance = self.cumulative_m[route_index] + distance_m
+        return min(
+            bisect.bisect_left(self.cumulative_m, target_distance),
+            len(self.points) - 1,
+        )
+
+    def _nearest_route_index_from(self, x: float, y: float,
+                                  start_index: int, max_ahead_m: float = 80.0) -> int:
+        end_distance = self.cumulative_m[start_index] + max_ahead_m
+        end = bisect.bisect_right(self.cumulative_m, end_distance)
+        candidates = range(start_index, max(start_index + 1, end))
+        return min(
+            candidates,
+            key=lambda i: math.hypot(self.points[i][0] - x, self.points[i][1] - y),
+        )
+
+    def hazard_actor_ids(self, actors: List[object], ego_x: float, ego_y: float,
+                         ego_heading_rad: float, route_index: int,
+                         is_junction: bool) -> Dict[str, List[int]]:
+        """Approximate LMDrive hazard lists with MORAI object poses and route topology."""
+        result = {
+            "vehicle": [],
+            "lane_vehicle": [],
+            "junction_vehicle": [],
+            "pedestrian": [],
+            "bike": [],
+        }
+        ego_forward = (math.cos(ego_heading_rad), math.sin(ego_heading_rad))
+        ego_link_index = self.point_link_indices[route_index]
+        ego_speed_gate_m = 30.0
+        for actor in actors:
+            dx = float(actor.x) - ego_x
+            dy = float(actor.y) - ego_y
+            distance = math.hypot(dx, dy)
+            if distance > 50.0:
+                continue
+            longitudinal = dx * ego_forward[0] + dy * ego_forward[1]
+            if longitudinal < -5.0:
+                continue
+
+            actor_index = self._nearest_route_index_from(
+                float(actor.x), float(actor.y), route_index
+            )
+            actor_link_index = self.point_link_indices[actor_index]
+            actor_route_distance = (
+                self.cumulative_m[actor_index] - self.cumulative_m[route_index]
+            )
+            lateral_error = math.hypot(
+                self.points[actor_index][0] - float(actor.x),
+                self.points[actor_index][1] - float(actor.y),
+            )
+
+            if actor.obj_type == "vehicle":
+                same_link = actor_link_index == ego_link_index
+                ahead_on_route = 0.0 <= actor_route_distance <= ego_speed_gate_m
+                same_lane_like = ahead_on_route and lateral_error <= 3.5
+                crossing_in_junction = (
+                    is_junction and distance <= 20.0 and longitudinal > -2.0
+                    and lateral_error <= 8.0
+                )
+                if same_lane_like:
+                    result["vehicle"].append(int(actor.obj_id))
+                    if same_link:
+                        result["lane_vehicle"].append(int(actor.obj_id))
+                elif crossing_in_junction:
+                    result["vehicle"].append(int(actor.obj_id))
+                    result["junction_vehicle"].append(int(actor.obj_id))
+            elif actor.obj_type == "pedestrian":
+                if 0.0 <= longitudinal <= 15.0 and lateral_error <= 6.0:
+                    result["pedestrian"].append(int(actor.obj_id))
+        return result
+
+    def _is_topology_junction(self, link_index: int) -> bool:
+        link = self.map.links[self.link_ids[link_index]]
+        from_node = str(link.get("from_node_idx"))
+        to_node = str(link.get("to_node_idx"))
+        return (
+            bool(link.get("related_signal")) or
+            len(self.map.incoming_by_node.get(from_node, [])) > 1 or
+            len(self.map.outgoing_by_node.get(from_node, [])) > 1 or
+            len(self.map.incoming_by_node.get(to_node, [])) > 1 or
+            len(self.map.outgoing_by_node.get(to_node, [])) > 1
+        )
 
     def _road_semantics(self, route_index: int):
         current_link_index = self.point_link_indices[route_index]
-        current_link = self.map.links[self.link_ids[current_link_index]]
-        is_junction = bool(current_link.get("related_signal"))
+        is_junction = self._is_topology_junction(current_link_index)
         distance_to_stopline = None
         affected_light_id = None
         for link_index in range(current_link_index, len(self.link_ids)):
@@ -328,20 +559,20 @@ class MGeoRouteTracker:
                 distance_to_stopline = max(
                     0.0, self.cumulative_m[end_index] - self.cumulative_m[route_index]
                 )
-                affected_light_id = node.get("traffic_light_id")
-                break
+                affected_light_id = node.get("traffic_light_id") or None
+                if affected_light_id:
+                    break
             if self.cumulative_m[self.link_end_point_indices[link_index]] - \
-                    self.cumulative_m[route_index] > 100.0:
+                    self.cumulative_m[route_index] > self.traffic_light_lookahead_m:
                 break
         return is_junction, distance_to_stopline, affected_light_id
 
     def update(self, x: float, y: float, heading_rad: float) -> RouteProgress:
         self._route_index = self._nearest_index(x, y, heading_rad)
-        target_distance = self.cumulative_m[self._route_index] + self.target_distance_m
-        target_index = min(
-            bisect.bisect_left(self.cumulative_m, target_distance), len(self.points) - 1
-        )
+        near_index = self._index_at_distance_ahead(self._route_index, self.near_distance_m)
+        target_index = self._index_at_distance_ahead(self._route_index, self.target_distance_m)
         px, py = self.points[self._route_index]
+        near_x, near_y = self.points[near_index]
         target_x, target_y = self.points[target_index]
         link_index = self.point_link_indices[self._route_index]
         is_junction, distance_to_stopline, affected_light_id = \
@@ -351,11 +582,16 @@ class MGeoRouteTracker:
             route_link_index=link_index,
             current_link_id=self.link_ids[link_index],
             distance_to_route_m=math.hypot(px - x, py - y),
+            near_x=near_x,
+            near_y=near_y,
+            near_route_index=near_index,
             target_x=target_x,
             target_y=target_y,
             target_route_index=target_index,
-            command=self._command(self._route_index),
+            command=self.point_road_options[near_index],
+            gt_command=self.point_road_options[self._route_index],
             is_junction=is_junction,
             distance_to_stopline_m=distance_to_stopline,
             affected_light_id=affected_light_id,
+            future_waypoints=self.get_future_waypoints(self._route_index),
         )

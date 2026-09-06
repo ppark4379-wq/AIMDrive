@@ -54,20 +54,22 @@ LMDrive loader가 기본값 없이 조회하므로 아래 필드는 모든 프�
 | 필드 | Phase | 값 |
 |---|---|---|
 | `x`, `y`, `gps_x`, `gps_y`, `theta`, `speed` | 1 | ego 위치·heading·속도 |
-| `command`, `x_command`, `y_command` | 1 | MGeo 명령과 약 25m 앞 목표점 |
+| `command`, `gt_command`, `x_command`, `y_command` | 1 | dense route RoadOption과 약 25m 앞 목표점 |
+| `near_node_x/y`, `far_node_x/y` | 1 | near는 약 4m 앞 tracking point, far는 `x_command/y_command`와 동일 |
 | `is_red_light_present` | 1.5 | 신호등 리스트 |
 | `is_junction`, `stop_sign`, `affected_light_id` | 2 | MGeo 도로 의미, stop sign만 0 |
-| `is_vehicle_present`, `is_pedestrian_present` 등 | 2 | 객체 타입에서 파생 |
+| `is_vehicle_present`, `is_lane_vehicle_present`, `is_pedestrian_present` 등 | 2 | ego 진행 경로와 충돌 가능한 actor ID |
 | `actors_data` | 2 | 객체별 위치·방향·크기·속도·타입 |
-| `future_waypoints` | 2 | 종료 시 최대 50개 미래 프레임 backfill |
+| `future_waypoints` | 2 | 현재 official dense route의 앞쪽 최대 50개 point |
 
 `gps_x/gps_y`는 raw 위경도를 `global_info.json`의 CRS로 투영한 뒤
 `local_origin_in_global`을 차감한 MGeo local 좌표입니다. 지도 정보가 없을 때만 Ego
-`x/y`를 fallback으로 사용하고 경고를 출력합니다.
+`x/y`를 fallback으로 사용하고 경고를 출력합니다. Scenario Runner map 폴더처럼
+`global_info.json`이 분리되어 있으면 `collect.py --global-info <path>`로 명시합니다.
 
 `measurements_all.json`은 route 전체 프레임의 `gps_x`, `gps_y`, `theta`, `speed`를
-모읍니다. `future_waypoints`는 수집 종료 시 각 프레임부터 최대 50개 미래 프레임의
-`[gps_x, gps_y, command]`로 채웁니다.
+모읍니다. `future_waypoints`는 수집 시점의 route index부터 최대 50개 planned point의
+`[x, y, RoadOption]`으로 채웁니다.
 
 gRPC 원본의 `frame_count`와 `elapsed_time`은 각각 `grpc_frame_count_raw`,
 `grpc_elapsed_time_raw` 진단 필드로만 보존합니다. 데이터 프레임 순서는 `frame_id`, 시간축은

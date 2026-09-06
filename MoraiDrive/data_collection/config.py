@@ -31,6 +31,7 @@ class ROSConfig:
     ego_buffer_size: int = 200            # 센서 timestamp에 가장 가까운 Ego 선택용 이력
     object_buffer_size: int = 200
     traffic_light_buffer_size: int = 200
+    traffic_light_max_age_sec: float = 1.0
     control_buffer_size: int = 200
     target_velocity_buffer_size: int = 200
     control_max_steer_deg: float = 40.0

@@ -159,7 +159,9 @@ class MoraiMVDetDataset(BaseIODataset):
         if np.any(np.isnan(local_command_point)):
             local_command_point[np.isnan(local_command_point)] = np.mean(local_command_point)
 
-        # command_waypoints: measurements_all.json에서 미래 프레임 위치를 직접 참조
+        # LMDrive 원본과 동일한 별도 GRU waypoint target이다. 수집 frame의
+        # 실제 미래 Ego 위치를 사용하며, planned dense route를 담는
+        # measurements["future_waypoints"]와 혼동하지 않는다.
         command_waypoints = []
         for i in range(5):
             fid = min(len(measurements_all) - 1, frame_id + self.waypoint_interval * (i + 1))
