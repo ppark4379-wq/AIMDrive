@@ -57,10 +57,13 @@ class AutonomousDriving:
         self.max_steering = config['common']['max_steering'] / 180.0 * np.pi
         self.steering_sign = float(config['common'].get('steering_sign', 1.0))
         self.previous_front_steer_rad = 0.0
+        self.previous_target_velocity = None
+        self.previous_acc_cmd = 0.0
 
     def execute(self, vehicle_state, dynamic_object_list, current_traffic_light):
         # 현재 위치 기반으로 local path과 planned velocity 추출
         local_path, planned_velocity = self.path_manager.get_local_path(vehicle_state)
+        profile_planned_velocity = planned_velocity
 
         # 전방 장애물 인지
         self.forward_object_detector._dynamic_object_list = dynamic_object_list
@@ -79,10 +82,18 @@ class AutonomousDriving:
             vehicle_state, local_path, planning_object_info_dic_list
         )
         planning_path = lattice_result.path
+        planned_velocity = self._merge_ego_curvature_speed_floor(
+            planned_velocity,
+            vehicle_state.velocity,
+            lattice_result,
+        )
 
         # adaptive cruise control를 활용한 속도 계획
+        legacy_acc_entries = self._legacy_acc_entries(
+            lattice_result, forward_object_info_dic_list
+        )
         self.adaptive_cruise_control.check_object(
-            planning_path, forward_object_info_dic_list, current_traffic_light
+            planning_path, legacy_acc_entries, current_traffic_light
         )
         target_velocity = self.adaptive_cruise_control.get_target_velocity(vehicle_state.velocity, planned_velocity)
         signal_target_velocity = self.traffic_light_stop_controller.get_target_velocity(
@@ -102,11 +113,23 @@ class AutonomousDriving:
             lattice_target_velocity,
             getattr(lattice_result, "acc_target_velocity", float("inf")),
         )
+        if self.previous_target_velocity is not None:
+            if (
+                target_velocity
+                < self.previous_target_velocity
+                - highway_parameters.TARGET_SPEED_DROP_RESET_THRESHOLD
+            ):
+                self.pid.reset()
+        self.previous_target_velocity = float(target_velocity)
         # 속도 제어를 위한 PID control
         acc_cmd = self.pid.get_output(target_velocity, vehicle_state.velocity)
-        # target velocity가 0이고, 일정 속도 이하일 경우 full brake를 하여 차량을 멈추도록 함.
-        if round(target_velocity) == 0 and vehicle_state.velocity < 2:
+        # 합류 양보/충돌 예측이 정지를 요구하면 현재 속도와 무관하게 즉시 제동합니다.
+        if target_velocity <= 0.05:
+            self.pid.reset()
             acc_cmd = -1.
+        else:
+            acc_cmd = self._smooth_longitudinal_command(acc_cmd)
+        self.previous_acc_cmd = float(acc_cmd)
         # 경로 추종을 위한 pure pursuit control
         self.pure_pursuit.path = planning_path
         self.pure_pursuit.vehicle_state = vehicle_state
@@ -156,6 +179,7 @@ class AutonomousDriving:
                 f"front_steer={np.degrees(front_steer_rad):+.2f}deg "
                 f"({front_steer_rad:+.3f}rad) acc_cmd={acc_cmd:+.3f} "
                 f"target_v={target_velocity:.2f} planned_v={planned_velocity:.2f} "
+                f"profile_v={profile_planned_velocity:.2f} "
                 f"cur_v={vehicle_state.velocity:.2f}"
             )
             details = getattr(lattice_result, "debug_details", {})
@@ -209,3 +233,56 @@ class AutonomousDriving:
                     )
 
         return ControlInput(acc_cmd, front_steer_rad), planning_path
+
+    @staticmethod
+    def _merge_ego_curvature_speed_floor(
+        planned_velocity, current_velocity, lattice_result
+    ):
+        """Do not let route curvature brake either Ego-first merge."""
+        details = getattr(lattice_result, "debug_details", {}) or {}
+        priorities = details.get("merge_zone_priorities", {}) or {}
+        first_merge_ego = (
+            highway_parameters.PREDICTIVE_MERGE_EGO_CURVATURE_SPEED_FLOOR
+            and priorities.get("FIRST_PREDICTIVE") == "EGO"
+        )
+        second_merge_ego = (
+            highway_parameters.CONSERVATIVE_MERGE_EGO_CURVATURE_SPEED_FLOOR
+            and priorities.get("SECOND_ENTRY") == "EGO"
+        )
+        if first_merge_ego or second_merge_ego:
+            return max(float(planned_velocity), float(current_velocity))
+        return float(planned_velocity)
+
+    def _smooth_longitudinal_command(self, requested_command):
+        """Release braking promptly, then build positive throttle smoothly."""
+        requested_command = float(np.clip(requested_command, -1.0, 1.0))
+        previous = float(self.previous_acc_cmd)
+        if requested_command <= previous:
+            # Safety-related braking must never be delayed.
+            return requested_command
+        rate = (
+            highway_parameters.BRAKE_RELEASE_RATE
+            if previous < 0.0
+            else highway_parameters.ACCEL_COMMAND_RISE_RATE
+        )
+        maximum_step = rate / self.sampling_rate
+        return min(requested_command, previous + maximum_step)
+
+    @staticmethod
+    def _legacy_acc_entries(lattice_result, forward_entries):
+        """Avoid applying path-distance vehicle ACC twice on mapped highways.
+
+        The highway lane planner already associates vehicles with lane links,
+        checks fallback collisions, and returns an ACC speed ceiling.  The
+        legacy path-distance detector can mistake an adjacent/old-lane vehicle
+        for a lead vehicle immediately after a lane change because the two
+        paths remain close.  Keep pedestrians and traffic lights in the legacy
+        controller, but let the lane planner be the sole vehicle authority.
+        """
+        if getattr(lattice_result, "mode", "") != "highway_lane":
+            return forward_entries
+        return [
+            entry
+            for entry in forward_entries
+            if getattr(entry["object_info"], "type", -1) not in (1, 2)
+        ]

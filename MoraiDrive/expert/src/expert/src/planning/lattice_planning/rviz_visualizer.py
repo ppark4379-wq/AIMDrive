@@ -10,6 +10,7 @@ from geometry_msgs.msg import Point as RosPoint
 from visualization_msgs.msg import Marker, MarkerArray
 
 from . import parameters
+from ..highway_lane_planning import parameters as highway_parameters
 
 
 class LatticeRvizVisualizer:
@@ -313,7 +314,108 @@ class LatticeRvizVisualizer:
             else:
                 self._set_color(label, 0.8, 1.0, 1.0, 0.9)
             marker_array.markers.append(label)
+        marker_array.markers.extend(
+            self._build_merge_entry_zone_markers(result, stamp)
+        )
         return marker_array
+
+    def _build_merge_entry_zone_markers(self, result, stamp):
+        priorities = getattr(result, "debug_details", {}).get(
+            "merge_zone_priorities", {}
+        )
+        zones = (
+            (
+                "FIRST_PREDICTIVE",
+                highway_parameters.PREDICTIVE_MERGE_POINT,
+                highway_parameters.PREDICTIVE_MERGE_POINT_Z,
+                highway_parameters.PREDICTIVE_MERGE_ENTRY_RADIUS,
+            ),
+            (
+                "SECOND_ENTRY",
+                highway_parameters.CONSERVATIVE_MERGE_POINT,
+                highway_parameters.CONSERVATIVE_MERGE_POINT_Z,
+                highway_parameters.CONSERVATIVE_MERGE_ENTRY_RADIUS,
+            ),
+        )
+        markers = []
+        for marker_id, (zone_name, center, world_z, radius) in enumerate(zones):
+            markers.extend(
+                self._build_single_merge_zone_markers(
+                    zone_name,
+                    center,
+                    world_z,
+                    radius,
+                    priorities.get(zone_name, "NONE"),
+                    marker_id,
+                    stamp,
+                )
+            )
+        return markers
+
+    def _build_single_merge_zone_markers(
+        self, zone_name, center, world_z, radius, priority, marker_id, stamp
+    ):
+        center_x, center_y = center
+        colors = {
+            "OTHER": (1.0, 0.15, 0.05),
+            "EGO": (0.1, 1.0, 0.2),
+            "NONE": (1.0, 0.85, 0.0),
+        }
+        red, green, blue = colors.get(priority, colors["NONE"])
+
+        # Planning and all existing RViz paths use a flattened map frame (z=0).
+        # Keep the marker on that plane and show the supplied MORAI world z in
+        # the label so the circle remains visible with the current map setup.
+        fill = self._new_marker(
+            frame_id="map",
+            stamp=stamp,
+            namespace="merge_entry_zone_fill_{}".format(zone_name.lower()),
+            marker_id=marker_id,
+            marker_type=Marker.CYLINDER,
+        )
+        fill.pose.position.x = center_x
+        fill.pose.position.y = center_y
+        fill.pose.position.z = 0.02
+        fill.scale.x = 2.0 * radius
+        fill.scale.y = 2.0 * radius
+        fill.scale.z = 0.04
+        self._set_color(fill, red, green, blue, 0.12)
+
+        outline = self._new_marker(
+            frame_id="map",
+            stamp=stamp,
+            namespace="merge_entry_zone_outline_{}".format(zone_name.lower()),
+            marker_id=marker_id,
+            marker_type=Marker.LINE_STRIP,
+        )
+        outline.scale.x = 0.35
+        self._set_color(outline, red, green, blue, 0.95)
+        outline.points = [
+            RosPoint(
+                x=center_x + radius * math.cos(2.0 * math.pi * index / 72.0),
+                y=center_y + radius * math.sin(2.0 * math.pi * index / 72.0),
+                z=0.08,
+            )
+            for index in range(73)
+        ]
+
+        label = self._new_marker(
+            frame_id="map",
+            stamp=stamp,
+            namespace="merge_entry_zone_label_{}".format(zone_name.lower()),
+            marker_id=marker_id,
+            marker_type=Marker.TEXT_VIEW_FACING,
+        )
+        label.pose.position.x = center_x
+        label.pose.position.y = center_y
+        label.pose.position.z = 2.2
+        label.scale.z = 0.65
+        label.text = (
+            "{}  R={:.0f}m  priority={}\n"
+            "XYZ=({:.2f}, {:.2f}, {:.2f})"
+        ).format(zone_name, radius, priority, center_x, center_y, world_z)
+        self._set_color(label, red, green, blue, 1.0)
+        return [fill, outline, label]
 
     @staticmethod
     def _new_marker(frame_id, stamp, namespace, marker_id, marker_type):

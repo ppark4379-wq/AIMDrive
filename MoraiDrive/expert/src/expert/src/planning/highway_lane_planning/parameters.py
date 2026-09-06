@@ -3,7 +3,7 @@ LANE_MATCH_MAX_DISTANCE = 2.4          # 차량 중심을 링크 중앙선에 �
 LANE_CHANGE_DISTANCE = 55.0            # 고속 차선변경을 완만하게 완료할 종방향 거리 [m]
 PATH_LOOKAHEAD_MIN = 65.0              # 제어·예측에 제공할 최소 링크 경로 길이 [m]
 PATH_SAMPLE_SPACING = 0.5              # 링크 기반 후보 경로 샘플 간격 [m]
-PREDICTION_HORIZON = 0.25               # 감속 후 회피 가능성을 과도하게 막지 않을 미래 OBB 예측 시간 [s]
+PREDICTION_HORIZON = 0.4               # 감속 후 회피 가능성을 과도하게 막지 않을 미래 OBB 예측 시간 [s]
 PREDICTION_TIME_STEP = 0.1             # 미래 OBB SAT 검사 고정 시간 간격 [s]
 PREDICTION_MIN_SPEED = 2.0             # 정지 시에도 후보 경로를 검사하기 위한 최소 가상 속도 [m/s]
 COLLISION_MARGIN = 0.25                # 미래 OBB에 추가하는 안전 여유 [m]
@@ -16,10 +16,8 @@ LANE_CHANGE_TRIGGER_TTC = 6.0          # 이 TTC부터 안전한 옆 차선 회�
 ACC_TIME_GAP = 1.5                     # 강제 ACC가 유지할 시간 간격 [s]
 ACC_STANDSTILL_DISTANCE = 5.0          # 강제 ACC가 정지 시 유지할 기본 앞 범퍼 거리 [m]
 ACC_DISTANCE_GAIN = 0.55               # 안전거리 오차를 목표속도 감소량으로 바꾸는 비례 계수
-ACC_PREPARE_TARGET_SPEED = 13.0        # 회피 준비 ACC 단계의 목표속도(약 47 km/h) [m/s]
-ACC_LANE_CHANGE_MAX_SPEED = 15.0       # 이 속도 이하로 감속한 뒤 차선변경 후보를 허용 [m/s]
-ACC_LANE_CHANGE_MIN_DISTANCE = 8.0     # 감속 후 차선변경을 검토할 최소 앞 범퍼 간격 [m]
-ACC_LANE_CHANGE_MIN_TTC = 3.0          # 감속 후 차선변경을 검토할 최소 TTC [s]
+ACC_LANE_CHANGE_MIN_DISTANCE = 8.0     # 차선변경을 검토할 최소 앞 범퍼 간격 [m]
+ACC_LANE_CHANGE_MIN_TTC = 3.0          # 차선변경을 검토할 최소 TTC [s]
 ACC_STOPPED_SPEED = 1.0                # 이 속도 이하면 간격 대신 정지 상태로 회피 검토 [m/s]
 ACC_UNMATCHED_HAZARD_SPEED = 10.0      # 동일차로 매칭 없이 OBB 충돌만 잡힐 때 속도 상한 [m/s]
 TARGET_LANE_FRONT_CLEARANCE = 20.0     # 차선변경 전 목표차선에서 확보할 최소 전방 거리 [m]
@@ -35,12 +33,26 @@ MERGE_TRAJECTORY_HORIZON = 3.0         # 링크 매칭 실패 차량의 합류 �
 MERGE_TRAJECTORY_TIME_STEP = 0.25      # 합류 교차궤적 SAT 검사 시간 간격 [s]
 MERGE_TRAJECTORY_MAX_DISTANCE = 70.0   # 교차궤적 검사에 포함할 주변 차량 최대 중심거리 [m]
 MERGE_ACC_RECOVERY_RATE = 2.0          # 합류 위험 해제 후 속도상한을 복원하는 변화율 [m/s^2]
-CONSERVATIVE_MERGE_POINT = (75.25339642604672, -219.84857834122045)  # 안전 우선 합류 중심점 (x, y) [m]
-CONSERVATIVE_MERGE_SUCCESSORS = ("A2256W000153",)  # 이 링크로 합쳐지는 진입 차선에서 무조건 양보
-CONSERVATIVE_MERGE_EGO_RADIUS = 65.0   # 중심점부터 Ego 안전 양보 로직을 적용하는 반경 [m]
-CONSERVATIVE_MERGE_OBJECT_RADIUS = 55.0 # 중심점 주변에서 합류 차량으로 간주할 반경 [m]
+CONSERVATIVE_MERGE_POINT = (74.98, -178.99) # 사용자가 지정한 합류 진입구역 중심 (x, y) [m]
+CONSERVATIVE_MERGE_POINT_Z = 28.75     # MORAI 월드 좌표의 합류 진입구역 높이 [m]
+CONSERVATIVE_MERGE_ENTRY_RADIUS = 17.5 # 상대차/Ego의 합류구역 선진입을 판정할 반경 [m]
+CONSERVATIVE_MERGE_SUCCESSORS = ("A2256W000153",)  # 두 진입 차선이 합쳐지는 공통 후속 링크
+CONSERVATIVE_MERGE_EGO_RADIUS = 65.0   # 선진입 우선권 판정을 미리 감시할 Ego 반경 [m]
+CONSERVATIVE_MERGE_OBJECT_RADIUS = CONSERVATIVE_MERGE_ENTRY_RADIUS
 CONSERVATIVE_MERGE_PASS_DISTANCE = 15.0 # 상대차가 합류 링크로 진입 후 이 거리만큼 지나야 양보 해제 [m]
-CONSERVATIVE_MERGE_MAX_SPEED = 8.0     # 상대차를 먼저 보낼 때 허용하는 최대 목표속도 (약 29 km/h) [m/s]
+CONSERVATIVE_MERGE_MAX_SPEED = 10.0     # 상대차를 먼저 보낼 때 허용하는 최대 목표속도 (약 29 km/h) [m/s]
+CONSERVATIVE_MERGE_CRAWL_SPEED = 3.0   # 일반 양보 시 완전정지 대신 유지할 통과속도 (약 11 km/h) [m/s]
+CONSERVATIVE_MERGE_STOP_MARGIN = 2.0   # 양보 시 진입구역 경계 전에 정지할 추가 여유 [m]
+CONSERVATIVE_MERGE_COMFORT_DECEL = 3.0 # 진입구역 정지 목표속도 계산에 사용할 감속도 [m/s^2]
+CONSERVATIVE_MERGE_CLEAR_CYCLES = 30   # 상대차 소실 시 양보 해제 전 확인할 주기 (30 Hz에서 1초)
+LANE_CHANGE_COOLDOWN_DISTANCE = 50.0  # 변경 완료 후 새 차선변경을 막는 거리 [m]
+SECOND_MERGE_PREFERRED_LANE_NUMBERS = (2, 3)  # 주행 가능 3개 중 왼쪽·가운데
+SECOND_MERGE_RIGHT_LANE_COST_PENALTY = 10.0    # 맨 오른쪽 선택 비용(금지는 아님)
+SECOND_MERGE_LANE_PREFERENCE_RADIUS = 160.0  # 막히기 전부터 좌/중앙 차선 선호 [m]
+MERGE_EMERGENCY_COLLISION_TIME = 1.0   # Ego가 양보해야 할 때 이 시간 안의 OBB 충돌은 즉시 정지 [s]
+TARGET_SPEED_DROP_RESET_THRESHOLD = 2.0 # 목표속도 급강하 시 PID 적분을 초기화할 차이 [m/s]
+ACCEL_COMMAND_RISE_RATE = 3.0          # 가속 페달 명령 상승률 [command/s], 재가속 충격 억제
+BRAKE_RELEASE_RATE = 6.0               # 위험 해제 후 제동 명령 해제율 [command/s]
 PLANNER_UPDATE_RATE = 30.0             # 합류 ACC 속도상한 필터의 예상 실행 주기 [Hz]
 HIGHWAY_DEBUG_ENABLED = True           # 터미널에 고속도로 판단 근거와 후보 비용을 상세 출력
 HIGHWAY_DEBUG_INTERVAL_CYCLES = 15     # 동일 판단 유지 중 상세 로그를 출력할 주기 [cycle]
@@ -58,8 +70,35 @@ SECTION_ROADS = (
     (5, "4000111"),
 )
 ENTRY_LINK_ID = "A2256W000846"         # 다차선 진입 전 단일 링크; 왼쪽차선 제외 정책을 적용하지 않음
+PROHIBITED_LINK_IDS = ("A2256W000179",)  # (65.16, -28.69)부터 시작하는 실선 우측 경계 차선
+
+# 첫 번째 합류 지점: 두 차량의 원 진입 예상시간을 비교해 선진입 차량을 우선합니다.
+PREDICTIVE_MERGE_POINT = (64.35, 132.39)
+PREDICTIVE_MERGE_POINT_Z = 29.86
+PREDICTIVE_MERGE_ENTRY_RADIUS = 8.0  # 첫 번째 합류의 실제 충돌 지점만 포함하는 작은 원 [m]
+PREDICTIVE_MERGE_EGO_RADIUS = 45.0    # 너무 이른 급감속을 막는 첫 번째 합류 감시 반경 [m]
+PREDICTIVE_MERGE_SUCCESSORS = ("A2256W000420",)
+PREDICTIVE_MERGE_EGO_CURVATURE_SPEED_FLOOR = True
+PREDICTIVE_MERGE_OBJECT_LINK_IDS = ("A2256W000409",)  # ego(A2256W000411) 옆 실제 합류 상대차선
+PREDICTIVE_MERGE_CLEAR_CYCLES = 3       # 예측 진입 소실 후 약 0.1초 확인하고 양보 해제
+PREDICTIVE_MERGE_PRIORITY_TIME_MARGIN = -0.2 # 상대가 0.2초 이상 확실히 빠를 때만 OTHER [s]
+MERGE_EGO_TAKEOVER_TIME_MARGIN = 0.2       # OTHER 잠금 후 Ego ETA가 이만큼 앞서면 우선권 재판정 [s]
+PREDICTIVE_MERGE_MAX_SPEED = 16.0       # 첫 번째 합류 양보 시작 속도 상한 (약 58 km/h) [m/s]
+PREDICTIVE_MERGE_CRAWL_SPEED = 8.0      # 움직이는 선행차 뒤로 합류할 때 유지할 최저 롤링 속도 [m/s]
+PREDICTIVE_MERGE_STOP_MARGIN = 1.0      # 비상 정지가 필요할 때 사용할 원 경계 안전 여유 [m]
+PREDICTIVE_MERGE_COMFORT_DECEL = 4.0   # 롤링 양보 목표속도의 최대 감속 프로파일 [m/s^2]
+PREDICTIVE_MERGE_PASS_DISTANCE = 3.0  # 상대차가 공통 링크에서 이 거리까지 지나야 겹침 해제 [m]
+PREDICTIVE_MERGE_FOLLOW_TIME_GAP = 0.8 # 상대차 뒤로 원에 진입할 목표 시간 간격 [s]
+PREDICTIVE_MERGE_MOVING_SPEED = 1.0    # 이 속도 이상의 상대차만 정지 없이 롤링 추종 [m/s]
 
 # 레인 섹션 경계의 진행 연결. 리스트가 2개인 곳은 실제 분기입니다.
+CONSERVATIVE_MERGE_EGO_CURVATURE_SPEED_FLOOR = True
+PREDICTIVE_MERGE_DROPOUT_MIN_HOLD_TIME = 0.5
+PREDICTIVE_MERGE_DROPOUT_MAX_HOLD_TIME = 5.0
+CONSERVATIVE_MERGE_PRIORITY_TIME_MARGIN = -0.2 # 두 번째 합류도 상대가 0.2초 이상 빠를 때만 OTHER [s]
+CONSERVATIVE_MERGE_FOLLOW_TIME_GAP = 0.8
+CONSERVATIVE_MERGE_MOVING_SPEED = 1.0
+
 SUCCESSOR_LINKS = {
     "A2256W000846": ("A2256W000411",),
     "A2256W000429": ("A2256W000433",),
