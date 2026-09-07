@@ -1035,17 +1035,151 @@ class MoraiGrpcClient:
         if self.world is None:
             raise RuntimeError("world is None. Call start_world() first.")
 
-        obstacle = self.world.spawn_obstacle(
-            transform=transform,
-            model_name=model_name,
-            label=label,
-            scale=scale,
-        )
+        before_ids = {
+            str(state.actor_info.id.value)
+            for state in self.get_all_obstacle_states()
+            if str(state.actor_info.id.value).strip()
+        }
+        spawn_x = float(transform.location.x)
+        spawn_y = float(transform.location.y)
+        obstacle = None
+        try:
+            obstacle = self.world.spawn_obstacle(
+                transform=transform,
+                model_name=model_name,
+                label=label,
+                scale=scale,
+            )
+        except Exception as exc:
+            # MORAI can apply SpawnObstacle server-side while its SDK raises
+            # because the RPC response is missing or reports failure. Treat
+            # this as an ambiguous result and verify the actual actor list.
+            print(f"[Spawn] obstacle {label} ambiguous response: {exc}")
+
+        if obstacle is None:
+            for attempt in range(10):
+                if attempt:
+                    time.sleep(0.1)
+                obstacle = self.find_spawned_obstacle_near(
+                    spawn_x,
+                    spawn_y,
+                    max_dist_m=3.0,
+                    exclude_ids=before_ids,
+                )
+                if obstacle is not None:
+                    setattr(
+                        obstacle,
+                        "_scenario_runner_ambiguous_recovery",
+                        True,
+                    )
+                    print(
+                        f"[Spawn] obstacle {label}, model={model_name}: "
+                        "recovered-after-create"
+                    )
+                    return obstacle
         print(
             f"[Spawn] obstacle {label}, model={model_name}: "
             f"{obstacle is not None}"
         )
         return obstacle
+
+    def get_all_obstacle_states(self):
+        """Return run-owned static obstacle states or fail closed."""
+        if self.world is None:
+            raise RuntimeError("world is None. Call start_world() first.")
+        try:
+            response = self.world.get_all_actors_state(
+                vehicle=False,
+                pedestrian=False,
+                obstacle=True,
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to query static obstacle actors: {exc}"
+            ) from exc
+        if response is None:
+            raise RuntimeError(
+                "Failed to query static obstacle actors: no response"
+            )
+        return list(getattr(response, "states", []))
+
+    def obstacle_ids_near(self, x, y, max_dist_m=3.0, exclude_ids=None):
+        excluded = {str(value) for value in (exclude_ids or ())}
+        matches = []
+        for state in self.get_all_obstacle_states():
+            actor_id = str(state.actor_info.id.value).strip()
+            if not actor_id or actor_id in excluded:
+                continue
+            dx = float(state.transform.location.x) - float(x)
+            dy = float(state.transform.location.y) - float(y)
+            if (dx * dx + dy * dy) ** 0.5 <= float(max_dist_m):
+                matches.append(actor_id)
+        return matches
+
+    def find_spawned_obstacle_near(
+        self,
+        x,
+        y,
+        max_dist_m=3.0,
+        exclude_ids=None,
+    ):
+        from api.obstacle import Obstacle
+
+        matches = self.obstacle_ids_near(
+            x,
+            y,
+            max_dist_m=max_dist_m,
+            exclude_ids=exclude_ids,
+        )
+        if not matches:
+            return None
+        actor_id = matches[0]
+        obstacle = Obstacle(self.world._sim_adapter, self.client_key, actor_id)
+        self.world._actors[actor_id] = obstacle
+        return obstacle
+
+    def destroy_obstacle_by_id(self, actor_id):
+        if self.world is None:
+            return False
+        actor_id = str(actor_id or "").strip()
+        if not actor_id:
+            return False
+
+        from proto.morai.common.enum_pb2 import (
+            OBJECT_TYPE_OBSTACLE,
+            STATUS_CODE_SUCCESS,
+        )
+        from proto.morai.common.object_info_pb2 import ObjectInfo
+
+        info = ObjectInfo()
+        info.id.value = actor_id
+        info.object_type = OBJECT_TYPE_OBSTACLE
+        info.client_key = self.client_key
+        try:
+            response = self.world._sim_adapter.destroy_actor(info)
+        except Exception as exc:
+            print(f"[MORAI] destroy obstacle id={actor_id}: False ({exc})")
+            return False
+        ok = response is not None and response.status == STATUS_CODE_SUCCESS
+        if ok:
+            self.world._actors.pop(actor_id, None)
+        description = getattr(response, "description", "no response")
+        print(
+            f"[MORAI] destroy obstacle id={actor_id}: "
+            f"{ok} ({description})"
+        )
+        return ok
+
+    def destroy_obstacles_near(self, x, y, max_dist_m=3.0):
+        found = self.obstacle_ids_near(x, y, max_dist_m=max_dist_m)
+        for actor_id in found:
+            self.destroy_obstacle_by_id(actor_id)
+        if found:
+            print(
+                f"[MORAI] clearing stale static obstacles near "
+                f"({float(x):.2f},{float(y):.2f}): {found}"
+            )
+        return found
 
     def get_available_objects(self):
         from proto.morai.simulator.category_obstacles_pb2 import CategoryObstacles
