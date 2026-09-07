@@ -124,26 +124,18 @@ class RosManager:
         )
         self.is_status = True
 
-    # MORAI ObjectStatusList.velocity 는 km/h 로 발행되지만
-    # EgoVehicleStatus.velocity 와 주행 계획 전체는 m/s 를 쓴다. 실측으로
-    # NPC 이동거리/시간 대비 발행값의 비가 3.599 로 확인되어(40/50/60 km/h
-    # 시나리오 설정값과 일치) 경계에서 SI 단위로 변환한다. 이 변환이 없으면
-    # 상대차 ETA 가 3.6배 짧게 계산되어 합류 판단과 ACC 가 모두 무너진다.
-    OBJECT_SPEED_KPH_TO_MPS = 1.0 / 3.6
-
     def object_info_callback(self, data):
         def convert_object(item, is_static=False):
             return ObjectInfo(
                 item.position.x,
                 item.position.y,
-                item.velocity.x * self.OBJECT_SPEED_KPH_TO_MPS,
+                item.velocity.x,
                 item.type,
                 name=item.name,
                 is_static=is_static,
                 size_x=item.size.x,
                 size_y=item.size.y,
                 heading_deg=item.heading,
-                unique_id=item.unique_id,
             )
 
         self.object_info_list = (

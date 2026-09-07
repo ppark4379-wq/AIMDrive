@@ -69,12 +69,6 @@ Visualization Manager:
       Namespaces:
         highway_lane_centers: true
         highway_lane_labels: true
-        merge_entry_zone_fill_first_predictive: true
-        merge_entry_zone_fill_second_entry: true
-        merge_entry_zone_label_first_predictive: true
-        merge_entry_zone_label_second_entry: true
-        merge_entry_zone_outline_first_predictive: true
-        merge_entry_zone_outline_second_entry: true
       Queue Size: 10
       Value: true
     - Angle Tolerance: 0.1

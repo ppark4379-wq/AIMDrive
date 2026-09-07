@@ -32,28 +32,15 @@ MERGE_YIELD_TIME_GAP = 1.5             # 합류 차량을 먼저 보낸 뒤 확�
 MERGE_TRAJECTORY_HORIZON = 3.0         # 링크 매칭 실패 차량의 합류 교차궤적 ACC 예측시간 [s]
 MERGE_TRAJECTORY_TIME_STEP = 0.25      # 합류 교차궤적 SAT 검사 시간 간격 [s]
 MERGE_TRAJECTORY_MAX_DISTANCE = 70.0   # 교차궤적 검사에 포함할 주변 차량 최대 중심거리 [m]
-MERGE_CLOSE_GAP_YIELD_DISTANCE = 10.0  # 원 진입 예상 범퍼 간격이 이 값 이하면 Ego가 뒤로 양보 [m]
 MERGE_ACC_RECOVERY_RATE = 2.0          # 합류 위험 해제 후 속도상한을 복원하는 변화율 [m/s^2]
-
-# --- 합류 충돌구역 점유구간 판단 (두 합류지점 공용) ---------------------------
-# Ego 가 구역을 완전히 비우는 시점과 상대차가 들어오는 시점을 비교한다.
-# 진입시점만 비교하면 먼저 들어가도 다 빠져나가기 전에 상대차가 도착해
-# 측면·후면 추돌을 당한다.
-MERGE_DECISION_HORIZON = 8.0           # 이 시간 안에 구역에 들어오는 차량만 판단 대상 [s]
-MERGE_GO_CLEAR_TIME_MARGIN = 1.5       # Ego가 구역을 비운 뒤 상대차 진입까지 확보할 여유. 2.0 이상은 압도적 선행 상황에서도 급감속을 유발 [s]
-MERGE_GO_MIN_LEAD_DISTANCE = 12.0      # 합류 직후 상대차 앞에서 확보할 최소 거리 [m]
-MERGE_GO_REAR_TIME_GAP = 1.2           # 상대차가 빠를수록 추가로 확보할 상대속도 시간간격 [s]
-MERGE_GO_ASSUMED_ACCEL = 1.5           # 통과시간 예측에 쓰는 Ego 가속도, 합류 교착 방지 [m/s^2]
-MERGE_GO_HOLD_RELEASE_RATIO = 0.6      # GO 유지 중에는 기준을 이 비율로 완화(히스테리시스)
-MERGE_ZONE_DROPOUT_HOLD_TIME = 0.5     # 막고 있던 차량이 순간 소실될 때 양보를 유지할 시간 [s]
 CONSERVATIVE_MERGE_POINT = (74.98, -178.99) # 사용자가 지정한 합류 진입구역 중심 (x, y) [m]
 CONSERVATIVE_MERGE_POINT_Z = 28.75     # MORAI 월드 좌표의 합류 진입구역 높이 [m]
-CONSERVATIVE_MERGE_ENTRY_RADIUS = 10.0 # 두 차선이 실제로 겹치는 충돌 코어 크기. 17.5는 옛 선진입 휴리스틱용이라 과대했다 [m]
+CONSERVATIVE_MERGE_ENTRY_RADIUS = 17.5 # 상대차/Ego의 합류구역 선진입을 판정할 반경 [m]
 CONSERVATIVE_MERGE_SUCCESSORS = ("A2256W000153",)  # 두 진입 차선이 합쳐지는 공통 후속 링크
-CONSERVATIVE_MERGE_EGO_RADIUS = 130.0 # 위와 동일. 감시 반경이 정지거리보다 짧으면 감속해도 구역 안에서 멈춘다 [m]
+CONSERVATIVE_MERGE_EGO_RADIUS = 65.0   # 선진입 우선권 판정을 미리 감시할 Ego 반경 [m]
 CONSERVATIVE_MERGE_OBJECT_RADIUS = CONSERVATIVE_MERGE_ENTRY_RADIUS
 CONSERVATIVE_MERGE_PASS_DISTANCE = 15.0 # 상대차가 합류 링크로 진입 후 이 거리만큼 지나야 양보 해제 [m]
-CONSERVATIVE_MERGE_MAX_SPEED = 14.0     # 양보 시 속도 상한. 실제 목표속도는 페이싱/정지 곡선이 결정한다 [m/s]
+CONSERVATIVE_MERGE_MAX_SPEED = 10.0     # 상대차를 먼저 보낼 때 허용하는 최대 목표속도 (약 29 km/h) [m/s]
 CONSERVATIVE_MERGE_CRAWL_SPEED = 3.0   # 일반 양보 시 완전정지 대신 유지할 통과속도 (약 11 km/h) [m/s]
 CONSERVATIVE_MERGE_STOP_MARGIN = 2.0   # 양보 시 진입구역 경계 전에 정지할 추가 여유 [m]
 CONSERVATIVE_MERGE_COMFORT_DECEL = 3.0 # 진입구역 정지 목표속도 계산에 사용할 감속도 [m/s^2]
@@ -89,7 +76,7 @@ PROHIBITED_LINK_IDS = ("A2256W000179",)  # (65.16, -28.69)부터 시작하는 �
 PREDICTIVE_MERGE_POINT = (64.35, 132.39)
 PREDICTIVE_MERGE_POINT_Z = 29.86
 PREDICTIVE_MERGE_ENTRY_RADIUS = 8.0  # 첫 번째 합류의 실제 충돌 지점만 포함하는 작은 원 [m]
-PREDICTIVE_MERGE_EGO_RADIUS = 130.0  # 고속 정지거리(25m/s에서 약 63m)보다 넉넉히 먼저 판단해야 양보가 실행 가능하다 [m]
+PREDICTIVE_MERGE_EGO_RADIUS = 45.0    # 너무 이른 급감속을 막는 첫 번째 합류 감시 반경 [m]
 PREDICTIVE_MERGE_SUCCESSORS = ("A2256W000420",)
 PREDICTIVE_MERGE_EGO_CURVATURE_SPEED_FLOOR = True
 PREDICTIVE_MERGE_OBJECT_LINK_IDS = ("A2256W000409",)  # ego(A2256W000411) 옆 실제 합류 상대차선
@@ -133,13 +120,3 @@ SUCCESSOR_LINKS = {
     "A2256W000422": ("A2256W000153",),
     "A2256W000445": ("A2256W000153",),
 }
-
-# 저속에서의 합류 교착을 막기 위해 통과시간 예측에 사용할 순항속도.
-# max(순항속도, 현재속도) 로 쓰이므로 이미 빠를 때는 낙관하지 않는다.
-PREDICTIVE_MERGE_GO_CRUISE_SPEED = 16.0
-CONSERVATIVE_MERGE_GO_CRUISE_SPEED = 14.0
-MERGE_ZONE_SCAN_STEP = 5.0             # 충돌구역 진입/탈출 거리 탐색 간격. 원 통과 최소 현(약 16m)보다 충분히 작아야 건너뛰지 않는다 [m]
-MERGE_YIELD_MAX_DECEL = 8.0            # 정지 가능성 판정용 비상제동 감속도. 목표속도 곡선은 COMFORT_DECEL 을 쓴다 [m/s^2]
-MERGE_COMMIT_MIN_SPEED = 2.0           # 이 속도 이하면 언제든 멈출 수 있으므로 통과 확정하지 않는다 [m/s]
-MERGE_ZONE_WATCH_LINK_DEPTH = 4        # 합류 구역을 몇 개 링크 앞에서부터 감시/탐지할지. 진입 링크가 짧으면 판단 여유가 없다
-MERGE_ZONE_ROUTE_SLACK = 1.6           # 곡선 경로가 직선거리보다 긴 것을 감안한 스캔 상한 여유 배수
