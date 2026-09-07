@@ -620,7 +620,7 @@ class HighwayLanePlanningTest(unittest.TestCase):
             parameters.PREDICTIVE_MERGE_MAX_SPEED,
         )
 
-    def test_first_merge_does_not_yield_when_ego_eta_is_earlier(self):
+    def test_first_merge_yields_when_ego_enters_first_but_clearance_is_short(self):
         ego_link = self.lane_map.links["A2256W000411"]
         other_link = self.lane_map.links["A2256W000409"]
         merge_point = Point(*parameters.PREDICTIVE_MERGE_POINT)
@@ -642,11 +642,37 @@ class HighwayLanePlanningTest(unittest.TestCase):
             [later_other],
         )
 
-        self.assertEqual("EGO", self.planner._predictive_merge_priority)
-        self.assertTrue(math.isinf(result.debug_details["raw_merge_limit"]))
-        self.assertFalse(result.acc_override)
+        self.assertEqual("OTHER", self.planner._predictive_merge_priority)
+        self.assertFalse(math.isinf(result.debug_details["raw_merge_limit"]))
+        self.assertTrue(result.acc_override)
 
-    def test_first_merge_other_priority_keeps_rolling_at_circle_boundary(self):
+    def test_first_merge_does_not_decelerate_before_designated_brake_point(self):
+        ego_link = self.lane_map.links["A2256W000411"]
+        other_link = self.lane_map.links["A2256W000409"]
+        merge_point = Point(*parameters.PREDICTIVE_MERGE_POINT)
+        brake_point = Point(*parameters.PREDICTIVE_MERGE_BRAKE_START_POINT)
+        brake_s = self.lane_map.project(brake_point, ego_link).s
+        other_zone_s = self.lane_map.project(merge_point, other_link).s
+        ego_s = max(0.0, brake_s - 5.0)
+        ego = self._vehicle_state(ego_link.id, ego_s, 20.0)
+        other = self._object_entry(
+            other_link.id, max(0.0, other_zone_s - 10.0), 15.0,
+            name="brake_start_winner",
+        )
+
+        result = self.planner.plan(
+            ego, self._reference_path(ego_link.id, ego_s), [other]
+        )
+
+        self.assertEqual("OTHER", self.planner._predictive_merge_priority)
+        self.assertFalse(result.acc_override)
+        self.assertTrue(math.isinf(result.debug_details["raw_merge_limit"]))
+        self.assertTrue(any(
+            "waiting brake-start" in message
+            for message in result.debug_details["merge_checks"]
+        ))
+
+    def test_first_merge_other_priority_keeps_30kph_at_circle_boundary(self):
         ego_link = self.lane_map.links["A2256W000411"]
         other_link = self.lane_map.links["A2256W000409"]
         merge_point = Point(*parameters.PREDICTIVE_MERGE_POINT)
@@ -667,12 +693,12 @@ class HighwayLanePlanningTest(unittest.TestCase):
 
         self.assertEqual("OTHER", self.planner._predictive_merge_priority)
         self.assertTrue(result.acc_override)
-        self.assertEqual(
-            parameters.PREDICTIVE_MERGE_CRAWL_SPEED,
+        self.assertAlmostEqual(
+            parameters.MERGE_MIN_YIELD_SPEED,
             result.acc_target_velocity,
         )
 
-    def test_first_merge_rolls_until_winner_clears_shared_overlap(self):
+    def test_first_merge_rolls_at_30kph_until_winner_clears_shared_overlap(self):
         ego_link = self.lane_map.links["A2256W000411"]
         other_link = self.lane_map.links["A2256W000409"]
         merge_point = Point(*parameters.PREDICTIVE_MERGE_POINT)
@@ -699,8 +725,8 @@ class HighwayLanePlanningTest(unittest.TestCase):
 
         self.assertEqual("OTHER", self.planner._predictive_merge_priority)
         self.assertTrue(held.acc_override)
-        self.assertEqual(
-            parameters.PREDICTIVE_MERGE_CRAWL_SPEED,
+        self.assertAlmostEqual(
+            parameters.MERGE_MIN_YIELD_SPEED,
             held.acc_target_velocity,
         )
 
@@ -803,7 +829,7 @@ class HighwayLanePlanningTest(unittest.TestCase):
             )
         )
 
-    def test_first_merge_eta_takeover_releases_yield_before_ego_enters(self):
+    def test_first_merge_keeps_yield_locked_when_eta_changes(self):
         ego_link = self.lane_map.links["A2256W000411"]
         other_link = self.lane_map.links["A2256W000409"]
         merge_point = Point(*parameters.PREDICTIVE_MERGE_POINT)
@@ -838,15 +864,8 @@ class HighwayLanePlanningTest(unittest.TestCase):
             ],
         )
 
-        self.assertEqual("EGO", self.planner._predictive_merge_priority)
-        self.assertFalse(result.acc_override)
-        self.assertTrue(math.isinf(result.acc_target_velocity))
-        self.assertTrue(
-            any(
-                "ETA takeover" in message
-                for message in result.debug_details["merge_checks"]
-            )
-        )
+        self.assertEqual("OTHER", self.planner._predictive_merge_priority)
+        self.assertTrue(result.acc_override)
 
     def test_first_merge_ignores_vehicle_outside_monitored_right_lane(self):
         ego_link = self.lane_map.links["A2256W000411"]
@@ -1151,7 +1170,7 @@ class HighwayLanePlanningTest(unittest.TestCase):
         self.assertFalse(result.acc_override)
         self.assertTrue(math.isinf(result.acc_target_velocity))
 
-    def test_second_merge_eta_takeover_releases_yield_before_ego_enters(self):
+    def test_second_merge_keeps_yield_locked_when_eta_changes(self):
         ego_link = self.lane_map.links["A2256W000422"]
         other_link = self.lane_map.links["A2256W000445"]
         merge_point = Point(*parameters.CONSERVATIVE_MERGE_POINT)
@@ -1186,15 +1205,8 @@ class HighwayLanePlanningTest(unittest.TestCase):
             ],
         )
 
-        self.assertEqual("EGO", self.planner._merge_zone_priority)
-        self.assertFalse(result.acc_override)
-        self.assertTrue(math.isinf(result.acc_target_velocity))
-        self.assertTrue(
-            any(
-                "ETA takeover" in message
-                for message in result.debug_details["merge_checks"]
-            )
-        )
+        self.assertEqual("OTHER", self.planner._merge_zone_priority)
+        self.assertTrue(result.acc_override)
 
     def test_late_merge_vehicle_does_not_stop_ego_after_ego_entered_first(self):
         ego_link = self.lane_map.links["A2256W000422"]
@@ -1272,7 +1284,7 @@ class HighwayLanePlanningTest(unittest.TestCase):
         self.assertTrue(stopped.acc_override)
         self.assertEqual(0.0, stopped.acc_target_velocity)
 
-    def test_second_merge_zone_uses_nonzero_rolling_yield(self):
+    def test_second_merge_zone_keeps_30kph_when_boundary_is_occupied(self):
         ego_link = self.lane_map.links["A2256W000422"]
         other_link = self.lane_map.links["A2256W000445"]
         merge_point = Point(*parameters.CONSERVATIVE_MERGE_POINT)
@@ -1295,7 +1307,7 @@ class HighwayLanePlanningTest(unittest.TestCase):
             merge_point,
         )
 
-        self.assertEqual(parameters.CONSERVATIVE_MERGE_CRAWL_SPEED, limit)
+        self.assertAlmostEqual(parameters.MERGE_MIN_YIELD_SPEED, limit)
 
     def test_safe_zone_keeps_yielding_while_vehicle_enters_successor(self):
         ego_link = self.lane_map.links["A2256W000422"]
