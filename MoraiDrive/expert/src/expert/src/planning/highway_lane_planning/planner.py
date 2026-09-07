@@ -795,13 +795,13 @@ class HighwayLanePlanner:
                 object_half_length,
                 object_half_width,
                 max_distance=(
-                    object_speed * parameters.MERGE_TRAJECTORY_HORIZON
+                    object_speed * parameters.MERGE_PRIORITY_HORIZON
                 ),
             )
             object_touch_time = self._touch_time(
                 object_touch_distance,
                 object_speed,
-                parameters.MERGE_TRAJECTORY_HORIZON,
+                parameters.MERGE_PRIORITY_HORIZON,
             )
             if not math.isinf(object_touch_time):
                 touching.append((entry, object_match, object_touch_time))
@@ -816,14 +816,14 @@ class HighwayLanePlanner:
             center_offset=0.5 * parameters.VEHICLE_LENGTH,
             max_distance=max(
                 parameters.PREDICTIVE_MERGE_EGO_RADIUS,
-                ego_speed * parameters.MERGE_TRAJECTORY_HORIZON,
+                ego_speed * parameters.MERGE_PRIORITY_HORIZON,
             ),
         )
         ego_inside = ego_entry_distance <= 1e-6
         ego_touch_time = self._touch_time(
             ego_entry_distance,
             ego_speed,
-            parameters.MERGE_TRAJECTORY_HORIZON,
+            parameters.MERGE_PRIORITY_HORIZON,
         )
         earliest_touch = (
             min(time_value for _, _, time_value in touching)
@@ -831,6 +831,9 @@ class HighwayLanePlanner:
             else float("inf")
         )
         other_inside = earliest_touch <= 1e-9
+        # Actual occupancy wins over an earlier noisy ETA decision. Once Ego
+        # touches the conflict core first, merge pacing must never brake it into
+        # a side/rear impact.
         if self._predictive_merge_priority is None:
             # 현재 원 안에 먼저 들어온 차량을 우선한다. 둘 다 원 밖이면
             # 미래 경로가 단순히 원에 닿는지만 보지 않고 예상 진입시간을
@@ -840,11 +843,11 @@ class HighwayLanePlanner:
                 self._predictive_merge_clear_cycles = 0
             elif ego_inside:
                 self._predictive_merge_priority = "EGO"
-            elif (
-                touching
-                and earliest_touch
-                <= ego_touch_time
-                + parameters.PREDICTIVE_MERGE_PRIORITY_TIME_MARGIN
+            elif touching and self._merge_arrivals_overlap(
+                ego_touch_time,
+                ego_speed,
+                touching,
+                parameters.PREDICTIVE_MERGE_ENTRY_RADIUS,
             ):
                 self._predictive_merge_priority = "OTHER"
                 self._predictive_merge_clear_cycles = 0
@@ -859,40 +862,6 @@ class HighwayLanePlanner:
                 )
                 self._predictive_merge_other_key = self._merge_zone_object_key(
                     winner_entry, winner_match
-                )
-
-        if (
-            self._predictive_merge_priority == "OTHER"
-            and not ego_inside
-            and not other_inside
-            and not math.isinf(ego_touch_time)
-        ):
-            tracked_touch_time = next(
-                (
-                    touch_time
-                    for entry, object_match, touch_time in touching
-                    if self._merge_zone_object_key(entry, object_match)
-                    == self._predictive_merge_other_key
-                ),
-                float("inf"),
-            )
-            if (
-                not math.isinf(tracked_touch_time)
-                and ego_touch_time + parameters.MERGE_EGO_TAKEOVER_TIME_MARGIN
-                <= tracked_touch_time
-            ):
-                previous_key = self._predictive_merge_other_key
-                self._predictive_merge_priority = "EGO"
-                self._predictive_merge_other_key = None
-                self._predictive_merge_clear_cycles = 0
-                self._last_merge_debug.append(
-                    "predictive-zone ETA takeover: EGO {:.2f}s ahead of {} "
-                    "(ego={:.2f}s other={:.2f}s)".format(
-                        tracked_touch_time - ego_touch_time,
-                        previous_key or "predicted vehicle",
-                        ego_touch_time,
-                        tracked_touch_time,
-                    )
                 )
 
         if self._predictive_merge_priority == "OTHER" and ego_inside:
@@ -952,6 +921,20 @@ class HighwayLanePlanner:
             self._last_merge_debug.append(
                 "predictive-zone priority=PENDING monitored={} (no predicted entry)".format(
                     ",".join(parameters.PREDICTIVE_MERGE_OBJECT_LINK_IDS)
+                )
+            )
+            return float("inf")
+
+        # Decide and lock the winner early, but do not disturb normal driving
+        # before the user-designated first-merge braking point.
+        brake_start = Point(*parameters.PREDICTIVE_MERGE_BRAKE_START_POINT)
+        brake_start_s = self.lane_map.project(brake_start, ego_link).s
+        if ego_match.s + 1e-6 < brake_start_s:
+            self._merge_speed_limit_state = float("inf")
+            self._last_merge_debug.append(
+                "predictive-zone priority=OTHER waiting brake-start "
+                "remaining={:.1f}m -> no decel".format(
+                    brake_start_s - ego_match.s
                 )
             )
             return float("inf")
@@ -1070,10 +1053,7 @@ class HighwayLanePlanner:
             # A genuinely stopped priority vehicle cannot be followed safely.
             speed_limit = 0.0
         else:
-            rolling_floor = min(
-                parameters.PREDICTIVE_MERGE_CRAWL_SPEED,
-                tracked_speed,
-            )
+            rolling_floor = parameters.MERGE_MIN_YIELD_SPEED
             desired_arrival_time = (
                 clear_time + parameters.PREDICTIVE_MERGE_FOLLOW_TIME_GAP
             )
@@ -1092,9 +1072,7 @@ class HighwayLanePlanner:
                 min(
                     parameters.PREDICTIVE_MERGE_MAX_SPEED,
                     pacing_limit,
-                    braking_limit
-                    if braking_limit > 1e-6
-                    else rolling_floor,
+                    braking_limit if braking_limit > 1e-6 else 0.0,
                 ),
             )
             speed_limit = min(
@@ -1199,6 +1177,29 @@ class HighwayLanePlanner:
         return time_value if time_value <= horizon + 1e-9 else float("inf")
 
     @staticmethod
+    def _merge_arrivals_overlap(ego_entry_time, ego_speed, touching, radius):
+        """Yield unless Ego can fully clear with both time and distance margin."""
+        if not touching:
+            return False
+        winner_entry, _, other_entry_time = min(touching, key=lambda item: item[2])
+        if math.isinf(ego_entry_time):
+            return True
+        other_speed = max(
+            0.0, float(winner_entry["object_info"].velocity)
+        )
+        # Conservative OBB traversal estimate from first touch until Ego's rear
+        # leaves the conflict circle.
+        occupancy_length = 2.0 * float(radius) + parameters.VEHICLE_LENGTH
+        ego_exit_time = ego_entry_time + occupancy_length / max(0.1, ego_speed)
+        clear_time = other_entry_time - ego_exit_time
+        predicted_bumper_gap = max(0.0, clear_time) * other_speed
+        return (
+            clear_time < parameters.MERGE_GO_CLEAR_TIME_MARGIN
+            or predicted_bumper_gap
+            < parameters.MERGE_CLOSE_GAP_YIELD_DISTANCE
+        )
+
+    @staticmethod
     def _obb_touches_circle(
         path_point,
         yaw,
@@ -1254,12 +1255,12 @@ class HighwayLanePlanner:
                 parameters.CONSERVATIVE_MERGE_ENTRY_RADIUS,
                 0.5 * max(1.0, float(getattr(object_info, "size_x", 0.0))),
                 0.5 * max(1.0, float(getattr(object_info, "size_y", 0.0))),
-                max_distance=object_speed * parameters.MERGE_TRAJECTORY_HORIZON,
+                max_distance=object_speed * parameters.MERGE_PRIORITY_HORIZON,
             )
             touch_time = self._touch_time(
                 touch_distance,
                 object_speed,
-                parameters.MERGE_TRAJECTORY_HORIZON,
+                parameters.MERGE_PRIORITY_HORIZON,
             )
             if not math.isinf(touch_time):
                 touching.append((entry, object_match, touch_time))
@@ -1274,14 +1275,14 @@ class HighwayLanePlanner:
             center_offset=0.5 * parameters.VEHICLE_LENGTH,
             max_distance=max(
                 parameters.CONSERVATIVE_MERGE_EGO_RADIUS,
-                ego_speed * parameters.MERGE_TRAJECTORY_HORIZON,
+                ego_speed * parameters.MERGE_PRIORITY_HORIZON,
             ),
         )
         ego_inside = ego_entry_distance <= 1e-6
         ego_touch_time = self._touch_time(
             ego_entry_distance,
             ego_speed,
-            parameters.MERGE_TRAJECTORY_HORIZON,
+            parameters.MERGE_PRIORITY_HORIZON,
         )
         earliest_touch = (
             min(item[2] for item in touching) if touching else float("inf")
@@ -1293,11 +1294,11 @@ class HighwayLanePlanner:
                 self._merge_zone_priority = "OTHER"
             elif ego_inside:
                 self._merge_zone_priority = "EGO"
-            elif (
-                touching
-                and earliest_touch
-                <= ego_touch_time
-                + parameters.CONSERVATIVE_MERGE_PRIORITY_TIME_MARGIN
+            elif touching and self._merge_arrivals_overlap(
+                ego_touch_time,
+                ego_speed,
+                touching,
+                parameters.CONSERVATIVE_MERGE_ENTRY_RADIUS,
             ):
                 self._merge_zone_priority = "OTHER"
             elif not math.isinf(ego_touch_time):
@@ -1322,41 +1323,6 @@ class HighwayLanePlanner:
                 tracked_entry = entry
                 tracked_match = object_match
                 break
-
-        if (
-            self._merge_zone_priority == "OTHER"
-            and not ego_inside
-            and not other_inside
-            and tracked_match is not None
-            and not math.isinf(ego_touch_time)
-        ):
-            tracked_touch_time = next(
-                (
-                    touch_time
-                    for entry, object_match, touch_time in touching
-                    if self._merge_zone_object_key(entry, object_match)
-                    == self._merge_zone_other_key
-                ),
-                float("inf"),
-            )
-            if (
-                not math.isinf(tracked_touch_time)
-                and ego_touch_time + parameters.MERGE_EGO_TAKEOVER_TIME_MARGIN
-                <= tracked_touch_time
-            ):
-                previous_key = self._merge_zone_other_key
-                self._merge_zone_priority = "EGO"
-                self._merge_zone_other_key = None
-                self._merge_zone_clear_cycles = 0
-                self._last_merge_debug.append(
-                    "second predictive-zone ETA takeover: EGO {:.2f}s ahead of {} "
-                    "(ego={:.2f}s other={:.2f}s)".format(
-                        tracked_touch_time - ego_touch_time,
-                        previous_key or "predicted vehicle",
-                        ego_touch_time,
-                        tracked_touch_time,
-                    )
-                )
 
         if self._merge_zone_priority == "OTHER" and ego_inside:
             tracked_has_entered = False
@@ -1446,10 +1412,7 @@ class HighwayLanePlanner:
         if tracked_speed < parameters.CONSERVATIVE_MERGE_MOVING_SPEED:
             speed_limit = 0.0
         else:
-            rolling_floor = min(
-                parameters.CONSERVATIVE_MERGE_CRAWL_SPEED,
-                tracked_speed,
-            )
+            rolling_floor = parameters.MERGE_MIN_YIELD_SPEED
             desired_arrival_time = (
                 clear_time + parameters.CONSERVATIVE_MERGE_FOLLOW_TIME_GAP
             )
@@ -1468,7 +1431,7 @@ class HighwayLanePlanner:
                 min(
                     parameters.CONSERVATIVE_MERGE_MAX_SPEED,
                     pacing_limit,
-                    braking_limit if braking_limit > 1e-6 else rolling_floor,
+                    braking_limit if braking_limit > 1e-6 else 0.0,
                 ),
             )
         self._last_merge_debug.append(
@@ -1486,6 +1449,9 @@ class HighwayLanePlanner:
     @staticmethod
     def _merge_zone_object_key(entry, lane_match):
         object_info = entry["object_info"]
+        unique_id = getattr(object_info, "unique_id", None)
+        if unique_id is not None:
+            return "npc:{}".format(unique_id)
         name = str(getattr(object_info, "name", "") or "").strip()
         if name:
             return name

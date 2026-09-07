@@ -11,6 +11,8 @@ class LongitudinalControlTest(unittest.TestCase):
         controller = AutonomousDriving.__new__(AutonomousDriving)
         controller.sampling_rate = parameters.PLANNER_UPDATE_RATE
         controller.previous_acc_cmd = previous_command
+        controller._merge_curvature_floor_zone = None
+        controller._merge_curvature_floor_speed = None
         return controller
 
     def test_braking_is_applied_without_rate_limit(self):
@@ -120,6 +122,34 @@ class LongitudinalControlTest(unittest.TestCase):
         )
 
         self.assertEqual(13.5, planned)
+
+    def test_second_merge_ego_speed_does_not_follow_falling_curvature_profile(self):
+        controller = self._controller(0.0)
+        result = SimpleNamespace(
+            debug_details={
+                "merge_zone_priorities": {"SECOND_ENTRY": "EGO"}
+            }
+        )
+
+        first = controller._hold_merge_ego_curvature_speed(19.1, result)
+        later = controller._hold_merge_ego_curvature_speed(15.2, result)
+
+        self.assertEqual(19.1, first)
+        self.assertEqual(19.1, later)
+
+    def test_first_merge_ego_speed_does_not_follow_falling_curvature_profile(self):
+        controller = self._controller(0.0)
+        result = SimpleNamespace(
+            debug_details={
+                "merge_zone_priorities": {"FIRST_PREDICTIVE": "EGO"}
+            }
+        )
+
+        controller._hold_merge_ego_curvature_speed(22.0, result)
+
+        self.assertEqual(
+            22.0, controller._hold_merge_ego_curvature_speed(14.0, result)
+        )
 
 
 if __name__ == "__main__":

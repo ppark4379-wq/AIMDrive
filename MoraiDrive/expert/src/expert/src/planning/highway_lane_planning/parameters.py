@@ -1,3 +1,5 @@
+import math as _math
+
 LANE_WIDTH = 3.5                       # 차선 번호 차이 1개를 표시할 때 사용하는 대표 차선 폭 [m]
 LANE_MATCH_MAX_DISTANCE = 2.4          # 차량 중심을 링크 중앙선에 매칭할 최대 횡거리 [m]
 LANE_CHANGE_DISTANCE = 55.0            # 고속 차선변경을 완만하게 완료할 종방향 거리 [m]
@@ -29,18 +31,35 @@ MERGE_MIN_REMAINING_DISTANCE = 3.0     # 합류점 직전 좌표 투영 오차�
 MERGE_ARRIVAL_TIME_WINDOW = 3.0        # 합류점 도착시간 차가 이 값 이하면 충돌 가능으로 판단 [s]
 MERGE_EGO_PRIORITY_MARGIN = 0.1        # ETA 수치오차를 제외하고 Ego가 먼저일 때 MERGE_GO 확정 [s]
 MERGE_YIELD_TIME_GAP = 1.5             # 합류 차량을 먼저 보낸 뒤 확보할 도착시간 여유 [s]
-MERGE_TRAJECTORY_HORIZON = 3.0         # 링크 매칭 실패 차량의 합류 교차궤적 ACC 예측시간 [s]
+MERGE_TRAJECTORY_HORIZON = 3.0         # 미매칭 차량의 단기 OBB 비상검사 시간 [s]
+MERGE_PRIORITY_HORIZON = 8.0           # 충분한 정지거리 전에 합류 우선권을 확정할 시간 [s]
 MERGE_TRAJECTORY_TIME_STEP = 0.25      # 합류 교차궤적 SAT 검사 시간 간격 [s]
 MERGE_TRAJECTORY_MAX_DISTANCE = 70.0   # 교차궤적 검사에 포함할 주변 차량 최대 중심거리 [m]
+MERGE_GO_CLEAR_TIME_MARGIN = 1.5       # Ego 완전 이탈 후 상대 진입까지 필요한 최소 시간 [s]
+MERGE_CLOSE_GAP_YIELD_DISTANCE = 10.0  # 예상 범퍼 간격이 이 값 이하면 뒤로 양보 [m]
+MERGE_MIN_YIELD_SPEED_KPH = 30.0       # 움직이는 상대차 양보 시 최저 주행속도 [km/h]
+MERGE_MIN_YIELD_SPEED = MERGE_MIN_YIELD_SPEED_KPH / 3.6  # 제어용 [m/s]
 MERGE_ACC_RECOVERY_RATE = 2.0          # 합류 위험 해제 후 속도상한을 복원하는 변화율 [m/s^2]
+# 두 번째 합류 안전 진입: 아래 좌표를 지난 뒤부터 목표속도를 35~45km/h 밴드로
+# 제한한다. 첫 번째 합류와 같은 방식(좌표 + 원)이며, 원의 앞쪽 경계가 이
+# 좌표에 오도록 중심을 합류점 방향으로 반경만큼 밀어 둔다. 그래서 이 좌표
+# '이전'에는 감속하지 않고, 원의 뒤쪽 경계는 합류점을 지나 여유까지 덮는다.
+SECOND_MERGE_SLOWDOWN_POINT = (71.22, -121.62)
+SECOND_MERGE_SLOWDOWN_POINT_Z = 29.87
+SECOND_MERGE_SLOWDOWN_EXIT_MARGIN = 5.0 # 원이 합류점을 지나 더 덮을 거리 [m]
+SECOND_MERGE_SLOWDOWN_MIN_SPEED_KPH = 35.0    # 밴드 하한 [km/h]
+SECOND_MERGE_SLOWDOWN_MAX_SPEED_KPH = 45.0    # 밴드 상한 [km/h]
+SECOND_MERGE_SLOWDOWN_MIN_SPEED = SECOND_MERGE_SLOWDOWN_MIN_SPEED_KPH / 3.6
+SECOND_MERGE_SLOWDOWN_MAX_SPEED = SECOND_MERGE_SLOWDOWN_MAX_SPEED_KPH / 3.6
+
 CONSERVATIVE_MERGE_POINT = (74.98, -178.99) # 사용자가 지정한 합류 진입구역 중심 (x, y) [m]
 CONSERVATIVE_MERGE_POINT_Z = 28.75     # MORAI 월드 좌표의 합류 진입구역 높이 [m]
-CONSERVATIVE_MERGE_ENTRY_RADIUS = 17.5 # 상대차/Ego의 합류구역 선진입을 판정할 반경 [m]
+CONSERVATIVE_MERGE_ENTRY_RADIUS = 10.0 # 실제 두 차로가 겹치는 충돌 코어 반경 [m]
 CONSERVATIVE_MERGE_SUCCESSORS = ("A2256W000153",)  # 두 진입 차선이 합쳐지는 공통 후속 링크
-CONSERVATIVE_MERGE_EGO_RADIUS = 65.0   # 선진입 우선권 판정을 미리 감시할 Ego 반경 [m]
+CONSERVATIVE_MERGE_EGO_RADIUS = 130.0  # 고속에서도 정지거리 전에 우선권을 판단할 반경 [m]
 CONSERVATIVE_MERGE_OBJECT_RADIUS = CONSERVATIVE_MERGE_ENTRY_RADIUS
 CONSERVATIVE_MERGE_PASS_DISTANCE = 15.0 # 상대차가 합류 링크로 진입 후 이 거리만큼 지나야 양보 해제 [m]
-CONSERVATIVE_MERGE_MAX_SPEED = 10.0     # 상대차를 먼저 보낼 때 허용하는 최대 목표속도 (약 29 km/h) [m/s]
+CONSERVATIVE_MERGE_MAX_SPEED = 14.0     # 양보 시 상한; 실제 값은 상대차 통과시간으로 계산 [m/s]
 CONSERVATIVE_MERGE_CRAWL_SPEED = 3.0   # 일반 양보 시 완전정지 대신 유지할 통과속도 (약 11 km/h) [m/s]
 CONSERVATIVE_MERGE_STOP_MARGIN = 2.0   # 양보 시 진입구역 경계 전에 정지할 추가 여유 [m]
 CONSERVATIVE_MERGE_COMFORT_DECEL = 3.0 # 진입구역 정지 목표속도 계산에 사용할 감속도 [m/s^2]
@@ -75,8 +94,10 @@ PROHIBITED_LINK_IDS = ("A2256W000179",)  # (65.16, -28.69)부터 시작하는 �
 # 첫 번째 합류 지점: 두 차량의 원 진입 예상시간을 비교해 선진입 차량을 우선합니다.
 PREDICTIVE_MERGE_POINT = (64.35, 132.39)
 PREDICTIVE_MERGE_POINT_Z = 29.86
+PREDICTIVE_MERGE_BRAKE_START_POINT = (63.06, 179.63)
+PREDICTIVE_MERGE_BRAKE_START_POINT_Z = 29.51
 PREDICTIVE_MERGE_ENTRY_RADIUS = 8.0  # 첫 번째 합류의 실제 충돌 지점만 포함하는 작은 원 [m]
-PREDICTIVE_MERGE_EGO_RADIUS = 45.0    # 너무 이른 급감속을 막는 첫 번째 합류 감시 반경 [m]
+PREDICTIVE_MERGE_EGO_RADIUS = 130.0   # 고속에서도 정지거리 전에 우선권을 판단할 반경 [m]
 PREDICTIVE_MERGE_SUCCESSORS = ("A2256W000420",)
 PREDICTIVE_MERGE_EGO_CURVATURE_SPEED_FLOOR = True
 PREDICTIVE_MERGE_OBJECT_LINK_IDS = ("A2256W000409",)  # ego(A2256W000411) 옆 실제 합류 상대차선
@@ -120,3 +141,29 @@ SUCCESSOR_LINKS = {
     "A2256W000422": ("A2256W000153",),
     "A2256W000445": ("A2256W000153",),
 }
+
+# 두 번째 합류 감속 원: 앞쪽 경계 = SECOND_MERGE_SLOWDOWN_POINT,
+# 뒤쪽 경계 = 합류점을 SECOND_MERGE_SLOWDOWN_EXIT_MARGIN 만큼 지난 지점.
+# 좌표를 옮기면 중심/반경이 함께 따라가도록 계산해 둔다.
+_SECOND_MERGE_SLOWDOWN_DX = (
+    CONSERVATIVE_MERGE_POINT[0] - SECOND_MERGE_SLOWDOWN_POINT[0]
+)
+_SECOND_MERGE_SLOWDOWN_DY = (
+    CONSERVATIVE_MERGE_POINT[1] - SECOND_MERGE_SLOWDOWN_POINT[1]
+)
+_SECOND_MERGE_SLOWDOWN_SPAN = _math.hypot(
+    _SECOND_MERGE_SLOWDOWN_DX, _SECOND_MERGE_SLOWDOWN_DY
+)
+SECOND_MERGE_SLOWDOWN_RADIUS = (
+    0.5 * (_SECOND_MERGE_SLOWDOWN_SPAN + SECOND_MERGE_SLOWDOWN_EXIT_MARGIN)
+)
+SECOND_MERGE_SLOWDOWN_CENTER = (
+    SECOND_MERGE_SLOWDOWN_POINT[0]
+    + _SECOND_MERGE_SLOWDOWN_DX
+    / _SECOND_MERGE_SLOWDOWN_SPAN
+    * SECOND_MERGE_SLOWDOWN_RADIUS,
+    SECOND_MERGE_SLOWDOWN_POINT[1]
+    + _SECOND_MERGE_SLOWDOWN_DY
+    / _SECOND_MERGE_SLOWDOWN_SPAN
+    * SECOND_MERGE_SLOWDOWN_RADIUS,
+)

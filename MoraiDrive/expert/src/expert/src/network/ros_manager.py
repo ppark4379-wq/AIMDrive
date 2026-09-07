@@ -129,13 +129,16 @@ class RosManager:
             return ObjectInfo(
                 item.position.x,
                 item.position.y,
-                item.velocity.x,
+                # MORAI ObjectStatusList reports NPC speed in km/h, while all
+                # planning calculations use SI units.
+                item.velocity.x / 3.6,
                 item.type,
                 name=item.name,
                 is_static=is_static,
                 size_x=item.size.x,
                 size_y=item.size.y,
                 heading_deg=item.heading,
+                unique_id=item.unique_id,
             )
 
         self.object_info_list = (
