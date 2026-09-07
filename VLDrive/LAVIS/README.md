@@ -1,3 +1,5 @@
+> **팀 MORAI 학습:** [현재 모델·데이터셋·학습 실행 안내](README_MORAI.md).
+
 <p align="center">
     <br>
     <img src="docs/_static/logo_final.png" width="400"/>

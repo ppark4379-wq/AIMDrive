@@ -1,0 +1,22 @@
+{
+  "seed": 607,
+  "dataset": "data/morai",
+  "split_file": "splits_train_val_v1.json",
+  "normal_max_speed_kmh": 60,
+  "sequence_length": 4,
+  "train_windows": 16,
+  "val_windows": 16,
+  "updates": 600,
+  "visual_checkpoint": "assets/pretrained/vision_encoder/vision-encoder-r50.pth.tar",
+  "precision": "bf16",
+  "optimizer": {
+    "head_lr": 0.001,
+    "encoder_lr": 1e-05,
+    "language_lr": 3e-06
+  },
+  "fit_gate": {
+    "ade_m": 1.0,
+    "speed_mae_mps": 1.0
+  },
+  "fit_gate_purpose": "Initial memorization diagnostic only, not a competition or deployment threshold"
+}

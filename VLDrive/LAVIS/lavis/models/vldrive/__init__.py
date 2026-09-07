@@ -1,5 +1,23 @@
-from .ddia_attention import DDIALlamaAttention, build_ddia_attention_mask
-from .vldrive_model import VLDriveModel, VLDriveOutput
-from .visual_token_interface import VisualTokenBatch
+"""VLDrive components; import only the component requested by the caller."""
+from importlib import import_module
 
-__all__ = ["DDIALlamaAttention", "VLDriveModel", "VLDriveOutput", "VisualTokenBatch", "build_ddia_attention_mask"]
+_EXPORTS = {
+    "DDIALlamaAttention": ("ddia_attention", "DDIALlamaAttention"),
+    "build_ddia_attention_mask": ("ddia_attention", "build_ddia_attention_mask"),
+    "VLDriveModel": ("vldrive_model", "VLDriveModel"),
+    "VLDriveOutput": ("vldrive_model", "VLDriveOutput"),
+    "VisualTokenBatch": ("visual_token_interface", "VisualTokenBatch"),
+    "MoraiDrivingModel": ("morai_model", "MoraiDrivingModel"),
+    "MoraiDrivingConfig": ("morai_model", "MoraiDrivingConfig"),
+    "MoraiVisualEncoder": ("visual_encoder", "MoraiVisualEncoder"),
+    "VisualTrajectoryModel": ("visual_trajectory", "VisualTrajectoryModel"),
+}
+__all__ = list(_EXPORTS)
+
+def __getattr__(name):
+    if name not in _EXPORTS:
+        raise AttributeError(name)
+    module, symbol = _EXPORTS[name]
+    value = getattr(import_module("." + module, __name__), symbol)
+    globals()[name] = value
+    return value

@@ -1,3 +1,9 @@
+> 논문 기준 connector 통합은 `training_model.py`와 `train_vldrive.py`에 있다.
+> [VLDrive 학습 안내](../../../README_VLDRIVE_TRAINING.md)를 참고한다.
+
+> MORAI의 raw 센서부터 시작하는 전체 모델은 `morai_model.py`를 사용한다.
+> [MORAI 학습 안내](../../../README_MORAI.md)를 참고한다. 아래는 기존 언어 모델 API 문서다.
+
 # VLDrive TinyLLaMA + DDIA implementation
 
 ## 1. Source files inspected

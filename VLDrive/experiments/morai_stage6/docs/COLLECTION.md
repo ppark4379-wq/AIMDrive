@@ -1,7 +1,7 @@
 # MORAI Stage6E 수집·검증
 
 이 팀 checkout의 `VLDrive/experiments/morai_stage6`에서 실행한다. ROS1 Noetic,
-`morai_msgs`, rosbridge와 catkin setup이 필요하다. 학습은 [README](../README.md)의 별도 환경을
+`morai_msgs`, rosbridge와 catkin setup이 필요하다. 학습은 [LAVIS 안내](../../../LAVIS/README_MORAI.md)의 별도 환경을
 사용한다. `/Ego_topic`은 학습 teacher이며 모델 입력으로 전달하지 않는다.
 
 ## 센서와 확인된 원인
@@ -49,9 +49,9 @@ export ROS_IP=172.18.40.28
 collection wrapper는 vision subprocess의 PYTHONPATH를 `src`로 설정하므로 vision 환경 자체에
 팀 custom timm이 설치돼 있어야 한다. 새 별도 vision 환경에서는 이 폴더 기준으로
 `python -m pip install --no-deps -e ../../vision_encoder`를 사용할 수 있다.
-Goal trainer는 backend bootstrap을 사용하므로 이 editable 설치 없이도 상위 코드를 읽는다.
+LAVIS MORAI trainer는 backend bootstrap을 사용하므로 이 editable 설치 없이도 상위 코드를 읽는다.
 기존 frozen cache loader의 Memfuser 초기화에는 torchvision/ImageNet 초기 weight cache 또는
-최초 다운로드 연결이 필요할 수 있다. Goal trainer의 중복 초기 다운로드 생략과는 별도 경로다.
+최초 다운로드 연결이 필요할 수 있다. LAVIS MORAI trainer의 중복 초기 다운로드 생략과는 별도 경로다.
 
 센서 프리셋 검사에는 `--sensor-preset /path/to/SensorInfo.json`을 추가한다.
 활성 UI에서 확인한 경우에만 `--confirmed-fovs 90,130,130,90 --confirmation-note '활성 UI 확인'`을
@@ -82,3 +82,6 @@ raw만 끝난 run은 같은 wrapper에 `--run data/stage6e_runs/run_NNNN`과 vis
 
 GPS도 MORAI 출력이므로 외부 실측 GT 인증은 아니다. WebSocket 입구 이전 capture/send 지연의
 절대값, 모든 센서가 함께 지연되는 경우, runtime localization과 closed-loop 제어는 별도 검증 대상이다.
+
+수집기와 LAVIS는 같은 VLDrive checkout으로 유지한다. 공유 데이터 검증의 기준 구현은
+`LAVIS/lavis/datasets/datasets/morai`이며 수집 환경에서는 NumPy 기반 검증만 import한다.

@@ -1,5 +1,7 @@
+# Language-token API example. Complete MORAI training: train_vldrive.py.
 model:
   arch: vldrive
+  model_type: tinyllama_ddia
   tinyllama_model_name_or_path: ../weights/TinyLlama-1.1B-intermediate-step-1431k-3T
   tinyllama_cache_dir: null
   local_files_only: true
@@ -13,6 +15,7 @@ model:
   max_instruction_length: 64
   debug_vldrive: false
   load_pretrained: false
+  load_finetuned: false
 
 run:
   task: carla_drive

@@ -1,3 +1,5 @@
+> **팀 MORAI 학습:** [현재 모델·데이터셋·학습 실행 안내](LAVIS/README_MORAI.md).
+
 # LMDrive: Closed-Loop End-to-End Driving with Large Language Models
 *An end-to-end, closed-loop, language-based autonomous driving framework, which interacts with the dynamic environment via multi-modal multi-view sensor data and natural language instructions.*
 

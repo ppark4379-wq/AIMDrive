@@ -1,0 +1,35 @@
+{
+  "seed": 607,
+  "device": "cuda",
+  "cpu_threads": 4,
+  "dataset": "data/morai",
+  "split_file": "splits_train_val_v1.json",
+  "instructions": null,
+  "sequence_length": 11,
+  "train_windows": 8,
+  "val_windows": 16,
+  "epochs": 15,
+  "checkpoint_every": 100,
+  "optimizer": {
+    "lr": 1e-05,
+    "weight_decay": 0.06,
+    "state_device": "cpu"
+  },
+  "model": {
+    "input_mode": "cached",
+    "visual_checkpoint": "assets/pretrained/vision_encoder/vision-encoder-r50.pth.tar",
+    "visual_sha256": "718c7f1acae1607dc35355b1782685e29c98d65233de83fa8a6309ed6df6076a",
+    "language_checkpoint": "assets/pretrained/TinyLlama-1.1B-3T",
+    "precision": "bf16",
+    "max_instruction_tokens": 128,
+    "memory_size": 10,
+    "target_retention": 0.3,
+    "qformer_hidden": 256,
+    "qformer_layers": 2,
+    "qformer_heads": 8,
+    "reconstruction_layers": 4,
+    "pruning_weight": 10.0,
+    "reconstruction_weight": 1.0,
+    "checkpoint_language": true
+  }
+}
