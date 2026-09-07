@@ -713,7 +713,8 @@ class FullLoopScenario(FullLoopDriveBase):
 
         count = int(self.cfg["roundabout_npc"]["count"])
         if count < 1:
-            raise RuntimeError("roundabout_npc count must be at least 1")
+            print("[FullLoop] roundabout traffic skipped")
+            return
         vehicle_spacing_m = total_length / count
         phase = vehicle_spacing_m * 0.5
         route_laps = int(self.cfg["roundabout_npc"].get("route_laps", 30))
