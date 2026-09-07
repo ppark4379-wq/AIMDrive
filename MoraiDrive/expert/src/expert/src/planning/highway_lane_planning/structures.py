@@ -1,3 +1,6 @@
+import math
+
+
 class LaneMatch:
     def __init__(self, lane_link, s, distance, x, y, yaw):
         self.lane_link = lane_link
@@ -24,6 +27,19 @@ class HighwayLaneLink:
         self.can_move_left = bool(raw.get("can_move_left_lane", False))
         self.can_move_right = bool(raw.get("can_move_right_lane", False))
         self.excluded = bool(excluded)
+        # 링크 매칭에서 먼 링크를 세그먼트 순회 없이 걸러내기 위한 AABB.
+        # 매 주기 모든 링크의 모든 세그먼트에 투영하면 차량 수에 비례해
+        # 제어 주기를 넘긴다.
+        self.min_x = min(point.x for point in points)
+        self.max_x = max(point.x for point in points)
+        self.min_y = min(point.y for point in points)
+        self.max_y = max(point.y for point in points)
+
+    def distance_to_bounds(self, position):
+        """Lower bound on the distance from position to this link."""
+        dx = max(self.min_x - position.x, 0.0, position.x - self.max_x)
+        dy = max(self.min_y - position.y, 0.0, position.y - self.max_y)
+        return math.hypot(dx, dy)
 
 
 class HighwayCandidatePath:

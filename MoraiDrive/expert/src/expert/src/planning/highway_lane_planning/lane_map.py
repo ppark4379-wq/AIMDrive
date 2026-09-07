@@ -70,11 +70,21 @@ class HighwayLaneMap:
             lane_link.section_index for lane_link in self.links.values()
         )
 
+    # 선호 링크 보너스(-0.35)만 점수를 낮출 수 있으므로, 이 여유를 두고
+    # 가지치기하면 반환 결과(None 포함)가 완전히 동일하다.
+    _MATCH_PRUNE_MARGIN = 1.0
+
     def match(self, position, heading=None, preferred_ids=()):
         preferred = set(preferred_ids or ())
         best_match = None
         best_score = float("inf")
+        prune_distance = (
+            parameters.LANE_MATCH_MAX_DISTANCE + self._MATCH_PRUNE_MARGIN
+        )
         for lane_link in self.links.values():
+            # AABB 하한거리로 먼 링크를 세그먼트 순회 전에 걸러낸다.
+            if lane_link.distance_to_bounds(position) > prune_distance:
+                continue
             match = self.project(position, lane_link)
             heading_cost = 0.0
             if heading is not None:

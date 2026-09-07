@@ -9,7 +9,60 @@ import numpy as np
 from ...localization.point import Point
 from . import parameters
 from .lane_map import HighwayLaneMap
+from .merge_conflict import MergeOccupancy, MergeZoneConfig, MergeZoneState
 from .structures import HighwayCandidatePath, HighwayPlanningResult
+
+
+def _first_merge_zone_config():
+    """첫 번째 합류(A2256W000409 + A2256W000411 -> A2256W000420)."""
+    return MergeZoneConfig(
+        name="first_merge",
+        center=Point(*parameters.PREDICTIVE_MERGE_POINT),
+        radius=parameters.PREDICTIVE_MERGE_ENTRY_RADIUS,
+        successors=parameters.PREDICTIVE_MERGE_SUCCESSORS,
+        ego_watch_radius=parameters.PREDICTIVE_MERGE_EGO_RADIUS,
+        max_speed=parameters.PREDICTIVE_MERGE_MAX_SPEED,
+        stop_margin=parameters.PREDICTIVE_MERGE_STOP_MARGIN,
+        comfort_decel=parameters.PREDICTIVE_MERGE_COMFORT_DECEL,
+        follow_time_gap=parameters.PREDICTIVE_MERGE_FOLLOW_TIME_GAP,
+        clear_pass_distance=parameters.PREDICTIVE_MERGE_PASS_DISTANCE,
+        go_clear_time_margin=parameters.MERGE_GO_CLEAR_TIME_MARGIN,
+        go_min_lead_distance=parameters.MERGE_GO_MIN_LEAD_DISTANCE,
+        go_rear_time_gap=parameters.MERGE_GO_REAR_TIME_GAP,
+        go_assumed_accel=parameters.MERGE_GO_ASSUMED_ACCEL,
+        go_cruise_speed=parameters.PREDICTIVE_MERGE_GO_CRUISE_SPEED,
+        hold_release_ratio=parameters.MERGE_GO_HOLD_RELEASE_RATIO,
+        decision_horizon=parameters.MERGE_DECISION_HORIZON,
+        dropout_hold_time=parameters.MERGE_ZONE_DROPOUT_HOLD_TIME,
+        yield_max_decel=parameters.MERGE_YIELD_MAX_DECEL,
+        commit_min_speed=parameters.MERGE_COMMIT_MIN_SPEED,
+    )
+
+
+def _second_merge_zone_config():
+    """두 번째 합류(A2256W000422 + A2256W000445 -> A2256W000153)."""
+    return MergeZoneConfig(
+        name="second_merge",
+        center=Point(*parameters.CONSERVATIVE_MERGE_POINT),
+        radius=parameters.CONSERVATIVE_MERGE_ENTRY_RADIUS,
+        successors=parameters.CONSERVATIVE_MERGE_SUCCESSORS,
+        ego_watch_radius=parameters.CONSERVATIVE_MERGE_EGO_RADIUS,
+        max_speed=parameters.CONSERVATIVE_MERGE_MAX_SPEED,
+        stop_margin=parameters.CONSERVATIVE_MERGE_STOP_MARGIN,
+        comfort_decel=parameters.CONSERVATIVE_MERGE_COMFORT_DECEL,
+        follow_time_gap=parameters.CONSERVATIVE_MERGE_FOLLOW_TIME_GAP,
+        clear_pass_distance=parameters.CONSERVATIVE_MERGE_PASS_DISTANCE,
+        go_clear_time_margin=parameters.MERGE_GO_CLEAR_TIME_MARGIN,
+        go_min_lead_distance=parameters.MERGE_GO_MIN_LEAD_DISTANCE,
+        go_rear_time_gap=parameters.MERGE_GO_REAR_TIME_GAP,
+        go_assumed_accel=parameters.MERGE_GO_ASSUMED_ACCEL,
+        go_cruise_speed=parameters.CONSERVATIVE_MERGE_GO_CRUISE_SPEED,
+        hold_release_ratio=parameters.MERGE_GO_HOLD_RELEASE_RATIO,
+        decision_horizon=parameters.MERGE_DECISION_HORIZON,
+        dropout_hold_time=parameters.MERGE_ZONE_DROPOUT_HOLD_TIME,
+        yield_max_decel=parameters.MERGE_YIELD_MAX_DECEL,
+        commit_min_speed=parameters.MERGE_COMMIT_MIN_SPEED,
+    )
 
 
 class HighwayLanePlanner:
@@ -32,15 +85,12 @@ class HighwayLanePlanner:
         self._last_lane_checks = []
         self._merge_decisions = {}
         self._merge_go_object_ids = set()
-        self._merge_zone_priority = None
-        self._merge_zone_other_key = None
-        self._merge_zone_clear_cycles = 0
-        self._predictive_merge_priority = None
-        self._predictive_merge_clear_cycles = 0
-        self._predictive_merge_other_key = None
-        self._predictive_merge_last_speed = 0.0
-        self._predictive_merge_last_clear_time = float("inf")
-        self._predictive_merge_dropout_hold_time = 0.0
+        self._first_merge_state = MergeZoneState(_first_merge_zone_config())
+        self._second_merge_state = MergeZoneState(_second_merge_zone_config())
+        self._merge_zone_states = (
+            self._first_merge_state,
+            self._second_merge_state,
+        )
 
     def plan(self, vehicle_state, reference_path, vehicle_entries):
         ego_match = self._resolve_ego_lane(vehicle_state)
@@ -197,6 +247,9 @@ class HighwayLanePlanner:
                 merge_conflict
                 or self._merge_zone_priority == "OTHER"
                 or second_merge_protect_middle
+                # 합류 통과를 확정한 뒤에도 정면 충돌이 임박하면 세워야 한다.
+                # 후방 차량은 _evaluate_dynamic_collision 이 이미 제외한다.
+                or self._merge_zone_committed
             )
             and
             not keep_candidate.valid
@@ -512,73 +565,42 @@ class HighwayLanePlanner:
         ego_link = ego_match.lane_link
         self._last_merge_debug = []
         self._merge_go_object_ids = set()
-        ego_distance = max(0.0, ego_link.length - ego_match.s)
         ego_speed = max(0.0, float(vehicle_state.velocity))
-
-        ego_eta = ego_distance / max(0.1, ego_speed)
-        speed_limit = float("inf")
         ego_successors = set(self.lane_map.successors.get(ego_link.id, ()))
-        predictive_successors = ego_successors.intersection(
-            parameters.PREDICTIVE_MERGE_SUCCESSORS
-        )
-        predictive_point = Point(*parameters.PREDICTIVE_MERGE_POINT)
-        predictive_zone = (
-            bool(predictive_successors)
-            and vehicle_state.position.distance(predictive_point)
-            <= parameters.PREDICTIVE_MERGE_EGO_RADIUS
-        )
-        if predictive_zone:
-            return self._predictive_merge_zone_speed_limit(
+
+        # 지정된 합류 구역으로 들어가는 링크에 있으면 점유구간 판단이 그
+        # 구역을 전담한다. 구역 밖으로 나온 상태기는 다음 접근을 위해 비운다.
+        active_state = None
+        for state in self._merge_zone_states:
+            config = state.config
+            watching = (
+                self._route_reaches(
+                    ego_link.id,
+                    config.successors,
+                    parameters.MERGE_ZONE_WATCH_LINK_DEPTH,
+                )
+                and vehicle_state.position.distance(config.center)
+                <= config.ego_watch_radius
+            )
+            if watching and active_state is None:
+                active_state = state
+            elif not watching and state.mode is not None:
+                state.reset()
+                self._merge_speed_limit_state = float("inf")
+        if active_state is not None:
+            return self._merge_zone_speed_limit(
+                active_state,
                 vehicle_state,
                 ego_match,
                 object_matches,
                 vehicle_entries,
-                predictive_successors,
-                predictive_point,
             )
-        if self._predictive_merge_priority is not None:
-            self._predictive_merge_priority = None
-            self._predictive_merge_clear_cycles = 0
-            self._predictive_merge_other_key = None
-            self._predictive_merge_last_speed = 0.0
-            self._predictive_merge_last_clear_time = float("inf")
-            self._predictive_merge_dropout_hold_time = 0.0
 
-        conservative_successors = ego_successors.intersection(
-            parameters.CONSERVATIVE_MERGE_SUCCESSORS
-        )
-        merge_point = Point(*parameters.CONSERVATIVE_MERGE_POINT)
-        conservative_zone = (
-            bool(conservative_successors)
-            and vehicle_state.position.distance(merge_point)
-            <= parameters.CONSERVATIVE_MERGE_EGO_RADIUS
-        )
-        if conservative_zone:
-            priority_limit = self._merge_zone_priority_speed_limit(
-                vehicle_state,
-                ego_link,
-                object_matches,
-                vehicle_entries,
-                conservative_successors,
-                merge_point,
-            )
-            if self._merge_zone_priority == "EGO":
-                # Ego entered first, so merge-opponent OBB predictions must not
-                # brake it into a side/rear collision. Same-lane front ACC and
-                # non-merge safety logic remain active outside this override.
-                self._merge_speed_limit_state = float("inf")
-                return float("inf")
-            if math.isinf(priority_limit):
-                return float("inf")
-            return priority_limit
-
-        if self._merge_zone_priority is not None and (
-            not conservative_successors
-            or vehicle_state.position.distance(merge_point)
-            > parameters.CONSERVATIVE_MERGE_EGO_RADIUS
-        ):
-            self._reset_merge_zone_priority()
-
+        # 지정 구역 밖의 일반 합류: 공통 후속 링크로 접근하는 차량과
+        # 도착시간을 비교하는 조기 경보. 구역 판단과 같은 여유 기준을 쓴다.
+        ego_distance = max(0.0, ego_link.length - ego_match.s)
+        ego_eta = ego_distance / max(0.1, ego_speed)
+        speed_limit = float("inf")
         self._merge_decisions = {
             key: decision
             for key, decision in self._merge_decisions.items()
@@ -601,40 +623,18 @@ class HighwayLanePlanner:
 
                 object_distance = max(0.0, object_link.length - object_match.s)
                 if object_distance > parameters.MERGE_LOOKAHEAD_DISTANCE:
-                    self._last_merge_debug.append(
-                        "graph object={} link={} outside distance={:.1f}m".format(
-                            getattr(entry["object_info"], "name", "") or "unnamed",
-                            object_link.id,
-                            object_distance,
-                        )
-                    )
                     continue
-                successor_id = sorted(shared_successors)[0]
-                conservative_yield = (
-                    conservative_zone
-                    and successor_id in conservative_successors
-                    and entry["object_info"].position.distance(merge_point)
-                    <= parameters.CONSERVATIVE_MERGE_OBJECT_RADIUS
-                )
                 object_speed = max(0.0, float(entry["object_info"].velocity))
-                if object_speed < 0.1 and not conservative_yield:
+                if object_speed < 0.1:
                     continue
-                object_eta = object_distance / max(0.1, object_speed)
-                object_key = (
-                    successor_id,
-                    getattr(entry["object_info"], "name", "")
-                    or object_link.id,
-                )
+                object_eta = object_distance / object_speed
+                object_name = self._merge_zone_object_key(entry, object_match)
+                object_key = (sorted(shared_successors)[0], object_name)
                 decision = self._merge_decisions.get(object_key)
-                if conservative_yield:
-                    # This merge is intentionally safety-first: even if Ego's
-                    # ETA is smaller, let the neighboring approach vehicle pass.
-                    decision = "YIELD"
-                    self._merge_decisions[object_key] = decision
-                elif decision is None:
+                if decision is None:
                     decision = (
                         "GO"
-                        if ego_eta + parameters.MERGE_EGO_PRIORITY_MARGIN
+                        if ego_eta + parameters.MERGE_GO_CLEAR_TIME_MARGIN
                         < object_eta
                         else "YIELD"
                     )
@@ -643,113 +643,39 @@ class HighwayLanePlanner:
                 if decision == "GO":
                     self._merge_go_object_ids.add(id(entry["object_info"]))
                     self._last_merge_debug.append(
-                        "graph object={} link={} successor={} ego_eta={:.2f}s obj_eta={:.2f}s -> MERGE_GO locked".format(
-                            getattr(entry["object_info"], "name", "") or "unnamed",
-                            object_link.id,
-                            successor_id,
-                            ego_eta,
-                            object_eta,
+                        "graph object={} link={} ego_eta={:.2f}s obj_eta={:.2f}s"
+                        " -> MERGE_GO locked".format(
+                            object_name, object_link.id, ego_eta, object_eta
                         )
                     )
                     continue
                 if (
-                    not conservative_yield
-                    and
                     abs(ego_eta - object_eta)
                     > parameters.MERGE_ARRIVAL_TIME_WINDOW
                 ):
                     self._last_merge_debug.append(
-                        "graph object={} link={} ego_eta={:.2f}s obj_eta={:.2f}s -> time-clear".format(
-                            getattr(entry["object_info"], "name", "") or "unnamed",
-                            object_link.id,
-                            ego_eta,
-                            object_eta,
+                        "graph object={} link={} ego_eta={:.2f}s obj_eta={:.2f}s"
+                        " -> time-clear".format(
+                            object_name, object_link.id, ego_eta, object_eta
                         )
                     )
                     continue
 
                 yield_time = object_eta + parameters.MERGE_YIELD_TIME_GAP
                 speed_limit = min(
-                    speed_limit,
-                    ego_distance / max(0.1, yield_time),
+                    speed_limit, ego_distance / max(0.1, yield_time)
                 )
-                if conservative_yield:
-                    speed_limit = min(
-                        speed_limit,
-                        parameters.CONSERVATIVE_MERGE_MAX_SPEED,
-                    )
                 self._last_merge_debug.append(
-                    "graph object={} link={} successor={} ego_eta={:.2f}s obj_eta={:.2f}s -> {} limit={:.2f}m/s".format(
-                        getattr(entry["object_info"], "name", "") or "unnamed",
+                    "graph object={} link={} ego_eta={:.2f}s obj_eta={:.2f}s"
+                    " -> MERGE_YIELD limit={:.2f}m/s".format(
+                        object_name,
                         object_link.id,
-                        successor_id,
                         ego_eta,
                         object_eta,
-                        (
-                            "SAFE_ZONE_YIELD"
-                            if conservative_yield
-                            else "MERGE_YIELD locked"
-                        ),
                         speed_limit,
                     )
                 )
 
-        if conservative_zone:
-            # Keep yielding while the other vehicle is crossing the beginning
-            # of the shared successor. This closes the one-frame gap where its
-            # lane match changes from an approach link to the merged link.
-            matched_ids = {id(entry["object_info"]) for entry, _ in object_matches}
-            for entry, object_match in object_matches:
-                object_info = entry["object_info"]
-                if object_match.lane_link.id not in conservative_successors:
-                    continue
-                if object_info.position.distance(merge_point) > parameters.CONSERVATIVE_MERGE_OBJECT_RADIUS:
-                    continue
-                if object_match.s > parameters.CONSERVATIVE_MERGE_PASS_DISTANCE:
-                    continue
-                object_speed = max(0.0, float(object_info.velocity))
-                clear_distance = max(
-                    0.0,
-                    parameters.CONSERVATIVE_MERGE_PASS_DISTANCE
-                    - object_match.s,
-                )
-                clear_time = (
-                    clear_distance / max(0.1, object_speed)
-                    + parameters.MERGE_YIELD_TIME_GAP
-                )
-                speed_limit = min(
-                    speed_limit,
-                    ego_distance / max(0.1, clear_time),
-                    parameters.CONSERVATIVE_MERGE_MAX_SPEED,
-                )
-                self._last_merge_debug.append(
-                    "successor object={} link={} s={:.1f}m -> SAFE_ZONE_YIELD limit={:.2f}m/s".format(
-                        getattr(object_info, "name", "") or "unnamed",
-                        object_match.lane_link.id,
-                        object_match.s,
-                        speed_limit,
-                    )
-                )
-
-            # A vehicle between lane centerlines can temporarily fail map
-            # matching. In this designated zone, proximity is enough to keep a
-            # conservative speed until its lane association becomes stable.
-            for entry in vehicle_entries:
-                object_info = entry["object_info"]
-                if id(object_info) in matched_ids:
-                    continue
-                if object_info.position.distance(merge_point) > parameters.CONSERVATIVE_MERGE_OBJECT_RADIUS:
-                    continue
-                speed_limit = min(
-                    speed_limit,
-                    parameters.CONSERVATIVE_MERGE_MAX_SPEED,
-                )
-                self._last_merge_debug.append(
-                    "unmatched object={} near merge -> SAFE_ZONE_YIELD limit={:.2f}m/s".format(
-                        getattr(object_info, "name", "") or "unnamed",
-                        speed_limit,
-                    )
-                )
         trajectory_limit = self._trajectory_merge_speed_limit(
             vehicle_state, ego_match, object_matches, vehicle_entries
         )
@@ -758,383 +684,345 @@ class HighwayLanePlanner:
             return float("inf")
         return min(ego_speed, speed_limit)
 
-    def _predictive_merge_zone_speed_limit(
+    def _route_reaches(self, link_id, targets, max_depth=2):
+        """Whether any target link is reachable within max_depth successors.
+
+        진입 링크가 짧은 합류(A2256W000422 는 75m)에서는 바로 앞 링크만 보면
+        정지거리보다 짧은 거리에서 판단을 시작하게 되어 양보가 불가능하다.
+        """
+        frontier = {link_id}
+        for _ in range(max(1, int(max_depth))):
+            following = set()
+            for current in frontier:
+                for successor in self.lane_map.successors.get(current, ()):
+                    if successor in targets:
+                        return True
+                    following.add(successor)
+            frontier = following
+            if not frontier:
+                break
+        return False
+
+    @staticmethod
+    def _can_reach_zone(object_info, config):
+        """Cheap admissibility test before the sampled OBB scan.
+
+        등속으로 판단 지평 안에 충돌구역에 닿을 수 없는 차량은 스캔하지
+        않는다. 정지 차량은 이미 구역 안에 있을 때만 통과한다.
+        """
+        speed = max(0.0, float(object_info.velocity))
+        half_length = 0.5 * max(
+            1.0, float(getattr(object_info, "size_x", 0.0))
+        )
+        reachable = (
+            speed * config.decision_horizon + config.radius + half_length
+        )
+        return object_info.position.distance(config.center) <= reachable
+
+    def _has_passed_zone(self, object_match, object_info, config):
+        """Whether a vehicle on the merged link is already past the zone.
+
+        합류 링크를 지나간 차량은 다시 구역에 들어올 수 없다. 이 검사가
+        없으면 통과한 차량마다 스캔 전 구간을 헛돌게 된다.
+        """
+        object_link = object_match.lane_link
+        if object_link.id not in config.successors:
+            return False
+        half_length = 0.5 * max(
+            1.0, float(getattr(object_info, "size_x", 0.0))
+        )
+        center_s = self.lane_map.project(config.center, object_link).s
+        return object_match.s > center_s + config.radius + half_length
+
+    def _merges_into_zone(self, ego_link_id, object_link_id, config):
+        """Whether a vehicle converges on the zone from the other branch.
+
+        같은 차선의 앞/뒤 차량은 합류 상대가 아니라 선행/후행 차량이므로
+        ACC 가 담당한다. 여기서는 Ego 경로와 겹치지 않는 분기의 차량만 본다.
+        """
+        depth = parameters.MERGE_ZONE_WATCH_LINK_DEPTH
+        if object_link_id == ego_link_id:
+            # 같은 링크의 차량은 선행/후행차이므로 ACC 가 담당한다.
+            return False
+        if object_link_id in config.successors:
+            # 이미 합류 링크 위에 있어 충돌구역을 점유하는 차량
+            return True
+        if not self._route_reaches(object_link_id, config.successors, depth):
+            return False
+        shares_ego_route = self._route_reaches(
+            ego_link_id, (object_link_id,), depth
+        ) or self._route_reaches(object_link_id, (ego_link_id,), depth)
+        return not shares_ego_route
+
+    def _merge_zone_speed_limit(
         self,
+        state,
         vehicle_state,
         ego_match,
         object_matches,
         vehicle_entries,
-        merge_successors,
-        merge_point,
     ):
-        """Give the merge circle to the OBB expected to touch it first."""
-        ego_link = ego_match.lane_link
-        relevant = []
-        for entry, object_match in object_matches:
-            object_link = object_match.lane_link
-            if object_link.id == ego_link.id:
-                continue
-            if object_link.id not in parameters.PREDICTIVE_MERGE_OBJECT_LINK_IDS:
-                continue
-            relevant.append((entry, object_match))
+        """Decide one merge by comparing conflict-zone occupancy intervals.
 
-        touching = []
-        for entry, object_match in relevant:
-            object_info = entry["object_info"]
-            object_speed = max(0.0, float(object_info.velocity))
-            object_half_length = 0.5 * max(
-                1.0, float(getattr(object_info, "size_x", 0.0))
-            )
-            object_half_width = 0.5 * max(
-                1.0, float(getattr(object_info, "size_y", 0.0))
-            )
-            object_touch_distance = self._first_circle_obb_touch_distance(
-                object_match,
-                merge_point,
-                parameters.PREDICTIVE_MERGE_ENTRY_RADIUS,
-                object_half_length,
-                object_half_width,
-                max_distance=(
-                    object_speed * parameters.MERGE_TRAJECTORY_HORIZON
-                ),
-            )
-            object_touch_time = self._touch_time(
-                object_touch_distance,
-                object_speed,
-                parameters.MERGE_TRAJECTORY_HORIZON,
-            )
-            if not math.isinf(object_touch_time):
-                touching.append((entry, object_match, object_touch_time))
-
+        Ego 가 구역을 완전히 비우는 시점과 상대차가 들어오는 시점을 비교해,
+        확실히 먼저 빠져나갈 수 있을 때만 GO 한다. 진입시점만 비교하던 이전
+        방식은 먼저 들어가도 다 나가기 전에 상대차가 도착해 추돌을 당했다.
+        """
+        config = state.config
         ego_speed = max(0.0, float(vehicle_state.velocity))
-        ego_entry_distance = self._first_circle_obb_touch_distance(
+        ego_occupancy = self._zone_occupancy_from_match(
+            state,
             ego_match,
-            merge_point,
-            parameters.PREDICTIVE_MERGE_ENTRY_RADIUS,
+            ego_speed,
             0.5 * parameters.VEHICLE_LENGTH,
             0.5 * parameters.VEHICLE_WIDTH,
+            "EGO",
             center_offset=0.5 * parameters.VEHICLE_LENGTH,
-            max_distance=max(
-                parameters.PREDICTIVE_MERGE_EGO_RADIUS,
-                ego_speed * parameters.MERGE_TRAJECTORY_HORIZON,
-            ),
+            is_ego=True,
         )
-        ego_inside = ego_entry_distance <= 1e-6
-        ego_touch_time = self._touch_time(
-            ego_entry_distance,
-            ego_speed,
-            parameters.MERGE_TRAJECTORY_HORIZON,
-        )
-        earliest_touch = (
-            min(time_value for _, _, time_value in touching)
-            if touching
-            else float("inf")
-        )
-        other_inside = earliest_touch <= 1e-9
-        if self._predictive_merge_priority is None:
-            # 현재 원 안에 먼저 들어온 차량을 우선한다. 둘 다 원 밖이면
-            # 미래 경로가 단순히 원에 닿는지만 보지 않고 예상 진입시간을
-            # 비교하여 상대 차량이 먼저 도착할 때만 선제 감속한다.
-            if other_inside:
-                self._predictive_merge_priority = "OTHER"
-                self._predictive_merge_clear_cycles = 0
-            elif ego_inside:
-                self._predictive_merge_priority = "EGO"
-            elif (
-                touching
-                and earliest_touch
-                <= ego_touch_time
-                + parameters.PREDICTIVE_MERGE_PRIORITY_TIME_MARGIN
-            ):
-                self._predictive_merge_priority = "OTHER"
-                self._predictive_merge_clear_cycles = 0
-            elif not math.isinf(ego_touch_time):
-                # Use the same future path/OBB criterion for Ego, and lock GO
-                # before its current rear-axle position reaches the circle.
-                self._predictive_merge_priority = "EGO"
-
-            if self._predictive_merge_priority == "OTHER":
-                winner_entry, winner_match, _ = min(
-                    touching, key=lambda item: item[2]
-                )
-                self._predictive_merge_other_key = self._merge_zone_object_key(
-                    winner_entry, winner_match
-                )
-
-        if (
-            self._predictive_merge_priority == "OTHER"
-            and not ego_inside
-            and not other_inside
-            and not math.isinf(ego_touch_time)
-        ):
-            tracked_touch_time = next(
-                (
-                    touch_time
-                    for entry, object_match, touch_time in touching
-                    if self._merge_zone_object_key(entry, object_match)
-                    == self._predictive_merge_other_key
-                ),
-                float("inf"),
-            )
-            if (
-                not math.isinf(tracked_touch_time)
-                and ego_touch_time + parameters.MERGE_EGO_TAKEOVER_TIME_MARGIN
-                <= tracked_touch_time
-            ):
-                previous_key = self._predictive_merge_other_key
-                self._predictive_merge_priority = "EGO"
-                self._predictive_merge_other_key = None
-                self._predictive_merge_clear_cycles = 0
-                self._last_merge_debug.append(
-                    "predictive-zone ETA takeover: EGO {:.2f}s ahead of {} "
-                    "(ego={:.2f}s other={:.2f}s)".format(
-                        tracked_touch_time - ego_touch_time,
-                        previous_key or "predicted vehicle",
-                        ego_touch_time,
-                        tracked_touch_time,
-                    )
-                )
-
-        if self._predictive_merge_priority == "OTHER" and ego_inside:
-            # A future ETA is only a provisional right-of-way decision. Sensor
-            # and velocity noise can swap two arrivals separated by a fraction
-            # of a second. If Ego actually touches the circle before the
-            # selected vehicle has ever reached it, Ego is the real winner and
-            # must not keep braking into the merge.
-            tracked_match = next(
-                (
-                    object_match
-                    for entry, object_match in object_matches
-                    if self._merge_zone_object_key(entry, object_match)
-                    == self._predictive_merge_other_key
-                ),
-                None,
-            )
-            tracked_has_entered = False
-            if tracked_match is not None:
-                tracked_link = tracked_match.lane_link
-                if tracked_link.id in merge_successors:
-                    tracked_has_entered = True
-                elif tracked_link.id in parameters.PREDICTIVE_MERGE_OBJECT_LINK_IDS:
-                    tracked_circle_s = self.lane_map.project(
-                        merge_point, tracked_link
-                    ).s
-                    tracked_has_entered = tracked_match.s >= tracked_circle_s
-            if (
-                tracked_match is not None
-                and not tracked_has_entered
-                and not other_inside
-            ):
-                previous_key = self._predictive_merge_other_key
-                self._predictive_merge_priority = "EGO"
-                self._predictive_merge_other_key = None
-                self._predictive_merge_clear_cycles = 0
-                self._last_merge_debug.append(
-                    "predictive-zone actual entry override: EGO entered before {}".format(
-                        previous_key or "predicted vehicle"
-                    )
-                )
-
-        if self._predictive_merge_priority == "EGO":
-            self._merge_speed_limit_state = float("inf")
-            self._predictive_merge_other_key = None
-            for entry, _ in relevant:
-                self._merge_go_object_ids.add(id(entry["object_info"]))
+        if ego_occupancy is None:
+            # 구역이 Ego 경로 앞에 없다(이미 통과했거나 다른 분기).
+            state.reset()
             self._last_merge_debug.append(
-                "predictive-zone priority=EGO ego_touch={}s (Ego OBB first), late_vehicles_go={}".format(
-                    "inf" if math.isinf(ego_touch_time) else "{:.2f}".format(ego_touch_time),
-                    len(self._merge_go_object_ids),
+                "{}: ego route does not reach the zone -> no limit".format(
+                    config.name
                 )
             )
             return float("inf")
 
-        if self._predictive_merge_priority != "OTHER":
-            self._last_merge_debug.append(
-                "predictive-zone priority=PENDING monitored={} (no predicted entry)".format(
-                    ",".join(parameters.PREDICTIVE_MERGE_OBJECT_LINK_IDS)
-                )
-            )
-            return float("inf")
-
-        # Follow only the vehicle which actually won priority. A stream of
-        # later approach vehicles must not extend OTHER forever after the
-        # winner has cleared the overlap.
-        tracked_entry = None
-        tracked_match = None
+        ego_link_id = ego_match.lane_link.id
+        opponents = []
+        matched_ids = set()
         for entry, object_match in object_matches:
+            object_info = entry["object_info"]
+            matched_ids.add(id(object_info))
+            object_link = object_match.lane_link
+            if object_link.id == ego_link_id:
+                continue
+            if not self._merges_into_zone(ego_link_id, object_link.id, config):
+                continue
+            # 표본 기반 OBB 스캔은 비싸다. 구역에 닿을 수 없거나 이미
+            # 지나간 차량은 스캔 전에 걸러야 30Hz 예산을 지킬 수 있다.
+            if not self._can_reach_zone(object_info, config):
+                continue
+            if self._has_passed_zone(object_match, object_info, config):
+                continue
+            occupancy = self._zone_occupancy_from_match(
+                state,
+                object_match,
+                max(0.0, float(object_info.velocity)),
+                0.5 * max(1.0, float(getattr(object_info, "size_x", 0.0))),
+                0.5 * max(1.0, float(getattr(object_info, "size_y", 0.0))),
+                self._merge_zone_object_key(entry, object_match),
+            )
+            if occupancy is not None:
+                opponents.append(occupancy)
+
+        # 차선 사이에 걸쳐 링크 매칭이 실패한 차량은 등속 직진으로 점유구간을
+        # 추정한다. 판단에서 조용히 빠지는 차량이 없도록 하는 백스톱.
+        for entry in vehicle_entries:
+            object_info = entry["object_info"]
+            if id(object_info) in matched_ids:
+                continue
             if (
-                self._merge_zone_object_key(entry, object_match)
-                == self._predictive_merge_other_key
+                object_info.position.distance(config.center)
+                > parameters.MERGE_TRAJECTORY_MAX_DISTANCE
             ):
-                tracked_entry = entry
-                tracked_match = object_match
-                break
+                continue
+            occupancy = self._zone_occupancy_straight(state, object_info)
+            if occupancy is not None:
+                opponents.append(occupancy)
 
-        if tracked_entry is None and str(
-            self._predictive_merge_other_key or ""
-        ).startswith("link:"):
-            # MORAI normally supplies stable NPC names. For unnamed objects,
-            # bridge the one frame in which its link changes to the successor.
-            successor_entries = [
-                (entry, object_match)
-                for entry, object_match in object_matches
-                if object_match.lane_link.id in merge_successors
-            ]
-            if len(successor_entries) == 1:
-                tracked_entry, tracked_match = successor_entries[0]
-                self._predictive_merge_other_key = self._merge_zone_object_key(
-                    tracked_entry, tracked_match
-                )
-
-        tracked_cleared = (
-            tracked_match is not None
-            and tracked_match.lane_link.id in merge_successors
-            and tracked_match.s > parameters.PREDICTIVE_MERGE_PASS_DISTANCE
+        mode, speed_limit, debug = state.update(
+            ego_occupancy,
+            opponents,
+            ego_speed,
+            1.0 / parameters.PLANNER_UPDATE_RATE,
         )
-        cycle_time = 1.0 / parameters.PLANNER_UPDATE_RATE
-        if tracked_entry is not None:
-            tracked_speed = max(
-                0.0, float(tracked_entry["object_info"].velocity)
-            )
-            clear_time = self._predictive_merge_clear_time(
-                tracked_match, tracked_speed, merge_successors
-            )
-            self._predictive_merge_last_speed = tracked_speed
-            self._predictive_merge_last_clear_time = clear_time
-            predicted_hold = (
-                clear_time + parameters.PREDICTIVE_MERGE_FOLLOW_TIME_GAP
-                if not math.isinf(clear_time)
-                else parameters.PREDICTIVE_MERGE_DROPOUT_MAX_HOLD_TIME
-            )
-            self._predictive_merge_dropout_hold_time = max(
-                parameters.PREDICTIVE_MERGE_DROPOUT_MIN_HOLD_TIME,
-                min(
-                    parameters.PREDICTIVE_MERGE_DROPOUT_MAX_HOLD_TIME,
-                    predicted_hold,
-                ),
-            )
-        else:
-            self._predictive_merge_dropout_hold_time = max(
-                0.0,
-                self._predictive_merge_dropout_hold_time - cycle_time,
-            )
-            if not math.isinf(self._predictive_merge_last_clear_time):
-                self._predictive_merge_last_clear_time = max(
-                    0.0,
-                    self._predictive_merge_last_clear_time - cycle_time,
-                )
-            tracked_speed = self._predictive_merge_last_speed
-            clear_time = self._predictive_merge_last_clear_time
-
-        if tracked_entry is not None and not tracked_cleared:
-            self._predictive_merge_clear_cycles = 0
-        else:
-            self._predictive_merge_clear_cycles += 1
-        confirmed_clear = (
-            tracked_cleared
-            and self._predictive_merge_clear_cycles
-            >= parameters.PREDICTIVE_MERGE_CLEAR_CYCLES
-        )
-        predicted_clear_after_dropout = (
-            tracked_entry is None
-            and self._predictive_merge_clear_cycles
-            >= parameters.PREDICTIVE_MERGE_CLEAR_CYCLES
-            and self._predictive_merge_dropout_hold_time <= 1e-9
-        )
-        if confirmed_clear or predicted_clear_after_dropout:
-            self._predictive_merge_priority = "EGO"
-            self._predictive_merge_other_key = None
-            self._predictive_merge_clear_cycles = 0
-            self._predictive_merge_last_speed = 0.0
-            self._predictive_merge_last_clear_time = float("inf")
-            self._predictive_merge_dropout_hold_time = 0.0
-            self._merge_speed_limit_state = float("inf")
-            for entry, _ in relevant:
-                self._merge_go_object_ids.add(id(entry["object_info"]))
-            self._last_merge_debug.append(
-                "predictive-zone other cleared -> priority={}".format(
-                    self._predictive_merge_priority or "PENDING"
-                )
-            )
-            return float("inf")
-
-        if tracked_entry is None:
-            self._last_merge_debug.append(
-                "predictive-zone winner dropout key={} hold={:.2f}s using_last_speed={:.2f}m/s".format(
-                    self._predictive_merge_other_key or "unknown",
-                    self._predictive_merge_dropout_hold_time,
-                    tracked_speed,
-                )
-            )
-        if tracked_speed < parameters.PREDICTIVE_MERGE_MOVING_SPEED:
-            # A genuinely stopped priority vehicle cannot be followed safely.
-            speed_limit = 0.0
-        else:
-            rolling_floor = min(
-                parameters.PREDICTIVE_MERGE_CRAWL_SPEED,
-                tracked_speed,
-            )
-            desired_arrival_time = (
-                clear_time + parameters.PREDICTIVE_MERGE_FOLLOW_TIME_GAP
-            )
-            pacing_limit = (
-                ego_entry_distance / max(0.1, desired_arrival_time)
-                if not math.isinf(ego_entry_distance)
-                else rolling_floor
-            )
-            braking_limit = math.sqrt(
-                2.0
-                * parameters.PREDICTIVE_MERGE_COMFORT_DECEL
-                * max(0.0, ego_entry_distance)
-            )
-            speed_limit = max(
-                rolling_floor,
-                min(
-                    parameters.PREDICTIVE_MERGE_MAX_SPEED,
-                    pacing_limit,
-                    braking_limit
-                    if braking_limit > 1e-6
-                    else rolling_floor,
-                ),
-            )
-            speed_limit = min(
-                speed_limit,
-                parameters.PREDICTIVE_MERGE_MAX_SPEED,
-            )
+        self._last_merge_debug.extend(debug)
         self._last_merge_debug.append(
-            "predictive-zone priority=OTHER key={} touch={}s ego_touch={}s clear_time={}s entry_distance={:.1f}m limit={:.2f}m/s".format(
-                self._predictive_merge_other_key or "unknown",
-                "inf" if math.isinf(earliest_touch) else "{:.2f}".format(earliest_touch),
-                "inf" if math.isinf(ego_touch_time) else "{:.2f}".format(ego_touch_time),
-                "inf" if math.isinf(clear_time) else "{:.2f}".format(clear_time),
-                0.0 if math.isinf(ego_entry_distance) else ego_entry_distance,
-                speed_limit,
+            "{} ego={} others=[{}] -> {} limit={}".format(
+                config.name,
+                ego_occupancy,
+                " ".join(repr(item) for item in opponents) or "none",
+                mode,
+                "inf"
+                if math.isinf(speed_limit)
+                else "{:.2f}".format(speed_limit),
             )
         )
-        # Moving priority traffic is paced, not stopped for. The generic OBB
-        # collision gate can still command zero for a real imminent collision.
-        return speed_limit
 
-    @staticmethod
-    def _predictive_merge_clear_time(
-        object_match, object_speed, merge_successors
+        if mode != state.GO:
+            return speed_limit
+
+        # GO 라도 합류 상대차를 OBB 충돌검사에서 제외하지 않는다. 이전 구현은
+        # EGO 우선권이면 상대차를 전부 제외해 마지막 안전장치가 사라졌다.
+        # 뒤에서 따라오는 차량 때문에 제동하는 것은 _evaluate_dynamic_collision
+        # 이 이미 막고 있으므로, 정면으로 실제 충돌하는 경우만 남는다.
+        self._merge_speed_limit_state = float("inf")
+        return float("inf")
+
+    def _zone_occupancy_from_match(
+        self,
+        state,
+        lane_match,
+        speed,
+        half_length,
+        half_width,
+        key,
+        center_offset=0.0,
+        is_ego=False,
     ):
-        if object_match is None or object_speed <= 0.1:
-            return float("inf")
-        object_link = object_match.lane_link
-        if object_link.id in merge_successors:
-            remaining = max(
-                0.0,
-                parameters.PREDICTIVE_MERGE_PASS_DISTANCE - object_match.s,
-            )
-        elif object_link.id in parameters.PREDICTIVE_MERGE_OBJECT_LINK_IDS:
-            remaining = (
-                max(0.0, object_link.length - object_match.s)
-                + parameters.PREDICTIVE_MERGE_PASS_DISTANCE
+        """Occupancy interval of the conflict circle for a lane-matched vehicle."""
+        config = state.config
+        # 구역을 완전히 통과하는 데 필요한 최대 주행거리
+        zone_span = 2.0 * config.radius + 2.0 * half_length + 4.0
+        # 경로는 직선보다 길 수 있으므로 직선거리에 여유를 두고 상한을 잡는다.
+        straight_line = (
+            self.lane_map.point_at_s(
+                lane_match.lane_link, min(lane_match.s, lane_match.lane_link.length)
+            )[0].distance(config.center)
+        )
+        reachable = straight_line * parameters.MERGE_ZONE_ROUTE_SLACK + zone_span
+        if is_ego:
+            scan_distance = min(
+                config.ego_watch_radius + zone_span, reachable
             )
         else:
-            return float("inf")
-        return remaining / object_speed
+            scan_distance = min(
+                config.ego_watch_radius + zone_span,
+                speed * config.decision_horizon + zone_span,
+                reachable,
+            )
+        scan_distance = max(zone_span, scan_distance)
+        entry_distance = self._first_circle_obb_touch_distance(
+            lane_match,
+            config.center,
+            config.radius,
+            half_length,
+            half_width,
+            center_offset=center_offset,
+            max_distance=scan_distance,
+            step=parameters.MERGE_ZONE_SCAN_STEP,
+        )
+        if math.isinf(entry_distance):
+            return None
+        exit_distance = self._circle_obb_exit_distance(
+            lane_match,
+            config.center,
+            config.radius,
+            half_length,
+            half_width,
+            entry_distance,
+            center_offset=center_offset,
+            max_distance=entry_distance + zone_span,
+            step=parameters.MERGE_ZONE_SCAN_STEP,
+        )
+        if is_ego:
+            # Ego 는 가속 가능성을 반영한다. 현재 속도만 쓰면 느릴 때
+            # 영원히 못 끼어드는 합류 교착이 생긴다.
+            entry_time = state.ego_travel_time(entry_distance, speed)
+            exit_time = state.ego_travel_time(exit_distance, speed)
+        else:
+            # 상대차는 MORAI NPC 특성상 등속으로 본다.
+            entry_time = self._touch_time(entry_distance, speed)
+            exit_time = self._touch_time(exit_distance, speed)
+        return MergeOccupancy(
+            key, speed, entry_distance, exit_distance, entry_time, exit_time
+        )
+
+    def _zone_occupancy_straight(self, state, object_info):
+        """Occupancy for a vehicle whose lane match failed: constant heading."""
+        config = state.config
+        speed = max(0.0, float(object_info.velocity))
+        yaw = math.radians(float(getattr(object_info, "heading_deg", 0.0)))
+        half_length = 0.5 * max(
+            1.0, float(getattr(object_info, "size_x", 0.0))
+        )
+        half_width = 0.5 * max(1.0, float(getattr(object_info, "size_y", 0.0)))
+        step_time = parameters.MERGE_TRAJECTORY_TIME_STEP
+        entry_time = float("inf")
+        exit_time = float("inf")
+        time_value = 0.0
+        while time_value <= config.decision_horizon + 1e-9:
+            point = Point(
+                object_info.position.x + math.cos(yaw) * speed * time_value,
+                object_info.position.y + math.sin(yaw) * speed * time_value,
+            )
+            if self._obb_touches_circle(
+                point,
+                yaw,
+                0.0,
+                half_length,
+                half_width,
+                config.center,
+                config.radius,
+            ):
+                if math.isinf(entry_time):
+                    entry_time = time_value
+            elif not math.isinf(entry_time):
+                exit_time = time_value
+                break
+            time_value += step_time
+        if math.isinf(entry_time):
+            return None
+        return MergeOccupancy(
+            "unmatched:{}".format(
+                self._merge_zone_object_key({"object_info": object_info}, None)
+            ),
+            speed,
+            speed * entry_time,
+            speed * exit_time if not math.isinf(exit_time) else float("inf"),
+            entry_time,
+            exit_time,
+        )
+
+    def _circle_obb_exit_distance(
+        self,
+        lane_match,
+        circle_center,
+        circle_radius,
+        half_length,
+        half_width,
+        entry_distance,
+        center_offset=0.0,
+        max_distance=0.0,
+        step=1.0,
+    ):
+        """Return the route distance at which the OBB finally leaves a circle."""
+
+        def touches(distance):
+            options = self.lane_map.advance_options(lane_match, distance)
+            return any(
+                self._obb_touches_circle(
+                    point,
+                    yaw,
+                    center_offset,
+                    half_length,
+                    half_width,
+                    circle_center,
+                    circle_radius,
+                )
+                for point, yaw, _ in options
+            )
+
+        step = max(0.25, float(step))
+        distance = max(0.0, float(entry_distance))
+        max_distance = max(distance, float(max_distance))
+        while distance < max_distance - 1e-9:
+            probe = min(distance + step, max_distance)
+            if not touches(probe):
+                low = distance
+                high = probe
+                for _ in range(8):
+                    middle = 0.5 * (low + high)
+                    if touches(middle):
+                        low = middle
+                    else:
+                        high = middle
+                return high
+            distance = probe
+        return max_distance
 
     def _first_circle_obb_touch_distance(
         self,
@@ -1145,6 +1033,7 @@ class HighwayLanePlanner:
         half_width,
         center_offset=0.0,
         max_distance=0.0,
+        step=None,
     ):
         """Return route distance until an OBB first intersects a circle."""
         max_distance = max(0.0, float(max_distance))
@@ -1169,7 +1058,10 @@ class HighwayLanePlanner:
         if max_distance <= 1e-9:
             return float("inf")
 
-        step = max(0.25, parameters.PATH_SAMPLE_SPACING)
+        step = max(
+            0.25,
+            parameters.PATH_SAMPLE_SPACING if step is None else float(step),
+        )
         previous = 0.0
         distance = min(step, max_distance)
         while distance <= max_distance + 1e-9:
@@ -1199,6 +1091,17 @@ class HighwayLanePlanner:
         return time_value if time_value <= horizon + 1e-9 else float("inf")
 
     @staticmethod
+    def _merge_safe_pass_distance(object_info, minimum_pass_distance):
+        object_length = max(
+            1.0, float(getattr(object_info, "size_x", 0.0))
+        )
+        return max(
+            float(minimum_pass_distance),
+            0.5 * (parameters.VEHICLE_LENGTH + object_length)
+            + parameters.MERGE_CLOSE_GAP_YIELD_DISTANCE,
+        )
+
+    @staticmethod
     def _obb_touches_circle(
         path_point,
         yaw,
@@ -1222,270 +1125,17 @@ class HighwayLanePlanner:
         error_y = local_y - closest_y
         return error_x * error_x + error_y * error_y <= circle_radius ** 2
 
-    def _merge_zone_priority_speed_limit(
-        self,
-        vehicle_state,
-        ego_link,
-        object_matches,
-        vehicle_entries,
-        conservative_successors,
-        merge_point,
-    ):
-        """Use the same future-OBB first-arrival rule as the first merge."""
-        ego_match = self.lane_map.project(vehicle_state.position, ego_link)
-        relevant = []
-        for entry, object_match in object_matches:
-            object_link = object_match.lane_link
-            if object_link.id == ego_link.id:
-                continue
-            shared_successors = set(
-                self.lane_map.successors.get(object_link.id, ())
-            ).intersection(conservative_successors)
-            if shared_successors:
-                relevant.append((entry, object_match))
-
-        touching = []
-        for entry, object_match in relevant:
-            object_info = entry["object_info"]
-            object_speed = max(0.0, float(object_info.velocity))
-            touch_distance = self._first_circle_obb_touch_distance(
-                object_match,
-                merge_point,
-                parameters.CONSERVATIVE_MERGE_ENTRY_RADIUS,
-                0.5 * max(1.0, float(getattr(object_info, "size_x", 0.0))),
-                0.5 * max(1.0, float(getattr(object_info, "size_y", 0.0))),
-                max_distance=object_speed * parameters.MERGE_TRAJECTORY_HORIZON,
-            )
-            touch_time = self._touch_time(
-                touch_distance,
-                object_speed,
-                parameters.MERGE_TRAJECTORY_HORIZON,
-            )
-            if not math.isinf(touch_time):
-                touching.append((entry, object_match, touch_time))
-
-        ego_speed = max(0.0, float(vehicle_state.velocity))
-        ego_entry_distance = self._first_circle_obb_touch_distance(
-            ego_match,
-            merge_point,
-            parameters.CONSERVATIVE_MERGE_ENTRY_RADIUS,
-            0.5 * parameters.VEHICLE_LENGTH,
-            0.5 * parameters.VEHICLE_WIDTH,
-            center_offset=0.5 * parameters.VEHICLE_LENGTH,
-            max_distance=max(
-                parameters.CONSERVATIVE_MERGE_EGO_RADIUS,
-                ego_speed * parameters.MERGE_TRAJECTORY_HORIZON,
-            ),
-        )
-        ego_inside = ego_entry_distance <= 1e-6
-        ego_touch_time = self._touch_time(
-            ego_entry_distance,
-            ego_speed,
-            parameters.MERGE_TRAJECTORY_HORIZON,
-        )
-        earliest_touch = (
-            min(item[2] for item in touching) if touching else float("inf")
-        )
-        other_inside = earliest_touch <= 1e-9
-
-        if self._merge_zone_priority is None:
-            if other_inside:
-                self._merge_zone_priority = "OTHER"
-            elif ego_inside:
-                self._merge_zone_priority = "EGO"
-            elif (
-                touching
-                and earliest_touch
-                <= ego_touch_time
-                + parameters.CONSERVATIVE_MERGE_PRIORITY_TIME_MARGIN
-            ):
-                self._merge_zone_priority = "OTHER"
-            elif not math.isinf(ego_touch_time):
-                self._merge_zone_priority = "EGO"
-
-            if self._merge_zone_priority == "OTHER":
-                winner_entry, winner_match, _ = min(
-                    touching, key=lambda item: item[2]
-                )
-                self._merge_zone_other_key = self._merge_zone_object_key(
-                    winner_entry, winner_match
-                )
-                self._merge_zone_clear_cycles = 0
-
-        tracked_entry = None
-        tracked_match = None
-        for entry, object_match in object_matches:
-            if (
-                self._merge_zone_object_key(entry, object_match)
-                == self._merge_zone_other_key
-            ):
-                tracked_entry = entry
-                tracked_match = object_match
-                break
-
-        if (
-            self._merge_zone_priority == "OTHER"
-            and not ego_inside
-            and not other_inside
-            and tracked_match is not None
-            and not math.isinf(ego_touch_time)
-        ):
-            tracked_touch_time = next(
-                (
-                    touch_time
-                    for entry, object_match, touch_time in touching
-                    if self._merge_zone_object_key(entry, object_match)
-                    == self._merge_zone_other_key
-                ),
-                float("inf"),
-            )
-            if (
-                not math.isinf(tracked_touch_time)
-                and ego_touch_time + parameters.MERGE_EGO_TAKEOVER_TIME_MARGIN
-                <= tracked_touch_time
-            ):
-                previous_key = self._merge_zone_other_key
-                self._merge_zone_priority = "EGO"
-                self._merge_zone_other_key = None
-                self._merge_zone_clear_cycles = 0
-                self._last_merge_debug.append(
-                    "second predictive-zone ETA takeover: EGO {:.2f}s ahead of {} "
-                    "(ego={:.2f}s other={:.2f}s)".format(
-                        tracked_touch_time - ego_touch_time,
-                        previous_key or "predicted vehicle",
-                        ego_touch_time,
-                        tracked_touch_time,
-                    )
-                )
-
-        if self._merge_zone_priority == "OTHER" and ego_inside:
-            tracked_has_entered = False
-            if tracked_match is not None:
-                tracked_link = tracked_match.lane_link
-                if tracked_link.id in conservative_successors:
-                    tracked_has_entered = True
-                else:
-                    tracked_circle_s = self.lane_map.project(
-                        merge_point, tracked_link
-                    ).s
-                    tracked_has_entered = tracked_match.s >= tracked_circle_s
-            if not tracked_has_entered and not other_inside:
-                previous_key = self._merge_zone_other_key
-                self._merge_zone_priority = "EGO"
-                self._merge_zone_other_key = None
-                self._merge_zone_clear_cycles = 0
-                self._last_merge_debug.append(
-                    "second predictive-zone actual entry override: EGO entered before {}".format(
-                        previous_key or "predicted vehicle"
-                    )
-                )
-
-        if self._merge_zone_priority == "EGO":
-            self._merge_speed_limit_state = float("inf")
-            for entry, object_match in object_matches:
-                object_link = object_match.lane_link
-                shared_successors = set(
-                    self.lane_map.successors.get(object_link.id, ())
-                ).intersection(conservative_successors)
-                if object_link.id in conservative_successors or shared_successors:
-                    self._merge_go_object_ids.add(id(entry["object_info"]))
-            self._last_merge_debug.append(
-                "second predictive-zone priority=EGO ego_touch={}s, late_vehicles_go={}".format(
-                    "inf" if math.isinf(ego_touch_time) else "{:.2f}".format(ego_touch_time),
-                    len(self._merge_go_object_ids),
-                )
-            )
-            return float("inf")
-
-        if self._merge_zone_priority != "OTHER":
-            self._last_merge_debug.append(
-                "second predictive-zone priority=PENDING (no predicted entry)"
-            )
-            return float("inf")
-
-        tracked_cleared = (
-            tracked_match is not None
-            and tracked_match.lane_link.id in conservative_successors
-            and tracked_match.s > parameters.CONSERVATIVE_MERGE_PASS_DISTANCE
-        )
-        if tracked_entry is not None and not tracked_cleared:
-            self._merge_zone_clear_cycles = 0
-        else:
-            self._merge_zone_clear_cycles += 1
-        if (
-            self._merge_zone_clear_cycles
-            >= parameters.CONSERVATIVE_MERGE_CLEAR_CYCLES
-        ):
-            self._merge_zone_priority = "EGO"
-            self._merge_zone_other_key = None
-            self._merge_zone_clear_cycles = 0
-            self._merge_speed_limit_state = float("inf")
-            self._last_merge_debug.append(
-                "second predictive-zone other cleared -> priority=EGO"
-            )
-            return float("inf")
-
-        tracked_speed = (
-            max(0.0, float(tracked_entry["object_info"].velocity))
-            if tracked_entry is not None
-            else 0.0
-        )
-        if tracked_match is None or tracked_speed <= 0.1:
-            clear_time = float("inf")
-        elif tracked_match.lane_link.id in conservative_successors:
-            clear_time = max(
-                0.0,
-                parameters.CONSERVATIVE_MERGE_PASS_DISTANCE - tracked_match.s,
-            ) / tracked_speed
-        else:
-            clear_time = (
-                max(0.0, tracked_match.lane_link.length - tracked_match.s)
-                + parameters.CONSERVATIVE_MERGE_PASS_DISTANCE
-            ) / tracked_speed
-
-        if tracked_speed < parameters.CONSERVATIVE_MERGE_MOVING_SPEED:
-            speed_limit = 0.0
-        else:
-            rolling_floor = min(
-                parameters.CONSERVATIVE_MERGE_CRAWL_SPEED,
-                tracked_speed,
-            )
-            desired_arrival_time = (
-                clear_time + parameters.CONSERVATIVE_MERGE_FOLLOW_TIME_GAP
-            )
-            pacing_limit = (
-                ego_entry_distance / max(0.1, desired_arrival_time)
-                if not math.isinf(ego_entry_distance)
-                else rolling_floor
-            )
-            braking_limit = math.sqrt(
-                2.0
-                * parameters.CONSERVATIVE_MERGE_COMFORT_DECEL
-                * max(0.0, ego_entry_distance)
-            )
-            speed_limit = max(
-                rolling_floor,
-                min(
-                    parameters.CONSERVATIVE_MERGE_MAX_SPEED,
-                    pacing_limit,
-                    braking_limit if braking_limit > 1e-6 else rolling_floor,
-                ),
-            )
-        self._last_merge_debug.append(
-            "second predictive-zone priority=OTHER key={} touch={}s ego_touch={}s clear_time={}s entry_distance={:.1f}m limit={:.2f}m/s".format(
-                self._merge_zone_other_key or "unknown",
-                "inf" if math.isinf(earliest_touch) else "{:.2f}".format(earliest_touch),
-                "inf" if math.isinf(ego_touch_time) else "{:.2f}".format(ego_touch_time),
-                "inf" if math.isinf(clear_time) else "{:.2f}".format(clear_time),
-                0.0 if math.isinf(ego_entry_distance) else ego_entry_distance,
-                speed_limit,
-            )
-        )
-        return speed_limit
-
     @staticmethod
     def _merge_zone_object_key(entry, lane_match):
+        """Stable per-object tracking key.
+
+        MORAI 의 name 은 차량 모델명이므로 같은 모델이 여러 대 있으면 중복되어
+        프레임마다 다른 차량을 같은 차로 오인한다. unique_id 만 안전하다.
+        """
         object_info = entry["object_info"]
+        unique_id = getattr(object_info, "unique_id", None)
+        if unique_id is not None:
+            return "npc:{}".format(unique_id)
         name = str(getattr(object_info, "name", "") or "").strip()
         if name:
             return name
@@ -1495,16 +1145,30 @@ class HighwayLanePlanner:
             object_info.position.x, object_info.position.y
         )
 
+    @property
+    def _predictive_merge_priority(self):
+        return self._first_merge_state.mode
+
+    @property
+    def _predictive_merge_other_key(self):
+        return self._first_merge_state.blocking_key
+
+    @property
+    def _merge_zone_priority(self):
+        return self._second_merge_state.mode
+
+    @property
+    def _merge_zone_other_key(self):
+        return self._second_merge_state.blocking_key
+
+    @property
+    def _merge_zone_committed(self):
+        """지정 합류 구역 통과를 확정한 상태(구역 내부 또는 정지 불가 거리)."""
+        return any(state.committed for state in self._merge_zone_states)
+
     def _reset_merge_zone_priority(self):
-        self._merge_zone_priority = None
-        self._merge_zone_other_key = None
-        self._merge_zone_clear_cycles = 0
-        self._predictive_merge_priority = None
-        self._predictive_merge_clear_cycles = 0
-        self._predictive_merge_other_key = None
-        self._predictive_merge_last_speed = 0.0
-        self._predictive_merge_last_clear_time = float("inf")
-        self._predictive_merge_dropout_hold_time = 0.0
+        for state in self._merge_zone_states:
+            state.reset()
 
     def _trajectory_merge_speed_limit(
         self, vehicle_state, ego_match, object_matches, vehicle_entries
@@ -2083,15 +1747,7 @@ class HighwayLanePlanner:
         self._merge_speed_limit_state = float("inf")
         self._merge_decisions = {}
         self._merge_go_object_ids = set()
-        self._merge_zone_priority = None
-        self._merge_zone_other_key = None
-        self._merge_zone_clear_cycles = 0
-        self._predictive_merge_priority = None
-        self._predictive_merge_clear_cycles = 0
-        self._predictive_merge_other_key = None
-        self._predictive_merge_last_speed = 0.0
-        self._predictive_merge_last_clear_time = float("inf")
-        self._predictive_merge_dropout_hold_time = 0.0
+        self._reset_merge_zone_priority()
 
     def reset(self):
         self._reset()
