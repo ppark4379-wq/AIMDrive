@@ -11,7 +11,8 @@ Windows ROS1 Noetic 환경에서 MORAI 센서 토픽을 구독.
 
     gt_objects / traffic_light / ego_state는 동기화 그룹 밖에서 timestamp 이력으로
     관리한다. /ctrl_cmd와 /expert_target_velocity는 Header가 없으므로 ROS 도착시각을
-    기록한다. snapshot에서는 모두 front camera 기준시각의 최근접 샘플을 선택한다.
+    기록한다. snapshot에서는 Object/control/target은 front camera 기준시각의 최근접
+    샘플을 선택하고, 저주기 상태값인 traffic light는 최근 값을 짧게 hold한다.
 
 프레임 트리거는 gRPC world.tick()이다 — 이 클래스는 ROS 토픽을 계속 구독/버퍼링만
 하고, "언제 한 프레임을 뽑아 저장할지"는 collect.py의 메인 루프가 get_snapshot()을
@@ -75,6 +76,9 @@ class ROSManager:
         self.ego_buffer_size = int(config.get("ego_buffer_size", 200))
         self.object_buffer_size = int(config.get("object_buffer_size", 200))
         self.traffic_light_buffer_size = int(config.get("traffic_light_buffer_size", 200))
+        self.traffic_light_max_age_ns = int(
+            float(config.get("traffic_light_max_age_sec", 1.0)) * 1_000_000_000
+        )
         self.control_buffer_size = int(config.get("control_buffer_size", 200))
         self.target_velocity_buffer_size = int(config.get("target_velocity_buffer_size", 200))
         self.control_max_steer_rad = np.deg2rad(
@@ -216,6 +220,28 @@ class ROSManager:
             return None
         return sample
 
+    def _latest_before_within_age(self, history, ref_ts: int, max_age_ns: int,
+                                  label: str):
+        past_samples = [
+            sample for sample in history
+            if sample.timestamp_ns <= ref_ts
+        ]
+        sample = max(
+            past_samples,
+            key=lambda item: item.timestamp_ns,
+            default=None,
+        )
+        if sample is None:
+            return self._nearest_within_sync_window(history, ref_ts, label)
+        age_ns = ref_ts - sample.timestamp_ns
+        if age_ns > max_age_ns:
+            print(
+                f"[ROSManager] WARNING: 최신 {label}가 front camera 기준시각보다 "
+                f"{age_ns / 1e6:.1f}ms 오래됨"
+            )
+            return None
+        return sample
+
     def get_snapshot(self, frame_id: int, grpc_frame_count_raw: int = 0,
                      grpc_elapsed_time_raw: int = 0,
                      after_timestamp_ns: Optional[int] = None) -> Optional[SensorSnapshot]:
@@ -248,8 +274,9 @@ class ROSManager:
             object_sample = self._nearest_within_sync_window(
                 self._gt_objects_history, ref_ts, "/Object_topic"
             )
-            light_sample = self._nearest_within_sync_window(
-                self._tl_states_history, ref_ts, "/GetTrafficLightStatus"
+            light_sample = self._latest_before_within_age(
+                self._tl_states_history, ref_ts, self.traffic_light_max_age_ns,
+                "/GetTrafficLightStatus"
             )
             control = self._nearest_within_sync_window(
                 self._control_history, ref_ts, "/ctrl_cmd"

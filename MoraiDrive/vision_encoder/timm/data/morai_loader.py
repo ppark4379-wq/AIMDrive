@@ -112,7 +112,7 @@ def create_morai_loader(
         collate_fn=collate_fn,
         pin_memory=pin_memory,
         drop_last=is_training,
-        persistent_workers=persistent_workers,
+        persistent_workers=persistent_workers and num_workers > 0,
     )
     try:
         loader = loader_class(dataset, **loader_args)

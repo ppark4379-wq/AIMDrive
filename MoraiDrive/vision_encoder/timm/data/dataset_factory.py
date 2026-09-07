@@ -1,6 +1,7 @@
 import os
 
 from .dataset import IterableImageDataset, ImageDataset
+from .carla_dataset import CarlaMVDetDataset
 from .morai_dataset import MoraiMVDetDataset
 
 
@@ -47,11 +48,17 @@ def create_dataset(
     return ds
 
 
-def create_morai_dataset(
+def create_carla_dataset(
     name, root, towns, weathers=None, waypoints_seq_len=5, batch_size=None, **kwargs
 ):
+    if name == "carla":
+        ds = CarlaMVDetDataset(root=root, towns=towns, weathers=weathers, head="det", **kwargs)
+    else:
+        raise ValueError(f"Unsupported CARLA dataset: {name}")
+    return ds
+
+
+def create_morai_dataset(name, root, routes=None, batch_size=None, **kwargs):
     if name != "morai":
         raise ValueError(f"Unsupported MORAI dataset: {name}")
-    return MoraiMVDetDataset(
-        root=root, towns=towns, weathers=weathers, head="det", **kwargs
-    )
+    return MoraiMVDetDataset(root=root, routes=routes, head="det", **kwargs)

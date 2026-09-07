@@ -42,8 +42,11 @@ class HybridEmbed(nn.Module):
                 training = backbone.training
                 if training:
                     backbone.eval()
-                backbone.cuda()
-                o = self.backbone(torch.zeros(1, in_chans, img_size[0], img_size[1]).cuda())
+                parameter = next(backbone.parameters())
+                o = self.backbone(torch.zeros(
+                    1, in_chans, img_size[0], img_size[1],
+                    device=parameter.device, dtype=parameter.dtype,
+                ))
                 if isinstance(o, (list, tuple)):
                     o = o[-1]  # last feature if backbone outputs list/tuple of features
                 feature_size = o.shape[-2:]
@@ -536,6 +539,7 @@ class Memfuser(nn.Module):
         use_view_embed=True,
         use_mmad_pretrain=None,
         return_feature=False,
+        pretrained_backbone=True,
     ):
         super().__init__()
         self.traffic_pred_head_type = traffic_pred_head_type
@@ -561,21 +565,21 @@ class Memfuser(nn.Module):
 
         if rgb_backbone_name == "r50":
             self.rgb_backbone = resnet50d(
-                pretrained=True,
+                pretrained=pretrained_backbone,
                 in_chans=in_chans,
                 features_only=True,
                 out_indices=[4],
             )
         elif rgb_backbone_name == "r26":
             self.rgb_backbone = resnet26d(
-                pretrained=True,
+                pretrained=pretrained_backbone,
                 in_chans=in_chans,
                 features_only=True,
                 out_indices=[4],
             )
         elif rgb_backbone_name == "r18":
             self.rgb_backbone = resnet18d(
-                pretrained=True,
+                pretrained=pretrained_backbone,
                 in_chans=in_chans,
                 features_only=True,
                 out_indices=[4],

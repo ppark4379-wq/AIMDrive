@@ -16,13 +16,15 @@ from typing import List, Dict, Any, Optional
 # which fields are ACTUALLY consumed by which training phase
 PHASE1_FIELDS = [  # waypoint loss only
     "x", "y", "gps_x", "gps_y", "theta", "speed",
-    "command", "x_command", "y_command",
+    "command", "gt_command", "x_command", "y_command",
+    "near_node_x", "near_node_y", "far_node_x", "far_node_y",
 ]
 PHASE1_5_FIELDS = ["is_red_light_present"]        # traffic light cls loss
 PHASE2_FIELDS = [                                  # stop_cls + detection(traffic) loss
     "stop_sign", "is_junction", "affected_light_id",
     "is_vehicle_present", "is_bike_present",
-    "is_junction_vehicle_present", "is_pedestrian_present",
+    "is_lane_vehicle_present", "is_junction_vehicle_present", "is_pedestrian_present",
+    "is_stop_sign_present", "should_slow", "should_brake",
     "actors_data", "future_waypoints",
 ]
 
@@ -48,8 +50,13 @@ class EgoState:
     theta: float
     speed: float
     command: int = 4                 # 지시문 없으면 고정값 사용 (LMDrive의 'Follow lane' 상당)
+    gt_command: int = 4
     x_command: float = 0.0
     y_command: float = 0.0
+    near_node_x: float = 0.0
+    near_node_y: float = 0.0
+    far_node_x: float = 0.0
+    far_node_y: float = 0.0
     gps_x: Optional[float] = None    # None이면 x와 동일하게 채움
     gps_y: Optional[float] = None
     steer: float = 0.0
@@ -66,6 +73,14 @@ def build_measurement_dict(
     stop_sign: int = 0,
     affected_light_id: int = -1,
     future_waypoints: Optional[List[List[float]]] = None,
+    is_vehicle_present: Optional[List[int]] = None,
+    is_bike_present: Optional[List[int]] = None,
+    is_lane_vehicle_present: Optional[List[int]] = None,
+    is_junction_vehicle_present: Optional[List[int]] = None,
+    is_pedestrian_present: Optional[List[int]] = None,
+    is_stop_sign_present: Optional[List[int]] = None,
+    should_slow: int = 0,
+    should_brake: int = 0,
 ) -> Dict[str, Any]:
     """
     Always emits the FULL key set the LMDrive loader expects, so training
@@ -76,14 +91,9 @@ def build_measurement_dict(
     gps_y = ego.gps_y if ego.gps_y is not None else ego.y
 
     actors_dict: Dict[str, Any] = {}
-    is_vehicle_present, is_pedestrian_present = [], []
     if actors:
         for actor_id, a in actors.items():
             actors_dict[str(actor_id)] = asdict(a)
-            if a.tpe == 0:
-                is_vehicle_present.append(int(actor_id))
-            elif a.tpe == 1:
-                is_pedestrian_present.append(int(actor_id))
 
     return {
         # Phase 1
@@ -94,8 +104,13 @@ def build_measurement_dict(
         "theta": ego.theta,
         "speed": ego.speed,
         "command": ego.command,
+        "gt_command": ego.gt_command,
         "x_command": ego.x_command,
         "y_command": ego.y_command,
+        "near_node_x": ego.near_node_x,
+        "near_node_y": ego.near_node_y,
+        "far_node_x": ego.far_node_x,
+        "far_node_y": ego.far_node_y,
         "steer": ego.steer,
         "throttle": ego.throttle,
         "brake": ego.brake,
@@ -106,10 +121,15 @@ def build_measurement_dict(
         "is_junction": is_junction,
         "stop_sign": stop_sign,
         "affected_light_id": affected_light_id,
-        "is_vehicle_present": is_vehicle_present,
-        "is_bike_present": [],               # MORAI가 vehicle/bike를 따로 구분해주면 여기서 세분화
-        "is_junction_vehicle_present": [],    # 교차로 내부 차량만 따로 구분해주면 여기서 세분화
-        "is_pedestrian_present": is_pedestrian_present,
+        "is_vehicle_present": is_vehicle_present or [],
+        "is_bike_present": is_bike_present or [],
+        "is_lane_vehicle_present": is_lane_vehicle_present or [],
+        "is_junction_vehicle_present": is_junction_vehicle_present or [],
+        "is_pedestrian_present": is_pedestrian_present or [],
+        "is_stop_sign_present": is_stop_sign_present or [],
+        "should_slow": int(should_slow),
+        "should_brake": int(should_brake),
         "actors_data": actors_dict,
-        "future_waypoints": future_waypoints or [],   # 수집 시점엔 못 채움: 후처리 스크립트에서 backfill 필요
+        # 실제 미래 Ego trajectory가 아니라 현재 official dense route의 앞쪽 점들이다.
+        "future_waypoints": future_waypoints or [],
     }

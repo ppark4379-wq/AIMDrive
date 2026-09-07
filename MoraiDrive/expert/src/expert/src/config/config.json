@@ -38,10 +38,10 @@
       "velocity_gain": 0.5,
       "distance_gain": 1,
       "time_gap": 0.8,
-      "pedestrian_lateral_threshold": 10.0,
+      "pedestrian_lateral_threshold": 2.0,
       "vehicle_lateral_threshold": 2.5,
       "traffic_light_lateral_threshold": 4.0,
-      "pedestrian_longitudinal_max": 35.0
+      "pedestrian_longitudinal_max": 20.0
     },
     "traffic_light_stop": {
       "stop_statuses": [1],

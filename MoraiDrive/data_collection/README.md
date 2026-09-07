@@ -34,11 +34,20 @@ python3 collect.py \
   --mode realtime \
   --job competition_train \
   --route route_moraiA_scenario1 \
-  --map-id kcity \
-  --map-dir /mnt/c/Users/Autonav/Downloads \
-  --route-spec routes/2026_molit_comp_sample_route.json \
+  --map-id R_KR_PR_K-city_2025 \
+  --map-dir ../scenario_runner/data/R_KR_PR_K-city_2025 \
+  --global-info ../dataset/competition_test/maps/kcity/global_info.json \
+  --route-definition ../scenario_runner/config/full_loop_links.yaml \
+  --global-path ../scenario_runner/data/R_KR_PR_K-city_2025/2026_molit_comp_global_path.txt \
   --duration 120
 ```
+
+대회 경로는 Scenario Runner와 동일한 `route_links` 및 dense global path를 직접
+사용합니다. `--route-spec`의 checkpoint shortest-path 재계산은 다른 경로를 위한
+fallback이며, 공식 대회 경로 수집에는 사용하지 않습니다.
+Scenario Runner map 폴더에 `global_info.json`이 없으면 `--global-info`로 같은 MGeo
+local 좌표계의 metadata를 명시합니다. 이 파일이 없을 때만 `gps_x/gps_y`가 Ego
+position으로 fallback됩니다.
 
 결과는 다음 위치에 저장됩니다.
 
@@ -75,6 +84,8 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 
 MORAI loader는 해상도가 서로 다른 4-view JPEG를 직접 읽으므로 `rgb_full`은 생성하지
 않습니다. `dataset_index.txt`는 train, `dataset_index_test.txt`는 validation route입니다.
+split 생성기는 기본적으로 `results/episode_summary.json`에 `completed`로 기록된 route만
+포함하므로 강제 종료된 route는 index에서 제외됩니다.
 
 ## 문서
 

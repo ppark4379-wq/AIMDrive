@@ -8,11 +8,11 @@
 | 7센서 동기화 | 완료 | 카메라 4대 + GNSS + IMU + LiDAR, 수신시각 정규화 |
 | LMDrive 저장 구조 | 완료 | RGB/NPY/JSON, job/map/route 구조와 파일 수 일치 |
 | GNSS localization | 완료 | WGS84→MGeo local, GNSS 이동으로 heading·speed 계산 |
-| 대회 route | 완료 | 16 checkpoint, 75 links, 8,958 waypoints |
+| 대회 route | 완료 | Scenario Runner 공식 route, 39 links, 4,430 waypoints |
 | route command | 완료 | LEFT/RIGHT/STRAIGHT/LANEFOLLOW 실주행 확인 |
 | 도로 의미 라벨 | 완료 | junction, stopline, affected light, red-light 확인 |
 | 객체·3D BB | 완료 | 실제 객체 크기와 3D BB 레코드 일치 |
-| 미래 경로 | 완료 | `future_waypoints` 최대 50프레임 backfill |
+| 미래 경로 | 완료 | official dense route 기준 `future_waypoints` 최대 50개 |
 | LMDrive adapter | 완료 | RGB 4뷰, 360° LiDAR, target/detection/heatmap 로딩 |
 | navigation/notice instruction | 미구현 | MORAI route/시나리오용 생성기 필요 |
 | Expert 자동 수집 | 미구현 | Expert 인터페이스와 ROS SyncMode client 필요 |
@@ -35,6 +35,9 @@ LMDrive: RGB 4 views, lidar (40000,4), target_point (2,), det (2500,8) PASS
 - `stop_sign`은 대회 범위에서 제외해 항상 0/false입니다.
 - 손 주행 데이터에는 신뢰 가능한 Expert 제어 정답이 없습니다. 최종 imitation-learning용
   데이터는 Expert와 ROS SyncMode를 연결한 뒤 다시 수집해야 합니다.
+- 수집률은 5초마다 저장 Hz와 skip reason을 출력합니다. 의미 라벨 검증 후 해당 로그로
+  병목을 확인합니다.
+- split 생성기는 기본적으로 `episode_summary.json`에서 `completed`인 route만 사용합니다.
 - 센서 adapter의 shape 검증은 통과했지만 LiDAR-카메라 시각적 overlay 검증은 남았습니다.
 
 ## 검증 명령

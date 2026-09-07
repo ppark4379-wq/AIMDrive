@@ -1,7 +1,10 @@
 torch==2.0.1
-torchvision
+torchvision==0.15.2
+numpy<2
+Pillow<10
 pyyaml
 scikit-image
-opencv-python
+opencv-python<4.12
 torch_scatter
 tqdm
+tensorboardX

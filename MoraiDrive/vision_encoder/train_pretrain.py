@@ -38,7 +38,8 @@ from timm.data import (
     FastCollateMixup,
     AugMixDataset,
 )
-from timm.data import create_morai_dataset, create_morai_loader
+from timm.data import create_carla_dataset, create_carla_loader, create_morai_dataset, create_morai_loader
+from timm.data.morai_routes import resolve_route_split
 from timm.models import (
     create_model,
     safe_model_name,
@@ -99,6 +100,13 @@ parser.add_argument(
 
 
 parser = argparse.ArgumentParser(description="PyTorch ImageNet Training")
+parser.add_argument("--train-index", default="dataset_index.txt", help="MORAI training index filename")
+parser.add_argument("--val-index", default="dataset_index_test.txt", help="MORAI validation index filename")
+parser.add_argument("--train-routes", nargs="+", help="MORAI training route names from dataset_index.txt")
+parser.add_argument("--val-routes", nargs="+", help="MORAI validation route names (disjoint from training)")
+parser.add_argument("--waypoint-interval", type=int, default=5,
+                    help="Saved frames between MORAI waypoint targets (default: 5)")
+
 
 parser.add_argument(
     "--train-towns",
@@ -754,7 +762,7 @@ parser.add_argument(
     metavar="N",
     help="Test/inference time augmentation (oversampling) factor. 0=None (default: 0)",
 )
-parser.add_argument("--local-rank", default=0, type=int)
+parser.add_argument("--local-rank", "--local_rank", default=int(os.environ.get("LOCAL_RANK", "0")), type=int)
 parser.add_argument(
     "--use-multi-epochs-loader",
     action="store_true",
@@ -878,6 +886,20 @@ def _parse_args():
     # The main arg parser parses the rest of the args, the usual
     # defaults will have been overridden if config file specified.
     args = parser.parse_args(remaining)
+    if args.dataset == "morai":
+        try:
+            args.train_routes, args.val_routes = resolve_route_split(
+                args.data_dir, args.train_index, args.val_index,
+                args.train_routes, args.val_routes,
+            )
+            if args.model.startswith("memfuser") and not (args.multi_view and args.with_lidar):
+                raise ValueError("Memfuser requires --multi-view and --with-lidar")
+            if args.waypoint_interval < 1:
+                raise ValueError("--waypoint-interval must be positive")
+            if args.with_seg or args.with_depth:
+                raise ValueError("MORAI raw data does not provide segmentation or depth")
+        except (ValueError, OSError) as exc:
+            parser.error(str(exc))
 
     # Cache the args as a text string to save them in the output dir later
     args_text = yaml.safe_dump(args.__dict__, default_flow_style=False)
@@ -998,7 +1020,7 @@ def main():
         model = torch.jit.script(model)
 
     linear_scaled_lr = (
-        args.lr * args.batch_size * torch.distributed.get_world_size() / 512.0
+        args.lr * args.batch_size * args.world_size / 512.0
     )
     args.lr = linear_scaled_lr
     if args.with_backbone_lr:
@@ -1009,7 +1031,7 @@ def main():
         backbone_linear_scaled_lr = (
             args.backbone_lr
             * args.batch_size
-            * torch.distributed.get_world_size()
+            * args.world_size
             / 512.0
         )
         backbone_weights = []
@@ -1104,12 +1126,14 @@ def main():
         _logger.info("Scheduled epochs: {}".format(num_epochs))
 
     # create the train and eval datasets
-    if args.dataset == "morai":
-        dataset_train = create_morai_dataset(
+    if args.dataset in ("carla", "morai"):
+        dataset_factory = create_morai_dataset if args.dataset == "morai" else create_carla_dataset
+        train_selection = dict(routes=args.train_routes, waypoint_interval=args.waypoint_interval) if args.dataset == "morai" else dict(towns=args.train_towns, weathers=args.train_weathers)
+        val_selection = dict(routes=args.val_routes, waypoint_interval=args.waypoint_interval) if args.dataset == "morai" else dict(towns=args.val_towns, weathers=args.val_weathers)
+        dataset_train = dataset_factory(
             args.dataset,
             root=args.data_dir,
-            towns=args.train_towns,
-            weathers=args.train_weathers,
+            **train_selection,
             batch_size=args.batch_size,
             with_lidar=args.with_lidar,
             with_seg=args.with_seg,
@@ -1117,13 +1141,12 @@ def main():
             multi_view=args.multi_view,
             augment_prob=args.augment_prob,
             temporal_frames=args.temporal_frames,
-            index_filename="dataset_index.txt",
+            index_filename=args.train_index,
         )
-        dataset_eval = create_morai_dataset(
+        dataset_eval = dataset_factory(
             args.dataset,
             root=args.data_dir,
-            towns=args.val_towns,
-            weathers=args.val_weathers,
+            **val_selection,
             batch_size=args.batch_size,
             with_lidar=args.with_lidar,
             with_seg=args.with_seg,
@@ -1131,7 +1154,7 @@ def main():
             multi_view=args.multi_view,
             augment_prob=args.augment_prob,
             temporal_frames=args.temporal_frames,
-            index_filename="dataset_index_test.txt",
+            index_filename=args.val_index,
         )
     else:
         dataset_train = create_dataset(
@@ -1157,7 +1180,8 @@ def main():
     train_interpolation = args.train_interpolation
     if args.no_aug or not train_interpolation:
         train_interpolation = data_config["interpolation"]
-    loader_train = create_morai_loader(
+    loader_factory = create_morai_loader if args.dataset == "morai" else create_carla_loader
+    loader_train = loader_factory(
         dataset_train,
         input_size=data_config["input_size"],
         batch_size=args.batch_size,
@@ -1174,7 +1198,7 @@ def main():
         pin_memory=args.pin_mem,
     )
 
-    loader_eval = create_morai_loader(
+    loader_eval = loader_factory(
         dataset_eval,
         input_size=data_config["input_size"],
         batch_size=args.validation_batch_size_multiplier * args.batch_size,

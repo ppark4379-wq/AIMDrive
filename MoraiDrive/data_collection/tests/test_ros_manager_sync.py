@@ -100,6 +100,7 @@ def _make_manager(normalize_ego_to_arrival=False):
         },
         "sync_slop_sec": 0.02,
         "sync_queue_size": 10,
+        "traffic_light_max_age_sec": 1.0,
         "normalize_ego_to_arrival": normalize_ego_to_arrival,
     }
     mgr = ROSManager(config)
@@ -241,8 +242,32 @@ def test_stale_async_labels_are_not_reused():
     mgr._on_synced(*_synced_bundle(601))
     snap = mgr.get_snapshot(frame_id=1)
 
-    assert snap.gt_objects == [] and snap.tl_states == []
+    assert snap.gt_objects == []
+    assert [light.tl_id for light in snap.tl_states] == ["TL"]
     assert snap.control is None and snap.target_velocity is None
+
+
+def test_traffic_light_status_is_held_for_low_rate_topic():
+    mgr = _make_manager()
+    with patch("ros.ros_manager.time.time_ns", return_value=700_500_000_000):
+        mgr._cb_traffic_light(_fake_traffic_light(700, "TL-held", 1))
+    mgr._on_synced(*_synced_bundle(701, 300_000_000))
+    snap = mgr.get_snapshot(frame_id=1)
+
+    assert [light.tl_id for light in snap.tl_states] == ["TL-held"]
+    assert snap.traffic_light_timestamp_ns == 700_500_000_000
+
+
+def test_traffic_light_status_expires_after_max_age():
+    mgr = _make_manager()
+    with patch("ros.ros_manager.time.time_ns", return_value=800_000_000_000):
+        mgr._cb_traffic_light(_fake_traffic_light(800, "TL-stale", 1))
+    mgr._on_synced(*_synced_bundle(801, 100_000_000))
+    snap = mgr.get_snapshot(frame_id=1)
+
+    assert snap.tl_states == []
+    assert snap.traffic_light_timestamp_ns is None
+    print("PASS: max age를 넘긴 TrafficLightStatus는 snapshot에서 제외")
 
 
 if __name__ == "__main__":
@@ -255,4 +280,6 @@ if __name__ == "__main__":
     test_lidar_included_in_sync_group()
     test_async_labels_select_nearest_frame_sample()
     test_stale_async_labels_are_not_reused()
+    test_traffic_light_status_is_held_for_low_rate_topic()
+    test_traffic_light_status_expires_after_max_age()
     print("\nAll ROSManager sync bridging tests passed.")

@@ -12,6 +12,7 @@ Run: python collect.py --route route_moraiA_scenario1 --duration 120
 """
 import argparse
 from dataclasses import asdict
+from collections import Counter
 import json
 import math
 import os
@@ -24,6 +25,7 @@ from grpc_ctrl.morai_grpc_client import MoraiGrpcClient
 from geo_reference import MGeoReference
 from mgeo_navigation import (
     MGeoMap, MGeoRouteTracker, GNSSMotionEstimator, stable_mgeo_id,
+    load_official_route,
 )
 from writer.dataset_writer import DatasetWriter
 from writer.image_writer import ImageWriter
@@ -32,6 +34,21 @@ from schema import EgoState, ActorData, build_measurement_dict
 
 CAMERA_VIEW_NAMES = ["front", "left", "right", "rear"]
 _OBJ_TYPE_TO_TPE = {"vehicle": 0, "pedestrian": 1}
+
+
+def _valid_wgs84(latitude: float, longitude: float) -> bool:
+    """Reject MORAI startup/default GNSS samples before projecting to MGeo.
+
+    MORAI can briefly publish latitude=0, longitude=0 while the simulator or
+    scenario is initializing.  Projecting that default WGS84 coordinate creates
+    huge fake MGeo positions, so those samples must fall back to Ego_topic
+    local-map position instead.
+    """
+    latitude = float(latitude)
+    longitude = float(longitude)
+    if abs(latitude) < 1e-9 and abs(longitude) < 1e-9:
+        return False
+    return -90.0 <= latitude <= 90.0 and -180.0 <= longitude <= 180.0
 
 
 def _prepare_dataset_root(path: str) -> str:
@@ -65,6 +82,64 @@ def _actor_data(obj) -> ActorData:
     )
 
 
+def _angle_to_target_deg(x: float, y: float, theta_rad: float,
+                         target_x: float, target_y: float) -> float:
+    dx, dy = target_x - x, target_y - y
+    local_x = math.cos(theta_rad) * dx + math.sin(theta_rad) * dy
+    local_y = -math.sin(theta_rad) * dx + math.cos(theta_rad) * dy
+    if abs(local_x) < 1e-9 and abs(local_y) < 1e-9:
+        return 0.0
+    return math.degrees(math.atan2(local_y, local_x))
+
+
+def _morai_light_to_lmdrive_state(status: int) -> int:
+    status = int(status)
+    if status & 1:
+        return 0
+    if status & 4:
+        return 1
+    if status & (16 | 32):
+        return 2
+    if status == 0:
+        return 3
+    return 4
+
+
+def _affected_light_state(affected_light_raw, observed_lights):
+    """Return (raw_status, LMDrive_state) for the currently affecting light.
+
+    LMDrive uses two distinct meanings:
+      * None: no traffic light currently affects ego.
+      * 4/Unknown: an affecting MGeo light exists, but no fresh live status was
+        available from /GetTrafficLightStatus for this frame.
+
+    ROSManager already removes stale /GetTrafficLightStatus samples.  Therefore
+    a missing entry in `observed_lights` means "unknown now", not "reuse the old
+    signal state".
+    """
+    if not affected_light_raw:
+        return None, None
+    affected_state_raw = observed_lights.get(affected_light_raw)
+    if affected_state_raw is None:
+        return None, 4
+    return affected_state_raw, _morai_light_to_lmdrive_state(affected_state_raw)
+
+
+def _maybe_print_rate_status(skip_reasons: Counter, frame_id: int,
+                             last_status_time: float, last_status_frame: int):
+    now = time.monotonic()
+    if now - last_status_time < 5.0:
+        return last_status_time, last_status_frame
+    interval = now - last_status_time
+    frames_delta = frame_id - last_status_frame
+    print(
+        f"[collect] rate={frames_delta / interval:.2f}Hz "
+        f"saved={frame_id} skipped={dict(skip_reasons)}"
+    )
+    skip_reasons.clear()
+    return now, frame_id
+
+
 def _update_grpc_ego(ros_mgr: ROSManager, grpc_client: MoraiGrpcClient) -> bool:
     state = grpc_client.get_ego_state()
     if state is None:
@@ -90,10 +165,21 @@ def main():
     ap.add_argument("--map-id", default=DATASET.map_id)
     ap.add_argument("--map-dir", default=DATASET.map_source_dir,
                     help="directory containing MORAI MGeo JSON files")
+    ap.add_argument("--global-info", default="",
+                    help="optional global_info.json path when --map-dir does not contain it")
     ap.add_argument("--route-spec", default="",
-                    help="checkpoint route JSON; embeds MGeo route into output route.json")
+                    help="fallback checkpoint route JSON (not for the official competition route)")
+    ap.add_argument("--route-definition", default="",
+                    help="Scenario Runner route definition YAML (official route source)")
+    ap.add_argument("--global-path", default="",
+                    help="Scenario Runner official dense global-path text file")
+    ap.add_argument("--route-definition-key", default="full_loop")
     ap.add_argument("--route-start-index", type=int, default=None,
                     help="repeated route 구간에서 최초 탐색을 시작할 waypoint index")
+    ap.add_argument("--require-route-valid", action="store_true",
+                    help="route_tracker 기준 planned route 근처에 있는 frame만 저장")
+    ap.add_argument("--route-valid-max-error", type=float, default=3.0,
+                    help="--require-route-valid 사용 시 허용할 최대 route 거리 오차 [m]")
     ap.add_argument("--no-route-timestamp", action="store_true")
     ap.add_argument("--duration", type=float, default=120.0, help="seconds")
     args = ap.parse_args()
@@ -107,6 +193,7 @@ def main():
         "ego_buffer_size": ROS.ego_buffer_size,
         "object_buffer_size": ROS.object_buffer_size,
         "traffic_light_buffer_size": ROS.traffic_light_buffer_size,
+        "traffic_light_max_age_sec": ROS.traffic_light_max_age_sec,
         "control_buffer_size": ROS.control_buffer_size,
         "target_velocity_buffer_size": ROS.target_velocity_buffer_size,
         "control_max_steer_deg": ROS.control_max_steer_deg,
@@ -124,7 +211,7 @@ def main():
     frame_id = 0
     ds_writer = None
     collection_completed = False
-    geo_reference = MGeoReference.from_map_dir(args.map_dir)
+    geo_reference = MGeoReference.from_optional_path(args.global_info, args.map_dir)
     if geo_reference is None:
         print("[collect] WARNING: global_info.json 없음 — gps_x/gps_y는 Ego 좌표로 대체")
     else:
@@ -142,7 +229,32 @@ def main():
     route_metadata = None
     route_tracker = None
     motion_estimator = GNSSMotionEstimator()
-    if args.route_spec:
+    has_official_route = bool(args.route_definition or args.global_path)
+    if has_official_route and not (args.route_definition and args.global_path):
+        raise RuntimeError("--route-definition과 --global-path는 함께 지정해야 합니다")
+    if has_official_route and args.route_spec:
+        raise RuntimeError("공식 route 입력과 --route-spec을 동시에 사용할 수 없습니다")
+    if has_official_route:
+        if mgeo_map is None:
+            raise RuntimeError("공식 route 사용에는 link_set.json이 필요합니다")
+        route_metadata = load_official_route(
+            args.route_definition, args.global_path, args.route_definition_key
+        )
+        missing_links = [
+            link_id for link_id in route_metadata["nav_link_ids"]
+            if link_id not in mgeo_map.links
+        ]
+        if missing_links:
+            raise RuntimeError(
+                f"Scenario Runner 공식 route link가 현재 MGeo에 없습니다: {missing_links}"
+            )
+        route_metadata["nav_node_ids"] = [
+            str(mgeo_map.links[route_metadata["nav_link_ids"][0]].get("from_node_idx"))
+        ] + [
+            str(mgeo_map.links[link_id].get("to_node_idx"))
+            for link_id in route_metadata["nav_link_ids"]
+        ]
+    elif args.route_spec:
         if mgeo_map is None:
             raise RuntimeError("--route-spec 사용에는 link_set.json이 필요합니다")
         with open(args.route_spec, encoding="utf-8") as f:
@@ -154,14 +266,17 @@ def main():
             route_metadata.update(mgeo_map.build_checkpoint_route(
                 route_spec["checkpoints"], bool(route_spec.get("close_loop"))
             ))
+    if route_metadata:
         print(
             f"[collect] 경로 로드: {route_metadata.get('route_id', args.route)} "
             f"({len(route_metadata['nav_link_ids'])} links, "
-            f"{len(route_metadata['nav_waypoints'])} waypoints)"
+            f"{len(route_metadata['nav_waypoints'])} waypoints, "
+            f"source={route_metadata.get('route_source', 'checkpoint_fallback')})"
         )
         route_tracker = MGeoRouteTracker(
             mgeo_map, route_metadata, initial_route_index=args.route_start_index
         )
+        route_metadata["nav_road_options"] = list(route_tracker.point_road_options)
 
     try:
         ros_mgr.start()
@@ -197,6 +312,9 @@ def main():
             map_id=args.map_id, map_source_dir=args.map_dir,
             append_timestamp=DATASET.append_timestamp and not args.no_route_timestamp,
             route_metadata=route_metadata,
+            extra_map_files=(
+                {"global_info.json": args.global_info} if args.global_info else None
+            ),
         )
         img_writer = ImageWriter(ds_writer.output_dir, view_names=CAMERA_VIEW_NAMES,
                                   ext=DATASET.image_ext, quality=DATASET.image_quality)
@@ -206,6 +324,9 @@ def main():
         last_grpc_frame_count_raw = None
         duplicate_tick_observed = 0
         no_new_sensor_count = 0
+        skip_reasons = Counter()
+        last_rate_status_time = time.monotonic()
+        last_rate_status_frame = 0
         tick_interval_sec = GRPC.tick_period_ms / 1000.0
         next_tick_wall_time = time.monotonic()
         while time.time() < t_end:
@@ -213,6 +334,11 @@ def main():
                 snap = ros_mgr.get_snapshot(frame_id)
                 if snap is None:
                     no_new_sensor_count += 1
+                    skip_reasons["no_new_sensor"] += 1
+                    last_rate_status_time, last_rate_status_frame = _maybe_print_rate_status(
+                        skip_reasons, frame_id, last_rate_status_time,
+                        last_rate_status_frame,
+                    )
                     time.sleep(0.005)
                     continue
             else:
@@ -237,19 +363,31 @@ def main():
                 )
             if snap is None or snap.ego is None:
                 no_new_sensor_count += 1
+                skip_reasons["missing_ego_or_snapshot"] += 1
+                last_rate_status_time, last_rate_status_frame = _maybe_print_rate_status(
+                    skip_reasons, frame_id, last_rate_status_time,
+                    last_rate_status_frame,
+                )
                 continue
             if args.mode == "realtime" and (
                 snap.control is None or snap.target_velocity is None
             ):
                 no_new_sensor_count += 1
-                print("frame skipped: synchronized Expert control/target unavailable")
+                skip_reasons["missing_control_or_target"] += 1
+                last_rate_status_time, last_rate_status_frame = _maybe_print_rate_status(
+                    skip_reasons, frame_id, last_rate_status_time,
+                    last_rate_status_frame,
+                )
                 continue
             if (grpc_client is not None and last_grpc_frame_count_raw is not None and
                     sync_ts.frame_count <= last_grpc_frame_count_raw):
                 duplicate_tick_observed += 1
 
             gps_local = None
-            if geo_reference is not None and snap.gnss is not None:
+            if (
+                geo_reference is not None and snap.gnss is not None
+                and _valid_wgs84(snap.gnss.latitude, snap.gnss.longitude)
+            ):
                 gps_local = geo_reference.to_local(
                     snap.gnss.latitude, snap.gnss.longitude, snap.gnss.altitude
                 )
@@ -265,14 +403,31 @@ def main():
                 localization.y if localization else snap.ego.y,
                 localization.heading_rad if localization else snap.ego.yaw,
             ) if route_tracker else None
+            if (
+                args.require_route_valid
+                and route_progress is not None
+                and route_progress.distance_to_route_m > args.route_valid_max_error
+            ):
+                no_new_sensor_count += 1
+                skip_reasons["route_not_valid"] += 1
+                last_rate_status_time, last_rate_status_frame = _maybe_print_rate_status(
+                    skip_reasons, frame_id, last_rate_status_time,
+                    last_rate_status_frame,
+                )
+                continue
             ego = EgoState(
                 x=localization.x if localization else snap.ego.x,
                 y=localization.y if localization else snap.ego.y,
                 theta=localization.heading_rad if localization else snap.ego.yaw,
                 speed=localization.speed_mps if localization else snap.ego.speed,
                 command=route_progress.command if route_progress else 4,
+                gt_command=route_progress.gt_command if route_progress else 4,
                 x_command=route_progress.target_x if route_progress else 0.0,
                 y_command=route_progress.target_y if route_progress else 0.0,
+                near_node_x=route_progress.near_x if route_progress else 0.0,
+                near_node_y=route_progress.near_y if route_progress else 0.0,
+                far_node_x=route_progress.target_x if route_progress else 0.0,
+                far_node_y=route_progress.target_y if route_progress else 0.0,
                 gps_x=gps_local[0] if gps_local else None,
                 gps_y=gps_local[1] if gps_local else None,
                 steer=snap.control.steer if snap.control else 0.0,
@@ -292,13 +447,52 @@ def main():
             )
             affected_light_id = stable_mgeo_id(affected_light_raw)
             observed_lights = {light.tl_id: light.state for light in snap.tl_states}
-            affected_state = observed_lights.get(affected_light_raw)
-            is_red = affected_state is not None and bool(int(affected_state) & 1)
+            affected_state_raw, affected_state = _affected_light_state(
+                affected_light_raw, observed_lights
+            )
+            is_red = affected_state == 0
+            hazard_ids = (
+                route_tracker.hazard_actor_ids(
+                    snap.gt_objects, ego.x, ego.y, ego.theta,
+                    route_progress.route_index, route_progress.is_junction,
+                )
+                if route_tracker and route_progress else
+                {"vehicle": [], "lane_vehicle": [], "junction_vehicle": [],
+                 "pedestrian": [], "bike": []}
+            )
+            should_slow = 0
+            if route_progress:
+                near_angle = _angle_to_target_deg(
+                    ego.x, ego.y, ego.theta, route_progress.near_x, route_progress.near_y
+                )
+                far_angle = _angle_to_target_deg(
+                    ego.x, ego.y, ego.theta, route_progress.target_x, route_progress.target_y
+                )
+                should_slow = int(abs(far_angle) > 45.0 or abs(near_angle) > 5.0)
+            should_brake = int(
+                bool(hazard_ids["vehicle"]) or
+                bool(hazard_ids["lane_vehicle"]) or
+                bool(hazard_ids["junction_vehicle"]) or
+                bool(hazard_ids["pedestrian"]) or
+                bool(hazard_ids["bike"]) or
+                is_red
+            )
             measurement = build_measurement_dict(
                 ego, actors,
                 is_junction=route_progress.is_junction if route_progress else False,
                 is_red_light_present=[affected_light_id] if is_red else [],
                 affected_light_id=affected_light_id,
+                future_waypoints=(
+                    route_progress.future_waypoints if route_progress else None
+                ),
+                is_vehicle_present=hazard_ids["vehicle"],
+                is_bike_present=hazard_ids["bike"],
+                is_lane_vehicle_present=hazard_ids["lane_vehicle"],
+                is_junction_vehicle_present=hazard_ids["junction_vehicle"],
+                is_pedestrian_present=hazard_ids["pedestrian"],
+                is_stop_sign_present=[],
+                should_slow=should_slow,
+                should_brake=should_brake,
             )
             link_match = mgeo_map.match(snap.ego.x, snap.ego.y) if mgeo_map else None
             sensor_timestamps = {
@@ -359,10 +553,13 @@ def main():
                     "route_link_index": (
                         route_progress.route_link_index if route_progress else None
                     ),
+                    "near_route_index": (
+                        route_progress.near_route_index if route_progress else None
+                    ),
                     "target_route_index": (
                         route_progress.target_route_index if route_progress else None
                     ),
-                    "command_source": "mgeo_related_signal_30m" if route_progress else None,
+                    "command_source": "route_link_annotation" if route_progress else None,
                     "route_valid": (
                         route_progress.distance_to_route_m <= 3.0
                         if route_progress else None
@@ -371,7 +568,8 @@ def main():
                         route_progress.distance_to_stopline_m if route_progress else None
                     ),
                     "affected_light_id_raw": affected_light_raw,
-                    "affected_light_state_raw": affected_state,
+                    "affected_light_state_raw": affected_state_raw,
+                    "affected_light_state_lmdrive": affected_state,
                 },
             })
             affordances = {
@@ -390,6 +588,9 @@ def main():
                 lidar_writer.write(frame_id, snap.lidar.points)
 
             frame_id += 1
+            last_rate_status_time, last_rate_status_frame = _maybe_print_rate_status(
+                skip_reasons, frame_id, last_rate_status_time, last_rate_status_frame,
+            )
             if grpc_client is not None:
                 last_grpc_frame_count_raw = sync_ts.frame_count
         print(

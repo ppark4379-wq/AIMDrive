@@ -6,7 +6,9 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from mgeo_navigation import MGeoMap, MGeoRouteTracker, GNSSMotionEstimator
+from mgeo_navigation import (
+    MGeoMap, MGeoRouteTracker, GNSSMotionEstimator, load_official_route,
+)
 
 
 def write_json(path, value):
@@ -18,12 +20,38 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--route-dir", required=True)
     parser.add_argument("--map-dir", required=True)
+    parser.add_argument("--route-definition", default="")
+    parser.add_argument("--global-path", default="")
+    parser.add_argument("--route-definition-key", default="full_loop")
     args = parser.parse_args()
     with open(os.path.join(args.route_dir, "route.json"), encoding="utf-8") as f:
-        route = json.load(f)
-    tracker = MGeoRouteTracker(
-        MGeoMap(os.path.join(args.map_dir, "link_set.json")), route
+        stored_route = json.load(f)
+    has_official_route = bool(args.route_definition or args.global_path)
+    if has_official_route and not (args.route_definition and args.global_path):
+        raise RuntimeError("--route-definition과 --global-path는 함께 지정해야 합니다")
+    route = (
+        load_official_route(
+            args.route_definition, args.global_path, args.route_definition_key
+        )
+        if has_official_route else stored_route
     )
+    node_set_path = os.path.join(args.map_dir, "node_set.json")
+    mgeo_map = MGeoMap(
+        os.path.join(args.map_dir, "link_set.json"),
+        node_set_path=node_set_path if os.path.isfile(node_set_path) else None,
+    )
+    tracker = MGeoRouteTracker(mgeo_map, route)
+    if has_official_route:
+        route["map_id"] = stored_route.get("map_id", route.get("map_id"))
+        route["map_path"] = stored_route.get("map_path", route.get("map_path"))
+        route["nav_node_ids"] = [
+            str(mgeo_map.links[route["nav_link_ids"][0]].get("from_node_idx"))
+        ] + [
+            str(mgeo_map.links[link_id].get("to_node_idx"))
+            for link_id in route["nav_link_ids"]
+        ]
+        route["nav_road_options"] = list(tracker.point_road_options)
+        write_json(os.path.join(args.route_dir, "route.json"), route)
     estimator = GNSSMotionEstimator()
     full_dir = os.path.join(args.route_dir, "measurements_full")
     paths = sorted(os.path.join(full_dir, name) for name in os.listdir(full_dir)
@@ -54,7 +82,10 @@ def main():
                      "speed": localization.speed_mps,
                      "command": progress.command,
                      "x_command": progress.target_x,
-                     "y_command": progress.target_y})
+                     "y_command": progress.target_y,
+                     # 기존 수집 프레임의 실제 Ego trajectory를 사용하지 않는다.
+                     # 현재 official dense route의 앞쪽 최대 50개 planned point다.
+                     "future_waypoints": progress.future_waypoints})
         full["localization"] = {
             "source": "gnss_mgeo", "heading_source": localization.heading_source,
             "x": localization.x, "y": localization.y,
@@ -67,7 +98,7 @@ def main():
             "route_index": progress.route_index,
             "route_link_index": progress.route_link_index,
             "target_route_index": progress.target_route_index,
-            "command_source": "mgeo_related_signal_30m",
+            "command_source": "route_link_annotation",
             "route_valid": progress.distance_to_route_m <= 3.0,
         })
         write_json(full_path, full)
@@ -82,7 +113,8 @@ def main():
                             "speed": localization.speed_mps,
                             "command": progress.command,
                             "x_command": progress.target_x,
-                            "y_command": progress.target_y})
+                            "y_command": progress.target_y,
+                            "future_waypoints": progress.future_waypoints})
         write_json(measurement_path, measurement)
         all_frames.append(full)
     write_json(os.path.join(args.route_dir, "measurements_all.json"), all_frames)
