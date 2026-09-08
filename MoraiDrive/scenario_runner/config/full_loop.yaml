@@ -2,6 +2,15 @@ zone: full_loop
 
 scenarios:
   full_loop:
+    clean_road_mode: true
+    sync_runtime:
+      startup_timeout_sec: 30.0
+      ego_max_age_sec: 1.0
+      ready_param: /morai_drive/scenario_ready
+      runtime_active_param: /morai_drive/sync_runtime_active
+      ego_topic: /Ego_topic
+    reset_ego_motion_on_start: true
+    reset_ego_motion_wait_sec: 0.5
     global_path: data/R_KR_PR_K-city_2025/2026_molit_comp_global_path.txt
     route_definition_path: config/full_loop_links.yaml
     route_definition_key: full_loop
@@ -262,7 +271,7 @@ scenarios:
     minimum_completion_progress_ratio: 0.95
 
     goal_tolerance_m: 2.0
-    timeout_sec: 900.0
+    timeout_sec: 0.0
     check_period_sec: 0.05
     # Abort a failed batch run instead of waiting forever when the EGO cannot
     # make route progress (for example, an orphan pedestrian blocks the road).

@@ -274,6 +274,8 @@ def run_sync_native_files(args, dataset_root, dataset_config, ros_config):
         route_metadata=route_metadata,
         extra_map_files={"global_info.json": args.global_info} if args.global_info else None,
         resume_route_dir=resume_state["output_dir"] if resume_state else "",
+        drive_tag=getattr(dataset_config, "drive_tag", ""),
+        run_note=getattr(dataset_config, "run_note", ""),
     )
     async_writer = AsyncFrameWriter(
         writer,

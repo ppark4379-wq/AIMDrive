@@ -25,6 +25,7 @@ class FullLoopScenario(FullLoopDriveBase):
     scenario_name = "full_loop"
 
     def setup(self):
+        self.clean_road_mode = bool(self.cfg.get("clean_road_mode", True))
         self.randomize_links = False
         self.route_configured = False
         self.route_setup_mode = None
@@ -77,12 +78,21 @@ class FullLoopScenario(FullLoopDriveBase):
         try:
             self.apply_weather()
             self.apply_time()
-            self.resolve_profile_models()
-            self.spawn_static_obstacle()
-            self.spawn_dynamic_obstacle()
-            self.spawn_roundabout_npcs()
-            self.spawn_highway_npcs()
-            self.arm_tunnel_sudden_brake()
+            if self.clean_road_mode:
+                self.static_obstacle = None
+                self.static_obstacle_model = None
+                self.static_obstacle_scale = None
+                self.dynamic_obstacle_model = None
+                self.dynamic_obstacle_phase = "disabled"
+                self.tunnel_event_phase = "disabled"
+                print("[FullLoop] clean_road_mode: obstacles, NPCs and tunnel event disabled")
+            else:
+                self.resolve_profile_models()
+                self.spawn_static_obstacle()
+                self.spawn_dynamic_obstacle()
+                self.spawn_roundabout_npcs()
+                self.spawn_highway_npcs()
+                self.arm_tunnel_sudden_brake()
             self.configure_drive_with_retries()
             self.persist_profile_state()
         except Exception:
@@ -171,6 +181,8 @@ class FullLoopScenario(FullLoopDriveBase):
                 )
                 self.apply_time()
             self.scenario_time_last_verify_elapsed = float(elapsed)
+        if self.clean_road_mode:
+            return
         self.update_dynamic_obstacle(ego_state,current_s)
         self.activate_highway_spawn_points(elapsed, current_s)
         if (
@@ -245,8 +257,10 @@ class FullLoopScenario(FullLoopDriveBase):
         self.highway_spawn_points_active = False
 
     def cleanup(self):
-        super().cleanup()
-        self.cleanup_spawned_actors()
+        try:
+            super().cleanup()
+        finally:
+            self.cleanup_spawned_actors()
 
 class FullLoopAfterStaticScenario(FullLoopScenario):
     """The same full-loop scenario, starting just after the static obstacle."""

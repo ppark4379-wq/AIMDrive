@@ -90,9 +90,13 @@ class GrpcConfig:
 
 @dataclass
 class DatasetConfig:
-    dataset_root: str = str(MORAI_DRIVE / "dataset")
-    job_name: str = "sync_attach_test"
+    dataset_root: str = "/mnt/z/DCM/data_collector"
+    job_name: str = "competition_train"
     route_name: str = "full_loop"
+    # 폴더명: <route>_<drive_tag>_<날짜·시간>_<run_note>
+    # 자동으로 장애물을 감지하지 않으므로 실제 실험 조건에 맞게 지정한다.
+    drive_tag: str = "basic_drive"
+    run_note: str = ""  # 예: "lfd_gain0.65_max_v60". 실제 변경 사항을 직접 기록
     append_timestamp: bool = True
     map_id: str = "R_KR_PR_K-city_2025"
     map_source_dir: str = str(MAP_DIR)  # MGeo JSON 파일들이 있는 디렉터리

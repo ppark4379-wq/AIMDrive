@@ -4,6 +4,7 @@ import time
 
 from .base_scenario import BaseScenario
 from ..adapters.expert_controller import ExpertController
+from ..adapters.sync_runtime import SyncRuntimeBridge
 from ..utils.transform_utils import (
     dist_xy,
     nearest_point_index,
@@ -15,6 +16,31 @@ class FullLoopDriveBase(BaseScenario):
 
     zone_name = "full_loop"
     scenario_name = "full_loop_base"
+
+    def run(self):
+        self.runtime_bridge = SyncRuntimeBridge(self.cfg.get("sync_runtime", {}))
+        try:
+            self.runtime_bridge.start()
+            self.setup()
+            self.runtime_bridge.wait_until_ready(self.expert_controller)
+            self.run_timeline()
+        finally:
+            self.cleanup()
+
+    def get_ego_motion_state(self):
+        try:
+            state = self.grpc.get_ego_motion_state()
+            if state:
+                return state
+        except Exception as error:
+            grpc_error = error
+        else:
+            grpc_error = RuntimeError("gRPC returned no Ego state")
+        bridge = getattr(self, "runtime_bridge", None)
+        state = bridge.latest_state() if bridge is not None else None
+        if state is None:
+            raise RuntimeError("No Ego state: gRPC failed and fresh ROS state is unavailable") from grpc_error
+        return state
 
     def dump_route_debug(self):
         debug_dir = self.cfg["route_debug_dir"]
@@ -94,6 +120,9 @@ class FullLoopDriveBase(BaseScenario):
         self.route_configured = False
         self.route_setup_mode = None
 
+        self.stop_expert_controller()
+        if hasattr(self.grpc, "stop_ego_cruise"):
+            self.grpc.stop_ego_cruise()
         self.grpc.set_ego_transform(self.start_tf)
         if (
             self.cfg.get("reset_ego_motion_on_start", False)
@@ -114,9 +143,6 @@ class FullLoopDriveBase(BaseScenario):
                 f"AIMDrive expert; got drive_control_mode={drive_control_mode!r}"
             )
 
-        self.stop_expert_controller()
-        if hasattr(self.grpc, "stop_ego_cruise"):
-            self.grpc.stop_ego_cruise()
         auto_ok = self.grpc.set_ego_control_mode_auto()
         if hasattr(self.grpc, "set_ego_gear_drive"):
             self.grpc.set_ego_gear_drive()
@@ -184,7 +210,7 @@ class FullLoopDriveBase(BaseScenario):
             self.expert_controller = None
 
     def stop_drive_control(self):
-        self.stop_expert_controller()
+        FullLoopDriveBase.cleanup(self)
         if hasattr(self.grpc, "stop_ego_control"):
             self.grpc.stop_ego_control()
 
@@ -316,7 +342,7 @@ class FullLoopDriveBase(BaseScenario):
             if controller is None or not controller.is_running():
                 raise RuntimeError("AIMDrive expert process stopped unexpectedly")
 
-            ego_state = self.grpc.get_ego_motion_state()
+            ego_state = self.get_ego_motion_state()
             ego_x = ego_state["x"]
             ego_y = ego_state["y"]
             distance_to_goal = dist_xy(
@@ -475,4 +501,9 @@ class FullLoopDriveBase(BaseScenario):
             time.sleep(check_period_sec)
 
     def cleanup(self):
-        self.stop_expert_controller()
+        try:
+            bridge = getattr(self, "runtime_bridge", None)
+            if bridge is not None:
+                bridge.close()
+        finally:
+            self.stop_expert_controller()
