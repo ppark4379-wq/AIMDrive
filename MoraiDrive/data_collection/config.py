@@ -86,6 +86,18 @@ class GrpcConfig:
     map_name: str = ""                   # 비우면 MORAI SIM에 이미 로드된 맵/ego 사용
     ego_vehicle_model: str = ""
     tick_period_ms: int = 100            # 100ms = 10Hz, 프레임 저장 Hz를 사실상 결정
+    # Read-only ActorStates source used to replace simulator topics that are
+    # silent in SyncMode. "auto" discovers the Windows-host gateway from WSL.
+    state_labels_enabled: bool = True
+    state_host: str = "auto"
+    state_port: int = 7789
+    ego_id: str = "Ego"
+    state_rpc_timeout_sec: float = 0.25
+    state_retry_interval_sec: float = 0.05
+    state_required_timeout_sec: float = 2.0
+    state_poll_interval_sec: float = 0.005
+    state_history_frames: int = 2000
+    state_ego_match_distance_m: float = 0.5
 
 
 @dataclass

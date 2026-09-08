@@ -139,7 +139,16 @@ class DatasetWriterLayoutTest(unittest.TestCase):
                 "tools", "build_dataset_splits.py",
             )
             subprocess.run(
-                [sys.executable, script, os.path.join(root, "job"), "--val-ratio", "0"],
+                [
+                    sys.executable,
+                    script,
+                    os.path.join(root, "job"),
+                    "--val-ratio",
+                    "0",
+                    # This one-frame fixture verifies completion filtering, not
+                    # route-progress quality (which requires multiple frames).
+                    "--skip-route-quality-check",
+                ],
                 check=True,
             )
             with open(os.path.join(root, "job", "dataset_index.txt"), encoding="utf-8") as f:

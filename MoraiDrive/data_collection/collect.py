@@ -182,6 +182,42 @@ def _bind_ros_sync_ego(ros_mgr: ROSManager, status, sensor_timestamp_ns: int) ->
     ))
 
 
+def _bind_grpc_sync_labels(ros_mgr, state_reader, status,
+                           expected_tick, sensor_timestamp_ns, timeout_sec):
+    """Attach labels only for the exact paused WaitForTick frame and pose."""
+    from grpc_ctrl.morai_state_reader import snapshot_matches_ego
+
+    snapshot = state_reader.fetch_required(
+        timeout_sec, expected_tick=expected_tick
+    )
+    if (
+        int(snapshot.tick) != int(expected_tick)
+        or not snapshot_matches_ego(
+            snapshot,
+            status.position.x,
+            status.position.y,
+            status.heading,
+        )
+    ):
+        raise RuntimeError(
+            "gRPC ActorStates does not match the paused WaitForTick frame: "
+            "grpc_tick={}, wait_for_tick_frame={}, "
+            "grpc_ego=({:.3f},{:.3f},{:.2f}deg), "
+            "wait_for_tick_ego=({:.3f},{:.3f},{:.2f}deg)".format(
+                snapshot.tick,
+                int(expected_tick),
+                snapshot.ego_x,
+                snapshot.ego_y,
+                snapshot.ego_heading_deg,
+                float(status.position.x),
+                float(status.position.y),
+                float(status.heading),
+            )
+        )
+    ros_mgr.update_grpc_labels(snapshot, sensor_timestamp_ns)
+    return snapshot
+
+
 def _stored_control(command):
     """Convert the exact CtrlCmd sent for a sync frame to the dataset schema."""
     from ros.sensor_types import ControlCommand
@@ -276,12 +312,16 @@ def main():
     if args.mode == "sync_native_files":
         args.control_max_steer_deg = ROS.control_max_steer_deg
         args.morai_to_lmdrive_steer_sign = ROS.morai_to_lmdrive_steer_sign
-        run_sync_native_files(args, dataset_root, DATASET, ROS)
+        run_sync_native_files(
+            args, dataset_root, DATASET, ROS,
+            grpc_config=asdict(GRPC) if GRPC.state_labels_enabled else None,
+        )
         return
 
     # Native-file mode returns before importing any ROS subscriber, SyncMode
     # owner, or gRPC client implementation.
     from grpc_ctrl.morai_grpc_client import MoraiGrpcClient
+    from grpc_ctrl.morai_state_reader import MoraiGrpcStateReader
     from ros.ros_manager import ROSManager
     from ros.sync_mode_client import ROSSyncModeClient
 
@@ -304,6 +344,7 @@ def main():
         "require_fresh_ego": args.mode == "sync",
     })
     grpc_client = None
+    grpc_state_reader = None
     sync_client = None
     if args.mode == "grpc_legacy":
         grpc_client = MoraiGrpcClient({
@@ -387,6 +428,19 @@ def main():
     try:
         ros_mgr.start()
         if args.mode == "sync":
+            if GRPC.state_labels_enabled:
+                grpc_state_reader = MoraiGrpcStateReader(asdict(GRPC))
+                grpc_state_reader.connect()
+                # connect() validates the API with one pre-Sync snapshot. It
+                # must not be bound to the first post-tick sensor frame.
+                if grpc_state_reader.fetch() is None:
+                    raise RuntimeError(
+                        "gRPC state API disconnected during startup validation"
+                    )
+                print(
+                    "[collect] read-only gRPC labels connected: "
+                    f"{grpc_state_reader.connected_host}:{grpc_state_reader.port}"
+                )
             sync_client = ROSSyncModeClient(
                 user_id="MoraiDriveCollector",
                 time_step_ms=GRPC.tick_period_ms,
@@ -410,6 +464,15 @@ def main():
                     _bind_ros_sync_ego(
                         ros_mgr, tick_result.vehicle_status, sensor_timestamp_ns
                     )
+                    if grpc_state_reader is not None:
+                        _bind_grpc_sync_labels(
+                            ros_mgr,
+                            grpc_state_reader,
+                            tick_result.vehicle_status,
+                            tick_result.frame,
+                            sensor_timestamp_ns,
+                            GRPC.state_required_timeout_sec,
+                        )
                 # The bridge callback proves Expert can receive /Ego_topic;
                 # the direct binding above associates the same authoritative
                 # state with the exact synchronized sensor frame.
@@ -424,9 +487,9 @@ def main():
                         after_timestamp_ns=previous_sensor_ts,
                         timeout_sec=0.1,
                     )
-                    # Object_topic is not a startup gate. Expert can begin
-                    # route following with an empty object list, while each
-                    # saved frame records whether object GT was available.
+                    # SyncMode object/traffic labels were already injected
+                    # from the exact gRPC tick above. The ROS simulator topics
+                    # themselves are intentionally not a startup gate.
                     if candidate_snapshot is not None:
                         bootstrap_snapshot = candidate_snapshot
                 if bootstrap_snapshot is not None:
@@ -549,6 +612,15 @@ def main():
                     _bind_ros_sync_ego(
                         ros_mgr, tick_result.vehicle_status, sensor_timestamp_ns
                     )
+                    if grpc_state_reader is not None:
+                        _bind_grpc_sync_labels(
+                            ros_mgr,
+                            grpc_state_reader,
+                            tick_result.vehicle_status,
+                            tick_result.frame,
+                            sensor_timestamp_ns,
+                            GRPC.state_required_timeout_sec,
+                        )
                 snap = ros_mgr.wait_for_snapshot(
                     frame_id,
                     grpc_frame_count_raw=int(tick_result.frame),
@@ -755,6 +827,9 @@ def main():
                 "frame_id": frame_id, "timestamp_ns": snap.timestamp_ns,
                 "grpc_frame_count_raw": snap.grpc_frame_count_raw,
                 "grpc_elapsed_time_raw": snap.grpc_elapsed_time_raw,
+                "simulator_labels_source": snap.simulator_labels_source,
+                "grpc_label_tick_raw": snap.grpc_label_tick_raw,
+                "grpc_label_timestamp_raw": snap.grpc_label_timestamp_raw,
                 "is_longtail": False,
                 "sensor_timestamps_ns": sensor_timestamps,
                 "ego_raw": asdict(snap.ego),
@@ -872,6 +947,8 @@ def main():
             sync_client.stop()
         if grpc_client is not None:
             grpc_client.stop()
+        if grpc_state_reader is not None:
+            grpc_state_reader.close()
         ros_mgr.stop()
         if ds_writer is not None:
             print(f"done. {frame_id} frames written to {ds_writer.output_dir}")

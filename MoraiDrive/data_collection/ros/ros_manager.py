@@ -343,6 +343,18 @@ class ROSManager:
                 traffic_light_timestamp_ns = light_sample.timestamp_ns if light_sample else None,
                 grpc_frame_count_raw = grpc_frame_count_raw,
                 grpc_elapsed_time_raw = grpc_elapsed_time_raw,
+                simulator_labels_source = (
+                    object_sample.source if object_sample else
+                    (light_sample.source if light_sample else "unavailable")
+                ),
+                grpc_label_tick_raw = (
+                    object_sample.grpc_tick_raw if object_sample else
+                    (light_sample.grpc_tick_raw if light_sample else None)
+                ),
+                grpc_label_timestamp_raw = (
+                    object_sample.grpc_timestamp_raw if object_sample else
+                    (light_sample.grpc_timestamp_raw if light_sample else None)
+                ),
             )
             self._last_returned_synced_ts = ref_ts
 
@@ -425,6 +437,31 @@ class ROSManager:
         with self._lock:
             self._ego = ego
             self._ego_history.append(ego)
+
+    def update_grpc_labels(self, label_snapshot, sensor_timestamp_ns: int):
+        """Bind one gRPC ActorStates result to the paused SyncMode sensor frame."""
+        timestamp_ns = int(sensor_timestamp_ns)
+        object_sample = GTObjectsSample(
+            timestamp_ns=timestamp_ns,
+            source_timestamp_ns=None,
+            objects=list(label_snapshot.objects),
+            source="grpc",
+            grpc_tick_raw=int(label_snapshot.tick),
+            grpc_timestamp_raw=int(label_snapshot.simulator_timestamp_raw),
+        )
+        light_sample = TrafficLightSample(
+            timestamp_ns=timestamp_ns,
+            source_timestamp_ns=None,
+            states=list(label_snapshot.traffic_lights),
+            source="grpc",
+            grpc_tick_raw=int(label_snapshot.tick),
+            grpc_timestamp_raw=int(label_snapshot.simulator_timestamp_raw),
+        )
+        with self._lock:
+            self._gt_objects = list(object_sample.objects)
+            self._tl_states = list(light_sample.states)
+            self._gt_objects_history.append(object_sample)
+            self._tl_states_history.append(light_sample)
 
     # ── message_filters 동기화 콜백 ───────────────────────────
 

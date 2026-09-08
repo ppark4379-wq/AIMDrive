@@ -17,6 +17,24 @@ python3 data_collection/collect.py --duration 120
 실행합니다. 경로 설정은 `config.py` 위치를 기준으로 만들어지므로 작업 디렉터리에
 따라 달라지지 않습니다. Python 의존성은 `requirements.txt`를 참고하세요.
 
+## SyncMode 객체·신호 라벨
+
+SyncMode에서 `/Object_topic`과 `/GetTrafficLightStatus`가 발행되지 않는 MORAI
+버전을 위해 Collector가 read-only gRPC `Actor.GetAllActorsState`를 사용합니다.
+`Ego`, 카메라, LiDAR, Expert control의 기존 출처는 바꾸지 않습니다.
+
+- `sync`: `WaitForTick` 직후 service frame과 gRPC tick이 같은지, 두 Ego pose가
+  일치하는지 검증한 다음 객체·관련 신호를 같은 센서 timestamp에 결합합니다.
+- `sync_native_files`: manifest의 `native_sync_frame`과 번호가 정확히 같은 gRPC
+  tick을 찾고 Ego pose까지 일치할 때만 결합합니다. 정차 중 동일 pose를 이용한
+  근사 매칭이나 tick offset 추정은 하지 않습니다.
+- exact tick 라벨을 찾지 못한 native frame은 빈 GT로 저장하지 않고
+  `incomplete_frames.jsonl`에 기록한 뒤 제외합니다.
+
+연결 주소는 기본적으로 WSL Windows-host gateway를 자동 탐색합니다. 필요하면
+`MORAI_GRPC_HOST`와 `MORAI_GRPC_PORT`로 덮어쓸 수 있습니다. 과거 세션을 라벨 없이
+변환해야 할 때만 `GRPC.state_labels_enabled=False`로 설정합니다.
+
 ## 설정 변경
 
 반복 실행 시 필요한 설정은 [config.py](config.py)에서 변경합니다.

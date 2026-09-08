@@ -107,6 +107,9 @@ class GTObjectsSample:
     timestamp_ns: int
     objects: List[GTObject]
     source_timestamp_ns: Optional[int] = None
+    source: str = "ros"
+    grpc_tick_raw: Optional[int] = None
+    grpc_timestamp_raw: Optional[int] = None
 
 
 @dataclass
@@ -114,6 +117,9 @@ class TrafficLightSample:
     timestamp_ns: int
     states: List[TrafficLightState]
     source_timestamp_ns: Optional[int] = None
+    source: str = "ros"
+    grpc_tick_raw: Optional[int] = None
+    grpc_timestamp_raw: Optional[int] = None
 
 
 @dataclass
@@ -137,3 +143,6 @@ class SensorSnapshot:
     # MORAI proto가 단위/센서 프레임 대응을 명시하지 않으므로 원본값으로만 보존한다.
     grpc_frame_count_raw: int = 0
     grpc_elapsed_time_raw: int = 0
+    simulator_labels_source: str = "unavailable"
+    grpc_label_tick_raw: Optional[int] = None
+    grpc_label_timestamp_raw: Optional[int] = None

@@ -8,8 +8,10 @@ import time
 
 import numpy as np
 
-from mgeo_navigation import MGeoMap, MGeoRouteTracker, load_official_route
-from schema import EgoState, build_measurement_dict
+from mgeo_navigation import (
+    MGeoMap, MGeoRouteTracker, load_official_route, stable_mgeo_id,
+)
+from schema import ActorData, EgoState, build_measurement_dict
 from writer.async_frame_writer import AsyncFrameWriter
 from writer.dataset_writer import DatasetWriter
 from writer.image_writer import ImageWriter
@@ -25,6 +27,38 @@ from .sync_capture_manifest import SyncCaptureManifest
 
 
 CAMERA_VIEW_NAMES = ("front", "left", "right", "rear")
+_OBJ_TYPE_TO_TPE = {"vehicle": 0, "pedestrian": 1}
+
+
+def _actor_data(obj):
+    heading = math.radians(float(obj.heading_deg))
+    return ActorData(
+        loc=[obj.x, obj.y, obj.z],
+        ori=[math.cos(heading), math.sin(heading)],
+        box=[obj.length / 2.0, obj.width / 2.0],
+        vel=[obj.vel_x, obj.vel_y, 0.0],
+        tpe=_OBJ_TYPE_TO_TPE[obj.obj_type],
+    )
+
+
+def _morai_light_to_lmdrive_state(status):
+    status = int(status)
+    if status & 1:
+        return 0
+    if status & 4:
+        return 1
+    if status & (16 | 32):
+        return 2
+    if status == 0:
+        return 3
+    return 4
+
+
+def _angle_to_target_deg(x, y, theta, target_x, target_y):
+    dx, dy = target_x - x, target_y - y
+    local_x = math.cos(theta) * dx + math.sin(theta) * dy
+    local_y = -math.sin(theta) * dx + math.cos(theta) * dy
+    return math.degrees(math.atan2(local_y, local_x))
 
 
 def _load_navigation(args):
@@ -164,7 +198,7 @@ def _write_checkpoint(path, state):
     os.replace(temporary, path)
 
 
-def _measurement_for_record(record, route_tracker, args):
+def _measurement_for_record(record, route_tracker, args, label_snapshot=None):
     ego_raw = record["ego_state_for_frame"]
     position = ego_raw["position"]
     velocity = ego_raw["velocity"]
@@ -178,7 +212,7 @@ def _measurement_for_record(record, route_tracker, args):
         and progress is not None
         and progress.distance_to_route_m > args.route_valid_max_error
     ):
-        return None, None
+        return None, None, None
 
     control = record["applied_control"]
     steer = float(np.clip(
@@ -212,11 +246,61 @@ def _measurement_for_record(record, route_tracker, args):
         brake=float(np.clip(control.get("brake", 0.0), 0.0, 1.0)),
         target_speed=target_speed,
     )
+    objects = list(label_snapshot.objects) if label_snapshot else []
+    actors = {
+        str(obj.obj_id): _actor_data(obj) for obj in objects
+        if obj.obj_type in _OBJ_TYPE_TO_TPE
+    }
+    observed_lights = {
+        light.tl_id: light.state
+        for light in (label_snapshot.traffic_lights if label_snapshot else [])
+    }
+    affected_light_raw = progress.affected_light_id if progress else None
+    affected_light_id = stable_mgeo_id(affected_light_raw)
+    affected_state_raw = (
+        observed_lights.get(affected_light_raw) if affected_light_raw else None
+    )
+    affected_state = (
+        _morai_light_to_lmdrive_state(affected_state_raw)
+        if affected_state_raw is not None else (4 if affected_light_raw else None)
+    )
+    hazards = (
+        route_tracker.hazard_actor_ids(
+            objects, ego.x, ego.y, ego.theta,
+            progress.route_index, progress.is_junction,
+        )
+        if route_tracker and progress else
+        {"vehicle": [], "lane_vehicle": [], "junction_vehicle": [],
+         "pedestrian": [], "bike": []}
+    )
+    should_slow = 0
+    if progress:
+        near_angle = _angle_to_target_deg(
+            ego.x, ego.y, ego.theta, progress.near_x, progress.near_y
+        )
+        far_angle = _angle_to_target_deg(
+            ego.x, ego.y, ego.theta, progress.target_x, progress.target_y
+        )
+        should_slow = int(abs(far_angle) > 45.0 or abs(near_angle) > 5.0)
+    is_red = affected_state == 0
+    should_brake = int(
+        any(hazards[key] for key in hazards) or is_red
+    )
     measurement = build_measurement_dict(
         ego,
-        actors=None,
+        actors=actors,
         is_junction=progress.is_junction if progress else False,
+        is_red_light_present=[affected_light_id] if is_red else [],
+        affected_light_id=affected_light_id,
         future_waypoints=progress.future_waypoints if progress else None,
+        is_vehicle_present=hazards["vehicle"],
+        is_bike_present=hazards["bike"],
+        is_lane_vehicle_present=hazards["lane_vehicle"],
+        is_junction_vehicle_present=hazards["junction_vehicle"],
+        is_pedestrian_present=hazards["pedestrian"],
+        is_stop_sign_present=[],
+        should_slow=should_slow,
+        should_brake=should_brake,
     )
     navigation = {
         "current_link_id": progress.current_link_id if progress else None,
@@ -227,11 +311,22 @@ def _measurement_for_record(record, route_tracker, args):
             progress.distance_to_route_m <= args.route_valid_max_error
             if progress else None
         ),
+        "affected_light_id_raw": affected_light_raw,
+        "affected_light_state_raw": affected_state_raw,
+        "affected_light_state_lmdrive": affected_state,
     }
-    return measurement, navigation
+    labels = {
+        "objects": objects,
+        "traffic_lights": (
+            list(label_snapshot.traffic_lights) if label_snapshot else []
+        ),
+        "affected_light_state": affected_state,
+    }
+    return measurement, navigation, labels
 
 
-def run_sync_native_files(args, dataset_root, dataset_config, ros_config):
+def run_sync_native_files(args, dataset_root, dataset_config, ros_config,
+                          grpc_config=None, state_history=None):
     """Consume manifest + native files without importing/starting ROS sync code."""
     if args.morai_camera_sync_base or args.morai_lidar_sync_base:
         if not (args.morai_camera_sync_base and args.morai_lidar_sync_base):
@@ -329,12 +424,48 @@ def run_sync_native_files(args, dataset_root, dataset_config, ros_config):
             )
         )
     try:
+        if grpc_config is not None and state_history is None:
+            from grpc_ctrl.morai_state_reader import (
+                GrpcStateHistory, MoraiGrpcStateReader,
+            )
+            state_history = GrpcStateHistory(
+                MoraiGrpcStateReader(grpc_config),
+                poll_interval_sec=grpc_config.get(
+                    "state_poll_interval_sec", 0.005
+                ),
+                max_frames=grpc_config.get("state_history_frames", 2000),
+                ego_match_distance_m=grpc_config.get(
+                    "state_ego_match_distance_m", 0.5
+                ),
+            )
+        if state_history is not None:
+            state_history.start()
+            print("[collect/native] read-only gRPC label history started")
         with open(incomplete_path, "a", encoding="utf-8", buffering=1) as incomplete, \
                 open(provenance_path, "a", encoding="utf-8", buffering=1) as provenance:
             while deadline is None or time.monotonic() < deadline:
                 records = manifest.wait_for_records(deadline)
                 if not records:
                     continue
+                if state_history is not None and not state_history.is_aligned:
+                    aligned = False
+                    for candidate in reversed(records):
+                        if state_history.wait_for_record(candidate, 0.01) is not None:
+                            aligned = True
+                            print(
+                                "[collect/native] exact gRPC/native tick "
+                                "alignment verified"
+                            )
+                            break
+                    if not aligned:
+                        for record in records:
+                            incomplete_count += 1
+                            _append_jsonl(incomplete, {
+                                "native_sync_frame": int(record["native_sync_frame"]),
+                                "missing_files": [],
+                                "timeout_reason": "gRPC label history not yet aligned",
+                            })
+                        continue
                 for record in records:
                     native_frame = int(record["native_sync_frame"])
                     if native_frame <= last_consumed_native_frame:
@@ -345,6 +476,26 @@ def run_sync_native_files(args, dataset_root, dataset_config, ros_config):
                     if args.max_samples > 0 and samples_this_run >= args.max_samples:
                         collection_success = True
                         return writer.output_dir, sample_index
+                    label_snapshot = None
+                    if state_history is not None:
+                        label_snapshot = state_history.wait_for_record(
+                            record,
+                            (grpc_config or {}).get(
+                                "state_required_timeout_sec", 2.0
+                            ),
+                        )
+                        if label_snapshot is None:
+                            incomplete_count += 1
+                            _append_jsonl(incomplete, {
+                                "native_sync_frame": int(record["native_sync_frame"]),
+                                "missing_files": [],
+                                "timeout_reason": "matching gRPC ActorStates unavailable",
+                            })
+                            print(
+                                "[collect/native] drop frame={} without exact "
+                                "gRPC labels".format(record["native_sync_frame"])
+                            )
+                            continue
                     try:
                         payload = source.load(record)
                     except IncompleteNativeFrame as error:
@@ -361,8 +512,8 @@ def run_sync_native_files(args, dataset_root, dataset_config, ros_config):
                         )
                         continue
 
-                    measurement, navigation = _measurement_for_record(
-                        record, route_tracker, args
+                    measurement, navigation, labels = _measurement_for_record(
+                        record, route_tracker, args, label_snapshot
                     )
                     if measurement is None:
                         print("[collect/native] drop off-route frame={}".format(
@@ -393,17 +544,38 @@ def run_sync_native_files(args, dataset_root, dataset_config, ros_config):
                         "morai_sync_session_id": morai_session_id,
                         "morai_camera_sync_session_root": camera_session_root,
                         "morai_lidar_sync_session_root": lidar_session_root,
-                        "object_available": False,
-                        "gt_objects_available": False,
-                        "traffic_scope": "unavailable",
+                        "object_available": label_snapshot is not None,
+                        "gt_objects_available": label_snapshot is not None,
+                        "traffic_scope": (
+                            "ego_route_relevant" if label_snapshot else "unavailable"
+                        ),
+                        "simulator_labels_source": (
+                            "grpc" if label_snapshot else "unavailable"
+                        ),
+                        "grpc_label_tick_raw": (
+                            label_snapshot.tick if label_snapshot else None
+                        ),
+                        "grpc_label_timestamp_raw": (
+                            label_snapshot.simulator_timestamp_raw
+                            if label_snapshot else None
+                        ),
+                        "gt_objects_raw": [
+                            vars(obj) for obj in labels["objects"]
+                        ],
+                        "traffic_lights": [
+                            vars(light) for light in labels["traffic_lights"]
+                        ],
                         "navigation": navigation,
                     })
                     async_writer.submit(
                         sample_index,
                         measurement,
                         full_measurement,
-                        actors={},
-                        affordances={"traffic_light": None, "stop_sign": False},
+                        actors=measurement["actors_data"],
+                        affordances={
+                            "traffic_light": labels["affected_light_state"],
+                            "stop_sign": False,
+                        },
                         cameras=payload.cameras,
                         lidar_points=payload.lidar_points,
                     )
@@ -429,6 +601,8 @@ def run_sync_native_files(args, dataset_root, dataset_config, ros_config):
         print("[collect/native] interrupted; Sync Runtime is not affected")
     finally:
         manifest.close()
+        if state_history is not None:
+            state_history.close()
         writer_error = None
         try:
             async_writer.close()

@@ -26,7 +26,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from ros.ros_manager import ROSManager  # noqa: E402
-from ros.sensor_types import LidarFrame  # noqa: E402
+from ros.sensor_types import (  # noqa: E402
+    GTObject, LidarFrame, TrafficLightState,
+)
+from grpc_ctrl.morai_state_reader import GrpcLabelSnapshot  # noqa: E402
 
 
 def _fake_header(secs, nsecs=0):
@@ -305,6 +308,34 @@ def test_traffic_light_status_expires_after_max_age():
     assert snap.tl_states == []
     assert snap.traffic_light_timestamp_ns is None
     print("PASS: max age를 넘긴 TrafficLightStatus는 snapshot에서 제외")
+
+
+def test_grpc_labels_replace_silent_sync_topics_at_sensor_timestamp():
+    mgr = _make_manager()
+    mgr._on_synced(*_synced_bundle(900))
+    labels = GrpcLabelSnapshot(
+        tick=42,
+        simulator_timestamp_raw=123456,
+        ego_x=0.0,
+        ego_y=0.0,
+        ego_heading_deg=0.0,
+        objects=[GTObject(
+            obj_id=7, obj_type="vehicle", x=1.0, y=2.0, z=0.0,
+            vel_x=3.0, vel_y=0.0,
+        )],
+        traffic_lights=[TrafficLightState(tl_id="TL-A", state=1)],
+    )
+    mgr.update_grpc_labels(labels, 900_000_000_000)
+
+    snap = mgr.get_snapshot(frame_id=1)
+
+    assert [obj.obj_id for obj in snap.gt_objects] == [7]
+    assert [light.tl_id for light in snap.tl_states] == ["TL-A"]
+    assert snap.gt_objects_timestamp_ns == snap.timestamp_ns
+    assert snap.traffic_light_timestamp_ns == snap.timestamp_ns
+    assert snap.simulator_labels_source == "grpc"
+    assert snap.grpc_label_tick_raw == 42
+    assert snap.grpc_label_timestamp_raw == 123456
 
 
 if __name__ == "__main__":

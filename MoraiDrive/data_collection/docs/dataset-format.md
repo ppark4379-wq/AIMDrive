@@ -60,6 +60,11 @@ LMDrive loader가 기본값 없이 조회하므로 아래 필드는 모든 프�
 | `is_junction`, `stop_sign`, `affected_light_id` | 2 | MGeo 도로 의미, stop sign만 0 |
 | `is_vehicle_present`, `is_lane_vehicle_present`, `is_pedestrian_present` 등 | 2 | ego 진행 경로와 충돌 가능한 actor ID |
 | `actors_data` | 2 | 객체별 위치·방향·크기·속도·타입 |
+| `gt_objects_raw` | 검증 | gRPC/ROS에서 변환한 차량·보행자·정적 객체 원본 |
+| `traffic_lights` | 1.5/검증 | Ego 경로에 관련된 MORAI 신호 ID와 raw 상태 |
+| `simulator_labels_source` | 검증 | `grpc`, `ros`, `unavailable` 중 실제 라벨 출처 |
+| `grpc_label_tick_raw` | 검증 | 객체·신호 ActorStates의 원본 SyncMode tick |
+| `grpc_label_timestamp_raw` | 검증 | ActorStates가 반환한 원본 simulator timestamp |
 | `future_waypoints` | 2 | 현재 official dense route의 앞쪽 최대 50개 point |
 
 `gps_x/gps_y`는 raw 위경도를 `global_info.json`의 CRS로 투영한 뒤

@@ -15,7 +15,8 @@ MoraiDrive/data_collection/
 │   ├── ros_manager.py        # ROS1 구독과 message_filters 동기화
 │   └── sensor_types.py       # 센서 데이터 컨테이너
 ├── grpc_ctrl/
-│   └── morai_grpc_client.py  # 기존 gRPC 동기 모드 실험 경로
+│   ├── morai_grpc_client.py  # 기존 gRPC 동기 모드 실험 경로
+│   └── morai_state_reader.py # SyncMode 객체·관련 신호 read-only snapshot/history
 ├── writer/
 │   ├── image_writer.py
 │   ├── lidar_writer.py
@@ -40,6 +41,13 @@ MoraiDrive/data_collection/
 
 기본 `realtime` 모드는 gRPC를 사용하지 않고 새 센서 묶음마다 한 프레임을 저장합니다.
 `grpc_legacy`는 이전 tick 검증 경로이며 최종 Expert 수집 방식이 아닙니다.
+
+SyncMode에서는 일반 ROS publisher가 멈추는 객체·신호 상태만 read-only gRPC
+`GetAllActorsState`로 보완합니다. 직접 `sync` 모드는 service frame과 gRPC tick이
+같고 두 Ego pose도 일치해야 프레임을 저장합니다. 기본 `sync_native_files` 모드는 모든 tick을
+polling history에 보관하고 manifest `native_sync_frame`과 동일한 gRPC tick 및 Ego
+pose가 모두 일치할 때만 결합합니다. 이 reader는 SyncMode 설정이나 tick 진행 API를
+호출하지 않습니다.
 
 ## Episode와 시나리오 실행 단위
 
