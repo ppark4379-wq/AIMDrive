@@ -49,20 +49,44 @@ class AutonomousDriving:
         self.lattice_planning_process = LatticePlanningProcess(
             map_data_dir=config["map"]["data_dir"]
         )
-        self.pid = Pid(sampling_time=1/float(config['common']['sampling_rate']), **config['control']['pid'])
-        self.sampling_rate = float(config['common']['sampling_rate'])
+        common_config = config['common']
+        self.realtime_sampling_rate = float(
+            common_config.get('realtime_sampling_rate', common_config['sampling_rate'])
+        )
+        self.sync_fallback_sampling_rate = float(
+            common_config.get('sync_fallback_sampling_rate', self.realtime_sampling_rate)
+        )
+        self.control_dt = 1.0 / self.realtime_sampling_rate
+        self.pid = Pid(sampling_time=self.control_dt, **config['control']['pid'])
+        self.sampling_rate = self.realtime_sampling_rate
         self.pure_pursuit = PurePursuit(
             wheelbase=config['common']['wheelbase'], **config['control']['pure_pursuit']
         )
         self.max_steering = config['common']['max_steering'] / 180.0 * np.pi
-        self.steering_sign = float(config['common'].get('steering_sign', 1.0))
+        legacy_steering_sign = float(common_config.get('steering_sign', -1.0))
+        self.realtime_steering_sign = float(
+            common_config.get('realtime_steering_sign', legacy_steering_sign)
+        )
+        self.sync_steering_sign = float(
+            common_config.get('sync_steering_sign', self.realtime_steering_sign)
+        )
+        self.steering_sign = self.realtime_steering_sign
+        self.sync_mode = False
         self.previous_front_steer_rad = 0.0
         self.previous_target_velocity = None
         self.previous_acc_cmd = 0.0
         self._merge_curvature_floor_zone = None
         self._merge_curvature_floor_speed = None
 
-    def execute(self, vehicle_state, dynamic_object_list, current_traffic_light):
+    def execute(
+        self,
+        vehicle_state,
+        dynamic_object_list,
+        current_traffic_light,
+        sync_mode=False,
+        control_dt=None,
+    ):
+        self._configure_runtime(sync_mode=sync_mode, control_dt=control_dt)
         # 현재 위치 기반으로 local path과 planned velocity 추출
         local_path, planned_velocity = self.path_manager.get_local_path(vehicle_state)
         profile_planned_velocity = planned_velocity
@@ -162,7 +186,7 @@ class AutonomousDriving:
 
             max_steer_step = np.deg2rad(
                 highway_parameters.STEERING_RATE_LIMIT_DEG_PER_SEC
-            ) / self.sampling_rate
+            ) * self.control_dt
             requested_steer_rad = np.clip(
                 requested_steer_rad,
                 self.previous_front_steer_rad - max_steer_step,
@@ -242,6 +266,54 @@ class AutonomousDriving:
 
         return ControlInput(acc_cmd, front_steer_rad), planning_path
 
+    def _configure_runtime(self, sync_mode=False, control_dt=None):
+        """Apply transport sign and simulation-time dt for the current frame."""
+        sync_mode = bool(sync_mode)
+        fallback_rate = (
+            self.sync_fallback_sampling_rate
+            if sync_mode
+            else self.realtime_sampling_rate
+        )
+        fallback_dt = 1.0 / fallback_rate
+        try:
+            selected_dt = float(control_dt) if control_dt is not None else fallback_dt
+        except (TypeError, ValueError):
+            selected_dt = fallback_dt
+        if not np.isfinite(selected_dt) or selected_dt <= 0.0:
+            selected_dt = fallback_dt
+        # Reject discontinuities caused by a reset/invalid ROS header. The next
+        # valid frame will immediately restore the measured simulation dt.
+        selected_dt = float(np.clip(selected_dt, 0.001, 0.5))
+
+        mode_changed = sync_mode != self.sync_mode
+        self.sync_mode = sync_mode
+        self.control_dt = selected_dt
+        self.sampling_rate = 1.0 / selected_dt
+        self.steering_sign = (
+            self.sync_steering_sign
+            if sync_mode
+            else self.realtime_steering_sign
+        )
+        self.pid.set_sampling_time(selected_dt)
+
+        highway_planner = getattr(
+            self.lattice_planning_process, 'highway_lane_planner', None
+        )
+        if highway_planner is not None:
+            highway_planner.set_control_dt(selected_dt)
+
+        if mode_changed:
+            self.pid.reset()
+            self.previous_acc_cmd = 0.0
+            self.previous_front_steer_rad = 0.0
+            print(
+                "[ExpertMode] mode={} steering_sign={:+.1f} dt={:.3f}s".format(
+                    "sync" if sync_mode else "realtime",
+                    self.steering_sign,
+                    self.control_dt,
+                )
+            )
+
     @staticmethod
     def _second_merge_slowdown_band(planned_velocity, vehicle_state):
         """두 번째 합류를 지정 좌표 이후부터 35~45km/h 로 통과한다.
@@ -320,7 +392,7 @@ class AutonomousDriving:
             if previous < 0.0
             else highway_parameters.ACCEL_COMMAND_RISE_RATE
         )
-        maximum_step = rate / self.sampling_rate
+        maximum_step = rate * self.control_dt
         return min(requested_command, previous + maximum_step)
 
     @staticmethod

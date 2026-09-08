@@ -120,6 +120,18 @@ class TrafficLightStopController(object):
                 if len(current_traffic_light) >= 4
                 else None
             ),
+            "source_time": (
+                float(current_traffic_light[4])
+                if len(current_traffic_light) >= 5
+                and current_traffic_light[4] is not None
+                else None
+            ),
+            "reference_time": (
+                float(current_traffic_light[5])
+                if len(current_traffic_light) >= 6
+                and current_traffic_light[5] is not None
+                else None
+            ),
         }
 
     def _forward_distance(self, current_waypoint, target):
@@ -162,7 +174,17 @@ class TrafficLightStopController(object):
             return planned_velocity
 
         is_fresh = True
-        if signal["received_at"] is not None and self.signal_timeout > 0.0:
+        if (
+            signal["source_time"] is not None
+            and signal["reference_time"] is not None
+            and self.signal_timeout > 0.0
+        ):
+            is_fresh = (
+                0.0
+                <= signal["reference_time"] - signal["source_time"]
+                <= self.signal_timeout
+            )
+        elif signal["received_at"] is not None and self.signal_timeout > 0.0:
             is_fresh = time.monotonic() - signal["received_at"] <= self.signal_timeout
 
         is_red = signal["status"] in self.stop_statuses

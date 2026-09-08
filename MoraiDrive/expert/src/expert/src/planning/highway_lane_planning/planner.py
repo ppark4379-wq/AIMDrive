@@ -20,6 +20,7 @@ class HighwayLanePlanner:
 
     def __init__(self, map_data_dir=None, lane_map=None):
         self.lane_map = lane_map or HighwayLaneMap(map_data_dir)
+        self.control_dt = 1.0 / parameters.PLANNER_UPDATE_RATE
         self.state = self.KEEP
         self.target_link_id = None
         self.source_link_id = None
@@ -41,6 +42,16 @@ class HighwayLanePlanner:
         self._predictive_merge_last_speed = 0.0
         self._predictive_merge_last_clear_time = float("inf")
         self._predictive_merge_dropout_hold_time = 0.0
+
+    def set_control_dt(self, control_dt):
+        control_dt = float(control_dt)
+        if control_dt <= 0.0:
+            raise ValueError("control_dt must be positive")
+        self.control_dt = control_dt
+
+    def _cycles_for_reference_count(self, reference_cycles):
+        duration = float(reference_cycles) / parameters.PLANNER_UPDATE_RATE
+        return max(1, int(math.ceil(duration / self.control_dt - 1e-9)))
 
     def plan(self, vehicle_state, reference_path, vehicle_entries):
         ego_match = self._resolve_ego_lane(vehicle_state)
@@ -974,7 +985,7 @@ class HighwayLanePlanner:
             and tracked_match.lane_link.id in merge_successors
             and tracked_match.s > parameters.PREDICTIVE_MERGE_PASS_DISTANCE
         )
-        cycle_time = 1.0 / parameters.PLANNER_UPDATE_RATE
+        cycle_time = self.control_dt
         if tracked_entry is not None:
             tracked_speed = max(
                 0.0, float(tracked_entry["object_info"].velocity)
@@ -1016,12 +1027,16 @@ class HighwayLanePlanner:
         confirmed_clear = (
             tracked_cleared
             and self._predictive_merge_clear_cycles
-            >= parameters.PREDICTIVE_MERGE_CLEAR_CYCLES
+            >= self._cycles_for_reference_count(
+                parameters.PREDICTIVE_MERGE_CLEAR_CYCLES
+            )
         )
         predicted_clear_after_dropout = (
             tracked_entry is None
             and self._predictive_merge_clear_cycles
-            >= parameters.PREDICTIVE_MERGE_CLEAR_CYCLES
+            >= self._cycles_for_reference_count(
+                parameters.PREDICTIVE_MERGE_CLEAR_CYCLES
+            )
             and self._predictive_merge_dropout_hold_time <= 1e-9
         )
         if confirmed_clear or predicted_clear_after_dropout:
@@ -1380,7 +1395,9 @@ class HighwayLanePlanner:
             self._merge_zone_clear_cycles += 1
         if (
             self._merge_zone_clear_cycles
-            >= parameters.CONSERVATIVE_MERGE_CLEAR_CYCLES
+            >= self._cycles_for_reference_count(
+                parameters.CONSERVATIVE_MERGE_CLEAR_CYCLES
+            )
         ):
             self._merge_zone_priority = "EGO"
             self._merge_zone_other_key = None
@@ -1564,10 +1581,7 @@ class HighwayLanePlanner:
     def _stabilize_merge_speed_limit(self, raw_limit, ego_speed):
         """Apply emergency reductions now and release transient ACC smoothly."""
         previous = self._merge_speed_limit_state
-        recovery_step = (
-            parameters.MERGE_ACC_RECOVERY_RATE
-            / parameters.PLANNER_UPDATE_RATE
-        )
+        recovery_step = parameters.MERGE_ACC_RECOVERY_RATE * self.control_dt
         if not math.isinf(raw_limit):
             if math.isinf(previous):
                 filtered = max(0.0, raw_limit)

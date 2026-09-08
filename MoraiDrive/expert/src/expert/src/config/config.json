@@ -1,10 +1,34 @@
 {
   "common": {
-    "sampling_rate": 10,
+    "sampling_rate": 30,
+    "realtime_sampling_rate": 30,
+    "sync_fallback_sampling_rate": 10,
     "vehicle_length": 4.635,
     "wheelbase": 3.0,
     "max_steering": 40.0,
-    "steering_sign": 1.0
+    "steering_sign": -1.0,
+    "realtime_steering_sign": -1.0,
+    "sync_steering_sign": 1.0,
+    "sync_runtime_active_params": [
+      "/morai_drive/sync_runtime_active",
+      "/morai_drive/data_collector_ready"
+    ],
+    "sync_fallback_sampling_rates": {
+      "/morai_drive/sync_runtime_active": 50,
+      "/morai_drive/data_collector_ready": 10
+    },
+    "sync_input_slop_sec": 0.05,
+    "sync_input_wait_sec": 0.01,
+    "traffic_light_max_age_sec": 1.0,
+    "sync_grpc_inputs": {
+      "enabled": true,
+      "host": "auto",
+      "port": 7789,
+      "ego_id": "Ego",
+      "rpc_timeout_sec": 0.25,
+      "retry_interval_sec": 1.0,
+      "tick_period_sec": 0.02
+    }
   },
   "map": {
     "name": "R_KR_PG_KATRI",
@@ -38,10 +62,10 @@
       "velocity_gain": 0.5,
       "distance_gain": 1,
       "time_gap": 0.8,
-      "pedestrian_lateral_threshold": 2.0,
+      "pedestrian_lateral_threshold": 10.0,
       "vehicle_lateral_threshold": 2.5,
       "traffic_light_lateral_threshold": 4.0,
-      "pedestrian_longitudinal_max": 20.0
+      "pedestrian_longitudinal_max": 35.0
     },
     "traffic_light_stop": {
       "stop_statuses": [1],

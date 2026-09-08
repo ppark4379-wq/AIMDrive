@@ -17,10 +17,10 @@
 - `velocity_gain`: 선행 객체와의 상대속도 오차에 대한 ACC 반응 가중치.
 - `distance_gain`: 안전거리 오차에 대한 ACC 반응 가중치.
 - `time_gap`: Ego 속도에 비례하여 확보할 시간 간격 `[s]`.
-- `pedestrian_lateral_threshold`: 보행자를 경로상 객체로 판단할 최대 횡거리 `[m]`. 보도 위 보행자를 과하게 ACC 정지 대상으로 잡지 않도록 좁게 둔다.
+- `pedestrian_lateral_threshold`: 보행자를 경로상 객체로 판단할 최대 횡거리 `[m]`. 횡단 보행자가 차로에 들어오기 전에 감속할 수 있도록 접근 구간까지 포함한다.
 - `vehicle_lateral_threshold`: 차량·정적장애물을 경로상 객체로 판단할 최대 횡거리 `[m]`.
 - `traffic_light_lateral_threshold`: 신호등 정지 대상을 판단할 최대 횡거리 `[m]`.
-- `pedestrian_longitudinal_max`: 보행자 ACC 판단에 사용할 최대 전방거리 `[m]`. 너무 먼 보행자 때문에 출발/재가속이 막히지 않도록 제한한다.
+- `pedestrian_longitudinal_max`: 보행자 ACC 판단에 사용할 최대 전방거리 `[m]`. 고속 주행 중에도 정지거리를 확보하도록 제한한다.
 
 ## `control.pid`
 

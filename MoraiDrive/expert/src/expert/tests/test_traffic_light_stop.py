@@ -63,6 +63,14 @@ class TrafficLightStopTest(unittest.TestCase):
         self.assertEqual(0.0, stop_speed)
         self.assertEqual(16.0, self.controller.get_target_velocity(green, 879, 16.0))
 
+    def test_sync_signal_freshness_uses_simulation_time(self):
+        # Wall time can advance much faster than simulation time in SyncMode.
+        red = ["C1256W000016", 1, 2, time.monotonic() - 100.0, 10.0, 10.5]
+
+        approach_speed = self.controller.get_target_velocity(red, 800, 16.0)
+
+        self.assertLess(approach_speed, 16.0)
+
     def test_expert_builds_with_direct_map_configuration(self):
         from expert.src.autonomous_driving import AutonomousDriving
         from expert.src.config.config import Config

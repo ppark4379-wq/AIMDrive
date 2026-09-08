@@ -18,6 +18,13 @@ class Pid:
         self.previous_error = 0
         self.integral_error = 0
 
+    def set_sampling_time(self, sampling_time):
+        """Update controller dt without discarding the current error history."""
+        sampling_time = float(sampling_time)
+        if sampling_time <= 0.0:
+            raise ValueError("sampling_time must be positive")
+        self.sampling_time = sampling_time
+
     def get_output(self, target_value, current_value):
         error = target_value-current_value
         candidate_integral = self.integral_error + error*self.sampling_time

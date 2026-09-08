@@ -27,6 +27,22 @@ class HighwayLanePlanningTest(unittest.TestCase):
     def test_prediction_horizon_is_short_enough_for_dynamic_avoidance(self):
         self.assertLessEqual(parameters.PREDICTION_HORIZON, 1.5)
 
+    def test_time_based_cycle_threshold_scales_with_control_dt(self):
+        self.planner.set_control_dt(0.02)
+
+        self.assertEqual(
+            5,
+            self.planner._cycles_for_reference_count(
+                parameters.PREDICTIVE_MERGE_CLEAR_CYCLES
+            ),
+        )
+        self.assertEqual(
+            50,
+            self.planner._cycles_for_reference_count(
+                parameters.CONSERVATIVE_MERGE_CLEAR_CYCLES
+            ),
+        )
+
     def test_rviz_prediction_contains_one_future_pose_at_short_horizon(self):
         entry = self._object_entry("A2256W000408", 70.0, 10.0)
         matches = self.planner._match_objects([entry])
