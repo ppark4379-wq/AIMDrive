@@ -30,8 +30,8 @@
 
 ## 5. ROS SyncMode 최종 수집
 
-- [Expert SyncMode 명세](expert-sync.md)의 서비스 3종 구현
-- `tick → 상태 → expert → control → wait → 센서 저장` 1:1 보장
+- [Expert SyncMode 명세](expert-sync.md)의 서비스 3종 구현 완료, live 검증 필요
+- `상태 → expert → control → wait → 센서 저장` frame 1:1 구현, live 검증 필요
 - timeout, 중복, 센서 누락, route 이탈을 episode summary에 기록
 - 최소 10분 연속 수집에서 프레임 누락·중복 0 검증
 

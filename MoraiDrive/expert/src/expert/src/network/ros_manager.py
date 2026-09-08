@@ -4,6 +4,7 @@ import rospy
 import tf
 import numpy as np
 import time
+import threading
 from nav_msgs.msg import Path, Odometry
 from geometry_msgs.msg import PoseStamped, Point, Quaternion
 from std_msgs.msg import Float32
@@ -25,7 +26,6 @@ class RosManager:
         self.global_path = self.convert_to_ros_path(config["map"]["path"], '/map')
 
         self.sampling_rate = config["common"]["sampling_rate"]
-        self.ros_rate = rospy.Rate(self.sampling_rate)
         self.count = 0
 
         self.vehicle_state = VehicleState()
@@ -33,18 +33,39 @@ class RosManager:
         self.traffic_light = []
 
         self.is_status = False
-        self.is_object_info = False
+        # Route following can start before the optional Object_topic publisher
+        # produces its first message. The callback replaces this empty list as
+        # soon as object data becomes available.
+        self.is_object_info = True
         self.is_traffic_light = False
+        self._status_sequence = 0
+        self._last_controlled_status_sequence = 0
+        self._status_condition = threading.Condition()
 
     def execute(self):
         print("start simulation")
         self._set_protocol()
         while not rospy.is_shutdown():
-            if self.is_status and self.is_object_info:
-                control_input, local_path = self.autonomous_driving.execute(
-                    self.vehicle_state, self.object_info_list, self.traffic_light
-                )
-                self._send_data(control_input, local_path)
+            # In MORAI SyncMode one WaitForTick result is relayed as one
+            # Ego_topic update. Compute exactly one control for that update;
+            # the old free-running 30 Hz loop generated repeated commands from
+            # a stale pose while the collector was waiting on the next tick.
+            with self._status_condition:
+                while (
+                    not rospy.is_shutdown()
+                    and self._status_sequence
+                    <= self._last_controlled_status_sequence
+                ):
+                    self._status_condition.wait(timeout=0.1)
+                if rospy.is_shutdown():
+                    break
+                status_sequence = self._status_sequence
+                vehicle_state = self.vehicle_state
+            control_input, local_path = self.autonomous_driving.execute(
+                vehicle_state, self.object_info_list, self.traffic_light
+            )
+            self._send_data(control_input, local_path)
+            self._last_controlled_status_sequence = status_sequence
         print("end simulation")
 
     def _set_protocol(self):
@@ -85,7 +106,6 @@ class RosManager:
             self.global_path_pub.publish(self.global_path)
             self.count = 0
         self.count += 1
-        self.ros_rate.sleep()
 
     @staticmethod
     def convert_to_ros_path(path, frame_id):
@@ -113,16 +133,25 @@ class RosManager:
         return odometry
 
     def vehicle_status_callback(self, data):
-        self.vehicle_state = VehicleState(data.position.x, data.position.y, np.deg2rad(data.heading), data.velocity.x)
+        vehicle_state = VehicleState(
+            data.position.x,
+            data.position.y,
+            np.deg2rad(data.heading),
+            data.velocity.x,
+        )
         br = tf.TransformBroadcaster()
         br.sendTransform(
-            (self.vehicle_state.position.x, self.vehicle_state.position.y, 0),
-            tf.transformations.quaternion_from_euler(0, 0, self.vehicle_state.yaw),
+            (vehicle_state.position.x, vehicle_state.position.y, 0),
+            tf.transformations.quaternion_from_euler(0, 0, vehicle_state.yaw),
             rospy.Time.now(),
             "gps",
             "map"
         )
-        self.is_status = True
+        with self._status_condition:
+            self.vehicle_state = vehicle_state
+            self.is_status = True
+            self._status_sequence += 1
+            self._status_condition.notify()
 
     def object_info_callback(self, data):
         def convert_object(item, is_static=False):

@@ -1,0 +1,61 @@
+mode: standalone
+node_name: morai_sync_runtime
+user_id: MoraiDriveSyncRuntime
+
+time_step_ms: 20
+capture_enabled: true
+capture_stride: 5
+
+capture:
+  journal_root: .runtime/sync_runtime
+  journal_queue_size: 1024
+  scenario_id: full_loop
+  expected_sensor_files:
+    camera_front: CAMERA_1/{frame}_Intensity.png
+    camera_left: CAMERA_2/{frame}_Intensity.png
+    camera_right: CAMERA_3/{frame}_Intensity.png
+    camera_rear: CAMERA_5/{frame}_Intensity.png
+    lidar: LIDAR_4/{frame}_Intensity.bin
+
+warn_after_frames: 5
+fail_safe_after_frames: 25
+fail_safe:
+  longl_cmd_type: 1
+  accel: 0.0
+  brake: 1.0
+  front_steer: 0.0
+  rear_steer: 0.0
+
+services:
+  mode: /SyncModeCmd
+  control: /SyncModeCtrlCmd
+  wait_for_tick: /SyncModeWaitForTick
+  set_gear: /SyncModeSetGear
+
+topics:
+  control: /ctrl_cmd
+  ego: /Ego_topic
+
+ros:
+  service_timeout_sec: 10.0
+  control_subscriber_queue_size: 1
+  ego_publisher_queue_size: 1
+
+logging:
+  interval_sec: 5.0
+
+standalone:
+  # Sync Mode owns external control, but does not implicitly shift a parked Ego.
+  set_gear_drive: true
+  drive_gear: 4
+
+# Scenario mode requires a fresh false -> true READY transition. Start this
+# Runtime before Scenario Runner so stale parameters cannot release a run.
+scenario:
+  ready_param: /morai_drive/scenario_ready
+  runtime_active_param: /morai_drive/sync_runtime_active
+  wait_for_ready: true
+  require_fresh_ready_transition: true
+  ready_timeout_sec: 0.0
+  poll_interval_sec: 0.05
+  scenario_id_param: /morai_drive/scenario_id

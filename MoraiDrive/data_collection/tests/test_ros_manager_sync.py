@@ -148,6 +148,42 @@ def test_on_synced_populates_snapshot():
     print("PASS: _on_synced 이후 get_snapshot()이 카메라+gnss+imu+lidar를 모두 채움")
 
 
+def test_gnss_and_imu_can_be_excluded_from_required_sync_group():
+    mgr = _make_manager(normalize_ego_to_arrival=False)
+    mgr._sync_member_keys = [
+        "cam_front", "cam_left", "cam_right", "cam_rear", "lidar"
+    ]
+    msgs = (
+        _fake_compressed_image(200),
+        _fake_compressed_image(200),
+        _fake_compressed_image(200),
+        _fake_compressed_image(200),
+        _fake_lidar(200),
+    )
+    mgr._on_synced(*msgs)
+
+    snap = mgr.get_snapshot(frame_id=1)
+    assert snap is not None
+    assert set(snap.cameras) == {"front", "left", "right", "rear"}
+    assert snap.lidar is not None
+    assert snap.gnss is None and snap.imu is None
+    print("PASS: GNSS/IMU 없이 카메라4+LiDAR 동기화 묶음 생성")
+
+
+def test_sync_can_require_fresh_ego_topic_sample():
+    mgr = _make_manager(normalize_ego_to_arrival=False)
+    mgr.require_fresh_ego = True
+    mgr._cb_ego(_fake_ego(299, 900_000_000))
+    mgr._on_synced(*_synced_bundle(300))
+    assert mgr.get_snapshot(frame_id=1) is None
+
+    mgr._cb_ego(_fake_ego(300))
+    snap = mgr.get_snapshot(frame_id=1)
+    assert snap is not None and snap.ego is not None
+    assert mgr.ego_topic_count() == 2
+    print("PASS: Sync snapshot은 같은 시간창의 /Ego_topic 샘플을 요구")
+
+
 def test_no_duplicate_when_no_new_sync_yet():
     """새 동기화 묶음이 없으면 동일 센서 프레임을 중복 반환하지 않는다."""
     mgr = _make_manager()
@@ -229,6 +265,7 @@ def test_async_labels_select_nearest_frame_sample():
     assert snap.control is not None and snap.target_velocity is not None
     assert snap.gt_objects_timestamp_ns == 500_005_000_000
     assert snap.traffic_light_timestamp_ns == 500_005_000_000
+    assert mgr.gt_objects_topic_count() == 2
 
 
 def test_stale_async_labels_are_not_reused():

@@ -1,15 +1,14 @@
-"""
-Entrypoint: connects to MORAI via gRPC (동기 모드 + tick 트리거)와 ROS1
-(message_filters로 동기화된 센서 토픽 구독)으로 프레임을 수집해, 기존과 동일한
-CARLA/LMDrive 스타일 route 폴더로 저장한다 — 출력 포맷은 그대로, 전송 계층만
-UDP에서 gRPC+ROS1로 교체됨 (legacy_udp/에 이전 UDP 버전 보존).
+"""Collect MORAI ROS sensor and label data in the LMDrive route layout.
 
-프레임 트리거는 gRPC world.tick()이다: tick 1번 = 시뮬레이터가 tick_period(ms)만큼
-진행 = 프레임 1개 저장. ROS 토픽 자체는 tick과 무관하게 계속 퍼블리시되고,
-ros_manager.py가 message_filters로 미리 동기화해둔 최신 묶음을 매 tick마다 꺼내온다.
+Sync mode uses MORAI's built-in ROS services: SyncModeCmd starts the session,
+SyncModeCtrlCmd binds the Expert command to a simulation frame, and
+SyncModeWaitForTick advances exactly one frame. The previous gRPC experiment is
+available only as ``grpc_legacy``.
 
 Run: python collect.py --route route_moraiA_scenario1 --duration 120
 """
+from __future__ import annotations
+
 import argparse
 from dataclasses import asdict
 from collections import Counter
@@ -19,9 +18,6 @@ import os
 import time
 
 from config import ROS, GRPC, DATASET
-from ros.ros_manager import ROSManager
-from ros.sensor_types import EgoTelemetry
-from grpc_ctrl.morai_grpc_client import MoraiGrpcClient
 from geo_reference import MGeoReference
 from mgeo_navigation import (
     MGeoMap, MGeoRouteTracker, GNSSMotionEstimator, stable_mgeo_id,
@@ -30,7 +26,9 @@ from mgeo_navigation import (
 from writer.dataset_writer import DatasetWriter
 from writer.image_writer import ImageWriter
 from writer.lidar_writer import LidarWriter
+from writer.async_frame_writer import AsyncFrameWriter
 from schema import EgoState, ActorData, build_measurement_dict
+from sources.native_file_collector import run_sync_native_files
 
 CAMERA_VIEW_NAMES = ["front", "left", "right", "rear"]
 _OBJ_TYPE_TO_TPE = {"vehicle": 0, "pedestrian": 1}
@@ -141,6 +139,8 @@ def _maybe_print_rate_status(skip_reasons: Counter, frame_id: int,
 
 
 def _update_grpc_ego(ros_mgr: ROSManager, grpc_client: MoraiGrpcClient) -> bool:
+    from ros.sensor_types import EgoTelemetry
+
     state = grpc_client.get_ego_state()
     if state is None:
         return False
@@ -154,10 +154,59 @@ def _update_grpc_ego(ros_mgr: ROSManager, grpc_client: MoraiGrpcClient) -> bool:
     return True
 
 
+def _bind_ros_sync_ego(ros_mgr: ROSManager, status, sensor_timestamp_ns: int) -> None:
+    """Bind WaitForTick's frame-authoritative Ego state to its sensor bundle.
+
+    The ROS service response is received after camera/LiDAR delivery, so its
+    wall-clock arrival can trail the front camera by more than the generic
+    ApproximateTimeSynchronizer slop.  Both still represent the same SyncMode
+    frame; use the synchronized sensor timestamp as the join key.
+    """
+    from ros.sensor_types import EgoTelemetry
+
+    source_stamp = getattr(getattr(status, "header", None), "stamp", None)
+    source_timestamp_ns = None
+    if source_stamp is not None and (source_stamp.secs or source_stamp.nsecs):
+        source_timestamp_ns = (
+            int(source_stamp.secs) * 1_000_000_000 + int(source_stamp.nsecs)
+        )
+    ros_mgr.update_ego(EgoTelemetry(
+        timestamp_ns=int(sensor_timestamp_ns),
+        x=float(status.position.x),
+        y=float(status.position.y),
+        z=float(status.position.z),
+        yaw=math.radians(float(status.heading)),
+        speed=math.sqrt(float(status.velocity.x) ** 2 + float(status.velocity.y) ** 2),
+        steer=float(getattr(status, "front_steer_angle", 0.0)),
+        source_timestamp_ns=source_timestamp_ns,
+    ))
+
+
+def _stored_control(command):
+    """Convert the exact CtrlCmd sent for a sync frame to the dataset schema."""
+    from ros.sensor_types import ControlCommand
+    import numpy as np
+
+    return ControlCommand(
+        timestamp_ns=time.time_ns(),
+        steer=float(np.clip(
+            ROS.morai_to_lmdrive_steer_sign
+            * float(command.front_steer)
+            / math.radians(ROS.control_max_steer_deg),
+            -1.0,
+            1.0,
+        )),
+        throttle=float(np.clip(command.accel, 0.0, 1.0)),
+        brake=float(np.clip(command.brake, 0.0, 1.0)),
+    )
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--mode", choices=("realtime", "grpc_legacy"), default="realtime",
-                    help="realtime=손 주행 ROS 수집, grpc_legacy=이전 gRPC 검증 경로")
+    ap.add_argument("--mode", choices=("sync", "sync_native_files", "realtime", "grpc_legacy"), default="sync",
+                    help="sync=MORAI ROS 내장 SyncMode, realtime=ROS 근사 동기화, "
+                         "sync_native_files=Runtime manifest + MORAI native files, "
+                         "grpc_legacy=이전 gRPC 실험 경로")
     ap.add_argument("--route", default=DATASET.route_name)
     ap.add_argument("--job", default=DATASET.job_name)
     ap.add_argument("--dataset-root", default=DATASET.dataset_root,
@@ -182,12 +231,45 @@ def main():
                     help="--require-route-valid 사용 시 허용할 최대 route 거리 오차 [m]")
     ap.add_argument("--no-route-timestamp", action="store_true")
     ap.add_argument("--duration", type=float, default=120.0, help="seconds")
+    ap.add_argument("--capture-manifest", default="",
+                    help="Sync Runtime capture_manifest.jsonl")
+    ap.add_argument("--morai-sync-root", default="",
+                    help="exact MORAI synchronous sensor-save session root")
+    ap.add_argument("--morai-sync-base", default="",
+                    help="parent directory; newest valid immediate child is selected")
+    ap.add_argument("--morai-camera-sync-base", default="",
+                    help="camera SynchronousMode base; matched by session id")
+    ap.add_argument("--morai-lidar-sync-base", default="",
+                    help="LiDAR SynchronousMode base; matched by session id")
+    ap.add_argument("--native-file-timeout", type=float, default=5.0)
+    ap.add_argument("--native-poll-interval", type=float, default=0.05)
+    ap.add_argument("--native-stable-checks", type=int, default=2)
+    ap.add_argument("--manifest-poll-interval", type=float, default=0.05)
+    ap.add_argument("--writer-queue-size", type=int, default=32)
+    ap.add_argument("--max-samples", type=int, default=0,
+                    help="0 means no sample limit")
     args = ap.parse_args()
     dataset_root = _prepare_dataset_root(args.dataset_root)
     print(f"[collect] 데이터셋 저장 루트: {dataset_root}")
 
+    if args.mode == "sync_native_files":
+        if not args.capture_manifest:
+            ap.error("--mode sync_native_files requires --capture-manifest")
+        args.control_max_steer_deg = ROS.control_max_steer_deg
+        args.morai_to_lmdrive_steer_sign = ROS.morai_to_lmdrive_steer_sign
+        run_sync_native_files(args, dataset_root, DATASET, ROS)
+        return
+
+    # Native-file mode returns before importing any ROS subscriber, SyncMode
+    # owner, or gRPC client implementation.
+    from grpc_ctrl.morai_grpc_client import MoraiGrpcClient
+    from ros.ros_manager import ROSManager
+    from ros.sync_mode_client import ROSSyncModeClient
+
     ros_mgr = ROSManager({
         "topics": ROS.topics,
+        "use_gnss": ROS.use_gnss,
+        "use_imu": ROS.use_imu,
         "sync_slop_sec": ROS.sync_slop_sec,
         "sync_queue_size": ROS.sync_queue_size,
         "ego_buffer_size": ROS.ego_buffer_size,
@@ -198,10 +280,12 @@ def main():
         "target_velocity_buffer_size": ROS.target_velocity_buffer_size,
         "control_max_steer_deg": ROS.control_max_steer_deg,
         "morai_to_lmdrive_steer_sign": ROS.morai_to_lmdrive_steer_sign,
-        # realtime 센서는 ROS 도착시각으로 동기화하므로 Ego도 동일 clock을 사용한다.
-        "normalize_ego_to_arrival": args.mode == "realtime",
+        # ROS 센서는 도착시각으로 동기화하므로 Ego도 동일 clock을 사용한다.
+        "normalize_ego_to_arrival": args.mode != "grpc_legacy",
+        "require_fresh_ego": args.mode == "sync",
     })
     grpc_client = None
+    sync_client = None
     if args.mode == "grpc_legacy":
         grpc_client = MoraiGrpcClient({
             "host": GRPC.host, "port": GRPC.port, "client_key": GRPC.client_key,
@@ -210,9 +294,12 @@ def main():
         })
     frame_id = 0
     ds_writer = None
+    async_writer = None
     collection_completed = False
     geo_reference = MGeoReference.from_optional_path(args.global_info, args.map_dir)
-    if geo_reference is None:
+    if not ROS.use_gnss:
+        print("[collect] GNSS/IMU 미사용 — /Ego_topic의 x/y/yaw/speed를 사용")
+    elif geo_reference is None:
         print("[collect] WARNING: global_info.json 없음 — gps_x/gps_y는 Ego 좌표로 대체")
     else:
         print("[collect] GNSS를 MGeo local 좌표로 변환하여 gps_x/gps_y에 저장")
@@ -280,32 +367,92 @@ def main():
 
     try:
         ros_mgr.start()
-        if grpc_client is not None:
+        if args.mode == "sync":
+            sync_client = ROSSyncModeClient(
+                user_id="MoraiDriveCollector",
+                time_step_ms=GRPC.tick_period_ms,
+            )
+            # collect.py is the sole SyncMode owner. Turn it on first, then
+            # advance bootstrap ticks until the ROS sensor bundle is observed.
+            ego_topic_count_before_sync = ros_mgr.ego_topic_count()
+            sync_client.start()
+            print("[collect] MORAI ROS SyncMode ON — 센서 bootstrap tick 시작")
+            sensor_deadline = time.time() + 30.0
+            next_status_time = time.time() + 2.0
+            bootstrap_snapshot = None
+            tick_result = None
+            while time.time() < sensor_deadline:
+                previous_sensor_ts = ros_mgr.latest_sync_timestamp()
+                tick_result = sync_client.step(sync_client.neutral_command())
+                sensor_timestamp_ns = ros_mgr.wait_for_new_sync_timestamp(
+                    previous_sensor_ts, timeout_sec=0.5
+                )
+                if sensor_timestamp_ns is not None:
+                    _bind_ros_sync_ego(
+                        ros_mgr, tick_result.vehicle_status, sensor_timestamp_ns
+                    )
+                # The bridge callback proves Expert can receive /Ego_topic;
+                # the direct binding above associates the same authoritative
+                # state with the exact synchronized sensor frame.
+                if (
+                    ros_mgr.ego_topic_count() > ego_topic_count_before_sync
+                    and sensor_timestamp_ns is not None
+                ):
+                    candidate_snapshot = ros_mgr.wait_for_snapshot(
+                        frame_id,
+                        grpc_frame_count_raw=int(tick_result.frame),
+                        grpc_elapsed_time_raw=0,
+                        after_timestamp_ns=previous_sensor_ts,
+                        timeout_sec=0.1,
+                    )
+                    # Object_topic is not a startup gate. Expert can begin
+                    # route following with an empty object list, while each
+                    # saved frame records whether object GT was available.
+                    if candidate_snapshot is not None:
+                        bootstrap_snapshot = candidate_snapshot
+                if bootstrap_snapshot is not None:
+                    break
+                if time.time() >= next_status_time:
+                    print(f"[collect] SyncMode 센서 대기 상태: {ros_mgr.readiness()}")
+                    next_status_time = time.time() + 2.0
+            if bootstrap_snapshot is None:
+                raise RuntimeError(
+                    "SyncMode는 켜졌지만 30초 동안 Expert 시작 입력인 "
+                    "카메라4+LiDAR+Ego 상태 묶음이 완성되지 않았습니다. "
+                    "MORAI Sensor/Publisher Network 설정을 확인하세요: "
+                    f"{ros_mgr.readiness()}"
+                )
+            sync_client.mark_ready()
+            print(
+                f"[collect] ROS SyncMode 센서 검증 완료: frame={tick_result.frame}"
+            )
+        elif grpc_client is not None:
             grpc_client.connect()
             grpc_client.start_sync_mode()
             print("[collect] gRPC tick을 진행하며 첫 센서 데이터 대기 중...")
             print("[collect] gRPC Start 후 MORAI ROS 연결이 풀렸다면 지금 Disconnect → Connect 하세요.")
         else:
             print("[collect] realtime 손 주행 모드 — ROS 센서+Ego 데이터 대기 중...")
-        sensor_deadline = time.time() + 30.0
-        next_status_time = time.time() + 2.0
-        sensor_ready = False
-        while time.time() < sensor_deadline:
-            if ros_mgr.wait_for_data(timeout_sec=0.05):
-                sensor_ready = True
-                break
-            if grpc_client is not None:
-                if not grpc_client.tick(1):
-                    raise RuntimeError("초기 센서 대기 중 gRPC tick 실패")
-                _update_grpc_ego(ros_mgr, grpc_client)
-            if time.time() >= next_status_time:
-                print(f"[collect] 센서 대기 상태: {ros_mgr.readiness()}")
-                next_status_time = time.time() + 2.0
-        if not sensor_ready:
-            raise RuntimeError(
-                f"30초 안에 동기화 센서+Ego 데이터가 들어오지 않음: "
-                f"{ros_mgr.readiness()}"
-            )
+        if args.mode != "sync":
+            sensor_deadline = time.time() + 30.0
+            next_status_time = time.time() + 2.0
+            sensor_ready = False
+            while time.time() < sensor_deadline:
+                if ros_mgr.wait_for_data(timeout_sec=0.05):
+                    sensor_ready = True
+                    break
+                if grpc_client is not None:
+                    if not grpc_client.tick(1):
+                        raise RuntimeError("초기 센서 대기 중 gRPC tick 실패")
+                    _update_grpc_ego(ros_mgr, grpc_client)
+                if time.time() >= next_status_time:
+                    print(f"[collect] 센서 대기 상태: {ros_mgr.readiness()}")
+                    next_status_time = time.time() + 2.0
+            if not sensor_ready:
+                raise RuntimeError(
+                    f"30초 안에 동기화 센서+Ego 데이터가 들어오지 않음: "
+                    f"{ros_mgr.readiness()}"
+                )
 
         ds_writer = DatasetWriter(
             dataset_root, args.job, args.route,
@@ -319,6 +466,9 @@ def main():
         img_writer = ImageWriter(ds_writer.output_dir, view_names=CAMERA_VIEW_NAMES,
                                   ext=DATASET.image_ext, quality=DATASET.image_quality)
         lidar_writer = LidarWriter(ds_writer.output_dir)
+        async_writer = AsyncFrameWriter(
+            ds_writer, img_writer, lidar_writer, queue_size=32
+        )
 
         t_end = time.time() + args.duration
         last_grpc_frame_count_raw = None
@@ -329,8 +479,70 @@ def main():
         last_rate_status_frame = 0
         tick_interval_sec = GRPC.tick_period_ms / 1000.0
         next_tick_wall_time = time.monotonic()
+        last_sync_control_sequence = 0
+        has_expert_control = False
+        sync_timing_started = time.monotonic()
+        sync_timing_samples = 0
+        sync_sensor_wait_total = 0.0
+        sync_pipeline_total = 0.0
+        sync_pipeline_max = 0.0
         while time.time() < t_end:
-            if grpc_client is None:
+            if sync_client is not None:
+                command, control_sequence = sync_client.wait_for_control(
+                    after_sequence=last_sync_control_sequence,
+                    timeout_sec=max(1.0, tick_interval_sec * 10),
+                )
+                if command is None:
+                    if not has_expert_control:
+                        # Before Expert's first command only, advance a
+                        # brake-held frame to deliver its initial Ego update.
+                        tick_result = sync_client.step(
+                            sync_client.neutral_command()
+                        )
+                        skip_reasons["bootstrap_waiting_expert_control"] += 1
+                    else:
+                        # Never inject a full-brake tick between valid Expert
+                        # commands. The next command is computed from the Ego
+                        # state published by the previous tick, so simply wait.
+                        skip_reasons["waiting_new_expert_control"] += 1
+                    no_new_sensor_count += 1
+                    last_rate_status_time, last_rate_status_frame = (
+                        _maybe_print_rate_status(
+                            skip_reasons,
+                            frame_id,
+                            last_rate_status_time,
+                            last_rate_status_frame,
+                        )
+                    )
+                    continue
+                has_expert_control = True
+                sync_pipeline_tick_started = time.monotonic()
+                previous_sensor_ts = ros_mgr.latest_sync_timestamp()
+                tick_result = sync_client.step(command)
+                sensor_wait_started = time.monotonic()
+                sensor_timestamp_ns = ros_mgr.wait_for_new_sync_timestamp(
+                    previous_sensor_ts,
+                    timeout_sec=max(0.5, tick_interval_sec * 5),
+                )
+                sync_sensor_wait_total += time.monotonic() - sensor_wait_started
+                if sensor_timestamp_ns is not None:
+                    _bind_ros_sync_ego(
+                        ros_mgr, tick_result.vehicle_status, sensor_timestamp_ns
+                    )
+                snap = ros_mgr.wait_for_snapshot(
+                    frame_id,
+                    grpc_frame_count_raw=int(tick_result.frame),
+                    grpc_elapsed_time_raw=0,
+                    after_timestamp_ns=previous_sensor_ts,
+                    timeout_sec=max(0.5, tick_interval_sec * 5),
+                )
+                if snap is not None:
+                    snap.control = _stored_control(command)
+                # The command just applied is consumed. If Expert already
+                # published the next command from the Ego update emitted by
+                # step(), its higher sequence remains pending for next tick.
+                last_sync_control_sequence = control_sequence
+            elif grpc_client is None:
                 snap = ros_mgr.get_snapshot(frame_id)
                 if snap is None:
                     no_new_sensor_count += 1
@@ -342,7 +554,6 @@ def main():
                     time.sleep(0.005)
                     continue
             else:
-                # Legacy 검증 경로. 최종 expert 수집에서는 ROS SyncMode 서비스로 교체한다.
                 sleep_sec = next_tick_wall_time - time.monotonic()
                 if sleep_sec > 0:
                     time.sleep(sleep_sec)
@@ -350,16 +561,22 @@ def main():
                 if next_tick_wall_time < time.monotonic():
                     next_tick_wall_time = time.monotonic() + tick_interval_sec
 
+                # Capture the last complete bundle before advancing the world.
+                # A snapshot is accepted only after a newer bundle arrives, so
+                # one Tick RPC cannot save stale sensors from the previous tick.
+                previous_sensor_ts = ros_mgr.latest_sync_timestamp()
                 sync_ts = grpc_client.tick(1)
                 if not sync_ts:
                     continue
                 if not _update_grpc_ego(ros_mgr, grpc_client):
                     print("frame skipped: gRPC Ego Actor State unavailable")
                     continue
-                snap = ros_mgr.get_snapshot(
+                snap = ros_mgr.wait_for_snapshot(
                     frame_id,
                     grpc_frame_count_raw=sync_ts.frame_count,
                     grpc_elapsed_time_raw=sync_ts.elapsed_time,
+                    after_timestamp_ns=previous_sensor_ts,
+                    timeout_sec=max(0.5, tick_interval_sec * 5),
                 )
             if snap is None or snap.ego is None:
                 no_new_sensor_count += 1
@@ -369,7 +586,10 @@ def main():
                     last_rate_status_frame,
                 )
                 continue
-            if args.mode == "realtime" and (
+            # In the coordinated Sync flow, Scenario Runner starts Expert only
+            # after detecting this collector. Do not write setup ticks before
+            # the first time-aligned control and target-velocity samples exist.
+            if args.mode in ("sync", "realtime") and (
                 snap.control is None or snap.target_velocity is None
             ):
                 no_new_sensor_count += 1
@@ -536,6 +756,7 @@ def main():
                 } if gps_local else None,
                 "imu_raw": asdict(snap.imu) if snap.imu else None,
                 "gt_objects_raw": [asdict(obj) for obj in snap.gt_objects],
+                "gt_objects_available": snap.gt_objects_timestamp_ns is not None,
                 "traffic_lights": [asdict(light) for light in snap.tl_states],
                 "navigation": {
                     "current_link_id": (
@@ -576,16 +797,34 @@ def main():
                 "traffic_light": affected_state,
                 "stop_sign": False,
             }
-            ds_writer.write_frame(
+            async_writer.submit(
                 frame_id, measurement, full_measurement,
                 gnss=snap.gnss, imu=snap.imu, actors=measurement["actors_data"],
                 affordances=affordances,
+                cameras=dict(snap.cameras),
+                lidar_points=snap.lidar.points if snap.lidar is not None else None,
             )
 
-            images = {name: cam.image for name, cam in snap.cameras.items()}
-            img_writer.write(frame_id, images)
-            if snap.lidar is not None:
-                lidar_writer.write(frame_id, snap.lidar.points)
+            if sync_client is not None:
+                pipeline_sec = time.monotonic() - sync_pipeline_tick_started
+                sync_timing_samples += 1
+                sync_pipeline_total += pipeline_sec
+                sync_pipeline_max = max(sync_pipeline_max, pipeline_sec)
+                timing_now = time.monotonic()
+                if timing_now - sync_timing_started >= 5.0:
+                    timing_count = max(1, sync_timing_samples)
+                    print(
+                        "[collect] pipeline timing: "
+                        f"tick_to_queue={sync_pipeline_total * 1000.0 / timing_count:.1f}ms avg/"
+                        f"{sync_pipeline_max * 1000.0:.1f}ms max, "
+                        f"post_tick_sensor_wait={sync_sensor_wait_total * 1000.0 / timing_count:.1f}ms avg, "
+                        f"writer_queue={async_writer.pending}/32"
+                    )
+                    sync_timing_started = timing_now
+                    sync_timing_samples = 0
+                    sync_sensor_wait_total = 0.0
+                    sync_pipeline_total = 0.0
+                    sync_pipeline_max = 0.0
 
             frame_id += 1
             last_rate_status_time, last_rate_status_frame = _maybe_print_rate_status(
@@ -600,13 +839,24 @@ def main():
         )
         collection_completed = True
     finally:
+        writer_error = None
+        if async_writer is not None:
+            try:
+                async_writer.close()
+            except BaseException as exc:
+                collection_completed = False
+                writer_error = exc
         if ds_writer is not None:
             ds_writer.finalize(success=collection_completed)
-        ros_mgr.stop()
+        if sync_client is not None:
+            sync_client.stop()
         if grpc_client is not None:
             grpc_client.stop()
+        ros_mgr.stop()
         if ds_writer is not None:
             print(f"done. {frame_id} frames written to {ds_writer.output_dir}")
+        if writer_error is not None:
+            raise writer_error
 
 
 if __name__ == "__main__":

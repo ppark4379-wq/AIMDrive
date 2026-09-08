@@ -17,7 +17,13 @@ import numpy as np
 @dataclass
 class CameraFrame:
     timestamp_ns: int
-    image: np.ndarray          # (H, W, 3) RGB uint8
+    # MORAI publishes sensor images as sensor_msgs/CompressedImage. Keep the
+    # original encoded payload so collection does not decode and then encode
+    # four JPEGs on every synchronous tick. ``image`` remains available for
+    # tests and non-compressed producers.
+    image: Optional[np.ndarray] = None   # (H, W, 3) RGB uint8
+    encoded: Optional[bytes] = None
+    encoding: str = "jpeg"
 
 
 @dataclass

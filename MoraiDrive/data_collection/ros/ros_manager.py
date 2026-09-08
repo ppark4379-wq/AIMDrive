@@ -4,7 +4,7 @@ ros/ros_manager.py
 Windows ROS1 Noetic 환경에서 MORAI 센서 토픽을 구독.
 
 동기화 방식 (message_filters 기반):
-    카메라 4개(front/left/right/back) + GNSS + IMU + LiDAR는
+    카메라 4개(front/left/right/back) + LiDAR는
     message_filters.ApproximateTimeSynchronizer로 header.stamp 기준 동기화한다.
     LiDAR도 동기화 그룹에 포함되어 신선도가 보장된다(카메라/GNSS/IMU와 slop 이내로
     맞춰진 값만 쓰게 됨).
@@ -14,9 +14,8 @@ Windows ROS1 Noetic 환경에서 MORAI 센서 토픽을 구독.
     기록한다. snapshot에서는 Object/control/target은 front camera 기준시각의 최근접
     샘플을 선택하고, 저주기 상태값인 traffic light는 최근 값을 짧게 hold한다.
 
-프레임 트리거는 gRPC world.tick()이다 — 이 클래스는 ROS 토픽을 계속 구독/버퍼링만
-하고, "언제 한 프레임을 뽑아 저장할지"는 collect.py의 메인 루프가 get_snapshot()을
-호출하는 시점(gRPC tick 이후)이 결정한다.
+이 클래스는 ROS 토픽을 구독/버퍼링하고, ``collect.py``가 ROS SyncMode tick 이후
+``get_snapshot()``을 호출할 때 새 센서 묶음을 반환한다.
 
 ※ 실제 morai_msgs 필드명은 설치된 패키지 버전에 따라 다를 수 있음.
   _cb_gnss, _cb_imu, _cb_objects, _cb_ego 콜백에서 필드 이름을 확인/수정 필요.
@@ -71,6 +70,8 @@ class ROSManager:
                 (config.py의 ROSConfig를 dict로 넘기면 됨)
         """
         self.topics = config["topics"]
+        self.use_gnss = bool(config.get("use_gnss", False))
+        self.use_imu = bool(config.get("use_imu", False))
         self.slop_sec       = float(config.get("sync_slop_sec", 0.02))
         self.queue_size     = int(config.get("sync_queue_size", 10))
         self.ego_buffer_size = int(config.get("ego_buffer_size", 200))
@@ -90,6 +91,7 @@ class ROSManager:
         self.normalize_ego_to_arrival = bool(
             config.get("normalize_ego_to_arrival", False)
         )
+        self.require_fresh_ego = bool(config.get("require_fresh_ego", False))
         self.sync_window_ns = int(self.slop_sec * 1_000_000_000)
 
         self._lock = threading.Lock()
@@ -106,7 +108,9 @@ class ROSManager:
         # 동기화 그룹 밖 — 최신값만 버퍼링
         self._ego:        Optional[EgoTelemetry] = None
         self._ego_history = deque(maxlen=self.ego_buffer_size)
+        self._ego_topic_count = 0
         self._gt_objects_history = deque(maxlen=self.object_buffer_size)
+        self._gt_objects_topic_count = 0
         self._tl_states_history = deque(maxlen=self.traffic_light_buffer_size)
         self._control_history = deque(maxlen=self.control_buffer_size)
         self._target_velocity_history = deque(maxlen=self.target_velocity_buffer_size)
@@ -135,15 +139,19 @@ class ROSManager:
 
         rospy.init_node(node_name, anonymous=True, disable_signals=True)
 
-        # ── 동기화 그룹: 카메라 4개 + GNSS + IMU (+ LiDAR) ──────────
+        # ── 동기화 그룹: 카메라 4개 + LiDAR ────────────────────────
+        # GNSS/IMU are optional. Navigation state comes from /Ego_topic.
         sync_members = [
             ("cam_front", self.topics["camera_front"], CompressedImage),
             ("cam_left",  self.topics["camera_left"],  CompressedImage),
             ("cam_right", self.topics["camera_right"], CompressedImage),
             ("cam_rear",  self.topics["camera_rear"],  CompressedImage),
-            ("gnss",      self.topics["gnss"],          GPSMessage),
-            ("imu",       self.topics["imu"],           Imu),
         ]
+
+        if self.use_gnss:
+            sync_members.append(("gnss", self.topics["gnss"], GPSMessage))
+        if self.use_imu:
+            sync_members.append(("imu", self.topics["imu"], Imu))
 
         lidar_topic = self.topics.get("lidar")
         if lidar_topic:
@@ -202,6 +210,31 @@ class ROSManager:
         """현재까지 수신한 가장 최신 동기화 묶음의 front-camera timestamp."""
         with self._lock:
             return self._synced_ts
+
+    def wait_for_new_sync_timestamp(
+        self, after_timestamp_ns: Optional[int], timeout_sec: float = 0.5
+    ) -> Optional[int]:
+        """Wait until a synchronized sensor bundle newer than the given one arrives."""
+        deadline = time.monotonic() + float(timeout_sec)
+        while time.monotonic() < deadline:
+            with self._lock:
+                timestamp_ns = self._synced_ts
+            if timestamp_ns is not None and (
+                after_timestamp_ns is None or timestamp_ns > after_timestamp_ns
+            ):
+                return timestamp_ns
+            time.sleep(0.002)
+        return None
+
+    def ego_topic_count(self) -> int:
+        """Number of real /Ego_topic callbacks (excluding injected telemetry)."""
+        with self._lock:
+            return self._ego_topic_count
+
+    def gt_objects_topic_count(self) -> int:
+        """Number of /Object_topic callbacks, including empty object lists."""
+        with self._lock:
+            return self._gt_objects_topic_count
 
     def _nearest_within_sync_window(self, history, ref_ts: int, label: str):
         sample = min(
@@ -267,9 +300,18 @@ class ROSManager:
                 key=lambda sample: abs(sample.timestamp_ns - ref_ts),
                 default=None,
             )
-            if ego is not None and abs(ego.timestamp_ns - ref_ts) > self.sync_window_ns:
+            ego_delta_ns = (
+                abs(ego.timestamp_ns - ref_ts) if ego is not None else None
+            )
+            if ego_delta_ns is not None and ego_delta_ns > self.sync_window_ns:
                 print(f"[ROSManager] WARNING: 가장 가까운 ego 데이터가 동기화 기준(front 카메라)과 "
-                      f"{abs(ego.timestamp_ns - ref_ts) / 1e6:.1f}ms 벗어남")
+                      f"{ego_delta_ns / 1e6:.1f}ms 벗어남")
+            if self.require_fresh_ego and (
+                ego is None or ego_delta_ns > self.sync_window_ns
+            ):
+                # Do not consume this sensor bundle. A matching /Ego_topic
+                # callback may still arrive before the caller's timeout.
+                return None
 
             object_sample = self._nearest_within_sync_window(
                 self._gt_objects_history, ref_ts, "/Object_topic"
@@ -343,7 +385,9 @@ class ROSManager:
                 "imu": self._imu is not None,
                 "lidar": self._lidar is not None,
                 "ego": self._ego is not None,
+                "ego_topic_count": self._ego_topic_count,
                 "gt_objects": bool(self._gt_objects_history),
+                "gt_objects_topic_count": self._gt_objects_topic_count,
                 "traffic_light": bool(self._tl_states_history),
                 "control": bool(self._control_history),
                 "target_velocity": bool(self._target_velocity_history),
@@ -354,8 +398,8 @@ class ROSManager:
     def _prepare_sync_input(self, msg, key: str):
         """공통 수신시각으로 header clock을 정규화하고 도착 상태를 기록한다.
 
-        MORAI gRPC External Sync에서는 카메라는 Unix epoch를, GNSS/IMU/LiDAR는
-        simulation elapsed time을 header.stamp에 넣는다. gRPC tick은 wall clock과
+        MORAI Sync 환경에서는 카메라는 Unix epoch를, GNSS/IMU/LiDAR는 simulation
+        elapsed time을 header.stamp에 넣을 수 있다. simulation clock은 wall clock과
         다른 속도로 진행될 수 있어 고정 offset으로 두 clock을 변환할 수 없다.
         따라서 같은 로컬 clock의 ROS 수신시각으로 동기화한다.
         """
@@ -393,8 +437,8 @@ class ROSManager:
                 "right": self._parse_camera(parsed["cam_right"]),
                 "rear":  self._parse_camera(parsed["cam_rear"]),
             }
-            gnss  = self._parse_gnss(parsed["gnss"])
-            imu   = self._parse_imu(parsed["imu"])
+            gnss = self._parse_gnss(parsed["gnss"]) if "gnss" in parsed else None
+            imu = self._parse_imu(parsed["imu"]) if "imu" in parsed else None
             lidar = self._parse_lidar(parsed["lidar"]) if "lidar" in parsed else None
         except Exception as e:
             print(f"[ROSManager] 동기화 콜백 파싱 오류: {e}")
@@ -424,12 +468,13 @@ class ROSManager:
     # ── 동기화 그룹 메시지 파싱 ────────────────────────────────
 
     def _parse_camera(self, msg: "CompressedImage") -> CameraFrame:
-        import cv2
-        np_arr = np.frombuffer(msg.data, np.uint8)
-        img_bgr = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-        img = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
         ts  = msg.header.stamp.secs * 1_000_000_000 + msg.header.stamp.nsecs
-        return CameraFrame(timestamp_ns=ts, image=img)
+        image_format = str(getattr(msg, "format", "jpeg") or "jpeg").lower()
+        return CameraFrame(
+            timestamp_ns=ts,
+            encoded=bytes(msg.data),
+            encoding=image_format,
+        )
 
     def _parse_gnss(self, msg: "GPSMessage") -> GNSSData:
         """morai_msgs/GPSMessage: latitude/longitude/altitude만 있고 속도 필드 없음."""
@@ -509,6 +554,7 @@ class ROSManager:
                     source_timestamp_ns=source_ts,
                     objects=objects,
                 ))
+                self._gt_objects_topic_count += 1
         except Exception as e:
             print(f"[ROSManager] GT Objects 콜백 오류: {e}")
 
@@ -562,6 +608,7 @@ class ROSManager:
                 )
                 self._ego = ego
                 self._ego_history.append(ego)
+                self._ego_topic_count += 1
         except Exception as e:
             print(f"[ROSManager] Ego 콜백 오류: {e}")
 

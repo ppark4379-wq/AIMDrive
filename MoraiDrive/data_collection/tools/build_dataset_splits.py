@@ -9,6 +9,7 @@ from pathlib import Path
 FRAME_DIRS = (
     "rgb_front", "rgb_left", "rgb_right", "rgb_rear", "lidar",
     "measurements", "measurements_full", "actors_data", "affordances",
+    "3d_bbs",
 )
 
 

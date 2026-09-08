@@ -25,13 +25,26 @@ MORAI의 ROS1 센서·차량 데이터를 동기화하고, LMDrive가 읽을 수
 
 ## 빠른 실행
 
-MORAI를 `Real Time Mode`, `External Sync Off`로 두고 손 주행 검증을 실행합니다.
+Scenario Runner가 Real Time Mode에서 환경과 Ego를 준비하고 기다리면, 수집기는
+실행 직후 `/SyncModeCmd`로 MORAI 내장 ROS Sync Mode를 켭니다. bootstrap tick에서
+카메라 4대·LiDAR와 `/Ego_topic`의 새 묶음이 수신된 경우에만 준비 신호를 보내며,
+Scenario Runner는 그 신호 뒤 Expert를 실행합니다. 수집기는 Expert의 `/ctrl_cmd`를 현재 frame의
+`/SyncModeCtrlCmd`로 전달한 다음 `/SyncModeWaitForTick`으로 한 step씩 진행합니다.
+MORAI UI에서 Sync Mode를 따로 켜지 않습니다.
+
+GNSS와 IMU는 수집 및 동기화 필수 입력에서 제외되어 있습니다. `gps_x`, `gps_y`,
+`theta`, `speed`는 `/Ego_topic`의 local position, heading, velocity로 생성됩니다.
+`/Object_topic`은 Expert 시작을 막지 않으며, 객체 GT가 없던 프레임은
+`measurements_full/*.json`의 `gt_objects_available=false`로 표시됩니다.
+MORAI의 일반 `/Ego_topic` publisher가 Sync Mode에서 멈추므로 수집기가 매 tick의
+`WaitForTick.vehicle_status`를 `/Ego_topic`으로 relay합니다. Expert가 실행되려면
+`/Object_topic` publisher는 별도로 연결되어 있어야 합니다.
 
 ```bash
 cd /mnt/c/Users/Autonav/Desktop/AIMDrive/MoraiDrive/data_collection
 
 python3 collect.py \
-  --mode realtime \
+  --mode sync \
   --job competition_train \
   --route route_moraiA_scenario1 \
   --map-id R_KR_PR_K-city_2025 \

@@ -1,7 +1,7 @@
 # Expert 및 ROS SyncMode 전환 명세
 
-최종 대회용 자동 수집은 현재의 gRPC tick 실험 경로를 사용하지 않습니다. Expert 모델이
-준비되면 MORAI Simulation Time Mode와 ROS SyncMode 서비스 기반으로 전환합니다.
+최종 대회용 자동 수집은 gRPC tick 실험 경로를 사용하지 않습니다. MORAI Simulation
+Time Mode와 ROS SyncMode 서비스 기반 `collect.py --mode sync`를 사용합니다.
 
 ## 현재 손 주행 검증
 
@@ -23,8 +23,12 @@ python3 collect.py \
 - MORAI: `Simulation Time Mode`, `Synchronous Mode On`
 - 차량 제어: Expert의 tick별 steer/throttle/brake
 - 시간 진행: MORAI ROS SyncMode 서비스
+- 필수 시작 입력: 카메라 4대, LiDAR, Sync Ego 상태 (GNSS/IMU 미사용)
+- `/Object_topic`은 시작 조건이 아니며 프레임별 `gt_objects_available`로 유무 기록
+- Sync Mode 소유자: `collect.py` (시작·제어·tick·종료 전담)
+- Scenario Runner: 환경 구성과 Expert 실행만 담당하며 Sync Mode를 설정하지 않음
 - 고정 `time_step=100ms`, 시뮬레이션 시간 기준 10Hz
-- gRPC `SetSynchronousMode`, `Tick`, `SyncTimestamp`는 최종 루프에서 제거
+- gRPC `SetSynchronousMode`, `Tick`, `SyncTimestamp`는 최종 루프에서 사용하지 않음
 
 필요한 ROS 서비스:
 
@@ -40,7 +44,7 @@ python3 collect.py \
 1. SyncModeCmd(start_sync_mode=true, time_step=100) 호출 및 user_id 확보
 2. 현재 상태를 Expert에 입력
 3. Expert가 steer/throttle/brake 계산
-4. SyncModeCtrlCmd(frame=N, command=..., sensor_capture=false) 전송
+4. SyncModeCtrlCmd(frame=N, command=..., sensor_capture=true) 전송
 5. SyncModeWaitForTick(user_id, frame=N) 호출
 6. 응답 frame/vehicle_status와 해당 tick 센서 데이터 검증
 7. 센서·Ego·Expert command를 같은 frame_id로 저장
@@ -48,11 +52,10 @@ python3 collect.py \
 9. SyncModeCmd(start_sync_mode=false)로 정상 종료
 ```
 
-`sensor_capture=false`는 MORAI 자체 파일 저장 대신 이 프로젝트 writer가 ROS raw data를
-저장한다는 전제입니다. 실제 MORAI 버전에서 ROS 발행에도 영향을 주면 live test 후
-조정해야 합니다.
+`sensor_capture=true`여야 MORAI가 해당 tick의 카메라·LiDAR 센서 토픽을 발행합니다.
+수신한 ROS raw data는 이 프로젝트 writer가 저장합니다.
 
-예정 실행 형태이며 `sync` 모드는 아직 구현되지 않았습니다.
+실행 형태:
 
 ```bash
 python3 collect.py \

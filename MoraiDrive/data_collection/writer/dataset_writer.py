@@ -24,13 +24,22 @@ class DatasetWriter:
     def __init__(self, dataset_root: str, job_name: str, route_name: str,
                  map_id: str = "unknown", map_source_dir: str = "",
                  append_timestamp: bool = True, route_metadata: Optional[dict] = None,
-                 extra_map_files: Optional[Dict[str, str]] = None):
+                 extra_map_files: Optional[Dict[str, str]] = None,
+                 resume_route_dir: str = ""):
         self.dataset_root = os.path.abspath(dataset_root)
         self.job_name = job_name
         self.job_dir = os.path.join(self.dataset_root, job_name)
-        timestamp = datetime.now().strftime("%m_%d_%H_%M_%S")
-        self.route_name = f"{route_name}_{timestamp}" if append_timestamp else route_name
-        self.route_dir = os.path.join(self.job_dir, "data", self.route_name)
+        data_dir = os.path.join(self.job_dir, "data")
+        if resume_route_dir:
+            route_dir = os.path.abspath(resume_route_dir)
+            if os.path.commonpath((route_dir, os.path.abspath(data_dir))) != os.path.abspath(data_dir):
+                raise ValueError("resume_route_dir must be inside the current job data directory")
+            self.route_dir = route_dir
+            self.route_name = os.path.basename(route_dir)
+        else:
+            timestamp = datetime.now().strftime("%m_%d_%H_%M_%S")
+            self.route_name = f"{route_name}_{timestamp}" if append_timestamp else route_name
+            self.route_dir = os.path.join(data_dir, self.route_name)
         self.map_id = map_id
 
         os.makedirs(os.path.join(self.job_dir, "results"), exist_ok=True)
@@ -39,14 +48,39 @@ class DatasetWriter:
 
         self._ensure_job_files()
         self._install_map(map_source_dir, extra_map_files=extra_map_files)
-        self._write_route_metadata(route_metadata)
-        self._all_frames = []
-        self._frame_count = 0
+        route_metadata_path = os.path.join(self.route_dir, "route.json")
+        if not resume_route_dir or not os.path.isfile(route_metadata_path):
+            self._write_route_metadata(route_metadata)
+        self._all_frames = self._load_existing_frames() if resume_route_dir else []
+        self._frame_count = len(self._all_frames)
         self._finalized = False
 
     @property
     def output_dir(self) -> str:
         return self.route_dir
+
+    @property
+    def frame_count(self) -> int:
+        return self._frame_count
+
+    def _load_existing_frames(self):
+        directory = os.path.join(self.route_dir, "measurements_full")
+        names = sorted(
+            name for name in os.listdir(directory)
+            if name.endswith(".json") and name[:-5].isdigit()
+        )
+        expected = ["{:04d}.json".format(index) for index in range(len(names))]
+        if names != expected:
+            raise RuntimeError(
+                "Cannot resume a dataset with non-contiguous sample indices: {}".format(
+                    directory
+                )
+            )
+        frames = []
+        for name in names:
+            with open(os.path.join(directory, name), encoding="utf-8") as source:
+                frames.append(json.load(source))
+        return frames
 
     def _ensure_job_files(self):
         for filename in ("dataset_index.txt", "navigation_instruction_list.txt"):
@@ -172,11 +206,20 @@ class DatasetWriter:
         if self._frame_count > 0 and success:
             relative_route = os.path.relpath(self.route_dir, self.job_dir).replace(os.sep, "/") + "/"
             index_path = os.path.join(self.job_dir, "dataset_index.txt")
-            with open(index_path, "a+", encoding="utf-8") as f:
-                f.seek(0)
-                existing = {line.split()[0] for line in f if line.split()}
-                if relative_route not in existing:
-                    f.write(f"{relative_route} {self._frame_count}\n")
+            lines = []
+            found = False
+            with open(index_path, encoding="utf-8") as f:
+                for line in f:
+                    fields = line.split()
+                    if fields and fields[0] == relative_route:
+                        lines.append(f"{relative_route} {self._frame_count}\n")
+                        found = True
+                    else:
+                        lines.append(line)
+            if not found:
+                lines.append(f"{relative_route} {self._frame_count}\n")
+            with open(index_path, "w", encoding="utf-8") as f:
+                f.writelines(lines)
         if self._frame_count > 0:
             relative_route = os.path.relpath(self.route_dir, self.job_dir).replace(os.sep, "/") + "/"
             summary_path = os.path.join(self.job_dir, "results", "episode_summary.json")
@@ -185,12 +228,20 @@ class DatasetWriter:
                 with open(summary_path, encoding="utf-8") as f:
                     previous = json.load(f)
                 episodes = previous.get("episodes", [])
-            if not any(item.get("route") == relative_route for item in episodes):
-                episodes.append({
-                    "route": relative_route,
-                    "frames": self._frame_count,
-                    "status": "completed" if success else "failed",
-                })
+            episode = {
+                "route": relative_route,
+                "frames": self._frame_count,
+                "status": "completed" if success else "failed",
+            }
+            matching = next(
+                (index for index, item in enumerate(episodes)
+                 if item.get("route") == relative_route),
+                None,
+            )
+            if matching is None:
+                episodes.append(episode)
+            else:
+                episodes[matching] = episode
             self._write_json(summary_path, {"episodes": episodes})
         self._finalized = True
 

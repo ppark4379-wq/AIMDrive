@@ -10,13 +10,17 @@ Use Python 3.10 with `requirements.txt`. Install the PyTorch/torchvision and
 `torch_scatter` builds matching your CUDA runtime on the training machine.
 The audit used PyTorch 2.0.1 CPU, torchvision 0.15.2, NumPy 1.26.4 and Pillow 9.5.
 
-From `MoraiDrive/data_collection`:
+From `MoraiDrive/vision_encoder`, prepare a newly collected job with one command:
 
 ```bash
-python tools/build_dataset_splits.py /path/to/job
-python tools/validate_lmdrive_batch.py /path/to/job --batch-size 2 --batches 2
-python tools/validate_lmdrive_batch.py /path/to/job --index-file dataset_index_test.txt --batch-size 2 --batches 1
+bash scripts/prepare_dataset.sh /path/to/job
+bash scripts/train.sh /path/to/job
 ```
+
+The preparation command selects completed, navigation-valid routes, creates a
+deterministic route-level train/validation split, audits every indexed frame and
+runs real train/validation loader batches. Pass split options after the path, for
+example `--val-ratio 0.1 --min-frames 100`.
 
 The split builder requires at least two eligible routes for a nonempty train/val
 split. When an episode summary exists, only completed episodes are eligible.
@@ -61,6 +65,11 @@ need overlay validation on the installed MORAI sensors.
 The inherited loss combines detection, waypoints, velocity, traffic light and stop
 sign. This is not waypoint-only training. Placeholder labels and limited scenarios
 are not sufficient evidence of useful supervision or driving quality.
+
+Detection targets are generated from `measurements_full[*].actors_data` at load
+time. The separately stored `3d_bbs/*.npy` files are not model inputs; preparation
+reports count mismatches as warnings. To enforce the collection contract separately,
+run `python tools/audit_dataset.py /path/to/job --strict-3d-bbs`.
 
 ## Checks
 

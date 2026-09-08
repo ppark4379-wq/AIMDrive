@@ -33,7 +33,8 @@ def _fmt_snapshot(snap, elapsed: float) -> str:
     lines = [f"[t+{elapsed:6.1f}s] frame_id={snap.frame_id} timestamp_ns={snap.timestamp_ns}"]
 
     for name, cam in snap.cameras.items():
-        lines.append(f"    cam[{name}]: shape={cam.image.shape} ts={cam.timestamp_ns}")
+        shape = cam.image.shape if cam.image is not None else "compressed"
+        lines.append(f"    cam[{name}]: shape={shape} ts={cam.timestamp_ns}")
 
     if snap.gnss:
         lines.append(f"    gnss: lat={snap.gnss.latitude:.6f} lon={snap.gnss.longitude:.6f} "

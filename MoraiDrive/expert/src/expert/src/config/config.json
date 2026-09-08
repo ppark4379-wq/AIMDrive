@@ -1,10 +1,10 @@
 {
   "common": {
-    "sampling_rate": 30,
+    "sampling_rate": 10,
     "vehicle_length": 4.635,
     "wheelbase": 3.0,
     "max_steering": 40.0,
-    "steering_sign": -1.0
+    "steering_sign": 1.0
   },
   "map": {
     "name": "R_KR_PG_KATRI",

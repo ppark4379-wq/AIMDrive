@@ -1,8 +1,8 @@
 """
 Central config for the MORAI -> LMDrive dataset conversion pipeline.
 
-센서 데이터는 ROS1(message_filters로 동기화), 시뮬레이션 tick 제어는 gRPC로 받는다
-(자세한 배경은 ros/ros_manager.py, grpc_ctrl/morai_grpc_client.py 참고).
+센서 데이터는 ROS1(message_filters로 동기화)하고, 기본 sync 모드의 tick 제어는
+MORAI ROS SyncMode 서비스로 수행한다. gRPC는 grpc_legacy 모드에서만 사용한다.
 """
 from dataclasses import dataclass, field
 from typing import Dict
@@ -11,6 +11,10 @@ from typing import Dict
 @dataclass
 class ROSConfig:
     master_uri: str = ""                # 비우면 기본 ROS_MASTER_URI 환경변수 사용
+    # Navigation state is sourced from /Ego_topic. GNSS/IMU topics are not
+    # required for collection or sensor synchronization.
+    use_gnss: bool = False
+    use_imu: bool = False
     topics: Dict[str, str] = field(default_factory=lambda: {
         # rostopic list로 확인된 실제 토픽명 (2026-09-02, 카메라4+GPS+IMU 센서 추가 후)
         "camera_front": "/camera_front",
@@ -57,9 +61,8 @@ class DatasetConfig:
     append_timestamp: bool = True
     map_id: str = "unknown"
     map_source_dir: str = ""          # MGeo JSON 파일들이 있는 디렉터리
-    # 저장 Hz는 이제 wall-clock이 아니라 GrpcConfig.tick_period_ms가 결정한다
-    # (매 gRPC tick마다 한 프레임 저장). collect_hz는 참고용 표시값 — 실제로
-    # 바꾸려면 tick_period_ms를 바꿔야 한다.
+    # 저장 시뮬레이션 Hz는 GrpcConfig.tick_period_ms가 결정한다. 실제 wall-clock
+    # 처리율은 MORAI의 센서 렌더링/전송 시간이 이 주기를 만족해야 동일해진다.
     collect_hz: float = 10.0
     image_ext: str = "jpg"
     image_quality: int = 92

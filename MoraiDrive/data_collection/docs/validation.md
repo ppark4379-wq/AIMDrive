@@ -15,7 +15,7 @@
 | 미래 경로 | 완료 | official dense route 기준 `future_waypoints` 최대 50개 |
 | LMDrive adapter | 완료 | RGB 4뷰, 360° LiDAR, target/detection/heatmap 로딩 |
 | navigation/notice instruction | 미구현 | MORAI route/시나리오용 생성기 필요 |
-| Expert 자동 수집 | 미구현 | Expert 인터페이스와 ROS SyncMode client 필요 |
+| Expert 자동 수집 | 라이브 검증 필요 | ROS SyncMode 서비스와 Expert command bridge 구현 |
 
 ## 대표 실주행 결과
 
