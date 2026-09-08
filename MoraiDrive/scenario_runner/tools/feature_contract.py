@@ -40,7 +40,6 @@ def verify_feature_contract(package_root, scenario_cfg):
         "Scooter_02",
         "Bicycle_city",
         "Steel_Barricade",
-        "Tree01",
     }
     require(
         required_static_models <= static_models,

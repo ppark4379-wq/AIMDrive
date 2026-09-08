@@ -56,9 +56,9 @@ scenarios:
       - Bicycle_mountain
       - Steel_Barricade
       - Lane_Separation_Bar
-      - Tree01
-      - Tree02
-      - Tree03
+     #- Tree01
+     #- Tree02
+     #- Tree03
 
     # The official sample scale [2, 3, 2] remains the default for compact
     # boxes/barrels. Use natural or reduced scale for taller/wider assets.
@@ -110,7 +110,7 @@ scenarios:
     # npc_vehicle_models: [VEHICLE_1, VEHICLE_2]
 
     roundabout_npc:
-      count: 0
+      count: 6
       speed_mps: 4.0
       route_laps: 100
       # Restrict roundabout traffic to a passenger-car-sized model.
