@@ -1,11 +1,10 @@
 """Collect MORAI ROS sensor and label data in the LMDrive route layout.
 
-Sync mode uses MORAI's built-in ROS services: SyncModeCmd starts the session,
-SyncModeCtrlCmd binds the Expert command to a simulation frame, and
-SyncModeWaitForTick advances exactly one frame. The previous gRPC experiment is
-available only as ``grpc_legacy``.
+The default sync_native_files mode passively reads the independent Sync Runtime
+manifest and MORAI sensor files. Settings live in config.py; CLI values override
+them. The older sync mode owns ROS SyncMode itself and must run without Runtime.
 
-Run: python collect.py --route route_moraiA_scenario1 --duration 120
+Run from MoraiDrive: python3 data_collection/collect.py --duration 120
 """
 from __future__ import annotations
 
@@ -17,7 +16,7 @@ import math
 import os
 import time
 
-from config import ROS, GRPC, DATASET
+from config import ROS, GRPC, DATASET, COLLECTOR
 from geo_reference import MGeoReference
 from mgeo_navigation import (
     MGeoMap, MGeoRouteTracker, GNSSMotionEstimator, stable_mgeo_id,
@@ -29,6 +28,7 @@ from writer.lidar_writer import LidarWriter
 from writer.async_frame_writer import AsyncFrameWriter
 from schema import EgoState, ActorData, build_measurement_dict
 from sources.native_file_collector import run_sync_native_files
+from sources.sync_capture_manifest import resolve_capture_manifest
 
 CAMERA_VIEW_NAMES = ["front", "left", "right", "rear"]
 _OBJ_TYPE_TO_TPE = {"vehicle": 0, "pedestrian": 1}
@@ -201,7 +201,7 @@ def _stored_control(command):
     )
 
 
-def main():
+def _parse_args(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--mode", choices=("sync", "sync_native_files", "realtime", "grpc_legacy"), default="sync",
                     help="sync=MORAI ROS 내장 SyncMode, realtime=ROS 근사 동기화, "
@@ -210,7 +210,7 @@ def main():
     ap.add_argument("--route", default=DATASET.route_name)
     ap.add_argument("--job", default=DATASET.job_name)
     ap.add_argument("--dataset-root", default=DATASET.dataset_root,
-                    help="dataset output root (default: Z:\\DCM\\data_collector via /mnt/z)")
+                    help="dataset output root (default: config.py DATASET.dataset_root)")
     ap.add_argument("--map-id", default=DATASET.map_id)
     ap.add_argument("--map-dir", default=DATASET.map_source_dir,
                     help="directory containing MORAI MGeo JSON files")
@@ -248,13 +248,32 @@ def main():
     ap.add_argument("--writer-queue-size", type=int, default=32)
     ap.add_argument("--max-samples", type=int, default=0,
                     help="0 means no sample limit")
-    args = ap.parse_args()
+    defaults = asdict(COLLECTOR)
+    # Explicit unified sensor storage takes precedence over split defaults.
+    if defaults["morai_sync_root"] or defaults["morai_sync_base"]:
+        defaults["morai_camera_sync_base"] = ""
+        defaults["morai_lidar_sync_base"] = ""
+    ap.set_defaults(**defaults)
+    args = ap.parse_args(argv)
+    if args.morai_sync_root or args.morai_sync_base:
+        args.morai_camera_sync_base = ""
+        args.morai_lidar_sync_base = ""
+    if args.mode == "sync_native_files":
+        try:
+            args.capture_manifest = resolve_capture_manifest(
+                args.capture_manifest, args.manifest_root
+            )
+        except ValueError as error:
+            ap.error(str(error))
+    return args
+
+
+def main():
+    args = _parse_args()
     dataset_root = _prepare_dataset_root(args.dataset_root)
     print(f"[collect] 데이터셋 저장 루트: {dataset_root}")
 
     if args.mode == "sync_native_files":
-        if not args.capture_manifest:
-            ap.error("--mode sync_native_files requires --capture-manifest")
         args.control_max_steer_deg = ROS.control_max_steer_deg
         args.morai_to_lmdrive_steer_sign = ROS.morai_to_lmdrive_steer_sign
         run_sync_native_files(args, dataset_root, DATASET, ROS)

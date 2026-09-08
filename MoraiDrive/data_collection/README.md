@@ -1,85 +1,59 @@
 # MoraiDrive / data_collection
 
-MORAI의 ROS1 센서·차량 데이터를 동기화하고, LMDrive가 읽을 수 있는 CARLA 스타일
-데이터셋으로 저장하는 수집 파이프라인입니다. 현재 손 주행 검증은 Real Time Mode를
-사용하며, 최종 Expert 수집은 ROS SyncMode로 전환할 예정입니다.
+독립 Sync Runtime이 생성하는 manifest와 MORAI의 카메라·LiDAR 저장 파일을 읽어
+LMDrive 호환 데이터셋으로 변환합니다. 기본 `sync_native_files` 모드는 ROS 제어
+서비스를 호출하지 않으므로 실행 중인 Expert와 Runtime에 Collector만 추가할 수 있습니다.
 
-[MoraiDrive](../) 프로젝트의 데이터 수집 부분입니다. 전체 프로젝트 구성은 상위
-[README](../README.md)를 참고하세요.
+## 실행
 
-## 현재 상태
-
-- ROS 메시지와 카메라 4대·GNSS·IMU·LiDAR 동기화 완료
-- LMDrive 호환 RGB/NPY/JSON 및 job/map/route 저장 구조 완료
-- GNSS→MGeo 좌표 변환과 route command 생성 완료
-- junction·정지선·신호등·객체·3D BB 실주행 검증 완료
-- LMDrive 파이프라인을 재사용하는 `MoraiMVDetDataset` RGB/LiDAR/measurement
-  단일 프레임 adapter 검증 완료
-- navigation/notice instruction과 Expert ROS SyncMode 수집은 미구현
-- 현재 `collect.py` 1회 실행은 episode 1개만 생성하며 시나리오 자동 로드·NPC/날씨
-  변경·Ego respawn은 하지 않음
-- 시나리오 에디터 기능이 저장소에 추가되면 load/reset API를 연결해 episode별
-  `<route>_<timestamp>`를 생성하는 다중 시나리오 batch 수집기를 구현할 예정
-
-세부 구현 현황과 실주행 수치는 [검증 현황](docs/validation.md)을 참고하세요.
-
-## 빠른 실행
-
-Scenario Runner가 Real Time Mode에서 환경과 Ego를 준비하고 기다리면, 수집기는
-실행 직후 `/SyncModeCmd`로 MORAI 내장 ROS Sync Mode를 켭니다. bootstrap tick에서
-카메라 4대·LiDAR와 `/Ego_topic`의 새 묶음이 수신된 경우에만 준비 신호를 보내며,
-Scenario Runner는 그 신호 뒤 Expert를 실행합니다. 수집기는 Expert의 `/ctrl_cmd`를 현재 frame의
-`/SyncModeCtrlCmd`로 전달한 다음 `/SyncModeWaitForTick`으로 한 step씩 진행합니다.
-MORAI UI에서 Sync Mode를 따로 켜지 않습니다.
-
-GNSS와 IMU는 수집 및 동기화 필수 입력에서 제외되어 있습니다. `gps_x`, `gps_y`,
-`theta`, `speed`는 `/Ego_topic`의 local position, heading, velocity로 생성됩니다.
-`/Object_topic`은 Expert 시작을 막지 않으며, 객체 GT가 없던 프레임은
-`measurements_full/*.json`의 `gt_objects_available=false`로 표시됩니다.
-MORAI의 일반 `/Ego_topic` publisher가 Sync Mode에서 멈추므로 수집기가 매 tick의
-`WaitForTick.vehicle_status`를 `/Ego_topic`으로 relay합니다. Expert가 실행되려면
-`/Object_topic` publisher는 별도로 연결되어 있어야 합니다.
+Expert와 Sync Runtime을 실행하고 센서 캡처 기록이 생성된 뒤, 새 터미널에서
+`MoraiDrive/`를 작업 디렉터리로 실행합니다.
 
 ```bash
-cd /mnt/c/Users/Autonav/Desktop/AIMDrive/MoraiDrive/data_collection
-
-python3 collect.py \
-  --mode sync \
-  --job competition_train \
-  --route route_moraiA_scenario1 \
-  --map-id R_KR_PR_K-city_2025 \
-  --map-dir ../scenario_runner/data/R_KR_PR_K-city_2025 \
-  --global-info ../dataset/competition_test/maps/kcity/global_info.json \
-  --route-definition ../scenario_runner/config/full_loop_links.yaml \
-  --global-path ../scenario_runner/data/R_KR_PR_K-city_2025/2026_molit_comp_global_path.txt \
-  --duration 120
+python3 data_collection/collect.py --duration 120
 ```
 
-대회 경로는 Scenario Runner와 동일한 `route_links` 및 dense global path를 직접
-사용합니다. `--route-spec`의 checkpoint shortest-path 재계산은 다른 경로를 위한
-fallback이며, 공식 대회 경로 수집에는 사용하지 않습니다.
-Scenario Runner map 폴더에 `global_info.json`이 없으면 `--global-info`로 같은 MGeo
-local 좌표계의 metadata를 명시합니다. 이 파일이 없을 때만 `gps_x/gps_y`가 Ego
-position으로 fallback됩니다.
+`--duration`은 실제 시간 기준 초이며, 생략하면 120초입니다. 0이면 시간 제한 없이
+실행합니다. 경로 설정은 `config.py` 위치를 기준으로 만들어지므로 작업 디렉터리에
+따라 달라지지 않습니다. Python 의존성은 `requirements.txt`를 참고하세요.
 
-결과는 다음 위치에 저장됩니다.
+## 설정 변경
 
-```text
-Z:\DCM\data_collector\<job>\data\<route>_<timestamp>\
-```
+반복 실행 시 필요한 설정은 [config.py](config.py)에서 변경합니다.
 
-WSL에서 Z: 드라이브가 자동으로 보이지 않으면 수집 전에 한 번 마운트합니다.
+| 설정 | 용도 / 현재 기본값 |
+|---|---|
+| `MAP_DIR`, `MORAI_LAUNCHER` | MGeo 맵 폴더와 MORAI Launcher 설치 폴더 |
+| `DATASET.dataset_root` | `MoraiDrive/dataset/` |
+| `DATASET.job_name`, `route_name` | `sync_attach_test`, `full_loop` |
+| `DATASET.map_id`, `map_source_dir` | 맵 식별자와 MGeo JSON 폴더 |
+| `COLLECTOR.route_definition` | 공식 경로 링크를 정의한 YAML |
+| `COLLECTOR.global_path` | 공식 경로 좌표 TXT |
+| `COLLECTOR.global_info` | 별도 `global_info.json`이 필요할 때 지정. 기본값은 빈 문자열 |
+| `COLLECTOR.capture_manifest` | 특정 실행의 manifest 경로. 비우면 `manifest_root` 아래 세션 이름의 생성 시각 기준 최신 파일 선택 |
+| `COLLECTOR.morai_camera_sync_base`, `morai_lidar_sync_base` | 카메라·LiDAR의 `SynchronousMode` 저장 폴더 |
+| `COLLECTOR.duration` | 기본 수집 시간. 명령줄 `--duration`이 우선 |
 
-```bash
-sudo mkdir -p /mnt/z
-sudo mount -t drvfs Z: /mnt/z
-```
+기존 명령줄 옵션도 유지되며 명시한 값이 설정 파일보다 우선합니다.
+`--morai-sync-root` 또는 `--morai-sync-base`를 지정하면 분리된 카메라·LiDAR 기본
+경로 대신 통합 센서 저장 경로를 사용합니다.
 
-기본 저장 루트는 `/mnt/z/DCM/data_collector`입니다. 다른 위치에서 시험하려면
-`--dataset-root <경로>`를 지정할 수 있습니다.
+## 세션 선택과 결과
 
-전체 출력 트리와 파일별 형식은 [데이터셋 구조 및 포맷](docs/dataset-format.md)을
-참고하세요.
+- manifest는 시작 시 한 번 선택하며, 실행 중 새 Runtime 세션으로 바꾸지 않습니다.
+- 카메라·LiDAR는 두 저장 폴더에 이름이 공통으로 존재하는 최신 세션을 선택합니다.
+  시작 로그의 manifest와 센서 세션이 같은 Runtime 실행에 해당하는지 확인하세요.
+  최신 파일 선택은 Runtime이 현재 실행 중임을 보장하지 않습니다.
+- 과거 세션을 재수집할 때는 manifest와 센서 저장 세션을 명시적으로 지정하세요.
+- 중간에 Collector를 붙여도 세션 처음부터 쌓인 기록을 읽습니다. 동일 job·manifest의
+  체크포인트가 있으면 기존 수집 위치부터 재개합니다.
+- 결과는 `dataset/<job>/data/<route>_<timestamp>/` 아래에 저장됩니다.
+  누락 센서는 `incomplete_frames.jsonl`, 원본 프레임 대응은
+  `capture_provenance.jsonl`에서 확인합니다.
+
+기본 모드 외에 `sync`, `realtime`, `grpc_legacy` 구현도 남아 있습니다.
+`sync` 모드는 Collector가 SyncMode를 직접 제어하므로 독립 Sync Runtime과 함께
+실행하지 않습니다. `legacy_udp/`는 이전 UDP 수집 구현입니다.
 
 ## 기본 검증
 

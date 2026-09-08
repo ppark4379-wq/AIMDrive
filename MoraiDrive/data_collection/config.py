@@ -1,11 +1,47 @@
 """
 Central config for the MORAI -> LMDrive dataset conversion pipeline.
 
-센서 데이터는 ROS1(message_filters로 동기화)하고, 기본 sync 모드의 tick 제어는
-MORAI ROS SyncMode 서비스로 수행한다. gRPC는 grpc_legacy 모드에서만 사용한다.
+기본 수집은 독립 Sync Runtime의 manifest와 MORAI 센서 저장 파일을 읽는다.
+맵·경로·저장 위치·실행 옵션은 이 파일에서 변경한다.
 """
 from dataclasses import dataclass, field
 from typing import Dict
+from pathlib import Path
+
+
+MORAI_DRIVE = Path(__file__).resolve().parents[1]
+MAP_DIR = MORAI_DRIVE / "scenario_runner/data/R_KR_PR_K-city_2025"
+MORAI_LAUNCHER = MORAI_DRIVE.parent.parent / "MoraiLauncher_Win"
+
+
+@dataclass
+class CollectorConfig:
+    mode: str = "sync_native_files"
+    duration: float = 120.0             # 실제 시간(초). CLI --duration으로 덮어쓰기
+    global_info: str = ""
+    route_spec: str = ""
+    route_definition: str = str(MORAI_DRIVE / "scenario_runner/config/full_loop_links.yaml")
+    global_path: str = str(MAP_DIR / "2026_molit_comp_global_path.txt")
+    route_definition_key: str = "full_loop"
+    route_start_index: int = None
+    require_route_valid: bool = False
+    route_valid_max_error: float = 3.0
+    no_route_timestamp: bool = False
+    # 비우면 manifest_root 아래 세션 이름(생성 시각) 기준 최신 manifest 선택.
+    # 특정 실행을 다시 수집하려면 capture_manifest에 파일 경로를 지정한다.
+    capture_manifest: str = ""
+    manifest_root: str = str(MORAI_DRIVE / ".runtime/sync_runtime")
+    morai_sync_root: str = ""
+    morai_sync_base: str = ""
+    # 두 센서 저장 위치에서 이름이 같은 최신 세션을 선택한다.
+    morai_camera_sync_base: str = str(MORAI_LAUNCHER / "SensorData/SynchronousMode")
+    morai_lidar_sync_base: str = str(MORAI_LAUNCHER / "MoraiLauncher_Win_Data/SaveFile/SensorData/SynchronousMode")
+    native_file_timeout: float = 5.0
+    native_poll_interval: float = 0.05
+    native_stable_checks: int = 2
+    manifest_poll_interval: float = 0.05
+    writer_queue_size: int = 32
+    max_samples: int = 0
 
 
 @dataclass
@@ -54,15 +90,13 @@ class GrpcConfig:
 
 @dataclass
 class DatasetConfig:
-    # Windows Z:\DCM\data_collector. WSL에서는 Z: 드라이브를 /mnt/z에 mount해야 한다.
-    dataset_root: str = "/mnt/z/DCM/data_collector"
-    job_name: str = "morai_collection"
-    route_name: str = "route_moraiA_scenario1"
+    dataset_root: str = str(MORAI_DRIVE / "dataset")
+    job_name: str = "sync_attach_test"
+    route_name: str = "full_loop"
     append_timestamp: bool = True
-    map_id: str = "unknown"
-    map_source_dir: str = ""          # MGeo JSON 파일들이 있는 디렉터리
-    # 저장 시뮬레이션 Hz는 GrpcConfig.tick_period_ms가 결정한다. 실제 wall-clock
-    # 처리율은 MORAI의 센서 렌더링/전송 시간이 이 주기를 만족해야 동일해진다.
+    map_id: str = "R_KR_PR_K-city_2025"
+    map_source_dir: str = str(MAP_DIR)  # MGeo JSON 파일들이 있는 디렉터리
+    # native-file 모드의 캡처 주기는 sync_runtime/config.yaml에서 설정한다.
     collect_hz: float = 10.0
     image_ext: str = "jpg"
     image_quality: int = 92
@@ -121,6 +155,7 @@ class SensorConfig:
 
 
 ROS = ROSConfig()
+COLLECTOR = CollectorConfig()
 GRPC = GrpcConfig()
 DATASET = DatasetConfig()
 SENSORS = SensorConfig()

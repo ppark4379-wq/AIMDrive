@@ -3,6 +3,27 @@
 import json
 import os
 import time
+from pathlib import Path
+
+
+def resolve_capture_manifest(explicit_path, manifest_root):
+    """Resolve once at collector startup; never switch sessions while reading."""
+    if explicit_path:
+        path = Path(explicit_path).expanduser().resolve()
+        if not path.is_file():
+            raise ValueError("Capture manifest does not exist: {}".format(path))
+        return str(path)
+    candidates = sorted(
+        path for path in Path(manifest_root).expanduser().glob(
+            "sync-*/capture_manifest.jsonl"
+        ) if path.is_file()
+    )
+    if not candidates:
+        raise ValueError(
+            "No capture manifest under {}. Start Sync Runtime with capture enabled first."
+            .format(manifest_root)
+        )
+    return str(candidates[-1].resolve())
 
 
 class SyncCaptureManifest:
