@@ -37,7 +37,7 @@ MORAI ── 카메라·LiDAR 원본 파일 ──────────> Data
 ```
 
 - **`expert/`**: 경로 추종과 제어 명령 계산을 담당합니다. Runtime은 받은 명령을 시뮬레이터에 적용하며, 주행 경로를 직접 계획하지 않습니다.
-- **`scenario_runner/`**: 시나리오 환경 구성과 Expert 실행을 담당합니다. Runtime의 `scenario` 모드는 `/morai_drive/scenario_ready`가 `false → true`로 바뀌기를 기다린 뒤 시작하고, `/morai_drive/sync_runtime_active`로 실행 상태를 알립니다. 현재 Runner 코드에는 이 준비 신호를 설정하는 코드가 확인되지 않으므로, 해당 모드를 사용하려면 실행 관리 측에서 신호 연동이 필요합니다. Runtime은 Runner보다 먼저 시작하여 새 준비 신호를 관측해야 합니다.
+- **`scenario_runner/`**: 시나리오 환경 구성과 Expert 실행을 담당합니다. Runtime의 `scenario` 모드는 `/morai_drive/scenario_ready`가 `false → true`로 바뀌기를 기다린 뒤 시작하고, `/morai_drive/sync_runtime_active`로 실행 상태를 알립니다. Runner는 Expert 실행 확인 후 준비 신호를 설정하고, Runtime 활성화 후 새 Ego 메시지 수신까지 기다립니다. Runner가 종료하면서 READY를 해제하면 Runtime도 SyncMode를 종료합니다. Runtime은 Runner보다 먼저 시작하여 새 준비 신호를 관측해야 합니다.
 - **`data_collection/`**: `--mode sync_native_files`에서 `--capture-manifest`로 받은 기록과 MORAI가 저장한 센서 파일을 연결해 데이터셋으로 변환합니다. Runtime은 이미지·LiDAR 파일을 직접 저장하거나 최종 데이터셋으로 변환하지 않습니다. 수집기의 별도 `sync` 모드와는 SyncMode 소유권이 겹치므로 동시에 실행하지 않습니다.
 - **`diagnostics/`**: 프레임·센서 동작을 조사하는 도구와 분석 문서를 보관합니다. `sync_frame_probe.py`도 SyncMode를 직접 사용하므로 Runtime과 동시에 실행하지 않습니다.
 
@@ -67,3 +67,7 @@ python3 -m sync_runtime.main --mode standalone
 각 줄에는 캡처 기준 프레임 `N`의 상태(`ego_state_for_frame`), 해당 스텝에 적용한 명령(`applied_control`), 응답 프레임 `N+1`의 상태(`next_ego_state`), 제어 수신 상태와 예상 센서 파일 경로가 들어갑니다.
 
 `capture_requested`와 `expected_sensor_files`는 캡처 요청과 예상 경로를 뜻하며 실제 파일 저장 성공을 보장하지 않습니다. 기록 큐가 가득 차거나 쓰기에 실패하면 메타데이터가 누락될 수 있고, Runtime은 이를 경고하면서 프레임 진행을 계속합니다.
+
+## Scenario Runner 연동 실행
+
+별도 터미널에서 `python3 -m sync_runtime.main --mode scenario`를 먼저 실행하고, Runner를 `python3 -m scenario_runner.main_runner --scenario full_loop --once`로 실행합니다. 두 터미널 모두 `MoraiDrive` 디렉터리에서 ROS 및 `expert/devel/setup.bash` 환경을 불러와야 합니다. 매 회차 Runtime을 다시 실행합니다. Runner의 준비 대기는 기본 30초입니다.

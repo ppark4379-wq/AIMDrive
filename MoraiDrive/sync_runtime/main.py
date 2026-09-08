@@ -349,6 +349,11 @@ def run(args):
         )
 
         while not stop_requested.is_set() and not rospy.is_shutdown():
+            if mode == "scenario" and not rospy.get_param(
+                config.get("scenario", {}).get("ready_param", "/morai_drive/scenario_ready"), False
+            ):
+                rospy.loginfo("[SyncRuntime] scenario READY cleared; stopping")
+                break
             decision = control_buffer.select()
             _log_control_transition(rospy, decision)
             request_frame = int(sync_client.current_frame)

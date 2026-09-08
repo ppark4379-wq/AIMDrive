@@ -40,6 +40,22 @@ python3 data_collection/collect.py --duration 120
 
 ## 세션 선택과 결과
 
+새 수집 폴더 이름은 `<route>_<drive_tag>_<YYYY_MM_DD_HH_MM_SS>_<run_note>`입니다.
+`config.py`의 `DATASET` 설정에서 실험 조건과 메모를 지정합니다.
+
+```python
+route_name: str = "full_loop"
+drive_tag: str = "basic_drive"  # 장애물 없는 기본 주행
+run_note: str = ""            # 예: "lfd_gain0.65_max_v60"
+```
+
+메모를 지정한 예: `full_loop_basic_drive_2026_09_08_21_00_00_lfd_gain0.65_max_v60`.
+빈 메모는 생략하며 공백·경로 구분자 등은 `_`로 변환합니다. 주행 특징과 파라미터는
+자동 감지하지 않습니다. 실제 실험 조건에 맞게 직접 기록하세요.
+같은 Runtime 세션의 체크포인트를 재개하면 기존 폴더명을 유지합니다.
+새 이름의 독립 실험을 시작하려면 Runtime도 새 세션으로 실행하세요.
+5분 수집 명령은 `python3 data_collection/collect.py --duration 300`입니다.
+
 - manifest는 시작 시 한 번 선택하며, 실행 중 새 Runtime 세션으로 바꾸지 않습니다.
 - 카메라·LiDAR는 두 저장 폴더에 이름이 공통으로 존재하는 최신 세션을 선택합니다.
   시작 로그의 manifest와 센서 세션이 같은 Runtime 실행에 해당하는지 확인하세요.
@@ -47,7 +63,7 @@ python3 data_collection/collect.py --duration 120
 - 과거 세션을 재수집할 때는 manifest와 센서 저장 세션을 명시적으로 지정하세요.
 - 중간에 Collector를 붙여도 세션 처음부터 쌓인 기록을 읽습니다. 동일 job·manifest의
   체크포인트가 있으면 기존 수집 위치부터 재개합니다.
-- 결과는 `dataset/<job>/data/<route>_<timestamp>/` 아래에 저장됩니다.
+- 결과는 `dataset/<job>/data/<route>_<drive_tag>_<timestamp>_<run_note>/` 아래에 저장됩니다.
   누락 센서는 `incomplete_frames.jsonl`, 원본 프레임 대응은
   `capture_provenance.jsonl`에서 확인합니다.
 

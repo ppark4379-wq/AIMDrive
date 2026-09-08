@@ -25,7 +25,8 @@ class DatasetWriter:
                  map_id: str = "unknown", map_source_dir: str = "",
                  append_timestamp: bool = True, route_metadata: Optional[dict] = None,
                  extra_map_files: Optional[Dict[str, str]] = None,
-                 resume_route_dir: str = ""):
+                 resume_route_dir: str = "", drive_tag: str = "",
+                 run_note: str = ""):
         self.dataset_root = os.path.abspath(dataset_root)
         self.job_name = job_name
         self.job_dir = os.path.join(self.dataset_root, job_name)
@@ -37,8 +38,18 @@ class DatasetWriter:
             self.route_dir = route_dir
             self.route_name = os.path.basename(route_dir)
         else:
-            timestamp = datetime.now().strftime("%m_%d_%H_%M_%S")
-            self.route_name = f"{route_name}_{timestamp}" if append_timestamp else route_name
+            # Labels must be single Windows/Linux-safe path components.
+            def label(value):
+                import re
+                return re.sub(r'[^\w.=-]+', '_', value.strip()).strip('._')
+
+            drive_tag, run_note = label(drive_tag), label(run_note)
+            timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+            parts = [route_name, drive_tag]
+            if append_timestamp:
+                parts.append(timestamp)
+            parts.append(run_note)
+            self.route_name = "_".join(part for part in parts if part)
             self.route_dir = os.path.join(data_dir, self.route_name)
         self.map_id = map_id
 

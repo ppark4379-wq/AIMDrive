@@ -475,6 +475,7 @@ def main():
 
         ds_writer = DatasetWriter(
             dataset_root, args.job, args.route,
+            drive_tag=DATASET.drive_tag, run_note=DATASET.run_note,
             map_id=args.map_id, map_source_dir=args.map_dir,
             append_timestamp=DATASET.append_timestamp and not args.no_route_timestamp,
             route_metadata=route_metadata,
