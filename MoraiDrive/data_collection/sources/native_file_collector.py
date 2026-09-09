@@ -425,10 +425,13 @@ def run_sync_native_files(args, dataset_root, dataset_config, ros_config,
         )
     try:
         if grpc_config is not None and state_history is None:
+            from grpc_ctrl.label_spool import (
+                GrpcLabelCaptureSpool, label_spool_path,
+            )
             from grpc_ctrl.morai_state_reader import (
                 GrpcStateHistory, MoraiGrpcStateReader,
             )
-            state_history = GrpcStateHistory(
+            grpc_history = GrpcStateHistory(
                 MoraiGrpcStateReader(grpc_config),
                 poll_interval_sec=grpc_config.get(
                     "state_poll_interval_sec", 0.005
@@ -438,9 +441,34 @@ def run_sync_native_files(args, dataset_root, dataset_config, ros_config,
                     "state_ego_match_distance_m", 0.5
                 ),
             )
+            spool_dir = getattr(args, "label_spool_dir", "")
+            if not spool_dir:
+                raise RuntimeError(
+                    "--label-spool-dir must point to a local writable directory"
+                )
+            state_history = GrpcLabelCaptureSpool(
+                grpc_history,
+                args.capture_manifest,
+                label_spool_path(spool_dir, args.capture_manifest),
+                manifest_poll_interval_sec=args.manifest_poll_interval,
+                required_timeout_sec=grpc_config.get(
+                    "state_required_timeout_sec", 2.0
+                ),
+                ego_match_distance_m=grpc_config.get(
+                    "state_ego_match_distance_m", 0.5
+                ),
+            )
         if state_history is not None:
             state_history.start()
-            print("[collect/native] read-only gRPC label history started")
+            spool_path = getattr(state_history, "spool_path", None)
+            if spool_path:
+                print(
+                    "[collect/native] read-only gRPC label spool started: {}".format(
+                        spool_path
+                    )
+                )
+            else:
+                print("[collect/native] read-only gRPC label history started")
         with open(incomplete_path, "a", encoding="utf-8", buffering=1) as incomplete, \
                 open(provenance_path, "a", encoding="utf-8", buffering=1) as provenance:
             while deadline is None or time.monotonic() < deadline:

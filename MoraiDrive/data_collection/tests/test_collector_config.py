@@ -35,9 +35,13 @@ class CollectorConfigTest(unittest.TestCase):
 
     def test_explicit_storage_and_mode_overrides(self):
         args = _parse_args(['--mode', 'realtime', '--job', 'custom',
+                            '--dataset-root', '/tmp/local-dataset',
+                            '--label-spool-dir', '/tmp/local-labels',
                             '--morai-sync-root', '/tmp/sensor-session'])
         self.assertEqual(args.mode, 'realtime')
         self.assertEqual(args.job, 'custom')
+        self.assertEqual(args.dataset_root, '/tmp/local-dataset')
+        self.assertEqual(args.label_spool_dir, '/tmp/local-labels')
         self.assertEqual(args.morai_sync_root, '/tmp/sensor-session')
         self.assertEqual(args.morai_camera_sync_base, '')
         self.assertEqual(args.morai_lidar_sync_base, '')

@@ -1,6 +1,9 @@
+import json
 import math
 from pathlib import Path
 import sys
+import tempfile
+import time
 from types import SimpleNamespace
 
 
@@ -15,6 +18,10 @@ from grpc_ctrl.morai_state_reader import (  # noqa: E402
     host_candidates,
     label_snapshot_from_actor_states,
     snapshot_matches_ego,
+)
+from grpc_ctrl.label_spool import (  # noqa: E402
+    GrpcLabelCaptureSpool,
+    GrpcLabelStore,
 )
 
 
@@ -196,3 +203,89 @@ def test_snapshot_pose_guard_rejects_a_different_sync_frame():
 
 def test_explicit_host_has_no_implicit_fallback():
     assert host_candidates("10.0.0.7") == ["10.0.0.7"]
+
+
+def _capture_record(frame):
+    ego = {
+        "position": {"x": 1.0, "y": 2.0, "z": 0.0},
+        "velocity": {"x": 0.0, "y": 0.0, "z": 0.0},
+        "heading": 90.0,
+    }
+    return {
+        "schema_version": 1,
+        "session_id": "spool-test",
+        "scenario_id": "scenario",
+        "native_sync_frame": frame,
+        "request_frame": frame,
+        "response_frame": frame + 1,
+        "capture_requested": True,
+        "capture_stride": 5,
+        "ego_state_for_frame": ego,
+        "ego_state_source_frame": frame,
+        "next_ego_state": ego,
+        "next_ego_state_source_frame": frame + 1,
+        "applied_control": {
+            "accel": 0.0, "brake": 0.0, "front_steer": 0.0
+        },
+        "control_source_sequence": 1,
+        "control_reused": False,
+        "control_age_frames": 0,
+        "control_mode": "fresh",
+        "expected_sensor_files": {},
+    }
+
+
+def test_local_label_store_survives_memory_history_eviction():
+    with tempfile.TemporaryDirectory() as root:
+        path = str(Path(root) / "labels.sqlite3")
+        original = _empty_snapshot(25)
+        store = GrpcLabelStore(path)
+        assert store.put(original)
+        store.close()
+
+        reopened = GrpcLabelStore(path)
+        restored = reopened.get(25)
+        reopened.close()
+        assert restored == original
+
+
+def test_capture_spool_tails_manifest_independently_of_dataset_consumer():
+    with tempfile.TemporaryDirectory() as root:
+        manifest_path = str(Path(root) / "capture_manifest.jsonl")
+        with open(manifest_path, "w", encoding="utf-8") as manifest:
+            manifest.write(json.dumps(_capture_record(30)) + "\n")
+        snapshot = _empty_snapshot(30)
+
+        class FakeHistory:
+            is_aligned = False
+
+            def start(self):
+                pass
+
+            def wait_for_record(self, record, _timeout):
+                if int(record["native_sync_frame"]) == 30:
+                    self.is_aligned = True
+                    return snapshot
+                return None
+
+            def close(self):
+                pass
+
+        spool = GrpcLabelCaptureSpool(
+            FakeHistory(),
+            manifest_path,
+            str(Path(root) / "labels.sqlite3"),
+            manifest_poll_interval_sec=0.005,
+            required_timeout_sec=0.05,
+        )
+        spool.start()
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline and not spool.is_aligned:
+            time.sleep(0.005)
+
+        # Simulate the main dataset consumer arriving later, after the live
+        # history would normally have evicted this tick.
+        spool.history.wait_for_record = lambda _record, _timeout: None
+        restored = spool.wait_for_record(_capture_record(30), 0.1)
+        spool.close()
+        assert restored == snapshot

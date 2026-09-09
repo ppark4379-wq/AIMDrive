@@ -281,6 +281,13 @@ def _parse_args(argv=None):
     ap.add_argument("--native-poll-interval", type=float, default=0.05)
     ap.add_argument("--native-stable-checks", type=int, default=2)
     ap.add_argument("--manifest-poll-interval", type=float, default=0.05)
+    ap.add_argument(
+        "--label-spool-dir", default="",
+        help=(
+            "local directory for exact gRPC label spool; keep this off the NAS "
+            "(default: config.py COLLECTOR.label_spool_dir)"
+        ),
+    )
     ap.add_argument("--writer-queue-size", type=int, default=32)
     ap.add_argument("--max-samples", type=int, default=0,
                     help="0 means no sample limit")

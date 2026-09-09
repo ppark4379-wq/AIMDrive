@@ -17,6 +17,35 @@ python3 data_collection/collect.py --duration 120
 실행합니다. 경로 설정은 `config.py` 위치를 기준으로 만들어지므로 작업 디렉터리에
 따라 달라지지 않습니다. Python 의존성은 `requirements.txt`를 참고하세요.
 
+### NAS 또는 로컬 저장 선택
+
+dataset 저장 위치는 실행할 때 `--dataset-root`로 선택합니다. 현재 `config.py`의
+`COLLECTOR.capture_manifest`에 값이 들어 있으므로, 아래 명령의
+`--capture-manifest ""`는 최신 Runtime manifest를 자동 선택하기 위해 필요합니다.
+
+NAS(Z: 드라이브)에 저장:
+
+```bash
+python3 data_collection/collect.py \
+  --duration 3600 \
+  --capture-manifest "" \
+  --dataset-root /mnt/z/DCM/data_collector
+```
+
+로컬 C: 드라이브에 먼저 저장:
+
+```bash
+python3 data_collection/collect.py \
+  --duration 3600 \
+  --capture-manifest "" \
+  --dataset-root /mnt/c/Users/autonav009/Desktop/AIMDrive/MoraiDrive/dataset_local
+```
+
+gRPC object·신호등 라벨은 dataset writer와 별개로 로컬 SQLite 파일에 먼저
+보관됩니다. 기본 위치는 `MoraiDrive/.runtime/data_collection/label_spool/`이며,
+필요하면 `--label-spool-dir <로컬_경로>`로 변경할 수 있습니다. NAS가 느려도 이
+spool은 NAS에 두지 마세요.
+
 ## SyncMode 객체·신호 라벨
 
 SyncMode에서 `/Object_topic`과 `/GetTrafficLightStatus`가 발행되지 않는 MORAI
@@ -50,6 +79,7 @@ SyncMode에서 `/Object_topic`과 `/GetTrafficLightStatus`가 발행되지 않�
 | `COLLECTOR.global_info` | 별도 `global_info.json`이 필요할 때 지정. 기본값은 빈 문자열 |
 | `COLLECTOR.capture_manifest` | 특정 실행의 manifest 경로. 비우면 `manifest_root` 아래 세션 이름의 생성 시각 기준 최신 파일 선택 |
 | `COLLECTOR.morai_camera_sync_base`, `morai_lidar_sync_base` | 카메라·LiDAR의 `SynchronousMode` 저장 폴더 |
+| `COLLECTOR.label_spool_dir` | writer 지연 전에 exact gRPC 라벨을 보관할 로컬 폴더 |
 | `COLLECTOR.duration` | 기본 수집 시간. 명령줄 `--duration`이 우선 |
 
 기존 명령줄 옵션도 유지되며 명시한 값이 설정 파일보다 우선합니다.
