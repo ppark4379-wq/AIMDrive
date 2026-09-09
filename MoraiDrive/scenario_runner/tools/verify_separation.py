@@ -12,6 +12,9 @@ from ..scenarios.full_loop_scenario import (
 from ..utils.link_graph import LinkGraph
 from ..utils.map_loader import MGeoMapLoader
 from ..utils.transform_utils import polyline_length
+from ..scenarios.segment_modes.modes import MISSION_MODES
+from ..scenarios.segment_modes.scenario import MissionScenario
+from .verify_segment_modes import verify_mission_mode
 
 
 EXPECTED_MAP = "R_KR_PR_K-city_2025"
@@ -19,6 +22,7 @@ EXPECTED_SCENARIOS = {
     "full_loop": FullLoopScenario,
     "full_loop_after_static": FullLoopAfterStaticScenario,
     "full_loop_highway_tunnel_test": FullLoopHighwayTunnelTestScenario,
+    **{name: MissionScenario for name in MISSION_MODES},
 }
 LEGACY_CONFIG_NAMES = {
     "urban.yaml",
@@ -254,6 +258,8 @@ def verify_package(
         "expert_policy": "external import only; no expert writes",
         "route": route,
     }
+    if scenario_name in MISSION_MODES:
+        report["mission"] = verify_mission_mode(scenario_cfg, scenario_name)
     print("[KCityRunner] separation verification PASS")
     print(json.dumps(report, indent=2))
     return report

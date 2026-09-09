@@ -13,6 +13,8 @@ from .scenarios.full_loop_scenario import (
     FullLoopScenario,
 )
 from .utils.map_loader import MGeoMapLoader
+from .scenarios.segment_modes.modes import MISSION_MODES, automatic_repeat_enabled
+from .scenarios.segment_modes.scenario import MissionScenario
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
@@ -21,6 +23,7 @@ SUPPORTED_SCENARIOS = {
     "full_loop": FullLoopScenario,
     "full_loop_after_static": FullLoopAfterStaticScenario,
     "full_loop_highway_tunnel_test": FullLoopHighwayTunnelTestScenario,
+    **{name: MissionScenario for name in MISSION_MODES},
 }
 
 
@@ -206,6 +209,8 @@ def main():
         parser.error("--max-runs must be at least 1")
 
     global_cfg, zone_cfg, base_scenario_cfg = load_configuration()
+    if args.scenario in MISSION_MODES:
+        base_scenario_cfg["mission_mode"] = args.scenario
     if (
         args.highway_object_audit
         and args.scenario != "full_loop_highway_tunnel_test"
@@ -229,13 +234,8 @@ def main():
     map_loader = MGeoMapLoader(global_cfg["paths"]["mgeo_root"])
 
     scenario_class = SUPPORTED_SCENARIOS[args.scenario]
-    automatic_repeat = (
-        (
-            args.scenario in {"full_loop", "full_loop_after_static"}
-            or args.highway_object_audit
-        )
-        and bool(base_scenario_cfg.get("auto_repeat", False))
-        and not args.once
+    automatic_repeat = automatic_repeat_enabled(
+        args.scenario, base_scenario_cfg, args.once, args.highway_object_audit,
     )
     repeat_delay_sec = float(
         base_scenario_cfg.get("repeat_delay_sec", 1.0)

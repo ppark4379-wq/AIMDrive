@@ -2,7 +2,9 @@ zone: full_loop
 
 scenarios:
   full_loop:
-    clean_road_mode: true
+    # Keep the legacy full_loop scenario feature-complete. Use
+    # full_loop_normal when a clean route without runner-owned events is needed.
+    clean_road_mode: false
     sync_runtime:
       startup_timeout_sec: 30.0
       ego_max_age_sec: 1.0
@@ -54,7 +56,7 @@ scenarios:
     static_obstacle_models:
       - WoodBox
       - CargoBox
-      - RedBarrel
+      #- RedBarrel
       - YellowBarrel
       - TrafficBarrel
       - PE_Drum

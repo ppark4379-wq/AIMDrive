@@ -163,5 +163,5 @@ class SyncRuntimeTest(unittest.TestCase):
         from ..main_runner import load_configuration
         _, _, cfg = load_configuration()
         self.assertEqual(cfg['timeout_sec'], 0)
-        self.assertTrue(cfg['clean_road_mode'])
+        self.assertFalse(cfg['clean_road_mode'])
         self.assertEqual(cfg['sync_runtime']['startup_timeout_sec'], 30)

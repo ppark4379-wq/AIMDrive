@@ -13,6 +13,7 @@ from .full_loop_parts import (
     roundabout,
     route_profile,
     static_obstacle,
+    static_obstacle_watch,
     tunnel,
     vehicle_common,
 )
@@ -166,6 +167,7 @@ class FullLoopScenario(FullLoopDriveBase):
     update_tunnel_sudden_brake = tunnel.update_tunnel_sudden_brake
 
     def on_expert_timeline_tick(self, elapsed, ego_state, current_s, remaining_s):
+        static_obstacle_watch.update(self, current_s)
         verify_period = float(
             self.cfg.get("scenario_time_verify_period_sec", 30.0)
         )
@@ -228,6 +230,7 @@ class FullLoopScenario(FullLoopDriveBase):
         )
 
     def cleanup_spawned_actors(self):
+        static_obstacle_watch.finish(self, "scenario_cleanup")
         try:
             self._set_highway_spawn_points_enabled(False)
         except Exception as e:

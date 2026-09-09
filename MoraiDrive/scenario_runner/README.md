@@ -2,7 +2,8 @@
 
 MORAI Simulator 26.R1과 `R_KR_PR_K-city_2025` 맵을 위한 gRPC 기반 시나리오 자동화 패키지입니다.
 
-기본 `clean_road_mode: true`에서는 정적·동적 장애물, 회전교차로·고속도로 NPC와 터널 급제동 이벤트를 생성하거나 갱신하지 않습니다. 날씨·시간 설정은 유지합니다. 기존 이벤트를 사용하려면 `config/full_loop.yaml`에서 `clean_road_mode: false`로 설정합니다. 이 설정은 세 가지 full-loop 시나리오에 공통 적용됩니다. 차량 제어에는 AIMDrive의 `MoraiDrive/expert`를 사용합니다.
+기존 `full_loop`는 정적·동적 장애물, 회전교차로·고속도로 NPC와 터널 급제동 이벤트를 모두 유지합니다. 장애물·NPC 없는 전체 주행은 `full_loop_normal`을 사용합니다.
+차량 제어에는 AIMDrive의 `MoraiDrive/expert`를 사용하고, 원격 main의 Sync Runtime 연동도 모든 모드에서 유지됩니다.
 
 ## Sync Runtime 먼저 실행
 
@@ -37,7 +38,46 @@ python3 -m scenario_runner.main_runner \
   --scenario full_loop --once
 ```
 
-## 정적 장애물 이후부터 실행
+## 구간별 모드 선택
+
+위 실행 명령의 `--scenario` 값만 바꿉니다. 일반 사용 모드는 6개입니다.
+
+| 모드 | 주행 범위 | 장애물·NPC |
+|---|---|---|
+| `full_loop` | 기존 전체 START → END | 기존 모든 이벤트 |
+| `full_loop_normal` | 기존 전체 START → END | 러너 생성 장애물·NPC 없음 |
+| `full_loop_static` | 인덱스 483 → 753 (132.4m) | 정적 장애물만 랜덤 생성 |
+| `full_loop_dynamic` | 인덱스 753 → 1081 (160.0m) | 동적 장애물만 기존 방식으로 횡단 |
+| `full_loop_roundabout` | 인덱스 1668 → 1975 (150.0m) | 기존 설정의 회전교차로 NPC 6대 |
+| `full_loop_highway` | 인덱스 1975 → 3638 (825.0m) | 기존 고속도로 SpawnPoint 교통 |
+
+예: 장애물·NPC 없는 전체 주행을 3회 실행:
+
+```bash
+python3 -m scenario_runner.main_runner --zone full_loop --scenario full_loop_normal --max-runs 3
+```
+
+예: 정적 장애물 구간만 반복:
+
+```bash
+python3 -m scenario_runner.main_runner --zone full_loop --scenario full_loop_static
+```
+
+여섯 모드는 정상 도착 후 객체 정리 → 같은 모드 시작점으로 재배치 → 다음 회차를 반복합니다.
+날씨는 SUNNY/FOGGY 교대, 시간은 11/13/15시 중 랜덤이며 같은 시간·장애물 모델이 다시 선택될 수 있습니다.
+새 모드는 각자 날씨 이력을 저장하므로 기존 full_loop 날씨 이력을 변경하지 않습니다.
+`--once`는 1회, `--max-runs 10`은 10회입니다. 복구되지 않은 오류나 기존 watchdog/timeout은 전체 실행을 중단합니다.
+
+새 구간 모드는 해당 이벤트만 켜며 터널 이벤트는 모두 끕니다. 신호등은 유지하고 기존 expert가 신호에 대응합니다.
+전체 normal 모드는 러너 소유 객체를 정리하고 새 객체를 생성하지 않습니다. 수동 배치/다른 client 소유 객체까지 삭제하지 않으므로 깨끗한 맵에서 사용하세요.
+동시에 두 러너를 실행하지 마세요.
+
+실행에 사용하는 구간 시작·끝 좌표는 [segment_modes/modes.py](scenarios/segment_modes/modes.py)에 고정되어 있으며 테스트에서 직접 검증합니다.
+
+오프라인 확인: 원하는 명령에 `--check`를 붙이면 접속 없이 경계 좌표·길이·이벤트 ON/OFF를 출력합니다.
+이 검사는 실제 AI 주행, 신호 준수, 무충돌 또는 MORAI RPC 성공을 보장하지 않습니다.
+
+## 기존 정적 장애물 이후 명령 (호환 유지)
 
 정적 장애물 다음 위치에서 출발하여 원래 END까지 주행합니다. 시나리오의 장애물과 NPC 구성은 전체 실행과 동일합니다.
 

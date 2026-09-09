@@ -1,6 +1,7 @@
 """Static-obstacle zone functions for the full-loop scenario."""
 
 import time
+from . import static_obstacle_watch
 
 
 def make_actor_scale(self, values):
@@ -93,3 +94,4 @@ def spawn_static_obstacle(self):
 
     self.static_obstacle = actor
     self.scenario_actors.append(actor)
+    static_obstacle_watch.arm(self)

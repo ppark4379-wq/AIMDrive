@@ -50,6 +50,11 @@ class SeparatedPackageTest(unittest.TestCase):
                 "full_loop",
                 "full_loop_after_static",
                 "full_loop_highway_tunnel_test",
+                "full_loop_normal",
+                "full_loop_static",
+                "full_loop_dynamic",
+                "full_loop_roundabout",
+                "full_loop_highway",
             },
         )
 
