@@ -14,8 +14,8 @@ capture:
     camera_front: CAMERA_1/{frame}_Intensity.png
     camera_left: CAMERA_2/{frame}_Intensity.png
     camera_right: CAMERA_3/{frame}_Intensity.png
-    camera_rear: CAMERA_5/{frame}_Intensity.png
-    lidar: LIDAR_4/{frame}_Intensity.bin
+    camera_rear: CAMERA_4/{frame}_Intensity.png
+    lidar: LIDAR_5/{frame}_Intensity.bin
 
 warn_after_frames: 5
 fail_safe_after_frames: 25

@@ -11,7 +11,7 @@ from pathlib import Path
 
 MORAI_DRIVE = Path(__file__).resolve().parents[1]
 MAP_DIR = MORAI_DRIVE / "scenario_runner/data/R_KR_PR_K-city_2025"
-MORAI_LAUNCHER = MORAI_DRIVE.parent.parent / "MoraiLauncher_Win"
+MORAI_LAUNCHER = Path("/mnt/c/MoraiLauncher_Win")
 
 
 @dataclass
