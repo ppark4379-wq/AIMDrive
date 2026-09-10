@@ -1,0 +1,58 @@
+{
+    "CapturedAt":  "2026-09-10T20:37:17.3704287+09:00",
+    "Memory":  {
+                   "AvailableMBytes":  8637,
+                   "CommittedBytes":  58336722944,
+                   "CommitLimit":  72562434048
+               },
+    "Processes":  [
+                      {
+                          "ProcessName":  "RaiDrive.Mount.Service.x64",
+                          "Id":  23400,
+                          "WorkingSet64":  11294609408,
+                          "PrivateMemorySize64":  25953816576
+                      },
+                      {
+                          "ProcessName":  "Memory Compression",
+                          "Id":  3616,
+                          "WorkingSet64":  4603777024,
+                          "PrivateMemorySize64":  19959808
+                      },
+                      {
+                          "ProcessName":  "Simulator",
+                          "Id":  52368,
+                          "WorkingSet64":  595546112,
+                          "PrivateMemorySize64":  3465412608
+                      },
+                      {
+                          "ProcessName":  "Code",
+                          "Id":  19996,
+                          "WorkingSet64":  517300224,
+                          "PrivateMemorySize64":  698773504
+                      },
+                      {
+                          "ProcessName":  "vmmemWSL",
+                          "Id":  15388,
+                          "WorkingSet64":  319336448,
+                          "PrivateMemorySize64":  2191622144
+                      },
+                      {
+                          "ProcessName":  "ChatGPT",
+                          "Id":  19460,
+                          "WorkingSet64":  251355136,
+                          "PrivateMemorySize64":  308752384
+                      },
+                      {
+                          "ProcessName":  "MsMpEng",
+                          "Id":  5064,
+                          "WorkingSet64":  239869952,
+                          "PrivateMemorySize64":  571035648
+                      },
+                      {
+                          "ProcessName":  "Code",
+                          "Id":  34424,
+                          "WorkingSet64":  221573120,
+                          "PrivateMemorySize64":  352743424
+                      }
+                  ]
+}
