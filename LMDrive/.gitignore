@@ -1,0 +1,10 @@
+# Datasets, pretrained weights and training outputs stay on the local disk.
+/data/**
+!/data/raw/
+!/data/processed/
+!/data/external/
+!/data/*/.gitkeep
+/outputs/**
+!/outputs/checkpoints/
+!/outputs/logs/
+!/outputs/*/.gitkeep

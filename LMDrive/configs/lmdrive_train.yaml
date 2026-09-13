@@ -1,0 +1,47 @@
+# Stage 2: instruction fine-tuning of the full LMDrive model.
+# Same settings as lavis/projects/lmdrive/notice_llava15_visual_encoder_r50_seq40.yaml (8 GPUs x batch 4).
+stage: lmdrive
+experiment: lmdrive_llava15_7b_notice
+model_config: configs/lmdrive_model.yaml
+output_dir: outputs
+seed: 42
+
+data:
+  root: data/raw/lmdrive_carla            # holds navigation_instruction_list.txt and notice_instruction_list.json
+  instruction_templates: datasets/instruction_templates.json
+  frames_per_clip: 40                     # clips are zero-padded to this many frames
+  sample_interval: 2                      # every 2nd frame of the 10 Hz recording
+  start_frame_augment: true
+  use_notice: true
+  fill_instruction_placeholders: false    # LMDrive left "[x]" unfilled; true writes the distances into the text
+  lidar_rotation_deg: -90                 # CARLA half sweeps; recordings with a full sweep use 0
+  batch_size: 4                           # per GPU
+  val_batch_size: 4
+  num_workers: 24
+  train:
+    towns: [1, 2, 3, 4, 5, 6, 7, 10]
+    weathers: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 14, 15, 16, 17, 18, 19]
+  val:
+    towns: [1, 2, 3, 4, 5, 6, 7, 10]
+    weathers: [12, 13, 20]
+
+optimizer:
+  name: adamw
+  lr: 1.0e-4
+  weight_decay: 0.06
+  beta2: 0.999
+
+scheduler:
+  name: linear_warmup_cosine
+  epochs: 15
+  warmup_steps: 2000                      # linear warmup inside the first epoch
+  warmup_lr: 1.0e-6
+  min_lr: 1.0e-5
+
+training:
+  amp: true
+  accum_grad_iters: 1
+  log_interval: 50
+  save_last_checkpoint: true
+  resume: ""
+  run_name: ""
