@@ -1,8 +1,19 @@
+"""Write <dataset root>/misleading_data.txt: clips whose instruction the route does not follow.
+
+LMDrive used these as negative examples ("misleading instructions").  Same inputs as
+parse_navigation_instructions.py.
+
+    python tools/labeling/parse_misleading_instructions.py data/raw/lmdrive_carla
+"""
+import argparse
 import os
 import re
 import sys
 import json
 from multiprocessing import Pool
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from route_paths import resolve_route_dir, route_path_relative_to_root
 
 from tqdm import tqdm
 
@@ -41,7 +52,7 @@ def process(line):
     try:
         processed_data = []
         path, frames = line.split()
-        dir_path = os.path.join(dataset_root, path)
+        dir_path = resolve_route_dir(dataset_root, path)
         frames = int(frames.strip())
         town_id = int(re.findall(r'town(\d\d)', dir_path)[0])
         weather_id = int(re.findall(r'_w(\d+)_', dir_path)[0])
@@ -81,11 +92,17 @@ def process(line):
         print(full_path)
 
 if __name__ == '__main__':
-    dataset_root = sys.argv[1]
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("dataset_root", help="folder that holds dataset_index.txt")
+    parser.add_argument("--workers", type=int, default=8)
+    args = parser.parse_args()
+
+    dataset_root = args.dataset_root
     list_file = os.path.join(dataset_root, 'dataset_index.txt')
     lines = open(list_file, 'r').readlines()
 
-    with Pool(8) as p:
+    with Pool(args.workers) as p:
         r_list = list(tqdm(p.imap(process, lines), total=len(lines)))
 
     f_write = open(os.path.join(dataset_root, 'misleading_data.txt'), 'w')

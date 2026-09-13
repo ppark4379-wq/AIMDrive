@@ -1,11 +1,25 @@
+"""Write <dataset root>/notice_instruction_list.json, the notice labels of stage 2.
+
+For every route it lists the frames where a notice instruction applies ("watch out for
+the pedestrian ahead"), keyed by route path.  The notice rules need the CARLA scenario
+definitions town<id>_all_scenarios.json, which are not part of this repository; get them
+from the LMDrive leaderboard data and pass --scenarios-dir.
+
+    python tools/labeling/parse_notice_instructions.py data/raw/lmdrive_carla \\
+        --scenarios-dir data/external/carla_scenarios
+"""
+import argparse
 import os
 import re
 import sys
 import json
 from multiprocessing import Pool
+from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from route_paths import resolve_route_dir, route_path_relative_to_root
 
 from tqdm import tqdm
-from matplotlib import pyplot as plt
 
 from turn_rules import Turn01, Turn02, Turn03, Turn04, Turn05, Turn06
 from follow_rules import Follow01, Follow02, Follow03, Follow04
@@ -87,15 +101,17 @@ rule_id_mapping_dict = {}
 for i, key in enumerate(registered_class.keys()):
     rule_id_mapping_dict[key] = i
 
-processing_rules = ['Turn-03-L','Turn-03-R','Turn-03-S','Turn-03-L-dis','Turn-03-R-dis','Turn-03-S-dis','Turn-01-L','Turn-01-R','Turn-01-L-dis','Turn-01-R-dis','Follow-01-L','Follow-01-R','Follow-01-L-dis','Follow-01-R-dis','Follow-02-s1','Follow-02-s1-dis','Follow-02-s2','Follow-02-s2-dis','Turn-06-L-L','Turn-06-L-R','Turn-06-L-S','Turn-06-R-L','Turn-06-R-R','Turn-06-R-S','Turn-06-S-L','Turn-06-S-R','Turn-06-S-S','Turn-02-L','Turn-02-R','Turn-02-S','Turn-02-L-dis','Turn-02-R-dis','Turn-02-S-dis','Turn-04-L','Turn-04-R','Turn-04-S','Turn-04-L-dis','Turn-04-R-dis','Turn-04-S-dis','Follow-03-s1','Follow-03-s2','Follow-03-s1-dis','Follow-03-s2-dis','Follow-04-L','Follow-04-R','Follow-04-L-dis','Follow-04-R-dis','Turn-05-1','Turn-05-2','Turn-05-3','Other-01','Other-02','Other-03','Other-04','Other-05']
+notice_processing_rules = ['Notice-01','Notice-02','Notice-03','Notice-04','Notice-05','Notice-05','Notice-06','Notice-07','Notice-08-R','Notice-08-G','Notice-08-Y']
+notice_data = {}
 
-def process(line):
+def process_notice(line):
     try:
         processed_data = []
         path, frames = line.split()
-        dir_path = os.path.join(dataset_root, path)
+        dir_path = resolve_route_dir(dataset_root, path)
         frames = int(frames.strip())
-        town_id = int(re.findall(r'town(\d\d)', dir_path)[0])
+        town_str = re.findall(r'town(\d\d)', dir_path)[0]
+        town_id = int(town_str)
         weather_id = int(re.findall(r'_w(\d+)_', dir_path)[0])
         json_data = []
         for frame_id in tqdm(range(frames)):
@@ -103,17 +119,19 @@ def process(line):
             value_json = json.load(open(full_path, 'r'))
             json_data.append(value_json)
 
-        for rule in processing_rules:
-            results = registered_class[rule].process({'data': json_data, 'town_id': town_id, 'weather_id': weather_id})
+        scenarios_path = os.path.join(scenarios_dir,"town%02d_all_scenarios.json" % town_id)
+        scenarios_data = json.load(open(scenarios_path, 'r'))
+
+        for rule in notice_processing_rules:
+            results = registered_class[rule].process({'data': json_data, 'town_id': town_id, 'weather_id': weather_id}, scenarios_data, town_str)
             rule_id = rule_id_mapping_dict[rule]
             for result in results:
                 result['instruction'] = rule
                 result['instruction_id'] = rule_id
                 result['town_id'] = town_id
                 result['weather_id'] = weather_id
-                result['route_path'] = path
-                result['route_frames'] = int(line.split()[1])
-                result['bad_case'] = 'False'
+                result['route_path'] = route_path_relative_to_root(dataset_root, path)
+                result['route_frames'] = frames
                 processed_data.append(result)
 
         return processed_data
@@ -132,19 +150,35 @@ def process(line):
         print(rule)
         print(full_path)
 
+
 if __name__ == '__main__':
-    dataset_root = sys.argv[1]
-    list_file = os.path.join(dataset_root, 'dataset_index.txt')
-    lines = open(list_file, 'r').readlines()
+    default_scenarios_dir = Path(__file__).resolve().parents[2] / "data" / "external" / "carla_scenarios"
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("dataset_root", help="folder that holds dataset_index.txt")
+    parser.add_argument("--scenarios-dir", default=str(default_scenarios_dir),
+                        help="CARLA town<id>_all_scenarios.json files (default: %(default)s)")
+    parser.add_argument("--workers", type=int, default=8)
+    args = parser.parse_args()
 
-    with Pool(8) as p:
-        r_list = list(tqdm(p.imap(process, lines), total=len(lines)))
+    dataset_root = args.dataset_root
+    output_dir = dataset_root
+    scenarios_dir = args.scenarios_dir
+    lines = open(os.path.join(dataset_root, "dataset_index.txt")).readlines()
 
-    f_write = open(os.path.join(dataset_root, 'navigation_instruction_list.txt'), 'w')
-    for results in r_list:
+    with Pool(args.workers) as p:
+        n_list = list(tqdm(p.imap(process_notice, lines), total=len(lines)))
+
+    f_write_notice = open(os.path.join(output_dir, "notice_instruction_list.json"), 'w')
+    for results in n_list:
         if not results:
             continue
         for result in results:
-            processed_json = json.dumps(result)
-            f_write.write(processed_json+'\n')
-    f_write.close()
+            route_key = result["route_path"]
+            if notice_data.get(route_key) is None:
+                notice_data[route_key] = []
+            notice_data[route_key].append(result)
+
+    processed_json = json.dumps(notice_data)
+    f_write_notice.write(processed_json)
+    f_write_notice.close()

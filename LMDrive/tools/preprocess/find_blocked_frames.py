@@ -45,12 +45,15 @@ def process(route_dir):
 
 
 if __name__ == "__main__":
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from route_paths import resolve_route_dir
+
     dataset_root = sys.argv[1]
     list_file = os.path.join(dataset_root, 'dataset_index.txt')
     routes = []
     for line in open(list_file, "r").readlines():
         path = line.split()[0].strip()
-        routes.append(os.path.join(dataset_root, path))
+        routes.append(resolve_route_dir(dataset_root, path))
 
     f = open(os.path.join(dataset_root, "blocked_stat.txt"), "w")
     with Pool(8) as p:

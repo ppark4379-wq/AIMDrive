@@ -1,10 +1,16 @@
 import os
 import math
-import carla
 import random
 from pathlib import Path
 random.seed(0)
 from abc import ABC, abstractmethod
+
+
+def _carla():
+    """CARLA is needed only by the map-based rules, so it is imported on use."""
+    import carla
+
+    return carla
 
 class Follow(ABC):
     @abstractmethod
@@ -452,7 +458,7 @@ class ChangeLaneFalse():
 
         for i in range(start, frame_range):
             frame = frames[i]
-            location = carla.Location(x=frame["x"], y=frame["y"], z=0.00)
+            location = _carla().Location(x=frame["x"], y=frame["y"], z=0.00)
             waypoint = map_file.get_waypoint(location)
             if self.direction == 'left':
                 if self.get_left_nums(waypoint) != 0:
@@ -508,7 +514,7 @@ class ChangeLaneFalse():
 
     def add_result_multi(self, results, index, frames, map_file):
         frame = frames[index]
-        location = carla.Location(x=frame["x"], y=frame["y"], z=0.00)
+        location = _carla().Location(x=frame["x"], y=frame["y"], z=0.00)
         waypoint = map_file.get_waypoint(location)
         command = frame["command"]
         if command in [1,2,3]:
@@ -560,7 +566,7 @@ class ChangeLaneFalse():
             map_file_name = "%02d.xodr" % (town_id)
             map_file_dir = os.path.join(curr_dir, "carla_maps", map_file_name)
             with open(map_file_dir, 'r') as fp:
-                map_file = carla.Map('Town%02d' % (town_id), fp.read())
+                map_file = _carla().Map('Town%02d' % (town_id), fp.read())
             index = 15
             while index < frame_num :
                 index = self.add_result_multi(results, index, frames, map_file)
