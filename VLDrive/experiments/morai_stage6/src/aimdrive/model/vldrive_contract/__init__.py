@@ -1,1 +1,0 @@
-"""VLDrive contract package."""

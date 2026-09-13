@@ -1,2 +1,0 @@
-# Preserve the supplied route bytes/hash, including its Windows line endings.
-data/competition/global_path.txt -text whitespace=cr-at-eol
