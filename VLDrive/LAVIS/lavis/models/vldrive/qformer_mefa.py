@@ -81,6 +81,20 @@ class QFormerMEFAConfig:
     # Legacy MORAI experiments opt into their original graph and mean loss.
     reconstruction_formulation: str = "eq8"
     reconstruction_reduction: str = "sum"
+    # Experimental MORAI stabilization. Detach only the reconstruction-loss
+    # weighting mask, never Eq. 8 or the retained-query straight-through mask.
+    # False preserves the original objective and checkpoint tensor shapes.
+    detach_reconstruction_loss_mask: bool = False
+    # Explicit fixed-budget ablation, not a claim of learned dynamic retention.
+    # Training remains Gumbel sampling; the old evaluation default is argmax.
+    inference_selection_mode: str = "argmax"
+    # Optional nonsaturating logit regularizer. It is not part of Eq. 12 and
+    # regularizes every token probability toward R, not only the frame mean.
+    retention_logit_weight: float = 0.0
+    # Unproven backward-only ablation, NOT a disclosed author implementation.
+    # Adds a selected-token task-gradient bypass after the complete connector;
+    # hard forward values and the Eq. 8/12/13 auxiliary graph stay unchanged.
+    selector_task_gradient_mode: str = "legacy"
     reconstruction_layers: int = 4
     reconstruction_heads: int = 8
     reconstruction_dropout: float = 0.0
@@ -136,6 +150,25 @@ class QFormerMEFAConfig:
             raise ValueError("reconstruction_formulation must be eq8 or legacy")
         if self.reconstruction_reduction not in ("sum", "mean"):
             raise ValueError("reconstruction_reduction must be sum or mean")
+        if not isinstance(self.detach_reconstruction_loss_mask, bool):
+            raise ValueError("detach_reconstruction_loss_mask must be a boolean")
+        if self.inference_selection_mode not in ("argmax", "topk"):
+            raise ValueError("inference_selection_mode must be argmax or topk")
+        if not 0.0 <= self.retention_logit_weight < float("inf"):
+            raise ValueError("retention_logit_weight must be finite and nonnegative")
+        if self.selector_task_gradient_mode not in ("legacy", "retained_output_st"):
+            raise ValueError("Unknown selector task-gradient mode")
+        if self.selector_task_gradient_mode == "retained_output_st" and (
+            self.reconstruction_formulation != "eq8"
+            or self.reconstruction_reduction != "sum"
+            or self.detach_reconstruction_loss_mask
+            or self.inference_selection_mode != "argmax"
+            or self.retention_logit_weight != 0.0
+            or self.target_retention != 0.3
+            or self.lambda_pruning != 10.0
+            or self.lambda_reconstruction != 1.0
+        ):
+            raise ValueError("retained_output_st probes the original paper objective only")
         if self.reconstruction_layers < 1:
             raise ValueError("reconstruction_layers must be >= 1")
         if self.reconstruction_heads < 1:
@@ -781,6 +814,31 @@ class QFormerMEFAConnector(nn.Module):
             packed_indices,
         )
 
+    @staticmethod
+    def _retained_output_task_surrogate(
+        language_tokens: torch.Tensor,
+        selection_mask: torch.Tensor,
+        selected_indices: torch.Tensor,
+        selected_valid: torch.Tensor,
+    ) -> torch.Tensor:
+        """Zero-forward selected-mask bypass for a controlled task-only probe.
+
+        For retained slot k corresponding to source j, add
+            (M_j - stopgrad(M_j)) * stopgrad(language_k).
+        The forward is exactly unchanged and the existing query path remains.
+        The additional derivative follows the mask path: CCDP and its upstream
+        input normalization (not the direct language-token feature path).
+        Dropped tokens receive no direct mask derivative through this surrogate. It is not a
+        differentiable relaxation of hard gathering or a claimed paper fix.
+
+        IMPORTANT: never feed this result into reconstruction. Eq. 8/12/13
+        must retain their original values AND original backward graph.
+        """
+        packed_mask = selection_mask.gather(1, selected_indices.clamp_min(0))
+        packed_mask = packed_mask.to(language_tokens.dtype)
+        bypass = (packed_mask - packed_mask.detach()) * selected_valid.to(packed_mask.dtype)
+        return language_tokens + bypass.unsqueeze(-1) * language_tokens.detach()
+
     def _run_qformer(
         self,
         query_embeddings: torch.Tensor,
@@ -1086,13 +1144,22 @@ class QFormerMEFAConnector(nn.Module):
             1.0
             - full_selection_mask_flat.to(reconstructed_for_loss.dtype)
         )
+        # Without this opt-in, d[(1-M)*error^2]/dM contains -error^2:
+        # the selector can lower its loss by exempting difficult tokens from
+        # reconstruction. Preserve reconstruction-to-selector learning through
+        # Eq. 8 and selected queries, but remove that direct exemption reward.
+        loss_weights = (
+            dropped.detach()
+            if self.config.detach_reconstruction_loss_mask
+            else dropped
+        )
         squared_error = (
             target - reconstructed_for_loss
         ).pow(2)
 
         numerator = (
             squared_error
-            * dropped.unsqueeze(-1)
+            * loss_weights.unsqueeze(-1)
         ).sum(dim=(1, 2))
 
         # Eq. 13 sums dropped-token/channel errors within each frame;
@@ -1100,7 +1167,7 @@ class QFormerMEFAConnector(nn.Module):
         if self.config.reconstruction_reduction == "sum":
             loss_per_frame = numerator
         else:
-            denominator = (dropped.sum(dim=1) * visual_dim).clamp_min(1.0)
+            denominator = (loss_weights.sum(dim=1) * visual_dim).clamp_min(1.0)
             loss_per_frame = numerator / denominator
         loss = loss_per_frame.mean()
 
@@ -1143,7 +1210,11 @@ class QFormerMEFAConnector(nn.Module):
         compute_reconstruction: Optional[bool] = None,
         capture_cross_attention: bool = False,
     ) -> Dict[str, object]:
-        # None delegates to CCDP: Gumbel in train, dynamic argmax in eval.
+        # Default remains Gumbel in train and argmax in eval. The explicit
+        # top-k evaluation ablation fixes the budget; it does not establish
+        # that Gumbel probabilities learned the desired retention ratio.
+        if selection_mode is None and not self.training:
+            selection_mode = self.config.inference_selection_mode
         # Reconstruction is a training-only default; ablations can opt out.
         if compute_reconstruction is None:
             compute_reconstruction = self.training and mode != MODE_LEARNABLE_CURRENT
@@ -1390,6 +1461,19 @@ class QFormerMEFAConnector(nn.Module):
             language_tokens_flat.shape[1]
         )
 
+        task_language_tokens_flat = language_tokens_flat
+        if (
+            self.training
+            and cfg.selector_task_gradient_mode == "retained_output_st"
+            and selector is not None
+        ):
+            task_language_tokens_flat = self._retained_output_task_surrogate(
+                language_tokens_flat,
+                mask_flat,
+                selected_indices_flat,
+                selected_valid_flat,
+            )
+
         result: Dict[str, object] = {
             "mode": mode,
             "normalized_features": normalized,
@@ -1439,7 +1523,7 @@ class QFormerMEFAConnector(nn.Module):
                 )
             ),
             "language_tokens": (
-                language_tokens_flat.reshape(
+                task_language_tokens_flat.reshape(
                     batch_size,
                     time_steps,
                     max_queries,
@@ -1450,6 +1534,9 @@ class QFormerMEFAConnector(nn.Module):
                 attention_maps
             ),
             "pruning_loss": pruning_loss,
+            "retention_logit_loss": (
+                selector["retention_logit_loss"] if selector is not None else zero_scalar
+            ),
             "reconstruction_computed": False,
             "reconstruction_supported": (
                 mode
@@ -1461,6 +1548,8 @@ class QFormerMEFAConnector(nn.Module):
             "cycle_loss": (
                 cfg.lambda_pruning
                 * pruning_loss
+                + cfg.retention_logit_weight
+                * (selector["retention_logit_loss"] if selector is not None else zero_scalar)
             ),
         }
 
@@ -1499,6 +1588,8 @@ class QFormerMEFAConnector(nn.Module):
             result["cycle_loss"] = (
                 cfg.lambda_pruning
                 * pruning_loss
+                + cfg.retention_logit_weight
+                * (selector["retention_logit_loss"] if selector is not None else zero_scalar)
                 + cfg.lambda_reconstruction
                 * reconstruction[
                     "reconstruction_loss"

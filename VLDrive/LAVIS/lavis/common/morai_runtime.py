@@ -9,9 +9,25 @@ import sys
 def sorted_pillar_reduce(values, groups, *, reduce):
     """Equivalent grouped reduction with deterministic CSR ordering, dim=0."""
     import torch
-    from torch_scatter import segment_csr
     if values.ndim != 2 or groups.ndim != 1 or values.shape[0] != groups.shape[0]:
         raise ValueError('PointPillar reduction expects values[P,C] and groups[P]')
+    if groups.dtype != torch.long:
+        raise ValueError('PointPillar groups must be torch.long')
+    try:
+        from torch_scatter import segment_csr
+    except (ImportError, OSError):
+        size = int(groups.max().item()) + 1 if groups.numel() else 0
+        if reduce == 'mean':
+            output = values.new_zeros((size,) + tuple(values.shape[1:]))
+            output.index_add_(0, groups, values)
+            counts = values.new_zeros(size)
+            counts.index_add_(0, groups, values.new_ones(groups.shape[0]))
+            return output / counts.clamp_min(1).view((size,) + (1,) * (values.ndim - 1))
+        if reduce == 'max':
+            output = values.new_full((size,) + tuple(values.shape[1:]), -float('inf'))
+            expanded = groups.view((-1,) + (1,) * (values.ndim - 1)).expand_as(values)
+            return output.scatter_reduce_(0, expanded, values, reduce='amax', include_self=True)
+        raise ValueError('Unsupported PointPillar reduction: ' + reduce)
     order = torch.argsort(groups, stable=True)
     counts = torch.bincount(groups)
     pointers = torch.cat((counts.new_zeros(1), counts.cumsum(0)))
@@ -23,6 +39,12 @@ def sorted_pillar_reduce(values, groups, *, reduce):
 def deterministic_pointpillar_reductions():
     """Scope the numeric adapter to the vendored PointPillar's two call sites."""
     pointpillar = __import__('importlib').import_module('timm.models.pointpillar')
+    try:
+        __import__('torch_scatter')
+    except (ImportError, OSError):
+        # Keep the differentiable native fallback installed by pointpillar.py.
+        yield
+        return
     original_mean, original_max = pointpillar.scatter_mean, pointpillar.scatter_max
     def mean(values, groups, dim=0):
         if dim != 0:
@@ -90,9 +112,14 @@ def bootstrap(repository):
     import transformers
     implementation = sorted(set(required + list((vision / 'timm').rglob('*.py'))
                                  + list((lavis / 'models/vldrive').glob('*.py'))))
-    return dict(repository=str(root), torch=torch.__version__, transformers=transformers.__version__,
-                packages={name: version(name) for name in ('numpy', 'torchvision', 'Pillow', 'pyproj',
-                                                           'safetensors', 'tokenizers', 'torch-scatter')},
+    def package_version(name):
+        try:
+            return version(name)
+        except Exception:
+            return 'not-installed-native-fallback' if name == 'torch-scatter' else 'not-installed'
+    return dict(repository=str(root), torch=str(torch.__version__), transformers=str(transformers.__version__),
+                packages={name: package_version(name) for name in ('numpy', 'torchvision', 'Pillow', 'pyproj',
+                                                                   'safetensors', 'tokenizers', 'torch-scatter')},
                 sources={str(p.relative_to(root)): sha256(p) for p in implementation})
 
 
@@ -110,8 +137,9 @@ def configure_runtime():
 
 
 def add_path_arguments(parser):
-    parser.add_argument('--dataset-root', type=Path, help='Existing Stage6E run directory (never modified)')
-    parser.add_argument('--asset-root', type=Path, help='Directory containing vision_encoder/ and TinyLlama-1.1B-3T/')
+    parser.add_argument('--dataset-root', type=Path, help='Existing MORAI dataset root (never modified)')
+    parser.add_argument('--asset-root', type=Path,
+                        help='Optional root containing vision_encoder/, TinyLlama-1.1B-3T/ and bert-base-uncased/')
     parser.add_argument('--path-root', type=Path, default=LAVIS_ROOT,
                         help='Base for relative paths in JSON; defaults to this LAVIS checkout')
 
@@ -123,11 +151,13 @@ def resolve_settings(settings, args):
     def resolve(path):
         return str((root / Path(path).expanduser()).resolve())
     value['dataset'] = str(args.dataset_root.expanduser().resolve()) if args.dataset_root else resolve(value['dataset'])
-    if value.get('instructions'):
-        value['instructions'] = resolve(value['instructions'])
+    for key in ('instructions', 'feature_cache'):
+        if value.get(key):
+            value[key] = resolve(value[key])
     model = value.get('model', value)
     for key, suffix in [('visual_checkpoint', 'vision_encoder/vision-encoder-r50.pth.tar'),
-                        ('language_checkpoint', 'TinyLlama-1.1B-3T')]:
-        if key in model:
+                        ('language_checkpoint', 'TinyLlama-1.1B-3T'),
+                        ('qformer_checkpoint', 'bert-base-uncased')]:
+        if key in model and model[key]:
             model[key] = str((args.asset_root.expanduser().resolve() / suffix)) if args.asset_root else resolve(model[key])
     return value

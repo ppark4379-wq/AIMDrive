@@ -1,0 +1,32 @@
+{
+  "schema_version": "morai-vision-split-v1",
+  "policy": "front_train_purge_rear_validation",
+  "train_fraction": 0.95,
+  "purge_frames": 25,
+  "future_offsets": [
+    5,
+    10,
+    15,
+    20,
+    25
+  ],
+  "routes": [
+    {
+      "path": "full_loop_basic_drive_2026_09_09_01_44_15",
+      "frame_count": 4240,
+      "last_anchor": 4214,
+      "train": {
+        "start": 0,
+        "stop": 3979
+      },
+      "purge": {
+        "start": 3980,
+        "stop": 4004
+      },
+      "validation": {
+        "start": 4005,
+        "stop": 4214
+      }
+    }
+  ]
+}

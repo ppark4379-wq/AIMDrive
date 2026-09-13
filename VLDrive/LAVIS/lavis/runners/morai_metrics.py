@@ -7,7 +7,18 @@ HORIZONS_S = (0.5, 1.0, 1.5, 2.0, 2.5)
 
 
 class TrajectoryMetrics:
-    def __init__(self):
+    def __init__(self, *, coordinate_convention="forward_left"):
+        # The expert cache preserves the LMDrive head's [left, -forward]
+        # convention; existing Stage6E labels use [forward, left]. Signs do not
+        # affect MAE, but swapping these axes changes its physical meaning.
+        axes = {
+            "forward_left": (0, 1),
+            "lmdrive_left_negative_forward": (1, 0),
+        }
+        if coordinate_convention not in axes:
+            raise ValueError("Unsupported trajectory coordinate convention: " + str(coordinate_convention))
+        self.coordinate_convention = coordinate_convention
+        self._longitudinal_axis, self._lateral_axis = axes[coordinate_convention]
         self._runs = {}
         self._anchors = set()
 
@@ -34,14 +45,14 @@ class TrajectoryMetrics:
             stat["distance"] += distances[i]
             stat["absolute_xy"] += delta[i].abs()
 
-    @staticmethod
-    def _report(stat):
+    def _report(self, stat):
         count = stat["count"]
         per_horizon = stat["distance"] / count
         xy = stat["absolute_xy"] / count
         return dict(samples=count, ade_m=per_horizon.mean().item(),
                     fde_m=per_horizon[-1].item(), horizon_l2_m=per_horizon.tolist(),
-                    longitudinal_mae_m=xy[:, 0].tolist(), lateral_mae_m=xy[:, 1].tolist())
+                    longitudinal_mae_m=xy[:, self._longitudinal_axis].tolist(),
+                    lateral_mae_m=xy[:, self._lateral_axis].tolist())
 
     def compute(self):
         if not self._runs:
@@ -52,6 +63,7 @@ class TrajectoryMetrics:
         per_run = {run: self._report(stat) for run, stat in sorted(self._runs.items())}
         result = self._report(total)
         result.update(horizons_s=list(HORIZONS_S), per_run=per_run,
+                      coordinate_convention=self.coordinate_convention,
                       run_macro_ade_m=sum(r["ade_m"] for r in per_run.values()) / len(per_run),
                       run_macro_fde_m=sum(r["fde_m"] for r in per_run.values()) / len(per_run),
                       aggregation="one last-frame anchor per window; sample-weighted global mean")

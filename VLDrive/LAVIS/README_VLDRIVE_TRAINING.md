@@ -1,6 +1,6 @@
 # VLDrive 논문 기준 MORAI 학습
 
-`train_vldrive.py`가 frozen LMDrive → 동적 CCDP/MEFA → 실제 TinyLlama/DDIA →
+`train_vldrive.py`가 frozen MORAI-trained LMDrive 구조 Vision Encoder token → 동적 CCDP/MEFA → 실제 TinyLlama/DDIA →
 frame별 waypoint L1 + cycle loss를 연결한다. 기존 `train_morai.py`의
 route/speed 조건 모델은 별도 MORAI 실험 경로로 보존한다.
 
@@ -31,52 +31,97 @@ route/speed 조건 모델은 별도 MORAI 실험 경로로 보존한다.
   정하고 원래 schedule은 유지하므로 정확한 재시작이 가능하다.
 
 Argmax 추론, 빈 선택에서 최고 확률 token 하나를 유지하는 처리, 원위치 replacement의
-gradient surrogate, LayerNorm, Q-Former의 256 width/2 layers/8 heads, TinyLlama checkpoint,
+gradient surrogate, LayerNorm, Q-Former의 정확한 수치, TinyLlama checkpoint,
 readout 및 MORAI 전처리는 독립 구현 선택이다. 저자 코드와 동일함을 주장하지 않는다.
 특히 Q-Former의 정확한 width/layer 수는 논문·부록에 명시되지 않았다.
 
 ## 데이터와 지시문
 
-기존 Stage6E artifact/teacher/split 검증을 재사용하며 원본 데이터는 수정하지 않는다.
-Cached mode는 저장된 frozen encoder feature를 사용한다. Raw mode는 같은 센서 adapter와
-고정 encoder를 실행한다. 설정의 `model.input_mode`로 선택한다.
+현재 competition 경로는 `MoraiDrive/dataset_local/competition_train`을 읽기 전용으로 사용한다.
+Vision Encoder 추론 결과 `[106,256]`은 `LAVIS/.runtime`에 별도 저장한다. 각 cache frame에는
+Vision Encoder 학습 때와 같은 **현재 ego speed, 현재 LiDAR 한 sweep, FLU→FRU 변환**을 강제한다.
 
-논문 경로에는 실제로 주어진 navigation instruction annotation이 필요하다.
-현재 annotation이 없는 MORAI 데이터에 임의 문장을 생성하거나 teacher route를 문장으로
-변환하지 않는다. 파일이 없으면 모델 로딩 전에 실패한다.
+Waypoint GT는 `global path`의 앞점이 아니라 동기화된 실제 ego 위치의 0.5/1.0/1.5/2.0/2.5초
+미래 좌표다. 따라서 빨간불에 멈춘 frame의 GT도 정지 차량 주변에 남는다. NPC/object가 없는
+시나리오도 정상이며 object label을 loader의 필수값이나 모델 입력으로 요구하지 않는다.
 
-Instruction JSONL의 각 행은 다음 네 필드만 가진다.
+Global path의 `target_point`(`x_command`, `y_command`)는 Vision Encoder 사전학습의
+waypoint prediction head에서 사용한다. `memfuser`의 `return_feature`는 그 head 이전에 반환하므로
+connector용 `[106,256]` token 추출에는 `target_point`가 사용되지 않는다. Cache metadata의
+`target_point_source`는 공통 dataset adapter가 읽는 값의 출처이며 token에 주입된다는 의미가 아니다.
+Connector 이후에는 같은 경로의 `gt_command`를 LLM navigation instruction으로 바꿔 사용한다.
+반대로 global-path 앞점은 waypoint GT로 절대 쓰지 않는다. `gt_command`와
+`route.json/nav_road_options`의 일치도 먼저 검증한다. 생성한 문장은 사람이 작성한 자유 문장
+annotation은 아니며, 현재 대회 경로의
+expert 정책을 모방하기 위한 결정적 command instruction이다. Instruction JSONL 형식은 다음과 같다.
 
 ```json
-{"run_id":"run_0003","text":"실제로 제공한 주행 지시문","source":"실제 지시 기록의 출처","available_receive_monotonic_ns":123456789000}
+{"schema_version":"morai-global-path-instructions-v1","route_id":"full_loop_...","start_frame":80,"stop_frame":124,"command":3,"text":"Please proceed straight at the next intersection.","source":"recorded_global_path","route_sha256":"..."}
 ```
 
-위 숫자/문장은 **형식 예시**이며 실제 annotation으로 사용하지 않는다.
-시간은 recorder의 receive monotonic domain이다. 첫 frame 이전에 사용 가능한 지시만 적용하고,
-window 안에 새 instruction event가 있으면 그 window를 제외한다. 제외 수를 provenance에 남긴다.
-이미 사용이 끝난 지시의 유효 종료 시점은 새 event로 기록해야 하며, 이 형식은 별도 종료 필드가 없다.
-GT는 학습 loss에만 들어가며 실제 예측 API와 분리된다.
+명령이 바뀌는 경계를 가로지르는 11-frame window는 제외한다. train/validation 사이에는 미래 GT가
+새지 않도록 25 frame을 버린다. 선언값과 실제 구간 간격을 모두 검사한다. 분리·제외 수와
+asset·cache·split·instruction·route·구현 해시를 기록한다. 원본 센서 전체를 해시했다는 의미는 아니다.
+Future ego GT는 학습 loss에만 들어가며 실제 예측 API는 visual token과 instruction만 받는다.
+
+현재 waypoint 좌표 규약은 LMDrive head와 같은 `[left, -forward]`다. 실제 차량 좌표
+`[forward, left]`로 사용할 때는 `[-y, x]`로 바꿔야 한다. 평가기의 종·횡방향 MAE도 이 규약을 따른다.
 
 ## 실행
 
-[MORAI 환경 안내](README_MORAI.md)의 Python 환경/asset 준비를 사용한다.
-아래 경로의 dataset, pretrained assets, 실제 instruction 파일이 준비돼 있어야 한다.
+현재 작업 공간에는 asset, instruction 및 `full_loop_tokens_best` cache 준비가 완료되어 있다.
+이 경우 아래 준비 명령은 건너뛰고 `train_vldrive.py`부터 실행한다.
+완성된 cache 경로에 생성 명령을 다시 실행하면 덮어쓰기를 막기 위해 오류가 발생한다.
+새 encoder checkpoint로 token을 다시 만들 때는 새 cache 경로를 지정한다.
+
+[MORAI 환경 안내](README_MORAI.md)의 Python 환경을 사용한다. 순서는 Vision Encoder 완료 → asset
+검증 → instruction 생성 → token cache → preflight → 본 학습이다.
 
 ```bash
-cd /home/dydwns/AIMDrive/VLDrive/LAVIS
-../experiments/morai_stage6/.runtime/stage6h_env/bin/python train_vldrive.py \
-  --config lavis/projects/vldrive/morai_paper.json \
-  --dataset-root ../experiments/morai_stage6/diagnostics/stage6f_calibration_20260906/dataset_axis_v2 \
-  --asset-root ../experiments/morai_stage6/assets/pretrained \
-  --instructions /path/to/actual_instruction_events.jsonl \
-  --output outputs/vldrive_small_run --updates 20
+cd /mnt/c/Users/autonav009/Desktop/AIMDrive/VLDrive/LAVIS
+PY=/opt/miniforge3/envs/vldrive-ve/bin/python
+DATA=/mnt/c/Users/autonav009/Desktop/AIMDrive/MoraiDrive/dataset_local/competition_train
+SPLIT=../vision_encoder/configs/morai_full_loop_80_20.json
+VISION=../vision_encoder/output_morai/full_loop_expert/model-best.pth.tar
+
+$PY tools/morai/prepare_assets.py --vision-checkpoint "$VISION" \
+  --vision-name morai-full-loop-v1 \
+  --language-source ../weights/TinyLlama-1.1B-intermediate-step-1431k-3T \
+  --download-qformer
+
+$PY tools/morai/build_global_path_instructions.py --dataset-root "$DATA" \
+  --output .runtime/morai_vldrive/full_loop_instructions.jsonl
+
+$PY tools/morai/cache_expert_vision_tokens.py --dataset-root "$DATA" \
+  --split-file "$SPLIT" --checkpoint "$VISION" \
+  --output .runtime/morai_vldrive/full_loop_tokens_best --batch-size 1 --workers 2
+
+$PY train_vldrive.py --config lavis/projects/vldrive/morai_paper.json \
+  --mode preflight --output outputs/morai_paper_preflight
+
+$PY train_vldrive.py --config lavis/projects/vldrive/morai_paper.json \
+  --output outputs/morai_paper_run01
 ```
+
+`morai_paper.json`은 논문/LMDrive 계열에 가까운 BERT-base 크기 Q-Former(768/12/12) 설정이다.
+논문이 정확한 Q-Former 수치를 공개하지 않았으므로 이것은 명시적인 상속 선택이다. 16GB에서 먼저
+배관을 확인할 때만 `morai_compact_16gb.json`(256/2/8, random init)을 사용하고 최종 논문 비교와
+혼동하지 않는다. pretrained LMDrive Vision Encoder는 사용하지 않는다. 현재 MORAI 데이터로 학습한
+encoder를 사용하며 RGB backbone은 ImageNet, LiDAR backbone과 fusion/queries/heads는 random으로 초기화했다.
 
 `--mode preflight`는 optimizer 갱신 없이 gradient, 과거/미래 인과성, history 의존성,
 teacher 입력 거부 및 실제 history 길이를 검사한다. 학습에도 preflight가 선행된다.
 `--checkpoint <기존 run>/checkpoint.pt`와 새 output으로 재개한다.
 `--mode evaluate --checkpoint ...`로 독립 validation run을 평가한다.
+평가에는 `model-best.pt`, `model-last.pt`, 전체 `checkpoint.pt`를 모두 사용할 수 있다.
+Preflight와 평가 전후 난수 상태를 보존해 이어 학습의 Gumbel/dropout 순서를 유지한다.
 학습에는 모든 frame label을 쓰고 window 평가에는 마지막 frame만 쓴다.
+
+각 epoch에 `model-last.pt`와 validation FDE가 가장 낮은 `model-best.pt`를 저장한다. 마지막
+`checkpoint.pt`만 optimizer master/state/RNG를 포함하는 재개용 파일이라 매우 클 수 있다.
+중간의 거대한 optimizer checkpoint는 기본적으로 만들지 않는다.
+`model-best.pt`는 해당 실행의 시작 가중치까지 포함한 최저 FDE다. 재개 시 새 output의 best는
+재개 시점 이후의 best이며, 이전 output의 best 파일과 보고서는 보존된다.
 
 체크포인트는 모델/optimizer master/state/RNG와 source·asset·dataset hash를 검증한다.
 수정 전 checkpoint는 source/config 계약이 달라 strict resume 대상이 아니다.

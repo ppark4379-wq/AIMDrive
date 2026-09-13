@@ -1,7 +1,7 @@
 import os
 
 from .dataset import IterableImageDataset, ImageDataset
-from .carla_dataset import CarlaMVDetDataset
+from .carla_dataset import CarlaMVDetDataset, MoraiExpertDataset
 
 
 def _search_split(root, split):
@@ -48,8 +48,12 @@ def create_dataset(
 
 
 def create_carla_dataset(
-    name, root, towns, weathers=None, waypoints_seq_len=5, batch_size=None, **kwargs
+    name, root, towns=None, weathers=None, waypoints_seq_len=5, batch_size=None, **kwargs
 ):
     if name == "carla":
         ds = CarlaMVDetDataset(root=root, towns=towns, weathers=weathers, head="det", **kwargs)
+    elif name == "morai":
+        ds = MoraiExpertDataset(root=root, **kwargs)
+    else:
+        raise ValueError("Unsupported driving dataset: {}".format(name))
     return ds

@@ -4,11 +4,38 @@ Credit: Tianwei Yin
 
 from os import stat
 import logging
-from torch_scatter import scatter_mean, scatter_max
 from torch import nn
 from .registry import register_model
 import numpy as np
 import torch
+
+try:
+    from torch_scatter import scatter_mean, scatter_max
+except (ImportError, OSError):
+    # The PyG wheel for PyTorch 2.8/CUDA 12.8 requires glibc >= 2.32, while
+    # the MORAI workstation runs Ubuntu 20.04 (glibc 2.31).  PyTorch 2.x has
+    # equivalent differentiable reductions, so keep the PointPillars math
+    # without forcing an operating-system upgrade.
+    def scatter_mean(src, index, dim=0):
+        if dim != 0:
+            raise NotImplementedError("PointPillars fallback supports dim=0 only")
+        dim_size = int(index.max().item()) + 1 if index.numel() else 0
+        output = src.new_zeros((dim_size,) + tuple(src.shape[1:]))
+        output.index_add_(0, index, src)
+        counts = src.new_zeros(dim_size)
+        counts.index_add_(0, index, src.new_ones(index.shape[0]))
+        counts = counts.clamp_min_(1)
+        counts = counts.view((dim_size,) + (1,) * (src.ndim - 1))
+        return output / counts
+
+    def scatter_max(src, index, dim=0):
+        if dim != 0:
+            raise NotImplementedError("PointPillars fallback supports dim=0 only")
+        dim_size = int(index.max().item()) + 1 if index.numel() else 0
+        output = src.new_full((dim_size,) + tuple(src.shape[1:]), -float("inf"))
+        expanded_index = index.view((-1,) + (1,) * (src.ndim - 1)).expand_as(src)
+        output.scatter_reduce_(0, expanded_index, src, reduce="amax", include_self=True)
+        return output, None
 
 _logger = logging.getLogger(__name__)
 

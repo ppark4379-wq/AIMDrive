@@ -36,8 +36,13 @@ def apply_rope(x: torch.Tensor, position_ids: torch.Tensor, rope_theta: float = 
         raise ValueError("RoPE head dimension must be even")
     frequency = 1.0 / (rope_theta ** (torch.arange(0, head_dim, 2, device=x.device).float() / head_dim))
     angles = position_ids.float().unsqueeze(-1) * frequency
-    angles = torch.cat((angles, angles), dim=-1).unsqueeze(1).to(x.dtype)
-    return x * angles.cos() + rotate_half(x) * angles.sin()
+    angles = torch.cat((angles, angles), dim=-1).unsqueeze(1)
+    # HF Transformers 4.31 LlamaRotaryEmbedding computes trigonometry in
+    # FP32, then casts the cosine/sine cache to the activation dtype. Casting
+    # angles first loses entire positions in BF16 at long multimodal lengths.
+    cosine = angles.cos().to(x.dtype)
+    sine = angles.sin().to(x.dtype)
+    return x * cosine + rotate_half(x) * sine
 
 
 def repeat_kv(hidden_states: torch.Tensor, repetitions: int) -> torch.Tensor:

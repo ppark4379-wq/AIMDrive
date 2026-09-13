@@ -50,8 +50,9 @@ class _VisualEncoderBase(nn.Module):
         batch,time=shape[:2]
         if any(tuple(v.shape[:2])!=(batch,time) for v in sensors.values()):
             raise ValueError("Sensor batch/time mismatch")
-        if not bool(sensors["velocity"].eq(0).all()):
-            raise ValueError("MORAI visual encoder uses explicit zero velocity, never Ego teacher")
+        velocity = sensors["velocity"]
+        if not bool(torch.isfinite(velocity).all()) or bool((velocity < 0).any()):
+            raise ValueError("MORAI visual encoder requires finite current ego speed")
         flat={k:v.reshape(batch*time,*v.shape[2:]) for k,v in sensors.items()}
         if self.policy=="frozen":
             with torch.no_grad():features=self.encoder(flat)

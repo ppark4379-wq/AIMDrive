@@ -1,0 +1,38 @@
+{
+  "seed": 607,
+  "device": "cuda",
+  "cpu_threads": 4,
+  "dataset_format": "morai_expert_cache_v1",
+  "dataset": "../../MoraiDrive/dataset_local/competition_train",
+  "feature_cache": ".runtime/morai_vldrive/full_loop_tokens_best",
+  "split_file": "../vision_encoder/configs/morai_full_loop_80_20.json",
+  "instructions": ".runtime/morai_vldrive/full_loop_instructions.jsonl",
+  "sequence_length": 11,
+  "train_window_stride": 5,
+  "val_window_stride": 5,
+  "epochs": 15,
+  "checkpoint_every": 0,
+  "optimizer": {
+    "lr": 0.00001,
+    "weight_decay": 0.06,
+    "state_device": "cpu"
+  },
+  "model": {
+    "input_mode": "cached",
+    "visual_checkpoint": "assets/pretrained/vision_encoder/morai-full-loop-v1.pth.tar",
+    "visual_sha256": "",
+    "language_checkpoint": "../weights/TinyLlama-1.1B-intermediate-step-1431k-3T",
+    "precision": "bf16",
+    "max_instruction_tokens": 128,
+    "memory_size": 10,
+    "target_retention": 0.3,
+    "qformer_hidden": 256,
+    "qformer_layers": 2,
+    "qformer_heads": 8,
+    "qformer_checkpoint": "",
+    "reconstruction_layers": 4,
+    "pruning_weight": 10.0,
+    "reconstruction_weight": 1.0,
+    "checkpoint_language": true
+  }
+}

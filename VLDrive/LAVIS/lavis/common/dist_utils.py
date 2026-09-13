@@ -11,7 +11,6 @@ import os
 
 import torch
 import torch.distributed as dist
-import timm.models.hub as timm_hub
 
 
 def setup_for_distributed(is_master):
@@ -119,6 +118,11 @@ def download_cached_file(url, check_hash=True, progress=False):
     Download a file from a URL and cache it locally. If the file already exists, it is not downloaded again.
     If distributed, only the main process downloads the file, and the other processes wait for the file to be downloaded.
     """
+
+    # MORAI uses the repository's vendored timm, installed by bootstrap().
+    # Keep this optional upstream download helper lazy so importing DDIA or a
+    # cached-token dataset does not accidentally require a different PyPI timm.
+    import timm.models.hub as timm_hub
 
     def get_cached_file_path():
         # a hack to sync the file path across processes
