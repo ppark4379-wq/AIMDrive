@@ -1,0 +1,2289 @@
+{
+  "started_wall": 1789109608.7739425,
+  "ended_wall": 1789109616.8004305,
+  "topics": {
+    "/clock": "rosgraph_msgs/Clock",
+    "/Ego_topic": "morai_msgs/EgoVehicleStatus",
+    "/camera_front": "sensor_msgs/CompressedImage",
+    "/camera_left": "sensor_msgs/CompressedImage",
+    "/camera_right": "sensor_msgs/CompressedImage",
+    "/camera_rear": "sensor_msgs/CompressedImage",
+    "/lidar3D": "sensor_msgs/PointCloud2"
+  },
+  "params": {
+    "/use_sim_time": null,
+    "/morai_drive/sync_runtime_active": true,
+    "/morai_drive/scenario_ready": null
+  },
+  "events": [],
+  "grpc_samples": [],
+  "summary": {
+    "/clock": {
+      "count": 60,
+      "retained": 60,
+      "first": {
+        "recv_wall_ns": 1789109608879326706,
+        "recv_mono_ns": 55607335661028,
+        "stamp_ns": 25840000000
+      },
+      "last": {
+        "recv_wall_ns": 1789109616792297463,
+        "recv_mono_ns": 55615248631084,
+        "stamp_ns": 27020000000
+      },
+      "zero_stamps": 0,
+      "stamp_step_ms": {
+        "min": 20.0,
+        "median": 20.0,
+        "max": 20.0
+      },
+      "receive_interval_ms": {
+        "min": 65.132823,
+        "median": 110.384185,
+        "max": 282.948098
+      },
+      "wall_minus_stamp_ms": {
+        "min": 1789109583039.3267,
+        "median": 1789109586534.977,
+        "max": 1789109589772.2974
+      }
+    },
+    "/Ego_topic": {
+      "count": 60,
+      "retained": 60,
+      "first": {
+        "recv_wall_ns": 1789109608824790867,
+        "recv_mono_ns": 55607281125158,
+        "seq": 1237,
+        "stamp_ns": 25820000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": null
+      },
+      "last": {
+        "recv_wall_ns": 1789109616712700812,
+        "recv_mono_ns": 55615169035217,
+        "seq": 1296,
+        "stamp_ns": 27000000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 27000000000
+      },
+      "zero_stamps": 0,
+      "stamp_step_ms": {
+        "min": 20.0,
+        "median": 20.0,
+        "max": 20.0
+      },
+      "receive_interval_ms": {
+        "min": 84.211511,
+        "median": 125.092863,
+        "max": 228.647146
+      },
+      "wall_minus_stamp_ms": {
+        "min": 1789109583004.7908,
+        "median": 1789109586472.6675,
+        "max": 1789109589712.701
+      }
+    },
+    "/camera_front": {
+      "count": 24,
+      "retained": 24,
+      "first": {
+        "recv_wall_ns": 1789109609142643257,
+        "recv_mono_ns": 55607598977464,
+        "seq": 50,
+        "stamp_ns": 1789109607701000000,
+        "frame_id": "Camera-1",
+        "serialized_bytes": 156289,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 25840000000
+      },
+      "last": {
+        "recv_wall_ns": 1789109616778550718,
+        "recv_mono_ns": 55615234884876,
+        "seq": 73,
+        "stamp_ns": 1789109615858000000,
+        "frame_id": "Camera-1",
+        "serialized_bytes": 147249,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 27000000000
+      },
+      "zero_stamps": 0,
+      "stamp_step_ms": {
+        "min": 232.0,
+        "median": 331.0,
+        "max": 467.0
+      },
+      "receive_interval_ms": {
+        "min": 182.370846,
+        "median": 342.377422,
+        "max": 481.399245
+      },
+      "wall_minus_stamp_ms": {
+        "min": 920.550718,
+        "median": 1256.967268,
+        "max": 1466.043962
+      }
+    },
+    "/camera_left": {
+      "count": 24,
+      "retained": 24,
+      "first": {
+        "recv_wall_ns": 1789109609143972675,
+        "recv_mono_ns": 55607600306467,
+        "seq": 1,
+        "stamp_ns": 1789109607705000000,
+        "frame_id": "Camera-2",
+        "serialized_bytes": 53290,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 25840000000
+      },
+      "last": {
+        "recv_wall_ns": 1789109616780631556,
+        "recv_mono_ns": 55615236965118,
+        "seq": 24,
+        "stamp_ns": 1789109615862000000,
+        "frame_id": "Camera-2",
+        "serialized_bytes": 52499,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 27000000000
+      },
+      "zero_stamps": 0,
+      "stamp_step_ms": {
+        "min": 232.0,
+        "median": 332.0,
+        "max": 467.0
+      },
+      "receive_interval_ms": {
+        "min": 159.95996,
+        "median": 341.099645,
+        "max": 467.093275
+      },
+      "wall_minus_stamp_ms": {
+        "min": 918.631556,
+        "median": 1251.2970875,
+        "max": 1444.606442
+      }
+    },
+    "/camera_right": {
+      "count": 24,
+      "retained": 24,
+      "first": {
+        "recv_wall_ns": 1789109609196524822,
+        "recv_mono_ns": 55607652858353,
+        "seq": 1,
+        "stamp_ns": 1789109607711000000,
+        "frame_id": "Camera-3",
+        "serialized_bytes": 62487,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 25860000000
+      },
+      "last": {
+        "recv_wall_ns": 1789109616786670204,
+        "recv_mono_ns": 55615243004094,
+        "seq": 24,
+        "stamp_ns": 1789109615868000000,
+        "frame_id": "Camera-3",
+        "serialized_bytes": 60411,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 27000000000
+      },
+      "zero_stamps": 0,
+      "stamp_step_ms": {
+        "min": 230.0,
+        "median": 331.0,
+        "max": 468.0
+      },
+      "receive_interval_ms": {
+        "min": 185.91435,
+        "median": 340.442487,
+        "max": 420.688836
+      },
+      "wall_minus_stamp_ms": {
+        "min": 918.670204,
+        "median": 1269.90011,
+        "max": 1485.524822
+      }
+    },
+    "/camera_rear": {
+      "count": 24,
+      "retained": 24,
+      "first": {
+        "recv_wall_ns": 1789109609197191249,
+        "recv_mono_ns": 55607653524737,
+        "seq": 1,
+        "stamp_ns": 1789109607719000000,
+        "frame_id": "Camera-4",
+        "serialized_bytes": 50656,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 25860000000
+      },
+      "last": {
+        "recv_wall_ns": 1789109616792574477,
+        "recv_mono_ns": 55615248907963,
+        "seq": 24,
+        "stamp_ns": 1789109615875000000,
+        "frame_id": "Camera-4",
+        "serialized_bytes": 49664,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 27020000000
+      },
+      "zero_stamps": 0,
+      "stamp_step_ms": {
+        "min": 231.0,
+        "median": 331.0,
+        "max": 468.0
+      },
+      "receive_interval_ms": {
+        "min": 188.138988,
+        "median": 356.708336,
+        "max": 440.646017
+      },
+      "wall_minus_stamp_ms": {
+        "min": 917.574477,
+        "median": 1255.9401345,
+        "max": 1478.191249
+      }
+    },
+    "/lidar3D": {
+      "count": 12,
+      "retained": 12,
+      "first": {
+        "recv_wall_ns": 1789109609178839158,
+        "recv_mono_ns": 55607635173124,
+        "seq": 15,
+        "stamp_ns": 25855000000,
+        "frame_id": "Lidar3D-5",
+        "serialized_bytes": 460915,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 25860000000
+      },
+      "last": {
+        "recv_wall_ns": 1789109616561695662,
+        "recv_mono_ns": 55615018029823,
+        "seq": 26,
+        "stamp_ns": 26966000000,
+        "frame_id": "Lidar3D-5",
+        "serialized_bytes": 460915,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26960000000
+      },
+      "zero_stamps": 0,
+      "stamp_step_ms": {
+        "min": 101.0,
+        "median": 101.0,
+        "max": 101.0
+      },
+      "receive_interval_ms": {
+        "min": 629.657525,
+        "median": 667.969188,
+        "max": 742.055586
+      },
+      "wall_minus_stamp_ms": {
+        "min": 1789109583323.839,
+        "median": 1789109586544.525,
+        "max": 1789109589595.6956
+      }
+    }
+  },
+  "errors": {},
+  "samples": {
+    "/clock": [
+      {
+        "recv_wall_ns": 1789109608879326706,
+        "recv_mono_ns": 55607335661028,
+        "stamp_ns": 25840000000
+      },
+      {
+        "recv_wall_ns": 1789109609156816253,
+        "recv_mono_ns": 55607613150373,
+        "stamp_ns": 25860000000
+      },
+      {
+        "recv_wall_ns": 1789109609240656945,
+        "recv_mono_ns": 55607696990663,
+        "stamp_ns": 25880000000
+      },
+      {
+        "recv_wall_ns": 1789109609347969793,
+        "recv_mono_ns": 55607804303940,
+        "stamp_ns": 25900000000
+      },
+      {
+        "recv_wall_ns": 1789109609474658383,
+        "recv_mono_ns": 55607930992241,
+        "stamp_ns": 25920000000
+      },
+      {
+        "recv_wall_ns": 1789109609585042655,
+        "recv_mono_ns": 55608041376426,
+        "stamp_ns": 25940000000
+      },
+      {
+        "recv_wall_ns": 1789109609844207200,
+        "recv_mono_ns": 55608300541046,
+        "stamp_ns": 25960000000
+      },
+      {
+        "recv_wall_ns": 1789109609925493334,
+        "recv_mono_ns": 55608381827342,
+        "stamp_ns": 25980000000
+      },
+      {
+        "recv_wall_ns": 1789109610034570372,
+        "recv_mono_ns": 55608490904348,
+        "stamp_ns": 26000000000
+      },
+      {
+        "recv_wall_ns": 1789109610151795633,
+        "recv_mono_ns": 55608608129879,
+        "stamp_ns": 26020000000
+      },
+      {
+        "recv_wall_ns": 1789109610256120914,
+        "recv_mono_ns": 55608712455021,
+        "stamp_ns": 26040000000
+      },
+      {
+        "recv_wall_ns": 1789109610531314062,
+        "recv_mono_ns": 55608987647943,
+        "stamp_ns": 26060000000
+      },
+      {
+        "recv_wall_ns": 1789109610596446904,
+        "recv_mono_ns": 55609052780766,
+        "stamp_ns": 26080000000
+      },
+      {
+        "recv_wall_ns": 1789109610709836500,
+        "recv_mono_ns": 55609166170705,
+        "stamp_ns": 26100000000
+      },
+      {
+        "recv_wall_ns": 1789109610842099466,
+        "recv_mono_ns": 55609298433518,
+        "stamp_ns": 26120000000
+      },
+      {
+        "recv_wall_ns": 1789109610959315673,
+        "recv_mono_ns": 55609415649670,
+        "stamp_ns": 26140000000
+      },
+      {
+        "recv_wall_ns": 1789109611242264083,
+        "recv_mono_ns": 55609698597768,
+        "stamp_ns": 26160000000
+      },
+      {
+        "recv_wall_ns": 1789109611329046585,
+        "recv_mono_ns": 55609785380681,
+        "stamp_ns": 26180000000
+      },
+      {
+        "recv_wall_ns": 1789109611425359282,
+        "recv_mono_ns": 55609881693434,
+        "stamp_ns": 26200000000
+      },
+      {
+        "recv_wall_ns": 1789109611562261262,
+        "recv_mono_ns": 55610018594910,
+        "stamp_ns": 26220000000
+      },
+      {
+        "recv_wall_ns": 1789109611669353091,
+        "recv_mono_ns": 55610125686966,
+        "stamp_ns": 26240000000
+      },
+      {
+        "recv_wall_ns": 1789109611928353739,
+        "recv_mono_ns": 55610384687761,
+        "stamp_ns": 26260000000
+      },
+      {
+        "recv_wall_ns": 1789109612014211031,
+        "recv_mono_ns": 55610470545045,
+        "stamp_ns": 26280000000
+      },
+      {
+        "recv_wall_ns": 1789109612120768989,
+        "recv_mono_ns": 55610577103203,
+        "stamp_ns": 26300000000
+      },
+      {
+        "recv_wall_ns": 1789109612246631894,
+        "recv_mono_ns": 55610702965963,
+        "stamp_ns": 26320000000
+      },
+      {
+        "recv_wall_ns": 1789109612355326237,
+        "recv_mono_ns": 55610811660510,
+        "stamp_ns": 26340000000
+      },
+      {
+        "recv_wall_ns": 1789109612576460481,
+        "recv_mono_ns": 55611032795024,
+        "stamp_ns": 26360000000
+      },
+      {
+        "recv_wall_ns": 1789109612675458313,
+        "recv_mono_ns": 55611131792265,
+        "stamp_ns": 26380000000
+      },
+      {
+        "recv_wall_ns": 1789109612775320246,
+        "recv_mono_ns": 55611231654201,
+        "stamp_ns": 26400000000
+      },
+      {
+        "recv_wall_ns": 1789109612907066520,
+        "recv_mono_ns": 55611363400580,
+        "stamp_ns": 26420000000
+      },
+      {
+        "recv_wall_ns": 1789109613022887375,
+        "recv_mono_ns": 55611479221447,
+        "stamp_ns": 26440000000
+      },
+      {
+        "recv_wall_ns": 1789109613263289402,
+        "recv_mono_ns": 55611719623303,
+        "stamp_ns": 26460000000
+      },
+      {
+        "recv_wall_ns": 1789109613358318070,
+        "recv_mono_ns": 55611814652065,
+        "stamp_ns": 26480000000
+      },
+      {
+        "recv_wall_ns": 1789109613469001448,
+        "recv_mono_ns": 55611925335796,
+        "stamp_ns": 26500000000
+      },
+      {
+        "recv_wall_ns": 1789109613599838650,
+        "recv_mono_ns": 55612056172229,
+        "stamp_ns": 26520000000
+      },
+      {
+        "recv_wall_ns": 1789109613715527977,
+        "recv_mono_ns": 55612171862214,
+        "stamp_ns": 26540000000
+      },
+      {
+        "recv_wall_ns": 1789109613952662841,
+        "recv_mono_ns": 55612408997119,
+        "stamp_ns": 26560000000
+      },
+      {
+        "recv_wall_ns": 1789109614047276370,
+        "recv_mono_ns": 55612503610216,
+        "stamp_ns": 26580000000
+      },
+      {
+        "recv_wall_ns": 1789109614136657669,
+        "recv_mono_ns": 55612592991711,
+        "stamp_ns": 26600000000
+      },
+      {
+        "recv_wall_ns": 1789109614261948160,
+        "recv_mono_ns": 55612718282110,
+        "stamp_ns": 26620000000
+      },
+      {
+        "recv_wall_ns": 1789109614365666135,
+        "recv_mono_ns": 55612822000682,
+        "stamp_ns": 26640000000
+      },
+      {
+        "recv_wall_ns": 1789109614582647715,
+        "recv_mono_ns": 55613038981682,
+        "stamp_ns": 26660000000
+      },
+      {
+        "recv_wall_ns": 1789109614680252956,
+        "recv_mono_ns": 55613136586856,
+        "stamp_ns": 26680000000
+      },
+      {
+        "recv_wall_ns": 1789109614788897325,
+        "recv_mono_ns": 55613245231238,
+        "stamp_ns": 26700000000
+      },
+      {
+        "recv_wall_ns": 1789109614926833410,
+        "recv_mono_ns": 55613383166858,
+        "stamp_ns": 26720000000
+      },
+      {
+        "recv_wall_ns": 1789109615022571830,
+        "recv_mono_ns": 55613478906020,
+        "stamp_ns": 26740000000
+      },
+      {
+        "recv_wall_ns": 1789109615234045547,
+        "recv_mono_ns": 55613690379606,
+        "stamp_ns": 26760000000
+      },
+      {
+        "recv_wall_ns": 1789109615325505781,
+        "recv_mono_ns": 55613781839605,
+        "stamp_ns": 26780000000
+      },
+      {
+        "recv_wall_ns": 1789109615410778678,
+        "recv_mono_ns": 55613867112721,
+        "stamp_ns": 26800000000
+      },
+      {
+        "recv_wall_ns": 1789109615532739131,
+        "recv_mono_ns": 55613989073125,
+        "stamp_ns": 26820000000
+      },
+      {
+        "recv_wall_ns": 1789109615635325913,
+        "recv_mono_ns": 55614091659975,
+        "stamp_ns": 26840000000
+      },
+      {
+        "recv_wall_ns": 1789109615866513260,
+        "recv_mono_ns": 55614322847265,
+        "stamp_ns": 26860000000
+      },
+      {
+        "recv_wall_ns": 1789109615955753410,
+        "recv_mono_ns": 55614412087344,
+        "stamp_ns": 26880000000
+      },
+      {
+        "recv_wall_ns": 1789109616037794840,
+        "recv_mono_ns": 55614494128944,
+        "stamp_ns": 26900000000
+      },
+      {
+        "recv_wall_ns": 1789109616156386963,
+        "recv_mono_ns": 55614612720953,
+        "stamp_ns": 26920000000
+      },
+      {
+        "recv_wall_ns": 1789109616254747221,
+        "recv_mono_ns": 55614711081657,
+        "stamp_ns": 26940000000
+      },
+      {
+        "recv_wall_ns": 1789109616461030546,
+        "recv_mono_ns": 55614917364682,
+        "stamp_ns": 26960000000
+      },
+      {
+        "recv_wall_ns": 1789109616565758384,
+        "recv_mono_ns": 55615022092202,
+        "stamp_ns": 26980000000
+      },
+      {
+        "recv_wall_ns": 1789109616670910251,
+        "recv_mono_ns": 55615127244292,
+        "stamp_ns": 27000000000
+      },
+      {
+        "recv_wall_ns": 1789109616792297463,
+        "recv_mono_ns": 55615248631084,
+        "stamp_ns": 27020000000
+      }
+    ],
+    "/Ego_topic": [
+      {
+        "recv_wall_ns": 1789109608824790867,
+        "recv_mono_ns": 55607281125158,
+        "seq": 1237,
+        "stamp_ns": 25820000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": null
+      },
+      {
+        "recv_wall_ns": 1789109608928901383,
+        "recv_mono_ns": 55607385235655,
+        "seq": 1238,
+        "stamp_ns": 25840000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 25840000000
+      },
+      {
+        "recv_wall_ns": 1789109609157548935,
+        "recv_mono_ns": 55607613882801,
+        "seq": 1239,
+        "stamp_ns": 25860000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 25860000000
+      },
+      {
+        "recv_wall_ns": 1789109609284871387,
+        "recv_mono_ns": 55607741205394,
+        "seq": 1240,
+        "stamp_ns": 25880000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 25880000000
+      },
+      {
+        "recv_wall_ns": 1789109609388690800,
+        "recv_mono_ns": 55607845024846,
+        "seq": 1241,
+        "stamp_ns": 25900000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 25900000000
+      },
+      {
+        "recv_wall_ns": 1789109609517090791,
+        "recv_mono_ns": 55607973424843,
+        "seq": 1242,
+        "stamp_ns": 25920000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 25920000000
+      },
+      {
+        "recv_wall_ns": 1789109609636658763,
+        "recv_mono_ns": 55608092992656,
+        "seq": 1243,
+        "stamp_ns": 25940000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 25940000000
+      },
+      {
+        "recv_wall_ns": 1789109609845491331,
+        "recv_mono_ns": 55608301824986,
+        "seq": 1244,
+        "stamp_ns": 25960000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 25960000000
+      },
+      {
+        "recv_wall_ns": 1789109609969091832,
+        "recv_mono_ns": 55608425425935,
+        "seq": 1245,
+        "stamp_ns": 25980000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 25980000000
+      },
+      {
+        "recv_wall_ns": 1789109610076831355,
+        "recv_mono_ns": 55608533165427,
+        "seq": 1246,
+        "stamp_ns": 26000000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26000000000
+      },
+      {
+        "recv_wall_ns": 1789109610192838352,
+        "recv_mono_ns": 55608649172670,
+        "seq": 1247,
+        "stamp_ns": 26020000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26020000000
+      },
+      {
+        "recv_wall_ns": 1789109610304790696,
+        "recv_mono_ns": 55608761124728,
+        "seq": 1248,
+        "stamp_ns": 26040000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26040000000
+      },
+      {
+        "recv_wall_ns": 1789109610531862577,
+        "recv_mono_ns": 55608988196343,
+        "seq": 1249,
+        "stamp_ns": 26060000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26060000000
+      },
+      {
+        "recv_wall_ns": 1789109610640918135,
+        "recv_mono_ns": 55609097252012,
+        "seq": 1250,
+        "stamp_ns": 26080000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26080000000
+      },
+      {
+        "recv_wall_ns": 1789109610752915520,
+        "recv_mono_ns": 55609209249279,
+        "seq": 1251,
+        "stamp_ns": 26100000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26100000000
+      },
+      {
+        "recv_wall_ns": 1789109610884752443,
+        "recv_mono_ns": 55609341086204,
+        "seq": 1252,
+        "stamp_ns": 26120000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26120000000
+      },
+      {
+        "recv_wall_ns": 1789109611025011119,
+        "recv_mono_ns": 55609481345227,
+        "seq": 1253,
+        "stamp_ns": 26140000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26140000000
+      },
+      {
+        "recv_wall_ns": 1789109611243195855,
+        "recv_mono_ns": 55609699529318,
+        "seq": 1254,
+        "stamp_ns": 26160000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26160000000
+      },
+      {
+        "recv_wall_ns": 1789109611372771674,
+        "recv_mono_ns": 55609829105778,
+        "seq": 1255,
+        "stamp_ns": 26180000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26180000000
+      },
+      {
+        "recv_wall_ns": 1789109611468817152,
+        "recv_mono_ns": 55609925151275,
+        "seq": 1256,
+        "stamp_ns": 26200000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26200000000
+      },
+      {
+        "recv_wall_ns": 1789109611604746249,
+        "recv_mono_ns": 55610061079850,
+        "seq": 1257,
+        "stamp_ns": 26220000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26220000000
+      },
+      {
+        "recv_wall_ns": 1789109611720958382,
+        "recv_mono_ns": 55610177292686,
+        "seq": 1258,
+        "stamp_ns": 26240000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26240000000
+      },
+      {
+        "recv_wall_ns": 1789109611929100374,
+        "recv_mono_ns": 55610385434337,
+        "seq": 1259,
+        "stamp_ns": 26260000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26260000000
+      },
+      {
+        "recv_wall_ns": 1789109612056778915,
+        "recv_mono_ns": 55610513113246,
+        "seq": 1260,
+        "stamp_ns": 26280000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26280000000
+      },
+      {
+        "recv_wall_ns": 1789109612164685055,
+        "recv_mono_ns": 55610621019185,
+        "seq": 1261,
+        "stamp_ns": 26300000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26300000000
+      },
+      {
+        "recv_wall_ns": 1789109612289778482,
+        "recv_mono_ns": 55610746112048,
+        "seq": 1262,
+        "stamp_ns": 26320000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26320000000
+      },
+      {
+        "recv_wall_ns": 1789109612404875435,
+        "recv_mono_ns": 55610861209299,
+        "seq": 1263,
+        "stamp_ns": 26340000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26340000000
+      },
+      {
+        "recv_wall_ns": 1789109612577974783,
+        "recv_mono_ns": 55611034308338,
+        "seq": 1264,
+        "stamp_ns": 26360000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26360000000
+      },
+      {
+        "recv_wall_ns": 1789109612716689972,
+        "recv_mono_ns": 55611173024047,
+        "seq": 1265,
+        "stamp_ns": 26380000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26380000000
+      },
+      {
+        "recv_wall_ns": 1789109612816757188,
+        "recv_mono_ns": 55611273091406,
+        "seq": 1266,
+        "stamp_ns": 26400000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26400000000
+      },
+      {
+        "recv_wall_ns": 1789109612948577615,
+        "recv_mono_ns": 55611404911389,
+        "seq": 1267,
+        "stamp_ns": 26420000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26420000000
+      },
+      {
+        "recv_wall_ns": 1789109613072772258,
+        "recv_mono_ns": 55611529106325,
+        "seq": 1268,
+        "stamp_ns": 26440000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26440000000
+      },
+      {
+        "recv_wall_ns": 1789109613263921699,
+        "recv_mono_ns": 55611720255574,
+        "seq": 1269,
+        "stamp_ns": 26460000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26460000000
+      },
+      {
+        "recv_wall_ns": 1789109613400825906,
+        "recv_mono_ns": 55611857159949,
+        "seq": 1270,
+        "stamp_ns": 26480000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26480000000
+      },
+      {
+        "recv_wall_ns": 1789109613512761159,
+        "recv_mono_ns": 55611969095285,
+        "seq": 1271,
+        "stamp_ns": 26500000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26500000000
+      },
+      {
+        "recv_wall_ns": 1789109613640531885,
+        "recv_mono_ns": 55612096865990,
+        "seq": 1272,
+        "stamp_ns": 26520000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26520000000
+      },
+      {
+        "recv_wall_ns": 1789109613764724519,
+        "recv_mono_ns": 55612221058501,
+        "seq": 1273,
+        "stamp_ns": 26540000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26540000000
+      },
+      {
+        "recv_wall_ns": 1789109613953147832,
+        "recv_mono_ns": 55612409481494,
+        "seq": 1274,
+        "stamp_ns": 26560000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26560000000
+      },
+      {
+        "recv_wall_ns": 1789109614088699752,
+        "recv_mono_ns": 55612545033913,
+        "seq": 1275,
+        "stamp_ns": 26580000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26580000000
+      },
+      {
+        "recv_wall_ns": 1789109614181004632,
+        "recv_mono_ns": 55612637339020,
+        "seq": 1276,
+        "stamp_ns": 26600000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26600000000
+      },
+      {
+        "recv_wall_ns": 1789109614304521681,
+        "recv_mono_ns": 55612760855122,
+        "seq": 1277,
+        "stamp_ns": 26620000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26620000000
+      },
+      {
+        "recv_wall_ns": 1789109614417062887,
+        "recv_mono_ns": 55612873396819,
+        "seq": 1278,
+        "stamp_ns": 26640000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26640000000
+      },
+      {
+        "recv_wall_ns": 1789109614583096922,
+        "recv_mono_ns": 55613039430330,
+        "seq": 1279,
+        "stamp_ns": 26660000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26660000000
+      },
+      {
+        "recv_wall_ns": 1789109614724623820,
+        "recv_mono_ns": 55613180957802,
+        "seq": 1280,
+        "stamp_ns": 26680000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26680000000
+      },
+      {
+        "recv_wall_ns": 1789109614832651072,
+        "recv_mono_ns": 55613288985039,
+        "seq": 1281,
+        "stamp_ns": 26700000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26700000000
+      },
+      {
+        "recv_wall_ns": 1789109614968846438,
+        "recv_mono_ns": 55613425180740,
+        "seq": 1282,
+        "stamp_ns": 26720000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26720000000
+      },
+      {
+        "recv_wall_ns": 1789109615072754932,
+        "recv_mono_ns": 55613529089046,
+        "seq": 1283,
+        "stamp_ns": 26740000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26740000000
+      },
+      {
+        "recv_wall_ns": 1789109615234488878,
+        "recv_mono_ns": 55613690822426,
+        "seq": 1284,
+        "stamp_ns": 26760000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26760000000
+      },
+      {
+        "recv_wall_ns": 1789109615368579844,
+        "recv_mono_ns": 55613824913382,
+        "seq": 1285,
+        "stamp_ns": 26780000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26780000000
+      },
+      {
+        "recv_wall_ns": 1789109615452790805,
+        "recv_mono_ns": 55613909124893,
+        "seq": 1286,
+        "stamp_ns": 26800000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26800000000
+      },
+      {
+        "recv_wall_ns": 1789109615576846533,
+        "recv_mono_ns": 55614033180418,
+        "seq": 1287,
+        "stamp_ns": 26820000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26820000000
+      },
+      {
+        "recv_wall_ns": 1789109615684934852,
+        "recv_mono_ns": 55614141268815,
+        "seq": 1288,
+        "stamp_ns": 26840000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26840000000
+      },
+      {
+        "recv_wall_ns": 1789109615866958547,
+        "recv_mono_ns": 55614323292095,
+        "seq": 1289,
+        "stamp_ns": 26860000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26860000000
+      },
+      {
+        "recv_wall_ns": 1789109615996446527,
+        "recv_mono_ns": 55614452780075,
+        "seq": 1290,
+        "stamp_ns": 26880000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26880000000
+      },
+      {
+        "recv_wall_ns": 1789109616080856192,
+        "recv_mono_ns": 55614537190544,
+        "seq": 1291,
+        "stamp_ns": 26900000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26900000000
+      },
+      {
+        "recv_wall_ns": 1789109616200483178,
+        "recv_mono_ns": 55614656816857,
+        "seq": 1292,
+        "stamp_ns": 26920000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26920000000
+      },
+      {
+        "recv_wall_ns": 1789109616305219431,
+        "recv_mono_ns": 55614761553165,
+        "seq": 1293,
+        "stamp_ns": 26940000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26940000000
+      },
+      {
+        "recv_wall_ns": 1789109616461704207,
+        "recv_mono_ns": 55614918037844,
+        "seq": 1294,
+        "stamp_ns": 26960000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26960000000
+      },
+      {
+        "recv_wall_ns": 1789109616608629509,
+        "recv_mono_ns": 55615064963258,
+        "seq": 1295,
+        "stamp_ns": 26980000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 26980000000
+      },
+      {
+        "recv_wall_ns": 1789109616712700812,
+        "recv_mono_ns": 55615169035217,
+        "seq": 1296,
+        "stamp_ns": 27000000000,
+        "frame_id": "MoraiInfo",
+        "serialized_bytes": 213,
+        "callerid": "/morai_sync_runtime",
+        "latest_clock_ns": 27000000000
+      }
+    ],
+    "/camera_front": [
+      {
+        "recv_wall_ns": 1789109609142643257,
+        "recv_mono_ns": 55607598977464,
+        "seq": 50,
+        "stamp_ns": 1789109607701000000,
+        "frame_id": "Camera-1",
+        "serialized_bytes": 156289,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 25840000000
+      },
+      {
+        "recv_wall_ns": 1789109609497043962,
+        "recv_mono_ns": 55607953378013,
+        "seq": 51,
+        "stamp_ns": 1789109608031000000,
+        "frame_id": "Camera-1",
+        "serialized_bytes": 157590,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 25920000000
+      },
+      {
+        "recv_wall_ns": 1789109609830358103,
+        "recv_mono_ns": 55608286691934,
+        "seq": 52,
+        "stamp_ns": 1789109608423000000,
+        "frame_id": "Camera-1",
+        "serialized_bytes": 158723,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 25940000000
+      },
+      {
+        "recv_wall_ns": 1789109610132493410,
+        "recv_mono_ns": 55608588827938,
+        "seq": 53,
+        "stamp_ns": 1789109608739000000,
+        "frame_id": "Camera-1",
+        "serialized_bytes": 158228,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26000000000
+      },
+      {
+        "recv_wall_ns": 1789109610519220593,
+        "recv_mono_ns": 55608975554705,
+        "seq": 54,
+        "stamp_ns": 1789109609142000000,
+        "frame_id": "Camera-1",
+        "serialized_bytes": 159497,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26040000000
+      },
+      {
+        "recv_wall_ns": 1789109610861598561,
+        "recv_mono_ns": 55609317932127,
+        "seq": 55,
+        "stamp_ns": 1789109609452000000,
+        "frame_id": "Camera-1",
+        "serialized_bytes": 160146,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26120000000
+      },
+      {
+        "recv_wall_ns": 1789109611229491370,
+        "recv_mono_ns": 55609685825603,
+        "seq": 56,
+        "stamp_ns": 1789109609887000000,
+        "frame_id": "Camera-1",
+        "serialized_bytes": 161620,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26140000000
+      },
+      {
+        "recv_wall_ns": 1789109611544507884,
+        "recv_mono_ns": 55610000841842,
+        "seq": 57,
+        "stamp_ns": 1789109610218000000,
+        "frame_id": "Camera-1",
+        "serialized_bytes": 161247,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26200000000
+      },
+      {
+        "recv_wall_ns": 1789109611956859698,
+        "recv_mono_ns": 55610413193793,
+        "seq": 58,
+        "stamp_ns": 1789109610606000000,
+        "frame_id": "Camera-1",
+        "serialized_bytes": 159563,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26260000000
+      },
+      {
+        "recv_wall_ns": 1789109612231476383,
+        "recv_mono_ns": 55610687810499,
+        "seq": 59,
+        "stamp_ns": 1789109610937000000,
+        "frame_id": "Camera-1",
+        "serialized_bytes": 159280,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26300000000
+      },
+      {
+        "recv_wall_ns": 1789109612655807167,
+        "recv_mono_ns": 55611112141269,
+        "seq": 60,
+        "stamp_ns": 1789109611381000000,
+        "frame_id": "Camera-1",
+        "serialized_bytes": 157426,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26360000000
+      },
+      {
+        "recv_wall_ns": 1789109612890961279,
+        "recv_mono_ns": 55611347295192,
+        "seq": 61,
+        "stamp_ns": 1789109611627000000,
+        "frame_id": "Camera-1",
+        "serialized_bytes": 156437,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26400000000
+      },
+      {
+        "recv_wall_ns": 1789109613337949225,
+        "recv_mono_ns": 55611794283232,
+        "seq": 62,
+        "stamp_ns": 1789109612094000000,
+        "frame_id": "Camera-1",
+        "serialized_bytes": 155502,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26460000000
+      },
+      {
+        "recv_wall_ns": 1789109613583574050,
+        "recv_mono_ns": 55612039908214,
+        "seq": 63,
+        "stamp_ns": 1789109612353000000,
+        "frame_id": "Camera-1",
+        "serialized_bytes": 155132,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26500000000
+      },
+      {
+        "recv_wall_ns": 1789109614064973257,
+        "recv_mono_ns": 55612521307459,
+        "seq": 64,
+        "stamp_ns": 1789109612815000000,
+        "frame_id": "Camera-1",
+        "serialized_bytes": 154407,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26580000000
+      },
+      {
+        "recv_wall_ns": 1789109614247344223,
+        "recv_mono_ns": 55612703678305,
+        "seq": 65,
+        "stamp_ns": 1789109613049000000,
+        "frame_id": "Camera-1",
+        "serialized_bytes": 155431,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26600000000
+      },
+      {
+        "recv_wall_ns": 1789109614661523404,
+        "recv_mono_ns": 55613117857565,
+        "seq": 66,
+        "stamp_ns": 1789109613493000000,
+        "frame_id": "Camera-1",
+        "serialized_bytes": 152952,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26660000000
+      },
+      {
+        "recv_wall_ns": 1789109614912935087,
+        "recv_mono_ns": 55613369269219,
+        "seq": 67,
+        "stamp_ns": 1789109613785000000,
+        "frame_id": "Camera-1",
+        "serialized_bytes": 150882,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26700000000
+      },
+      {
+        "recv_wall_ns": 1789109615303979615,
+        "recv_mono_ns": 55613760313700,
+        "seq": 68,
+        "stamp_ns": 1789109614218000000,
+        "frame_id": "Camera-1",
+        "serialized_bytes": 150105,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26760000000
+      },
+      {
+        "recv_wall_ns": 1789109615556914598,
+        "recv_mono_ns": 55614013248772,
+        "seq": 69,
+        "stamp_ns": 1789109614454000000,
+        "frame_id": "Camera-1",
+        "serialized_bytes": 149209,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26820000000
+      },
+      {
+        "recv_wall_ns": 1789109615937579463,
+        "recv_mono_ns": 55614393913510,
+        "seq": 70,
+        "stamp_ns": 1789109614920000000,
+        "frame_id": "Camera-1",
+        "serialized_bytes": 149731,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26860000000
+      },
+      {
+        "recv_wall_ns": 1789109616143191455,
+        "recv_mono_ns": 55614599525624,
+        "seq": 71,
+        "stamp_ns": 1789109615152000000,
+        "frame_id": "Camera-1",
+        "serialized_bytes": 147253,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26900000000
+      },
+      {
+        "recv_wall_ns": 1789109616550736202,
+        "recv_mono_ns": 55615007070098,
+        "seq": 72,
+        "stamp_ns": 1789109615604000000,
+        "frame_id": "Camera-1",
+        "serialized_bytes": 146754,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26960000000
+      },
+      {
+        "recv_wall_ns": 1789109616778550718,
+        "recv_mono_ns": 55615234884876,
+        "seq": 73,
+        "stamp_ns": 1789109615858000000,
+        "frame_id": "Camera-1",
+        "serialized_bytes": 147249,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 27000000000
+      }
+    ],
+    "/camera_left": [
+      {
+        "recv_wall_ns": 1789109609143972675,
+        "recv_mono_ns": 55607600306467,
+        "seq": 1,
+        "stamp_ns": 1789109607705000000,
+        "frame_id": "Camera-2",
+        "serialized_bytes": 53290,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 25840000000
+      },
+      {
+        "recv_wall_ns": 1789109609459416458,
+        "recv_mono_ns": 55607915750825,
+        "seq": 2,
+        "stamp_ns": 1789109608035000000,
+        "frame_id": "Camera-2",
+        "serialized_bytes": 53244,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 25900000000
+      },
+      {
+        "recv_wall_ns": 1789109609872606442,
+        "recv_mono_ns": 55608328940614,
+        "seq": 3,
+        "stamp_ns": 1789109608428000000,
+        "frame_id": "Camera-2",
+        "serialized_bytes": 53379,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 25960000000
+      },
+      {
+        "recv_wall_ns": 1789109610134263270,
+        "recv_mono_ns": 55608590596749,
+        "seq": 4,
+        "stamp_ns": 1789109608743000000,
+        "frame_id": "Camera-2",
+        "serialized_bytes": 53365,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26000000000
+      },
+      {
+        "recv_wall_ns": 1789109610520380940,
+        "recv_mono_ns": 55608976714805,
+        "seq": 5,
+        "stamp_ns": 1789109609146000000,
+        "frame_id": "Camera-2",
+        "serialized_bytes": 53250,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26040000000
+      },
+      {
+        "recv_wall_ns": 1789109610861480427,
+        "recv_mono_ns": 55609317814450,
+        "seq": 6,
+        "stamp_ns": 1789109609456000000,
+        "frame_id": "Camera-2",
+        "serialized_bytes": 53128,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26120000000
+      },
+      {
+        "recv_wall_ns": 1789109611231365141,
+        "recv_mono_ns": 55609687698944,
+        "seq": 7,
+        "stamp_ns": 1789109609891000000,
+        "frame_id": "Camera-2",
+        "serialized_bytes": 53296,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26140000000
+      },
+      {
+        "recv_wall_ns": 1789109611588467655,
+        "recv_mono_ns": 55610044801419,
+        "seq": 8,
+        "stamp_ns": 1789109610223000000,
+        "frame_id": "Camera-2",
+        "serialized_bytes": 53609,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26220000000
+      },
+      {
+        "recv_wall_ns": 1789109611916999705,
+        "recv_mono_ns": 55610373333670,
+        "seq": 9,
+        "stamp_ns": 1789109610610000000,
+        "frame_id": "Camera-2",
+        "serialized_bytes": 53840,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26240000000
+      },
+      {
+        "recv_wall_ns": 1789109612233337803,
+        "recv_mono_ns": 55610689671718,
+        "seq": 10,
+        "stamp_ns": 1789109610941000000,
+        "frame_id": "Camera-2",
+        "serialized_bytes": 54175,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26300000000
+      },
+      {
+        "recv_wall_ns": 1789109612656854672,
+        "recv_mono_ns": 55611113188310,
+        "seq": 11,
+        "stamp_ns": 1789109611385000000,
+        "frame_id": "Camera-2",
+        "serialized_bytes": 53637,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26360000000
+      },
+      {
+        "recv_wall_ns": 1789109612892978971,
+        "recv_mono_ns": 55611349312521,
+        "seq": 12,
+        "stamp_ns": 1789109611631000000,
+        "frame_id": "Camera-2",
+        "serialized_bytes": 53153,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26400000000
+      },
+      {
+        "recv_wall_ns": 1789109613338615204,
+        "recv_mono_ns": 55611794948671,
+        "seq": 13,
+        "stamp_ns": 1789109612098000000,
+        "frame_id": "Camera-2",
+        "serialized_bytes": 53216,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26460000000
+      },
+      {
+        "recv_wall_ns": 1789109613586837096,
+        "recv_mono_ns": 55612043171504,
+        "seq": 14,
+        "stamp_ns": 1789109612358000000,
+        "frame_id": "Camera-2",
+        "serialized_bytes": 53234,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26500000000
+      },
+      {
+        "recv_wall_ns": 1789109614027192152,
+        "recv_mono_ns": 55612483526275,
+        "seq": 15,
+        "stamp_ns": 1789109612820000000,
+        "frame_id": "Camera-2",
+        "serialized_bytes": 53662,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26560000000
+      },
+      {
+        "recv_wall_ns": 1789109614292669042,
+        "recv_mono_ns": 55612749002885,
+        "seq": 16,
+        "stamp_ns": 1789109613053000000,
+        "frame_id": "Camera-2",
+        "serialized_bytes": 53876,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26620000000
+      },
+      {
+        "recv_wall_ns": 1789109614662089170,
+        "recv_mono_ns": 55613118423030,
+        "seq": 17,
+        "stamp_ns": 1789109613499000000,
+        "frame_id": "Camera-2",
+        "serialized_bytes": 54540,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26660000000
+      },
+      {
+        "recv_wall_ns": 1789109614915625523,
+        "recv_mono_ns": 55613371959653,
+        "seq": 18,
+        "stamp_ns": 1789109613790000000,
+        "frame_id": "Camera-2",
+        "serialized_bytes": 54862,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26700000000
+      },
+      {
+        "recv_wall_ns": 1789109615305180399,
+        "recv_mono_ns": 55613761514009,
+        "seq": 19,
+        "stamp_ns": 1789109614223000000,
+        "frame_id": "Camera-2",
+        "serialized_bytes": 55314,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26760000000
+      },
+      {
+        "recv_wall_ns": 1789109615517896070,
+        "recv_mono_ns": 55613974230328,
+        "seq": 20,
+        "stamp_ns": 1789109614459000000,
+        "frame_id": "Camera-2",
+        "serialized_bytes": 55357,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26800000000
+      },
+      {
+        "recv_wall_ns": 1789109615984989686,
+        "recv_mono_ns": 55614441323603,
+        "seq": 21,
+        "stamp_ns": 1789109614924000000,
+        "frame_id": "Camera-2",
+        "serialized_bytes": 55399,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26880000000
+      },
+      {
+        "recv_wall_ns": 1789109616144950084,
+        "recv_mono_ns": 55614601283563,
+        "seq": 22,
+        "stamp_ns": 1789109615156000000,
+        "frame_id": "Camera-2",
+        "serialized_bytes": 54681,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26900000000
+      },
+      {
+        "recv_wall_ns": 1789109616552189991,
+        "recv_mono_ns": 55615008523659,
+        "seq": 23,
+        "stamp_ns": 1789109615608000000,
+        "frame_id": "Camera-2",
+        "serialized_bytes": 53751,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26960000000
+      },
+      {
+        "recv_wall_ns": 1789109616780631556,
+        "recv_mono_ns": 55615236965118,
+        "seq": 24,
+        "stamp_ns": 1789109615862000000,
+        "frame_id": "Camera-2",
+        "serialized_bytes": 52499,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 27000000000
+      }
+    ],
+    "/camera_right": [
+      {
+        "recv_wall_ns": 1789109609196524822,
+        "recv_mono_ns": 55607652858353,
+        "seq": 1,
+        "stamp_ns": 1789109607711000000,
+        "frame_id": "Camera-3",
+        "serialized_bytes": 62487,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 25860000000
+      },
+      {
+        "recv_wall_ns": 1789109609465405685,
+        "recv_mono_ns": 55607921739795,
+        "seq": 2,
+        "stamp_ns": 1789109608041000000,
+        "frame_id": "Camera-3",
+        "serialized_bytes": 62594,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 25900000000
+      },
+      {
+        "recv_wall_ns": 1789109609880435599,
+        "recv_mono_ns": 55608336769452,
+        "seq": 3,
+        "stamp_ns": 1789109608433000000,
+        "frame_id": "Camera-3",
+        "serialized_bytes": 62823,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 25960000000
+      },
+      {
+        "recv_wall_ns": 1789109610184847607,
+        "recv_mono_ns": 55608641181603,
+        "seq": 4,
+        "stamp_ns": 1789109608750000000,
+        "frame_id": "Camera-3",
+        "serialized_bytes": 62298,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26020000000
+      },
+      {
+        "recv_wall_ns": 1789109610525290091,
+        "recv_mono_ns": 55608981624090,
+        "seq": 5,
+        "stamp_ns": 1789109609152000000,
+        "frame_id": "Camera-3",
+        "serialized_bytes": 62284,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26040000000
+      },
+      {
+        "recv_wall_ns": 1789109610823063777,
+        "recv_mono_ns": 55609279397998,
+        "seq": 6,
+        "stamp_ns": 1789109609463000000,
+        "frame_id": "Camera-3",
+        "serialized_bytes": 62631,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26100000000
+      },
+      {
+        "recv_wall_ns": 1789109611237308536,
+        "recv_mono_ns": 55609693642134,
+        "seq": 7,
+        "stamp_ns": 1789109609898000000,
+        "frame_id": "Camera-3",
+        "serialized_bytes": 63012,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26140000000
+      },
+      {
+        "recv_wall_ns": 1789109611554066868,
+        "recv_mono_ns": 55610010401175,
+        "seq": 8,
+        "stamp_ns": 1789109610229000000,
+        "frame_id": "Camera-3",
+        "serialized_bytes": 63238,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26200000000
+      },
+      {
+        "recv_wall_ns": 1789109611924500128,
+        "recv_mono_ns": 55610380834161,
+        "seq": 9,
+        "stamp_ns": 1789109610617000000,
+        "frame_id": "Camera-3",
+        "serialized_bytes": 64001,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26240000000
+      },
+      {
+        "recv_wall_ns": 1789109612280534164,
+        "recv_mono_ns": 55610736868313,
+        "seq": 10,
+        "stamp_ns": 1789109610947000000,
+        "frame_id": "Camera-3",
+        "serialized_bytes": 63930,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26320000000
+      },
+      {
+        "recv_wall_ns": 1789109612662088750,
+        "recv_mono_ns": 55611118422516,
+        "seq": 11,
+        "stamp_ns": 1789109611390000000,
+        "frame_id": "Camera-3",
+        "serialized_bytes": 63369,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26360000000
+      },
+      {
+        "recv_wall_ns": 1789109612940870091,
+        "recv_mono_ns": 55611397204275,
+        "seq": 12,
+        "stamp_ns": 1789109611639000000,
+        "frame_id": "Camera-3",
+        "serialized_bytes": 63425,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26420000000
+      },
+      {
+        "recv_wall_ns": 1789109613342792478,
+        "recv_mono_ns": 55611799126039,
+        "seq": 13,
+        "stamp_ns": 1789109612103000000,
+        "frame_id": "Camera-3",
+        "serialized_bytes": 62108,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26460000000
+      },
+      {
+        "recv_wall_ns": 1789109613632711470,
+        "recv_mono_ns": 55612089045742,
+        "seq": 14,
+        "stamp_ns": 1789109612365000000,
+        "frame_id": "Camera-3",
+        "serialized_bytes": 60592,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26520000000
+      },
+      {
+        "recv_wall_ns": 1789109614032504334,
+        "recv_mono_ns": 55612488838266,
+        "seq": 15,
+        "stamp_ns": 1789109612825000000,
+        "frame_id": "Camera-3",
+        "serialized_bytes": 59610,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26560000000
+      },
+      {
+        "recv_wall_ns": 1789109614296480361,
+        "recv_mono_ns": 55612752813941,
+        "seq": 16,
+        "stamp_ns": 1789109613058000000,
+        "frame_id": "Camera-3",
+        "serialized_bytes": 58902,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26620000000
+      },
+      {
+        "recv_wall_ns": 1789109614662551229,
+        "recv_mono_ns": 55613118884725,
+        "seq": 17,
+        "stamp_ns": 1789109613507000000,
+        "frame_id": "Camera-3",
+        "serialized_bytes": 57981,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26660000000
+      },
+      {
+        "recv_wall_ns": 1789109614921366615,
+        "recv_mono_ns": 55613377700235,
+        "seq": 18,
+        "stamp_ns": 1789109613796000000,
+        "frame_id": "Camera-3",
+        "serialized_bytes": 58080,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26700000000
+      },
+      {
+        "recv_wall_ns": 1789109615310606131,
+        "recv_mono_ns": 55613766939829,
+        "seq": 19,
+        "stamp_ns": 1789109614228000000,
+        "frame_id": "Camera-3",
+        "serialized_bytes": 58633,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26760000000
+      },
+      {
+        "recv_wall_ns": 1789109615564389459,
+        "recv_mono_ns": 55614020723274,
+        "seq": 20,
+        "stamp_ns": 1789109614463000000,
+        "frame_id": "Camera-3",
+        "serialized_bytes": 58708,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26820000000
+      },
+      {
+        "recv_wall_ns": 1789109615985078446,
+        "recv_mono_ns": 55614441412110,
+        "seq": 21,
+        "stamp_ns": 1789109614931000000,
+        "frame_id": "Camera-3",
+        "serialized_bytes": 59593,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26880000000
+      },
+      {
+        "recv_wall_ns": 1789109616192797587,
+        "recv_mono_ns": 55614649131618,
+        "seq": 22,
+        "stamp_ns": 1789109615161000000,
+        "frame_id": "Camera-3",
+        "serialized_bytes": 59812,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26920000000
+      },
+      {
+        "recv_wall_ns": 1789109616600755869,
+        "recv_mono_ns": 55615057089744,
+        "seq": 23,
+        "stamp_ns": 1789109615614000000,
+        "frame_id": "Camera-3",
+        "serialized_bytes": 60283,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26980000000
+      },
+      {
+        "recv_wall_ns": 1789109616786670204,
+        "recv_mono_ns": 55615243004094,
+        "seq": 24,
+        "stamp_ns": 1789109615868000000,
+        "frame_id": "Camera-3",
+        "serialized_bytes": 60411,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 27000000000
+      }
+    ],
+    "/camera_rear": [
+      {
+        "recv_wall_ns": 1789109609197191249,
+        "recv_mono_ns": 55607653524737,
+        "seq": 1,
+        "stamp_ns": 1789109607719000000,
+        "frame_id": "Camera-4",
+        "serialized_bytes": 50656,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 25860000000
+      },
+      {
+        "recv_wall_ns": 1789109609471740896,
+        "recv_mono_ns": 55607928075124,
+        "seq": 2,
+        "stamp_ns": 1789109608049000000,
+        "frame_id": "Camera-4",
+        "serialized_bytes": 50356,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 25900000000
+      },
+      {
+        "recv_wall_ns": 1789109609844970252,
+        "recv_mono_ns": 55608301304096,
+        "seq": 3,
+        "stamp_ns": 1789109608440000000,
+        "frame_id": "Camera-4",
+        "serialized_bytes": 49276,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 25960000000
+      },
+      {
+        "recv_wall_ns": 1789109610146510975,
+        "recv_mono_ns": 55608602845000,
+        "seq": 4,
+        "stamp_ns": 1789109608756000000,
+        "frame_id": "Camera-4",
+        "serialized_bytes": 49813,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26000000000
+      },
+      {
+        "recv_wall_ns": 1789109610532237535,
+        "recv_mono_ns": 55608988571204,
+        "seq": 5,
+        "stamp_ns": 1789109609159000000,
+        "frame_id": "Camera-4",
+        "serialized_bytes": 49717,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26060000000
+      },
+      {
+        "recv_wall_ns": 1789109610872470852,
+        "recv_mono_ns": 55609328804342,
+        "seq": 6,
+        "stamp_ns": 1789109609469000000,
+        "frame_id": "Camera-4",
+        "serialized_bytes": 49648,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26120000000
+      },
+      {
+        "recv_wall_ns": 1789109611243801344,
+        "recv_mono_ns": 55609700134922,
+        "seq": 7,
+        "stamp_ns": 1789109609905000000,
+        "frame_id": "Camera-4",
+        "serialized_bytes": 49851,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26160000000
+      },
+      {
+        "recv_wall_ns": 1789109611600508604,
+        "recv_mono_ns": 55610056843258,
+        "seq": 8,
+        "stamp_ns": 1789109610236000000,
+        "frame_id": "Camera-4",
+        "serialized_bytes": 49560,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26220000000
+      },
+      {
+        "recv_wall_ns": 1789109611972501939,
+        "recv_mono_ns": 55610428835552,
+        "seq": 9,
+        "stamp_ns": 1789109610624000000,
+        "frame_id": "Camera-4",
+        "serialized_bytes": 49760,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26260000000
+      },
+      {
+        "recv_wall_ns": 1789109612288985585,
+        "recv_mono_ns": 55610745319305,
+        "seq": 10,
+        "stamp_ns": 1789109610952000000,
+        "frame_id": "Camera-4",
+        "serialized_bytes": 49730,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26320000000
+      },
+      {
+        "recv_wall_ns": 1789109612668512996,
+        "recv_mono_ns": 55611124846815,
+        "seq": 11,
+        "stamp_ns": 1789109611397000000,
+        "frame_id": "Camera-4",
+        "serialized_bytes": 49624,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26360000000
+      },
+      {
+        "recv_wall_ns": 1789109612948746925,
+        "recv_mono_ns": 55611405080435,
+        "seq": 12,
+        "stamp_ns": 1789109611645000000,
+        "frame_id": "Camera-4",
+        "serialized_bytes": 49383,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26420000000
+      },
+      {
+        "recv_wall_ns": 1789109613350367273,
+        "recv_mono_ns": 55611806701127,
+        "seq": 13,
+        "stamp_ns": 1789109612110000000,
+        "frame_id": "Camera-4",
+        "serialized_bytes": 49200,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26460000000
+      },
+      {
+        "recv_wall_ns": 1789109613598719847,
+        "recv_mono_ns": 55612055053655,
+        "seq": 14,
+        "stamp_ns": 1789109612371000000,
+        "frame_id": "Camera-4",
+        "serialized_bytes": 49407,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26500000000
+      },
+      {
+        "recv_wall_ns": 1789109614039365823,
+        "recv_mono_ns": 55612495699672,
+        "seq": 15,
+        "stamp_ns": 1789109612832000000,
+        "frame_id": "Camera-4",
+        "serialized_bytes": 49359,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26560000000
+      },
+      {
+        "recv_wall_ns": 1789109614261244669,
+        "recv_mono_ns": 55612717578718,
+        "seq": 16,
+        "stamp_ns": 1789109613065000000,
+        "frame_id": "Camera-4",
+        "serialized_bytes": 49428,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26600000000
+      },
+      {
+        "recv_wall_ns": 1789109614667039547,
+        "recv_mono_ns": 55613123373069,
+        "seq": 17,
+        "stamp_ns": 1789109613514000000,
+        "frame_id": "Camera-4",
+        "serialized_bytes": 49578,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26660000000
+      },
+      {
+        "recv_wall_ns": 1789109614926283213,
+        "recv_mono_ns": 55613382616768,
+        "seq": 18,
+        "stamp_ns": 1789109613802000000,
+        "frame_id": "Camera-4",
+        "serialized_bytes": 49673,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26700000000
+      },
+      {
+        "recv_wall_ns": 1789109615356519558,
+        "recv_mono_ns": 55613812853271,
+        "seq": 19,
+        "stamp_ns": 1789109614235000000,
+        "frame_id": "Camera-4",
+        "serialized_bytes": 50166,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26780000000
+      },
+      {
+        "recv_wall_ns": 1789109615568556895,
+        "recv_mono_ns": 55614024890703,
+        "seq": 20,
+        "stamp_ns": 1789109614470000000,
+        "frame_id": "Camera-4",
+        "serialized_bytes": 49989,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26820000000
+      },
+      {
+        "recv_wall_ns": 1789109615948301048,
+        "recv_mono_ns": 55614404634784,
+        "seq": 21,
+        "stamp_ns": 1789109614938000000,
+        "frame_id": "Camera-4",
+        "serialized_bytes": 49874,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26860000000
+      },
+      {
+        "recv_wall_ns": 1789109616196599351,
+        "recv_mono_ns": 55614652933183,
+        "seq": 22,
+        "stamp_ns": 1789109615169000000,
+        "frame_id": "Camera-4",
+        "serialized_bytes": 50050,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26920000000
+      },
+      {
+        "recv_wall_ns": 1789109616604434999,
+        "recv_mono_ns": 55615060768975,
+        "seq": 23,
+        "stamp_ns": 1789109615620000000,
+        "frame_id": "Camera-4",
+        "serialized_bytes": 50034,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26980000000
+      },
+      {
+        "recv_wall_ns": 1789109616792574477,
+        "recv_mono_ns": 55615248907963,
+        "seq": 24,
+        "stamp_ns": 1789109615875000000,
+        "frame_id": "Camera-4",
+        "serialized_bytes": 49664,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 27020000000
+      }
+    ],
+    "/lidar3D": [
+      {
+        "recv_wall_ns": 1789109609178839158,
+        "recv_mono_ns": 55607635173124,
+        "seq": 15,
+        "stamp_ns": 25855000000,
+        "frame_id": "Lidar3D-5",
+        "serialized_bytes": 460915,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 25860000000
+      },
+      {
+        "recv_wall_ns": 1789109609821250277,
+        "recv_mono_ns": 55608277584525,
+        "seq": 16,
+        "stamp_ns": 25956000000,
+        "frame_id": "Lidar3D-5",
+        "serialized_bytes": 460915,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 25940000000
+      },
+      {
+        "recv_wall_ns": 1789109610550574379,
+        "recv_mono_ns": 55609006908535,
+        "seq": 17,
+        "stamp_ns": 26057000000,
+        "frame_id": "Lidar3D-5",
+        "serialized_bytes": 460915,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26060000000
+      },
+      {
+        "recv_wall_ns": 1789109611218543393,
+        "recv_mono_ns": 55609674877723,
+        "seq": 18,
+        "stamp_ns": 26158000000,
+        "frame_id": "Lidar3D-5",
+        "serialized_bytes": 460915,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26140000000
+      },
+      {
+        "recv_wall_ns": 1789109611908212028,
+        "recv_mono_ns": 55610364546418,
+        "seq": 19,
+        "stamp_ns": 26259000000,
+        "frame_id": "Lidar3D-5",
+        "serialized_bytes": 460915,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26240000000
+      },
+      {
+        "recv_wall_ns": 1789109612583997252,
+        "recv_mono_ns": 55611040331306,
+        "seq": 20,
+        "stamp_ns": 26360000000,
+        "frame_id": "Lidar3D-5",
+        "serialized_bytes": 460915,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26360000000
+      },
+      {
+        "recv_wall_ns": 1789109613326052619,
+        "recv_mono_ns": 55611782386892,
+        "seq": 21,
+        "stamp_ns": 26461000000,
+        "frame_id": "Lidar3D-5",
+        "serialized_bytes": 460915,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26460000000
+      },
+      {
+        "recv_wall_ns": 1789109614016532563,
+        "recv_mono_ns": 55612472866849,
+        "seq": 22,
+        "stamp_ns": 26562000000,
+        "frame_id": "Lidar3D-5",
+        "serialized_bytes": 460915,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26560000000
+      },
+      {
+        "recv_wall_ns": 1789109614646190683,
+        "recv_mono_ns": 55613102524374,
+        "seq": 23,
+        "stamp_ns": 26663000000,
+        "frame_id": "Lidar3D-5",
+        "serialized_bytes": 460915,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26660000000
+      },
+      {
+        "recv_wall_ns": 1789109615292697798,
+        "recv_mono_ns": 55613749032145,
+        "seq": 24,
+        "stamp_ns": 26764000000,
+        "frame_id": "Lidar3D-5",
+        "serialized_bytes": 460915,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26760000000
+      },
+      {
+        "recv_wall_ns": 1789109615928602163,
+        "recv_mono_ns": 55614384936368,
+        "seq": 25,
+        "stamp_ns": 26865000000,
+        "frame_id": "Lidar3D-5",
+        "serialized_bytes": 460915,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26860000000
+      },
+      {
+        "recv_wall_ns": 1789109616561695662,
+        "recv_mono_ns": 55615018029823,
+        "seq": 26,
+        "stamp_ns": 26966000000,
+        "frame_id": "Lidar3D-5",
+        "serialized_bytes": 460915,
+        "callerid": "/rosbridge_websocket",
+        "latest_clock_ns": 26960000000
+      }
+    ]
+  }
+}

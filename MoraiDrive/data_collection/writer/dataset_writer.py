@@ -7,6 +7,8 @@ from datetime import datetime
 from typing import Dict, Optional
 
 import numpy as np
+from .atomic_io import write_json, save_numpy, atomic_path
+from .frame_commit import COMMIT_DIR, commit_frame, read_commits
 
 
 ROUTE_DIRS = (
@@ -26,7 +28,8 @@ class DatasetWriter:
                  append_timestamp: bool = True, route_metadata: Optional[dict] = None,
                  extra_map_files: Optional[Dict[str, str]] = None,
                  resume_route_dir: str = "", drive_tag: str = "",
-                 run_note: str = ""):
+                 run_note: str = "", transactional: bool = False):
+        self.transactional = transactional
         self.dataset_root = os.path.abspath(dataset_root)
         self.job_name = job_name
         self.job_dir = os.path.join(self.dataset_root, job_name)
@@ -51,6 +54,8 @@ class DatasetWriter:
             parts.append(run_note)
             self.route_name = "_".join(part for part in parts if part)
             self.route_dir = os.path.join(data_dir, self.route_name)
+        if transactional and not resume_route_dir and os.path.exists(self.route_dir):
+            raise RuntimeError("Collection output already exists; resume it or choose a new route name")
         self.map_id = map_id
 
         os.makedirs(os.path.join(self.job_dir, "results"), exist_ok=True)
@@ -62,6 +67,10 @@ class DatasetWriter:
         route_metadata_path = os.path.join(self.route_dir, "route.json")
         if not resume_route_dir or not os.path.isfile(route_metadata_path):
             self._write_route_metadata(route_metadata)
+        if transactional:
+            if resume_route_dir and not os.path.isdir(os.path.join(self.route_dir, COMMIT_DIR)):
+                raise RuntimeError("Legacy dataset has no completion receipts; use a new collection session")
+            os.makedirs(os.path.join(self.route_dir, COMMIT_DIR), exist_ok=True)
         self._all_frames = self._load_existing_frames() if resume_route_dir else []
         self._frame_count = len(self._all_frames)
         self._finalized = False
@@ -80,6 +89,9 @@ class DatasetWriter:
             name for name in os.listdir(directory)
             if name.endswith(".json") and name[:-5].isdigit()
         )
+        if self.transactional:
+            receipts = read_commits(self.route_dir)
+            names = ["{:04d}.json".format(index) for index in range(len(receipts))]
         expected = ["{:04d}.json".format(index) for index in range(len(names))]
         if names != expected:
             raise RuntimeError(
@@ -153,7 +165,9 @@ class DatasetWriter:
 
     def write_frame(self, frame_id: int, measurement: dict, full_measurement: dict,
                     gnss=None, imu=None, actors: Optional[Dict] = None,
-                    affordances: Optional[Dict] = None):
+                    affordances: Optional[Dict] = None, sensor_files=None):
+        if self.transactional and frame_id != self._frame_count:
+            raise RuntimeError("Frame commit indices must be contiguous")
         name = f"{frame_id:04d}"
         actors = actors or {}
         affordances = dict(affordances or {
@@ -179,17 +193,17 @@ class DatasetWriter:
         self._write_json(os.path.join(self.route_dir, "actors_data", name + ".json"), actors)
 
         if gnss is not None:
-            np.save(os.path.join(self.route_dir, "gnss", name + ".npy"), np.asarray([
+            save_numpy(os.path.join(self.route_dir, "gnss", name + ".npy"), np.asarray([
                 gnss.latitude, gnss.longitude, gnss.altitude,
                 gnss.velocity_x, gnss.velocity_y, gnss.velocity_z,
             ], dtype=np.float64))
         if imu is not None:
-            np.save(os.path.join(self.route_dir, "imu", name + ".npy"), np.asarray([
+            save_numpy(os.path.join(self.route_dir, "imu", name + ".npy"), np.asarray([
                 imu.accel_x, imu.accel_y, imu.accel_z,
                 imu.gyro_x, imu.gyro_y, imu.gyro_z,
             ], dtype=np.float32))
 
-        np.save(
+        save_numpy(
             os.path.join(self.route_dir, "affordances", name + ".npy"),
             affordances,
             allow_pickle=True,
@@ -202,11 +216,21 @@ class DatasetWriter:
                 "box": actor["box"], "vel": actor["vel"], "tpe": actor["tpe"],
             }
             (vehicles if actor["tpe"] == 0 else pedestrians).append(box)
-        np.save(os.path.join(self.route_dir, "3d_bbs", name + ".npy"), {
+        save_numpy(os.path.join(self.route_dir, "3d_bbs", name + ".npy"), {
             "traffic_lights": [], "stop_signs": [],
             "vehicles": vehicles, "pedestrians": pedestrians,
         }, allow_pickle=True)
 
+        if self.transactional:
+            paths = list(sensor_files or [])
+            for directory, extension in (("measurements", ".json"), ("measurements_full", ".json"),
+                                         ("actors_data", ".json"), ("affordances", ".npy"), ("3d_bbs", ".npy")):
+                paths.append(os.path.join(self.route_dir, directory, name + extension))
+            if gnss is not None:
+                paths.append(os.path.join(self.route_dir, "gnss", name + ".npy"))
+            if imu is not None:
+                paths.append(os.path.join(self.route_dir, "imu", name + ".npy"))
+            commit_frame(self.route_dir, frame_id, merged_measurement, paths)
         self._all_frames.append(merged_measurement)
         self._frame_count = max(self._frame_count, frame_id + 1)
 
@@ -229,8 +253,9 @@ class DatasetWriter:
                         lines.append(line)
             if not found:
                 lines.append(f"{relative_route} {self._frame_count}\n")
-            with open(index_path, "w", encoding="utf-8") as f:
-                f.writelines(lines)
+            with atomic_path(index_path) as temporary:
+                with open(temporary, "w", encoding="utf-8") as f:
+                    f.writelines(lines)
         if self._frame_count > 0:
             relative_route = os.path.relpath(self.route_dir, self.job_dir).replace(os.sep, "/") + "/"
             summary_path = os.path.join(self.job_dir, "results", "episode_summary.json")
@@ -258,8 +283,7 @@ class DatasetWriter:
 
     @staticmethod
     def _write_json(path: str, value):
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(value, f, ensure_ascii=False, indent=2)
+        write_json(path, value)
 
     @staticmethod
     def _sha256(path: str) -> str:

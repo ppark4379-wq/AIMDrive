@@ -275,11 +275,9 @@ scenarios:
     goal_tolerance_m: 2.0
     timeout_sec: 0.0
     check_period_sec: 0.05
-    # Abort a failed batch run instead of waiting forever when the EGO cannot
-    # make route progress (for example, an orphan pedestrian blocks the road).
-    # 120s is longer than a normal K-City signal wait observed in testing.
+    # Disabled: wall-clock signal waits in SyncMode can exceed 120 seconds.
     progress_watchdog:
-      enabled: true
+      enabled: false
       timeout_sec: 120.0
       startup_grace_sec: 30.0
       minimum_progress_m: 2.0

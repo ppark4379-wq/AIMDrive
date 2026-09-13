@@ -1,0 +1,38 @@
+{
+  "sample_range": [
+    509,
+    639
+  ],
+  "native_range": [
+    2756,
+    3406
+  ],
+  "raw_png_crc_and_decode_ok": 523,
+  "saved_jpg_decode_ok": 524,
+  "issues": [
+    {
+      "sample": 531,
+      "kind": "png",
+      "path": "/mnt/c/MoraiLauncher_Win/SensorData/SynchronousMode/26-09-12-05-53-08-826395/CAMERA_3/2866_Intensity.png",
+      "error": "CRC b'IDAT'"
+    }
+  ],
+  "control_modes": {
+    "failsafe": 131
+  },
+  "speed_range_mps": [
+    0.0002317488318710046,
+    0.00044774142465551424
+  ],
+  "followup": {
+    "sample": 531,
+    "native_frame": 2866,
+    "camera": "CAMERA_3",
+    "rereads": 3,
+    "all_crc_passed": true,
+    "all_opencv_decoded": true,
+    "sha256_each": "c08ca4874a30ec630f2bff8b1696d70882fbf8f2e4b0f444a4d08caa57f59ef8",
+    "initial_read_hash_not_recorded": true,
+    "cause": "not determined"
+  }
+}

@@ -16,6 +16,10 @@ from writer.async_frame_writer import AsyncFrameWriter
 from writer.dataset_writer import DatasetWriter
 from writer.image_writer import ImageWriter
 from writer.lidar_writer import LidarWriter
+from writer.atomic_io import write_json
+from writer.frame_commit import (
+    SESSION_FILE, resume_state as committed_resume_state, quarantine_uncommitted,
+)
 
 from .morai_sync_file_source import (
     IncompleteNativeFrame,
@@ -145,57 +149,63 @@ def _read_last_provenance(path):
 
 
 def _recover_resume_state(dataset_root, job_name, route_name, manifest_path):
-    """Load a checkpoint, or migrate the newest matching provenance journal."""
+    """Completion receipts are authoritative; checkpoints/provenance are caches."""
     manifest_path = os.path.abspath(manifest_path)
     runtime_session_id = _manifest_session_id(manifest_path)
-    checkpoint_path = _checkpoint_path(
-        dataset_root, job_name, manifest_path
-    )
-    if os.path.isfile(checkpoint_path):
-        with open(checkpoint_path, encoding="utf-8") as source:
-            state = json.load(source)
-        if os.path.abspath(state.get("manifest_path", "")) != manifest_path:
-            raise RuntimeError("Collector checkpoint manifest path mismatch")
-        if not os.path.isdir(state.get("output_dir", "")):
-            raise RuntimeError("Collector checkpoint output directory is missing")
+    checkpoint_path = _checkpoint_path(dataset_root, job_name, manifest_path)
+    data_dir = os.path.realpath(os.path.join(dataset_root, job_name, "data"))
+
+    def recover(output_dir):
+        output_dir = os.path.realpath(output_dir)
+        if os.path.commonpath((data_dir, output_dir)) != data_dir or output_dir == data_dir:
+            raise RuntimeError("Collector resume directory escapes job data directory")
+        state = committed_resume_state(output_dir, manifest_path)
+        if state is None:
+            raise RuntimeError(
+                "Legacy dataset has no completion receipts; keep it and start a new "
+                "Sync Runtime session for collection"
+            )
+        if runtime_session_id and state["runtime_session_id"] not in ("", runtime_session_id):
+            raise RuntimeError("Collector completion session mismatch")
         return state, checkpoint_path
 
-    data_dir = os.path.join(os.path.abspath(dataset_root), job_name, "data")
+    if os.path.isfile(checkpoint_path):
+        try:
+            with open(checkpoint_path, encoding="utf-8") as source:
+                state = json.load(source)
+        except ValueError:
+            state = None  # Interrupted legacy checkpoint; recover from session receipts.
+        if state is not None and os.path.abspath(state.get("manifest_path", "")) != manifest_path:
+            raise RuntimeError("Collector checkpoint manifest path mismatch")
+        if state is not None and not os.path.isdir(state.get("output_dir", "")):
+            raise RuntimeError("Collector checkpoint output directory is missing")
+        if state is not None:
+            return recover(state["output_dir"])
+
     candidates = []
     if os.path.isdir(data_dir):
         for entry in os.scandir(data_dir):
             if not entry.is_dir() or not entry.name.startswith(route_name):
                 continue
-            provenance_path = os.path.join(entry.path, "capture_provenance.jsonl")
-            last = _read_last_provenance(provenance_path)
-            if last is None:
-                continue
-            if runtime_session_id and str(last.get("session_id", "")) != runtime_session_id:
-                continue
-            candidates.append((os.path.getmtime(provenance_path), entry.path, last))
-    if not candidates:
-        return None, checkpoint_path
-
-    _, output_dir, last = max(candidates, key=lambda item: item[0])
-    state = {
-        "schema_version": 1,
-        "manifest_path": manifest_path,
-        "runtime_session_id": str(last.get("session_id", runtime_session_id)),
-        "output_dir": os.path.abspath(output_dir),
-        "last_consumed_native_frame": int(last["native_sync_frame"]),
-        "next_sample_index": int(last["sample_index"]) + 1,
-    }
-    return state, checkpoint_path
+            metadata = os.path.join(entry.path, SESSION_FILE)
+            if os.path.isfile(metadata):
+                with open(metadata, encoding="utf-8") as source:
+                    session = json.load(source)
+                if session.get("manifest_path") == manifest_path:
+                    candidates.append(entry.path)
+            else:
+                last = _read_last_provenance(os.path.join(entry.path, "capture_provenance.jsonl"))
+                if last and runtime_session_id and str(last.get("session_id", "")) == runtime_session_id:
+                    candidates.append(entry.path)
+    if len(candidates) > 1:
+        raise RuntimeError("Multiple collection outputs match this manifest; refusing ambiguous resume")
+    if candidates:
+        return recover(candidates[0])
+    return None, checkpoint_path
 
 
 def _write_checkpoint(path, state):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    temporary = path + ".tmp"
-    with open(temporary, "w", encoding="utf-8") as stream:
-        json.dump(state, stream, ensure_ascii=False, indent=2)
-        stream.flush()
-        os.fsync(stream.fileno())
-    os.replace(temporary, path)
+    write_json(path, state)
 
 
 def _measurement_for_record(record, route_tracker, args, label_snapshot=None):
@@ -371,7 +381,28 @@ def run_sync_native_files(args, dataset_root, dataset_config, ros_config,
         resume_route_dir=resume_state["output_dir"] if resume_state else "",
         drive_tag=getattr(dataset_config, "drive_tag", ""),
         run_note=getattr(dataset_config, "run_note", ""),
+        transactional=True,
     )
+    session_metadata = {
+        "manifest_path": os.path.abspath(args.capture_manifest),
+        "runtime_session_id": _manifest_session_id(args.capture_manifest),
+    }
+    session_path = os.path.join(writer.output_dir, SESSION_FILE)
+    write_json(session_path, session_metadata)
+    provenance_path = os.path.join(writer.output_dir, "capture_provenance.jsonl")
+    committed_native_frame = int(resume_state["last_consumed_native_frame"]) if resume_state else -1
+
+    def on_commit(frame_id, full_measurement):
+        nonlocal committed_native_frame
+        committed_native_frame = int(full_measurement["native_sync_frame"])
+        with open(provenance_path, "a", encoding="utf-8") as provenance:
+            _append_jsonl(provenance, {
+                "sample_index": "{:04d}".format(frame_id),
+                "native_sync_frame": committed_native_frame,
+                "session_id": full_measurement["runtime_session_id"],
+            })
+            os.fsync(provenance.fileno())
+
     async_writer = AsyncFrameWriter(
         writer,
         ImageWriter(
@@ -385,6 +416,7 @@ def run_sync_native_files(args, dataset_root, dataset_config, ros_config,
         # This collector is a passive consumer. Backpressure here only slows
         # manifest consumption; Sync Runtime and simulation ticks continue.
         block_when_full=True,
+        on_commit=on_commit,
     )
     source = MoraiSyncFileSource(
         camera_session_root,
@@ -410,7 +442,6 @@ def run_sync_native_files(args, dataset_root, dataset_config, ros_config,
     incomplete_count = 0
     collection_success = False
     incomplete_path = os.path.join(writer.output_dir, "incomplete_frames.jsonl")
-    provenance_path = os.path.join(writer.output_dir, "capture_provenance.jsonl")
     print("[collect/native] manifest={}".format(os.path.abspath(args.capture_manifest)))
     print("[collect/native] MORAI session id={}".format(morai_session_id))
     print("[collect/native] camera session root={}".format(camera_session_root))
@@ -469,10 +500,16 @@ def run_sync_native_files(args, dataset_root, dataset_config, ros_config,
                 )
             else:
                 print("[collect/native] read-only gRPC label history started")
-        with open(incomplete_path, "a", encoding="utf-8", buffering=1) as incomplete, \
-                open(provenance_path, "a", encoding="utf-8", buffering=1) as provenance:
+        with open(incomplete_path, "a", encoding="utf-8", buffering=1) as incomplete:
             while deadline is None or time.monotonic() < deadline:
-                records = manifest.wait_for_records(deadline)
+                async_writer.check_health()
+                if args.max_samples > 0 and samples_this_run >= args.max_samples:
+                    collection_success = True
+                    break
+                poll_deadline = time.monotonic() + 0.25
+                records = manifest.wait_for_records(
+                    min(deadline, poll_deadline) if deadline is not None else poll_deadline
+                )
                 if not records:
                     continue
                 if state_history is not None and not state_history.is_aligned:
@@ -595,6 +632,11 @@ def run_sync_native_files(args, dataset_root, dataset_config, ros_config,
                         ],
                         "navigation": navigation,
                     })
+                    if not session_metadata["runtime_session_id"]:
+                        session_metadata["runtime_session_id"] = record["session_id"]
+                        write_json(session_path, session_metadata)
+                    if record["session_id"] != session_metadata["runtime_session_id"]:
+                        raise RuntimeError("Capture manifest session changed during collection")
                     async_writer.submit(
                         sample_index,
                         measurement,
@@ -607,20 +649,15 @@ def run_sync_native_files(args, dataset_root, dataset_config, ros_config,
                         cameras=payload.cameras,
                         lidar_points=payload.lidar_points,
                     )
-                    _append_jsonl(provenance, {
-                        "sample_index": "{:04d}".format(sample_index),
-                        "native_sync_frame": int(record["native_sync_frame"]),
-                        "session_id": record["session_id"],
-                    })
                     last_consumed_native_frame = native_frame
                     sample_index += 1
                     samples_this_run += 1
                     if sample_index == 1 or sample_index % 10 == 0:
                         print(
                             "[collect/native] queued samples={} native_frame={} "
-                            "writer_pending={}".format(
+                            "writer_pending={} saved={}".format(
                                 sample_index, record["native_sync_frame"],
-                                async_writer.pending,
+                                async_writer.pending, writer.frame_count,
                             )
                         )
         collection_success = True
@@ -637,9 +674,12 @@ def run_sync_native_files(args, dataset_root, dataset_config, ros_config,
         except BaseException as error:
             writer_error = error
             collection_success = False
-        if writer_error is None and last_consumed_native_frame >= 0:
+        sample_index = writer.frame_count
+        last_consumed_native_frame = committed_native_frame
+        quarantine_uncommitted(writer.output_dir, writer.frame_count)
+        if last_consumed_native_frame >= 0:
             _write_checkpoint(checkpoint_path, {
-                "schema_version": 1,
+                "schema_version": 2,
                 "manifest_path": os.path.abspath(args.capture_manifest),
                 "runtime_session_id": _manifest_session_id(args.capture_manifest),
                 "output_dir": writer.output_dir,

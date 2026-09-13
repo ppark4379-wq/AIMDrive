@@ -1,0 +1,30 @@
+[
+  {
+    "exe": "/usr/bin/python3",
+    "attempt": 1,
+    "returncode": -11,
+    "stdout": "",
+    "stderr": "Fatal Python error: Segmentation fault\n\nCurrent thread 0x00007e8ebf8f9740 (most recent call first):\n  File \"/home/jun/AIMDrive/MoraiDrive/diagnostics/probe_projection_types.py\", line 26 in <module>\n"
+  },
+  {
+    "exe": "/usr/bin/python3",
+    "attempt": 2,
+    "returncode": 0,
+    "stdout": "{\"mode\": \"stdlib\", \"python\": \"3.8.10 (default, Mar 18 2025, 20:04:55) \\n[GCC 9.4.0]\", \"executable\": \"/usr/bin/python3\", \"numpy\": null, \"status\": \"pass\", \"iterations\": 10000000, \"seconds\": 5.034673229005421}\n",
+    "stderr": ""
+  },
+  {
+    "exe": "/home/jun/AIMDrive/MoraiDrive/expert/.runtime/python/cpython-3.8.20-linux-x86_64-gnu/bin/python3",
+    "attempt": 1,
+    "returncode": 0,
+    "stdout": "{\"mode\": \"stdlib\", \"python\": \"3.8.20 (default, Oct  2 2024, 16:34:12) \\n[Clang 18.1.8 ]\", \"executable\": \"/home/jun/AIMDrive/MoraiDrive/expert/.runtime/python/cpython-3.8.20-linux-x86_64-gnu/bin/python3\", \"numpy\": null, \"status\": \"pass\", \"iterations\": 10000000, \"seconds\": 5.557069890986895}\n",
+    "stderr": ""
+  },
+  {
+    "exe": "/home/jun/AIMDrive/MoraiDrive/expert/.runtime/python/cpython-3.8.20-linux-x86_64-gnu/bin/python3",
+    "attempt": 2,
+    "returncode": 0,
+    "stdout": "{\"mode\": \"stdlib\", \"python\": \"3.8.20 (default, Oct  2 2024, 16:34:12) \\n[Clang 18.1.8 ]\", \"executable\": \"/home/jun/AIMDrive/MoraiDrive/expert/.runtime/python/cpython-3.8.20-linux-x86_64-gnu/bin/python3\", \"numpy\": null, \"status\": \"pass\", \"iterations\": 10000000, \"seconds\": 5.484680992987705}\n",
+    "stderr": ""
+  }
+]

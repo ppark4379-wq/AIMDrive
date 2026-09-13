@@ -1,5 +1,5 @@
 import fnmatch
-from threading import Lock
+from threading import Event, Lock
 import time
 
 from rosbridge_library.internal.ros_loader import get_service_class
@@ -18,6 +18,8 @@ class AdvertisedServiceHandler():
         self.active_requests = 0
         self.shutdown_requested = False
         self.lock = Lock()
+        # Timed event wait avoids the sleep(0) path that raised ENOSYS here.
+        self._wait_event = Event()
         self.service_name = service_name
         self.service_type = service_type
         self.protocol = protocol
@@ -49,7 +51,7 @@ class AdvertisedServiceHandler():
             with self.lock:
                 if self.shutdown_requested:
                     break
-            time.sleep(0)
+            self._wait_event.wait(0.001)
 
         with self.lock:
             self.active_requests -= 1
@@ -77,7 +79,7 @@ class AdvertisedServiceHandler():
             self.shutdown_requested = True
         start_time = time.time()
         while time.time() - start_time < timeout:
-            time.sleep(0)
+            self._wait_event.wait(0.001)
 
 class AdvertiseService(Capability):
     services_glob = None

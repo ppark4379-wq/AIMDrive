@@ -310,7 +310,7 @@ class MGeoMap:
 
 
 class MGeoRouteTracker:
-    """Stateful, forward-only route localization and LMDrive command provider."""
+    """Forward route localization with START re-entry for closed routes."""
     COMMAND_LEFT = 1
     COMMAND_RIGHT = 2
     COMMAND_STRAIGHT = 3
@@ -416,6 +416,12 @@ class MGeoRouteTracker:
         if initial_route_index is not None and initial_route_index < 0:
             raise ValueError("initial_route_index must be >= 0")
         self._route_index: Optional[int] = initial_route_index
+        # Only an explicitly closed geometry can wrap; open routes still stop at END.
+        self._closed_route = (
+            len(self.points) > 2 and self.cumulative_m[-1] > 0.0
+            and math.hypot(self.points[0][0] - self.points[-1][0],
+                           self.points[0][1] - self.points[-1][1]) <= 1e-3
+        )
 
     def _point_heading(self, index: int) -> float:
         before = self.points[max(0, index - 1)]
@@ -431,10 +437,26 @@ class MGeoRouteTracker:
             end_distance = self.cumulative_m[self._route_index] + 250.0
             end = bisect.bisect_right(self.cumulative_m, end_distance)
             candidates = range(self._route_index, max(self._route_index + 1, end))
-        return min(candidates, key=lambda i: (
-            math.hypot(self.points[i][0] - x, self.points[i][1] - y)
-            + 2.0 * self.map._angle_error(self._point_heading(i), heading_rad)
-        ))
+        def score(i):
+            return (math.hypot(self.points[i][0] - x, self.points[i][1] - y)
+                    + 2.0 * self.map._angle_error(self._point_heading(i), heading_rad))
+
+        best = min(candidates, key=score)
+        if (self._closed_route and self._route_index is not None
+                and self.cumulative_m[-1] - self.cumulative_m[self._route_index] <= 25.0):
+            # Re-enter only the first 50 m, close to the route and facing forward.
+            # A strict score margin keeps a stopped vehicle at the shared seam
+            # from oscillating between the first and last point.
+            start_end = bisect.bisect_right(self.cumulative_m, 50.0)
+            start_best = min(range(min(start_end, len(self.points) - 1)), key=score)
+            start_distance = math.hypot(self.points[start_best][0] - x,
+                                        self.points[start_best][1] - y)
+            if (start_distance <= 3.0
+                    and self.map._angle_error(self._point_heading(start_best), heading_rad)
+                    <= math.pi / 3.0
+                    and score(start_best) + 0.25 < score(best)):
+                return start_best
+        return best
 
     def _link_command(self, link_id: str) -> int:
         """Annotate a route link once with LMDrive RoadOption semantics."""
@@ -450,19 +472,25 @@ class MGeoRouteTracker:
     def get_future_waypoints(self, route_index: int,
                              count: int = 50) -> List[List[float]]:
         """Return the planned dense route ahead, never future Ego samples."""
-        start = route_index
-        end = min(route_index + count, len(self.points))
+        if self._closed_route:
+            # The final point duplicates START; do not repeat it at every seam.
+            indices = [(route_index + offset) % (len(self.points) - 1)
+                       for offset in range(count)]
+        else:
+            indices = range(route_index, min(route_index + count, len(self.points)))
         return [
             [
                 float(self.points[index][0]),
                 float(self.points[index][1]),
                 int(self.point_road_options[index]),
             ]
-            for index in range(start, end)
+            for index in indices
         ]
 
     def _index_at_distance_ahead(self, route_index: int, distance_m: float) -> int:
         target_distance = self.cumulative_m[route_index] + distance_m
+        if self._closed_route:
+            target_distance %= self.cumulative_m[-1]
         return min(
             bisect.bisect_left(self.cumulative_m, target_distance),
             len(self.points) - 1,

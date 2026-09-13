@@ -1,0 +1,5 @@
+Fatal Python error: Segmentation fault
+
+Current thread 0x0000793d61a07740 (most recent call first):
+  File "/home/jun/AIMDrive/MoraiDrive/diagnostics/.runtime/python-repro-20260912/probe.py", line 26 in <module>
+timeout: the monitored command dumped core

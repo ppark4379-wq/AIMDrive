@@ -1,0 +1,2602 @@
+{
+  "pcap_bytes": 3352385,
+  "summary": {
+    "/Ego_topic": {
+      "wire_headers": 176,
+      "exact_stamp_matches_in_ros": 161,
+      "capture_to_callback_ms": {
+        "min": 0.532293,
+        "median": 1.703033,
+        "max": 6.328555
+      },
+      "sample_wire": {
+        "topic": "/Ego_topic",
+        "stamp_ns": 1789069578001000000,
+        "source": "172.19.0.1",
+        "capture_ns": 1789069578546006000
+      }
+    },
+    "/camera_front": {
+      "wire_headers": 69,
+      "exact_stamp_matches_in_ros": 63,
+      "capture_to_callback_ms": {
+        "min": 2.144531,
+        "median": 3.317093,
+        "max": 50.590335
+      },
+      "sample_wire": {
+        "topic": "/camera_front",
+        "stamp_ns": 1789069578003000000,
+        "source": "127.0.0.1",
+        "capture_ns": 1789069578547944000
+      }
+    },
+    "/camera_rear": {
+      "wire_headers": 72,
+      "exact_stamp_matches_in_ros": 66,
+      "capture_to_callback_ms": {
+        "min": 0.876743,
+        "median": 2.411349,
+        "max": 50.716589
+      },
+      "sample_wire": {
+        "topic": "/camera_rear",
+        "stamp_ns": 1789069578001000000,
+        "source": "127.0.0.1",
+        "capture_ns": 1789069578546493000
+      }
+    },
+    "/camera_right": {
+      "wire_headers": 68,
+      "exact_stamp_matches_in_ros": 63,
+      "capture_to_callback_ms": {
+        "min": 1.013166,
+        "median": 2.110936,
+        "max": 41.827798
+      },
+      "sample_wire": {
+        "topic": "/camera_right",
+        "stamp_ns": 1789069578018000000,
+        "source": "127.0.0.1",
+        "capture_ns": 1789069578561626000
+      }
+    },
+    "/lidar3D": {
+      "wire_headers": 35,
+      "exact_stamp_matches_in_ros": 32,
+      "capture_to_callback_ms": {
+        "min": 7.424939,
+        "median": 8.729985,
+        "max": 54.632415
+      },
+      "sample_wire": {
+        "topic": "/lidar3D",
+        "stamp_ns": 1789069578047000000,
+        "source": "127.0.0.1",
+        "capture_ns": 1789069578590044000
+      }
+    }
+  },
+  "wire_headers": [
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069577700000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578269754000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069577702000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578271295000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069577702000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578271779000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069577702000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578273269000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069577727000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578295098000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069577728000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578295755000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069577745000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578311205000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069577745000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578311721000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069577747000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578313519000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069577760000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578325570000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069577777000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578341143000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069577777000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578341941000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069577794000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578357065000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069577799000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578360264000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069577800000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578363731000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069577825000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578384540000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069577827000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578386308000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069577828000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578388334000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069577849000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578407324000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069577850000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578407574000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069577852000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578409864000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069577866000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578422444000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069577884000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578438117000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069577900000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578453467000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069577921000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578473767000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069577923000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578474881000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069577924000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578475536000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069577927000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578479515000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069577935000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578485573000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069577936000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578486084000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069577952000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578500998000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069577953000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578501854000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069577954000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578502948000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069577967000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578514979000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069577983000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578529709000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578001000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578546006000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069578001000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578546493000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069578003000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578547944000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578017000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578561081000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069578018000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578561626000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578041000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578582384000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069578047000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578590044000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069578056000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578596537000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578057000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578596715000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069578058000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578598725000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069578072000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578611340000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069578072000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578611875000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069578074000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578613784000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578086000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578624311000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578103000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578639097000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578120000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578655566000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069578121000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578656087000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578144000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578677154000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069578151000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578684823000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069578159000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578691103000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578160000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578691211000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069578161000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578693318000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069578175000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578705760000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578175000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578705842000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069578176000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578706301000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069578177000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578707575000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578206000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578733254000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578223000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578749570000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069578224000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578750260000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578247000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578771289000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069578254000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578778921000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578261000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578784514000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069578262000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578785100000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069578263000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578786727000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069578278000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578799754000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069578278000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578799829000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578278000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578799866000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069578280000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578802312000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578292000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578812768000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578326000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578843569000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069578326000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578844249000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578350000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578865491000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069578357000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578873307000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578364000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578879010000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069578364000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578879665000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069578366000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578881718000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069578379000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578892970000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578380000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578893046000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069578380000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578893581000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578395000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578907070000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578412000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578922654000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069578430000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578938985000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578452000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578959577000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069578461000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578970025000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578470000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578976507000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069578470000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578976633000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069578471000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578977061000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069578471000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578978028000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578484000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069578989203000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069578484000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578989233000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069578486000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069578991561000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578501000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579003960000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069578501000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579004556000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578518000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579019577000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578534000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579034964000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069578556000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579054964000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069578557000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579056196000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578558000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579056244000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069578561000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579060684000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069578569000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579067116000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578584000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579080914000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069578584000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579081188000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069578586000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579083083000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578600000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579095371000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578618000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579111367000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069578618000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579111987000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578634000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579126398000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069578652000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579142658000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069578653000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579144056000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069578674000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579163469000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578676000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579164685000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069578677000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579166557000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578702000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579188269000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069578703000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579188689000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069578704000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579190496000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578719000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579203783000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069578719000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579204434000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578736000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579219107000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578753000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579234978000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069578753000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579235456000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069578755000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579236932000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069578775000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579255971000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578777000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579257347000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069578778000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579259112000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578804000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579281851000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069578804000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579282064000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069578806000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579284481000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578820000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579296370000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069578821000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579297036000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578837000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579312237000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578854000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579327844000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069578854000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579328278000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069578856000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579329760000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069578876000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579351057000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578879000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579351384000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069578887000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579371815000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069578908000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579378044000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578909000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579378213000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069578911000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579380246000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578927000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579395616000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069578927000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579395736000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069578927000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579396129000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069578929000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579397134000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578939000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579405286000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578956000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579421160000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069578978000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579441617000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069578980000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579443097000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069578981000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579444841000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069579007000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579468239000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579007000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579468243000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069579007000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579468816000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069579009000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579470451000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579023000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579482358000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579039000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579498118000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579057000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579513788000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069579057000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579514326000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069579058000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579516183000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069579078000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579533739000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579080000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579534884000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069579087000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579543106000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579095000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579548868000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069579096000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579549438000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069579097000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579551186000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069579110000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579562977000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579125000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579576834000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579144000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579593534000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069579144000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579593763000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069579146000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579595861000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579159000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579607734000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069579181000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579628573000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579184000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579630101000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069579191000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579638196000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579199000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579644302000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069579200000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579644873000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069579201000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579646245000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579212000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579656365000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069579213000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579656938000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069579230000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579672598000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069579232000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579674541000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579246000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579686795000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579264000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579703071000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069579284000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579722763000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579286000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579723931000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069579292000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579731753000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579301000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579737580000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069579302000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579738096000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069579303000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579739366000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579314000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579749812000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069579332000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579766257000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069579334000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579767837000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579348000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579781290000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579364000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579796033000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069579387000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579817066000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579389000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579818752000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069579397000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579827517000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579405000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579833361000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069579407000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579834026000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069579407000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579835082000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069579422000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579848419000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579422000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579848465000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069579422000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579848469000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069579424000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579850828000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579436000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579861233000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579469000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579892230000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069579470000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579892886000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579493000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579913271000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069579500000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579921453000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579509000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579927667000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069579509000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579928111000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069579510000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579929537000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579526000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579943512000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069579526000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579943522000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069579526000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579943523000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069579528000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579945647000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579538000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579954814000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579573000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069579986103000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069579573000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069579986934000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579595000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580007688000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069579602000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580015289000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579611000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580021250000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069579611000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580021756000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069579613000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580023573000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069579627000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580036562000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069579627000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580036586000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579627000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580036627000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069579629000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580038802000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579641000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580049172000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579658000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580064648000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069579676000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580081279000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579699000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580102408000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069579707000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580110802000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069579715000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580117504000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069579717000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580119190000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069579732000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580132222000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069579732000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580132229000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579732000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580132236000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069579733000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580134402000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579745000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580144930000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579762000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580159778000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069579763000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580160538000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579779000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580175718000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579803000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580197503000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069579810000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580206050000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579818000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580212244000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069579819000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580212835000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069579820000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580214104000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069579835000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580227551000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069579835000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580227573000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069579838000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580229815000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579849000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580239751000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579866000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580255089000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069579866000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580255778000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579882000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580269794000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069579904000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580290833000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069579905000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580292034000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579906000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580292282000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069579910000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580296773000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069579919000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580306266000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579920000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580306330000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069579937000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580321522000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579946000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580329532000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579971000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580351331000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069579986000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580366030000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069580011000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580388564000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069580012000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580389816000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580013000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580390050000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069580016000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580394612000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580024000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580400418000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069580024000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580401239000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069580038000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580413571000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580039000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580413599000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069580040000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580415861000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580071000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580444190000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580088000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580459311000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069580111000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580480115000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069580112000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580481363000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580113000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580481501000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069580116000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580485746000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580124000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580491697000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069580124000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580492602000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580139000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580505620000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069580140000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580505909000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069580141000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580507750000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069580156000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580521762000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580173000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580536217000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580188000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580551339000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069580211000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580572060000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580212000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580573421000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069580212000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580573456000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069580216000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580577754000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580224000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580583476000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069580224000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580584291000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580239000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580597306000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069580239000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580597537000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069580241000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580599229000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580257000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580613214000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069580257000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580613777000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580289000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580643499000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069580312000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580664540000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069580312000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580665642000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580314000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580665993000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069580317000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580670259000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580324000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580675955000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069580325000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580676841000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580340000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580689906000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069580340000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580690205000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069580342000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580691788000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580357000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580705480000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069580357000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580706034000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580390000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580735869000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069580413000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580756937000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069580414000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580758225000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580414000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580758377000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069580418000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580762800000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580426000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580768761000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069580427000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580769473000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580441000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580782457000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069580441000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580782753000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069580442000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580784754000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069580458000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580797782000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580474000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580812917000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580490000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580828108000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069580512000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580849311000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580515000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580850189000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069580515000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580850640000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069580518000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580855085000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580527000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580861205000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069580528000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580861720000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580542000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580874952000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069580542000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580875190000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069580544000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580876979000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580558000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580889532000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069580558000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580890098000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580592000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580921102000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069580614000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580941894000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069580616000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580943086000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580616000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580943346000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069580619000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580947532000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580627000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580953093000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069580628000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580953991000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580644000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580968591000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069580646000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580970639000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580660000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580983209000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069580661000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069580983754000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580677000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069580998935000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069580716000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581035306000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580718000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069581036551000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069580717000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581036588000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069580722000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581041750000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580730000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069581047403000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069580731000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581048173000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580745000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069581061541000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069580745000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581061767000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069580747000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581063797000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580762000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069581076117000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069580762000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581076849000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580795000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069581107101000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069580818000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581127918000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069580819000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581129094000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580820000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069581129545000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069580823000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581134038000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069580831000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581140770000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580846000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069581153420000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069580846000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581153644000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069580848000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581155738000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580861000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069581168004000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069580862000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581168612000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580895000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069581198878000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069580917000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581219495000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069580918000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581220630000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580919000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069581220742000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069580922000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581224857000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580930000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069581230727000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069580930000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581231266000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580946000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069581245354000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069580946000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581245628000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069580947000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581247904000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580962000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069581259866000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069580962000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581260450000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069580979000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069581275609000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069581013000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069581306406000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069581013000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581307027000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069581014000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581311413000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069581042000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581334028000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069581044000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069581335363000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069581052000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581343930000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069581061000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581350564000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069581061000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069581350742000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069581077000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581365246000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069581077000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581365915000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069581078000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581367072000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069581091000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069581378053000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069581107000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069581392487000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069581124000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069581409071000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069581125000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581409684000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069581148000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069581430523000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069581155000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581438283000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069581163000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581444580000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069581164000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069581444719000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069581165000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581447157000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069581179000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581459176000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069581180000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581459933000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069581193000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069581471661000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069581210000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069581487278000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069581227000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069581502953000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069581228000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581503763000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069581250000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069581524593000
+    },
+    {
+      "topic": "/lidar3D",
+      "stamp_ns": 1789069581258000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581532697000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069581266000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581539175000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069581266000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069581539286000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069581268000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581541355000
+    },
+    {
+      "topic": "/camera_right",
+      "stamp_ns": 1789069581282000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581553907000
+    },
+    {
+      "topic": "/Ego_topic",
+      "stamp_ns": 1789069581282000000,
+      "source": "172.19.0.1",
+      "capture_ns": 1789069581553963000
+    },
+    {
+      "topic": "/camera_rear",
+      "stamp_ns": 1789069581282000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581554591000
+    },
+    {
+      "topic": "/camera_front",
+      "stamp_ns": 1789069581284000000,
+      "source": "127.0.0.1",
+      "capture_ns": 1789069581556030000
+    }
+  ]
+}

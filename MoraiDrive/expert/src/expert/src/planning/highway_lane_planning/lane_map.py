@@ -120,6 +120,72 @@ class HighwayLaneMap:
                 )
         return best
 
+    # BEGIN archived projection changes (2026-09-13; disabled).
+    # Active project() above is restored to the Git HEAD implementation.
+    # @staticmethod
+    # def _projection_xy(point):
+    #     """Snapshot coordinates as finite Python floats, without Point indexing."""
+    #     if isinstance(point, Point):
+    #         if point.shape != (2,):
+    #             raise ValueError("projection point must have shape (2,)")
+    #         # ndarray.tolist reads the underlying coordinates without invoking
+    #         # Point.x/y (__getitem__) or propagating the ndarray subclass.
+    #         coordinates = point.tolist()
+    #     else:
+    #         coordinates = (point.x, point.y)
+    #     values = []
+    #     for coordinate in coordinates:
+    #         if getattr(coordinate, "ndim", 0) != 0:
+    #             raise ValueError("projection coordinate must be scalar")
+    #         value = float(coordinate)
+    #         if not math.isfinite(value):
+    #             raise ValueError("projection coordinate must be finite")
+    #         values.append(value)
+    #     return values[0], values[1]
+    #
+    # def project(self, position, lane_link):
+    #     try:
+    #         position_x, position_y = self._projection_xy(position)
+    #         best = None
+    #         for index, (start, end) in enumerate(
+    #             zip(lane_link.points[:-1], lane_link.points[1:])
+    #         ):
+    #             start_x, start_y = self._projection_xy(start)
+    #             end_x, end_y = self._projection_xy(end)
+    #             dx = end_x - start_x
+    #             dy = end_y - start_y
+    #             length_sq = dx * dx + dy * dy
+    #             if length_sq < 1e-9:
+    #                 continue
+    #             ratio = (
+    #                 (position_x - start_x) * dx + (position_y - start_y) * dy
+    #             ) / length_sq
+    #             ratio = max(0.0, min(1.0, ratio))
+    #             x = start_x + ratio * dx
+    #             y = start_y + ratio * dy
+    #             distance = math.hypot(position_x - x, position_y - y)
+    #             if best is None or distance < best.distance:
+    #                 segment_length = math.sqrt(length_sq)
+    #                 best = LaneMatch(
+    #                     lane_link,
+    #                     float(lane_link.cumulative_s[index]) + ratio * segment_length,
+    #                     distance,
+    #                     x,
+    #                     y,
+    #                     math.atan2(dy, dx),
+    #                 )
+    #         return best
+    #     except Exception:
+    #         # Diagnose only: preserve the original exception and computation.
+    #         try:
+    #             from .project_diagnostics import write_project_failure
+    #             write_project_failure(locals(), __file__)
+    #         except Exception:
+    #             # A diagnostic failure must never replace the projection error.
+    #             pass
+    #         raise
+    # END archived projection changes.
+
     def legal_neighbors(self, lane_link):
         neighbors = []
         for direction, target_id, allowed in (

@@ -22,7 +22,7 @@ Runner는 `setup()`과 Expert 프로세스 실행 확인 후 `/morai_drive/scena
 
 종료 시 READY를 해제하고 ROS 구독을 해제한 뒤 Expert를 종료합니다. Runtime은 READY 해제를 확인하여 SyncMode를 종료합니다. 매 회차 Runtime을 먼저 다시 실행하고 Runner를 `--once`로 실행하는 것을 권장합니다.
 
-주행의 기존 15분 제한은 제거했습니다(`timeout_sec: 0.0`). 경로 이탈 및 진행 정지 감시는 유지합니다. 출발 시 기존 Expert·cruise 제어를 중지하고 Ego를 배치한 뒤 잔여 운동을 초기화합니다.
+주행의 기존 15분 제한은 제거했습니다(`timeout_sec: 0.0`). 진행 정지 120초 감시는 비활성화했습니다(`progress_watchdog.enabled: false`). 경로 이탈 감시는 유지합니다. 출발 시 기존 Expert·cruise 제어를 중지하고 Ego를 배치한 뒤 잔여 운동을 초기화합니다.
 
 ## 전체 폐루프 실행
 

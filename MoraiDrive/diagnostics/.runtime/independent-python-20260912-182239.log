@@ -1,0 +1,67 @@
+Log: /home/jun/AIMDrive/MoraiDrive/diagnostics/.runtime/independent-python-20260912-182239.log
+Python: /home/jun/AIMDrive/MoraiDrive/expert/.runtime/python/cpython-3.8.20-linux-x86_64-gnu/bin/python3 3.8.20 (default, Oct  2 2024, 16:34:12) 
+[Clang 18.1.8 ]
+NumPy: 1.17.4 /usr/lib/python3/dist-packages/numpy/__init__.py
+gRPC: /home/jun/.local/lib/python3.8/site-packages/grpc/__init__.py
+IMPORT PASS; no ROS node or simulator connection started
+Round 1
+[ExpertDiagnostic] lane projection failure saved: /tmp/tmpdlxlxhfz/.runtime/diagnostics/lane-project-381067-jimphpq6.json
+[ExpertDiagnostic] lane projection failure saved: /tmp/tmpy3yuebeo/.runtime/diagnostics/lane-project-381067-khpn65bc.json
+----------------------------------------------------------------------
+Ran 7 tests in 0.004s
+
+OK
+----------------------------------------------------------------------
+Ran 60 tests in 1.288s
+
+OK
+[LATTICE] highway ACC PRIORITY: gap=15.43m, TTC=1.29s, reason=highway_right_turn_highway_lane_acc_prepare
+Round 2
+[ExpertDiagnostic] lane projection failure saved: /tmp/tmpmlqqkrdd/.runtime/diagnostics/lane-project-381069-qs71l0po.json
+[ExpertDiagnostic] lane projection failure saved: /tmp/tmpzuf91ig_/.runtime/diagnostics/lane-project-381069-e1rsqsr6.json
+----------------------------------------------------------------------
+Ran 7 tests in 0.012s
+
+OK
+----------------------------------------------------------------------
+Ran 60 tests in 1.259s
+
+OK
+[LATTICE] highway ACC PRIORITY: gap=15.43m, TTC=1.29s, reason=highway_right_turn_highway_lane_acc_prepare
+Round 3
+[ExpertDiagnostic] lane projection failure saved: /tmp/tmpxdzrt6vo/.runtime/diagnostics/lane-project-381071-7bjk73yq.json
+[ExpertDiagnostic] lane projection failure saved: /tmp/tmpmgx8_dsa/.runtime/diagnostics/lane-project-381071-mvx9w4kx.json
+----------------------------------------------------------------------
+Ran 7 tests in 0.003s
+
+OK
+----------------------------------------------------------------------
+Ran 60 tests in 1.250s
+
+OK
+[LATTICE] highway ACC PRIORITY: gap=15.43m, TTC=1.29s, reason=highway_right_turn_highway_lane_acc_prepare
+Round 4
+[ExpertDiagnostic] lane projection failure saved: /tmp/tmpj3e7esan/.runtime/diagnostics/lane-project-381073-azit74gr.json
+[ExpertDiagnostic] lane projection failure saved: /tmp/tmpjn8ig9z7/.runtime/diagnostics/lane-project-381073-i2uf3uu3.json
+----------------------------------------------------------------------
+Ran 7 tests in 0.004s
+
+OK
+----------------------------------------------------------------------
+Ran 60 tests in 1.244s
+
+OK
+[LATTICE] highway ACC PRIORITY: gap=15.43m, TTC=1.29s, reason=highway_right_turn_highway_lane_acc_prepare
+Round 5
+[ExpertDiagnostic] lane projection failure saved: /tmp/tmpt_0_ecpe/.runtime/diagnostics/lane-project-381075-n85koa3q.json
+[ExpertDiagnostic] lane projection failure saved: /tmp/tmp_6vp9sm2/.runtime/diagnostics/lane-project-381075-2xsc2lrt.json
+----------------------------------------------------------------------
+Ran 7 tests in 0.003s
+
+OK
+----------------------------------------------------------------------
+Ran 60 tests in 1.240s
+
+OK
+[LATTICE] highway ACC PRIORITY: gap=15.43m, TTC=1.29s, reason=highway_right_turn_highway_lane_acc_prepare
+ALL CHECKS PASSED

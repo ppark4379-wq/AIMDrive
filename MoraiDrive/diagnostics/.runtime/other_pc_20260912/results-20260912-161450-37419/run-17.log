@@ -1,0 +1,1 @@
+{"mode": "stdlib", "python": "3.8.10 (default, Mar 18 2025, 20:04:55) \n[GCC 9.4.0]", "executable": "/mnt/d/python-repro-20260912/python-repro-20260912/usr/bin/python3.8", "numpy": null, "status": "pass", "iterations": 10000000, "seconds": 4.609496251003293}

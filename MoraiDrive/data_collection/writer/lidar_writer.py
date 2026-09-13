@@ -11,6 +11,7 @@ training Dataset you write later reads only `lidar/`, not `lidar_odd/`.
 """
 import os
 import numpy as np
+from .atomic_io import save_numpy
 
 
 class LidarWriter:
@@ -20,4 +21,6 @@ class LidarWriter:
 
     def write(self, frame_id: int, points: np.ndarray):
         assert points.ndim == 2 and points.shape[1] == 4, points.shape
-        np.save(os.path.join(self.dir, f"{frame_id:04d}.npy"), points.astype(np.float32))
+        path = os.path.join(self.dir, f"{frame_id:04d}.npy")
+        save_numpy(path, points.astype(np.float32))
+        return path

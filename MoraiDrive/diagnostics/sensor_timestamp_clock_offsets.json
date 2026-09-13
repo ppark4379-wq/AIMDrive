@@ -1,0 +1,37 @@
+[
+  {
+    "windows_before_ns": 1789069409316890800,
+    "windows_after_ns": 1789069409384512600,
+    "wsl_ns": 1789069412224038181,
+    "wsl_minus_windows_min_ms": 2839.525581,
+    "wsl_minus_windows_max_ms": 2907.147381
+  },
+  {
+    "windows_before_ns": 1789069409784772500,
+    "windows_after_ns": 1789069409852934400,
+    "wsl_ns": 1789069412651249967,
+    "wsl_minus_windows_min_ms": 2798.315567,
+    "wsl_minus_windows_max_ms": 2866.477467
+  },
+  {
+    "windows_before_ns": 1789069410254364100,
+    "windows_after_ns": 1789069410323636900,
+    "wsl_ns": 1789069413083052178,
+    "wsl_minus_windows_min_ms": 2759.415278,
+    "wsl_minus_windows_max_ms": 2828.688078
+  },
+  {
+    "windows_before_ns": 1789069410724112200,
+    "windows_after_ns": 1789069410786589400,
+    "wsl_ns": 1789069413510254540,
+    "wsl_minus_windows_min_ms": 2723.66514,
+    "wsl_minus_windows_max_ms": 2786.14234
+  },
+  {
+    "windows_before_ns": 1789069411187297300,
+    "windows_after_ns": 1789069411251327800,
+    "wsl_ns": 1789069413933139836,
+    "wsl_minus_windows_min_ms": 2681.812036,
+    "wsl_minus_windows_max_ms": 2745.842536
+  }
+]
