@@ -1,373 +1,274 @@
-> **팀 MORAI 학습:** [현재 모델·데이터셋·학습 실행 안내](LAVIS/README_MORAI.md).
+# VLDrive (MORAI 학습 코드)
 
-# LMDrive: Closed-Loop End-to-End Driving with Large Language Models
-*An end-to-end, closed-loop, language-based autonomous driving framework, which interacts with the dynamic environment via multi-modal multi-view sensor data and natural language instructions.*
+VLDrive 논문 구현을 MORAI 시뮬레이터에서 수집한 데이터로 학습하도록 정리한 저장소입니다.
+구조는 자매 프로젝트 [`../LMDrive`](../LMDrive) 와 동일하게 맞췄습니다.
+설계 근거와 구현 기록은 [`docs/`](docs/) 에 있습니다.
 
-[[Project Page](https://hao-shao.com/projects/lmdrive.html)] [[Paper](https://arxiv.org/abs/2312.07488)]  [[Dataset(hugging face)](https://huggingface.co/datasets/OpenDILabCommunity/LMDrive)]  [[Model Zoo](https://huggingface.co/collections/OpenDILabCommunity/lmdrive-658aee50ce38d143c4925a98)]
+원래는 LAVIS 전체(BLIP/ALBEF/CLIP 등)와 timm 포크, CARLA leaderboard·scenario_runner 가
+함께 들어 있었고 실제로 학습에 쓰이는 파일은 그중 일부였습니다. 여기서는
+**학습과 오프라인 평가에 필요한 코드만** 남기고 이름을 역할이 드러나게 바꿨습니다.
 
-[[Dataset(OpenXlab)](https://openxlab.org.cn/datasets/deepcs233/LMDrive)]
-[[Model Zoo(OpenXLab)](https://openxlab.org.cn/models/detail/deepcs233/LMDrive)]
-
-
-[![Hits](https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fgithub.com%2Fopendilab%2FLMDrive&count_bg=%2379C83D&title_bg=%23555555&icon=&icon_color=%23E7E7E7&title=hits&edge_flat=false)](https://hits.seeyoufarm.com)
-[![Code License](https://img.shields.io/badge/Code%20License-Apache_2.0-green.svg)](https://github.com/tatsu-lab/stanford_alpaca/blob/main/LICENSE)
-[![Data License](https://img.shields.io/badge/Data%20License-CC%20By%20NC%204.0-red.svg)](https://github.com/tatsu-lab/stanford_alpaca/blob/main/DATA_LICENSE)
-
-## News
-
-- `[02/27]` [LMDrive](https://arxiv.org/abs/2312.07488) is accepted by CVPR 2024 🎉🎉🎉
-- `[01/25]` We uploaded our models to [OpenXLab](https://openxlab.org.cn/models/detail/deepcs233/LMDrive)
-- `[01/23]` We gave a talk at [ZhiDongXi (智东西)](https://wqpoq.xetslk.com/sl/3D1aRZ)
-- `[01/20]` We uploaded our dataset to [OpenXLab](https://openxlab.org.cn/datasets/deepcs233/LMDrive)
-- `[12/21]` We released our project website [here](https://hao-shao.com/projects/lmdrive.html)
-
-****
-
-<div align="center">
-  <img width="800" src="assets/pipeline.png"></img>
-</div>
-
-> [Hao Shao](http://hao-shao.com/), Yuxuan Hu, [Letian Wang](https://letianwang0.wixsite.com/myhome), [Steven L. Waslander](https://www.trailab.utias.utoronto.ca/stevenwaslander), [Yu Liu](https://liuyu.us/), [Hongsheng Li](http://www.ee.cuhk.edu.hk/~hsli/).
-
-This repository contains code for the paper [LMDrive: Closed-Loop End-to-End Driving with Large Language Models](https://arxiv.org/abs/2312.07488). This work proposes a novel language-guided, end-to-end, closed-loop autonomous driving framework.
-
-## Demo Video
-
-
-<div align="center">
-  <video width="800" src="https://github.com/opendilab/LMDrive/assets/17512647/65b2785d-e8bc-4ec1-ac86-e077299a465d"></video>
-</div>
-
-## Contents
-1. [Setup](#setup)
-2. [Model Weights](#lmdrive-Weights)
-3. [Dataset](#dataset)
-      1. [Overview](#overview)
-      1. [Data Generation](#data-generation)
-      2. [Data Pre-procession](#data-pre-procession)
-      3. [Data Parsing](#data-parsing)
-4. [Training](#training)
-      1. [Vision encoder pre-training](#vision-encoder-pre-training)
-      2. [Instruction finetuning](#instruction-finetuning)
-5. [Evaluation](#evaluation)
-6. [Citation](#citation)
-7. [Acknowledgements](#acknowledgements)
-
-## Setup
-
-Our project is built on three parts: (1) vision encoder (corresponding repo: timm); (2) vision LLM (corresponding repo: LAVIS); (3) data collection, agent controller (corresponding repo: InterFuser, Leaderboard, ScenarioRunner). 
-
-Install anaconda
-```Shell
-wget https://repo.anaconda.com/archive/Anaconda3-2020.11-Linux-x86_64.sh
-bash Anaconda3-2020.11-Linux-x86_64.sh
-source ~/.bashrc
-```
-
-Clone the repo and build the environment
-
-```Shell
-git clone https://github.com/opendilab/LMDrive.git
-cd LMDrive
-conda create -n lmdrive python=3.8
-conda activate lmdrive
-cd vision_encoder
-pip3 install -r requirements.txt
-python setup.py develop # if you have installed timm before, please uninstall it
-cd ../LAVIS
-pip3 install -r requirements.txt
-python setup.py develop # if you have installed LAVIS before, please uninstall it
-
-pip install flash-attn --no-build-isolation # optional
-```
-
-Download and setup CARLA 0.9.10.1
-```Shell
-chmod +x setup_carla.sh
-./setup_carla.sh
-pip install carla
-```
-
-> If you encounter some problems related to Carla, please refer to [Carla Issues](https://github.com/carla-simulator/carla/issues) and [InterFuser Issues](https://github.com/opendilab/InterFuser) first.
-
-
-## LMDrive Weights
-If you are interested in including any other details in Model Zoo, please open an issue :)
-
-
-| Version | Size |  Checkpoint | VisionEncoder | LLM-base | DS (LangAuto) | DS (LangAuto-short) |
-|---------|------|------------|----------------|-----------|:---:|:---:|
-| LMDrive-1.0 (LLaVA-v1.5-7B) | 7B |  [LMDrive-llava-v1.5-7b-v1.0](https://huggingface.co/OpenDILabCommunity/LMDrive-llava-v1.5-7b-v1.0) | [R50](https://huggingface.co/OpenDILabCommunity/LMDrive-vision-encoder-r50-v1.0) | [LLaVA-v1.5-7B](https://huggingface.co/liuhaotian/llava-v1.5-7b) | 36.2 | 50.6|
-| LMDrive-1.0 (Vicuna-v1.5-7B) | 7B |  [LMDrive-vicuna-v1.5-7b-v1.0](https://huggingface.co/OpenDILabCommunity/LMDrive-vicuna-v1.5-7b-v1.0) | [R50](https://huggingface.co/OpenDILabCommunity/LMDrive-vision-encoder-r50-v1.0) | [Vicuna-v1.5-7B](https://huggingface.co/lmsys/vicuna-7b-v1.5-16k) | 33.5 | 45.3 |
-| LMDrive-1.0 (LLaMA-7B) | 7B |  [LMDrive-llama-7b-v1.0](https://huggingface.co/OpenDILabCommunity/LMDrive-llama-7b-v1.0) | [R50](https://huggingface.co/OpenDILabCommunity/LMDrive-vision-encoder-r50-v1.0) | [LLaMA-7B](https://huggingface.co/huggyllama/llama-7b) | 31.3 | 42.8 |
-
-*DS denotes the driving score*
-
-## Dataset
-
-We aim to develop an intelligent driving agent that can generate driving actions based on three sources of input: 1) sensor data (multi-view camera and LiDAR), so that the agent can generate actions that are aware of and compliant with the current scene; 2) navigation instructions (e.g. lane changing, turning), so that the agent can drive to meet the requirement in natural language (instruction from humans or navigation software); and 3) human notice instruction, so that the agent can interact with humans and adapt to human's suggestions and preferences (e.g. pay attention to adversarial events, deal with long-tail events, etc).
-
-We provide a dataset with about 64K data clips, where each clip includes one navigation instruction, several notice instructions, a sequence of multi-modal multi-view sensor data, and control signals. The duration of the clip spans from 2 to 20 seconds. The dataset used in our paper can be downloaded [here](https://huggingface.co/datasets/OpenDILabCommunity/LMDrive). If you want to create your own dataset, please follow the steps we've outlined below.
-
-### Overview
-The data is generated with ```leaderboard/team_code/auto_pilot.py``` in 8 CARLA towns using the routes and scenarios files provided at ```leaderboard/data``` on CARLA 0.9.10.1 . The dataset is collected at a high frequency (~10Hz).
-
-Once you have downloaded our dataset or collected your own dataset, it's necessary to systematically organize the data as follows. DATASET_ROOT is the root directory where your dataset is stored.
+## 모델 개요
 
 ```
-├── $DATASET_ROOT
-│   └── dataset_index.txt  # for vision encoder pretraining
-│   └── navigation_instruction_list.txt  # for instruction finetuning
-│   └── notice_instruction_list.json  # for instruction finetuning
-│   └── routes_town06_long_w7_11_28_18_28_35  #  data folder
-│   └── routes_town01_short_w2_11_16_08_27_10
-│   └── routes_town02_short_w2_11_16_22_55_25
-│   └── routes_town01_short_w2_11_16_11_44_08 
-      ├── rgb_full
-      ├── lidar
-      └── ...
+                 [1단계] 비전 인코더 사전학습                [2단계] VLDrive 학습
+  MORAI 4-view 카메라 + LiDAR                        얼린 인코더 토큰 [T,106,256]
+            │                                                  │
+      Memfuser 인코더  ── 검출/웨이포인트/신호등 헤드            CCDP  (Gumbel 토큰 가지치기, 약 30% 유지)
+            │                                                  │
+     106 x 256 시각 토큰  ──────── 캐시 ───────────────▶   MEFA  (Modified Q-Former, 프레임 메모리 Z=10)
+                                                               │
+                                                    TinyLlama-1.1B + DDIA (모달리티 인지 어텐션)
+                                                               │
+                                                    웨이포인트 5점 + 종료 플래그
+
+  손실:  L_way + 10 · L_prun + 1 · L_rec
 ```
 
-The `navigation_instruction_list.txt` and `notice_instruction_list.txt` can be generated with our scripts by the data parsing [scripts](#data-parsing).
-Each subfolder in the dataset you've collected should be structured as follows:
+1단계는 LMDrive 의 비전 인코더 구조 그대로이고, 공개 LMDrive 체크포인트가 `strict=True` 로
+로드됩니다. 다만 **공개 체크포인트로 시작하지 않고** ResNet-50d ImageNet 백본에서 출발해
+MORAI 전문가 주행으로 PointPillars·융합·쿼리·헤드를 학습합니다.
+
+## 구조
 
 ```
-- routes_town(town_id)_{tiny,short,long}_w(weather_id)_timestamp: corresponding to different towns and routes files
-    - routes_X: contains data for an individual route
-        - rgb_full: a big multi-view camera image at 400x1200 resolution, which can be split into four images (left, center, right, rear)
-        - lidar: 3d point cloud in .npy format. It only includes the LiDAR points captured in 1/20 second, covering 180 degrees of horizontal view. So if you want to utilize 360 degrees of view, you need to merge it with the data from lidar_odd.
-        - lidar_odd: 3d point cloud in .npy format.
-        - birdview: topdown segmentation images, LAV and LBC used this type of data for training
-        - topdown: similar to birdview but it's captured by the down-facing camera
-        - 3d_bbs: 3d bounding boxes for different agents
-        - affordances: different types of affordances
-        - actors_data: contains the positions, velocities and other metadata of surrounding vehicles and the traffic lights
-        - measurements: contains ego agent's position, velocity, future waypoints, and other metadata
-        - measurements_full: merges measurement and actors_data
-        - measurements_all.json: merges the files in measurement_full into a single file
-```
-The `$DATASET_ROOT` directory must contain a file named `dataset_index.txt`, which can be generated by our data pre-processing [script](#data-pre-procession). It should list the training and evaluation data in the following format:
-
-```
-<relative_route_path_dir> <num_data_frames_in_this_dir>
-routes_town06_long_w7_11_28_18_28_35/ 1062
-routes_town01_short_w2_11_16_08_27_10/ 1785
-routes_town01_short_w2_11_16_09_55_05/ 918
-routes_town02_short_w2_11_16_22_55_25/ 134
-routes_town01_short_w2_11_16_11_44_08/ 569
-```
-
-Here, `<relative_route_path_dir>` should be a relative path to the `$DATASET_ROOT`. The training code will concatenate the `$DATASET_ROOT` and `<relative_route_path_dir>` to create the full path for loading the data. 
-In this format, 1062 represents the number of frames in the routes_town06_long_w7_11_28_18_28_35/rgb_full directory or routes_town06_long_w7_11_28_18_28_35/lidar, etc.
-
-### Data Generation
-#### Data Generation with multiple CARLA Servers
-In addition to the dataset, we have also provided all the scripts used for generating data and these can be modified as required for different CARLA versions. The dataset is collected by a rule-based expert agent in different weathers and towns.
-
-##### Running CARLA Servers
-```bash
-# Start 4 carla servers: ip [localhost], port [2000, 2002, 2004, 2006]. You can adjust the number of CARLA servers according to your situation and more servers can collect more data. If you use N servers to collect data, it means you have collected data N times on each route, except that the weather and traffic scenarios are random each time.
-
-cd carla
-CUDA_VISIBLE_DEVICES=0 ./CarlaUE4.sh --world-port=2000 -opengl &
-CUDA_VISIBLE_DEVICES=1 ./CarlaUE4.sh --world-port=2002 -opengl &
-CUDA_VISIBLE_DEVICES=2 ./CarlaUE4.sh --world-port=2004 -opengl &
-CUDA_VISIBLE_DEVICES=3 ./CarlaUE4.sh --world-port=2006 -opengl &
-```
-
-Instructions for setting up docker are available [here](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html#docker). Pull the docker image of CARLA 0.9.10.1 ```docker pull carlasim/carla:0.9.10.1```.
-
-Docker 18:
-```
-docker run -it --rm -p 2000-2002:2000-2002 --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=0 carlasim/carla:0.9.10.1 ./CarlaUE4.sh --world-port=2000 -opengl
+VLDrive/
+├── train.py                  두 단계 학습 진입점 (하위 명령으로 단계 선택)
+├── evaluate.py               체크포인트 오프라인 평가 (시뮬레이터 불필요)
+├── configs/
+│   ├── vldrive_train.json            2단계 기본 설정 (80/20 분할, 15에폭)
+│   ├── vldrive_train_fullroute.json  전체 경로 인코더 + 95/05 분할
+│   ├── vldrive_train_smoke.json      2윈도우 2에폭 스모크
+│   └── splits/                       시간순 train/purge/validation 분할 파일
+├── models/
+│   ├── resnet.py             카메라 CNN 백본 (ResNet-D)
+│   ├── transformer.py        DETR 방식 인코더/디코더와 위치 인코딩
+│   ├── pointpillars.py       LiDAR PointPillars 인코더 (torch_scatter 없으면 순수 PyTorch)
+│   ├── vision_encoder.py     Memfuser 비전 인코더 (멀티뷰 + LiDAR -> 토큰/인지 출력)
+│   ├── frozen_vision_encoder.py  1단계 인코더를 얼려서 2단계에 붙이는 래퍼
+│   ├── ccdp.py               Gumbel 토큰 가지치기 (유지율 목표 0.3)
+│   ├── qformer.py            BLIP-2 Q-Former (LAVIS 원본 그대로)
+│   ├── qformer_mefa.py       MEFA - 프레임 메모리 Z=10 을 가진 Q-Former 커넥터
+│   ├── ddia_attention.py     DDIA - 시각/지시문/패딩을 구분하는 어텐션 바이어스
+│   ├── multimodal_sequence.py  시각·지시문·패딩 시퀀스 배치
+│   ├── tinyllama_backbone.py TinyLlama 로딩 + DDIA 설치
+│   ├── visual_token_interface.py  [B,T,N,256] 시각 토큰 규격 검증
+│   ├── language_model.py     TinyLlama + DDIA + 웨이포인트/종료 헤드
+│   └── vldrive.py            전체 학습 모델 (인코더 -> CCDP -> MEFA -> 언어 모델)
+├── datasets/
+│   ├── morai_perception_dataset.py  1단계용 동기화 프레임 + 인지/웨이포인트 라벨
+│   ├── morai_expert_dataset.py      2단계용 캐시 토큰 윈도우 + 지시문 + 전문가 궤적
+│   ├── sensor_adapter.py            원시 MORAI 프레임 -> 얼린 인코더 입력
+│   ├── split_manifest.py            시간순 분할 파일 생성/해석
+│   ├── traffic_labels.py            신호등 라벨 사이드카 생성/검증
+│   ├── transforms.py, lidar.py      카메라 전처리, LiDAR 전처리
+│   └── loader.py                    DataLoader 와 카메라 변환 부착
+├── utils/
+│   ├── runtime.py            오프라인 캐시 설정, sha256 출처 기록, 수치 어댑터, 경로 해석
+│   ├── vision_encoder_training.py  1단계 학습 루프 (인자·에폭·체크포인트)
+│   ├── trainer.py            2단계 학습/preflight/평가/체크포인트
+│   ├── training.py           배치·autocast·시드·그래디언트 보고 공통 함수
+│   └── metrics.py            궤적 지표 (ADE, FDE, 구간별 오차)
+├── tools/                    분할·라벨·지시문·토큰 캐시·시각화 (tools/README.md 참고)
+├── tests/                    148개 단위 테스트
+├── docs/                     설계 노트와 실험 보고서
+├── data/                     raw/ processed/ external/  (git 추적 제외)
+└── outputs/                  checkpoints/ logs/         (git 추적 제외)
 ```
 
-Docker 19:
-```Shell
-docker run -it --rm --net=host --gpus '"device=0"' carlasim/carla:0.9.10.1 ./CarlaUE4.sh --world-port=2000 -opengl
-```
-
-If the docker container doesn't start properly then add another environment variable ```-e SDL_AUDIODRIVER=dsp```.
-
-##### Run the Autopilot
-Generate scripts for collecting data in batches.
-```bash
-cd dataset
-python init_dir.py
-cd ..
-cd data_collection
-
-# You can modify FPS, waypoints distribution strength in auto_agent.yaml ...
-
-# If you do not use 4 servers, the following Python scripts are needed to modify
-python generate_bashs.py
-python generate_batch_collect.py 
-cd ..
-```
-
-Run batch-run scripts of the town and route type that you need to collect.
-```bash
-bash data_collection/batch_run/run_route_routes_town01_long.sh
-bash data_collection/batch_run/run_route_routes_town01_short.sh
-...
-bash data_collection/batch_run/run_route_routes_town07_tiny.sh
-...
-bash data_collection/batch_run/run_route_routes_town10_tiny.sh
-```
-
-**Note:** Our scripts will use a random weather condition for data collection
-
-##### Data Generation with a single CARLA Server
-With a single CARLA server, roll out the autopilot to start data generation.
-```Shell
-carla/CarlaUE4.sh --world-port=2000 -opengl
-./leaderboard/scripts/run_evaluation.sh
-```
-The expert agent used for data generation is defined in ```leaderboard/team_code/auto_pilot.py```. Different variables which need to be set are specified in ```leaderboard/scripts/run_evaluation.sh```. 
-
-### Data Pre-procession
-We provide some Python scripts for pre-processing the collected data in `tools/data_preprocessing`, some of them are optional. Please execute them **in the order**:
-1. `python get_list_file.py $DATASET_ROOT`: obtain the dataset_list.txt.
-2. `python batch_merge_data.py $DATASET_ROOT`: merge several scattered data files into one file to reduce IO time when training. **[Optional]**
-3. `python batch_rm_rgb_data.py $DATASET_ROOT`: delete redundant files after we have merged them into new files. **[Optional]**
-4. `python batch_stat_blocked_data.py $DATASET_ROOT`: find the frames that the ego-vehicle is blocked for a long time. By removing them, we can enhance data distribution and decrease the overall data size.
-5. `python batch_rm_blocked_data.py $DATASET_ROOT`: delete the blocked frames.
-6. `python batch_recollect_data.py $DATASET_ROOT`: since we have removed some frames, we need to reorganize them to ensure that the frame ids are continuous. 
-7. `python batch_merge_measurements.py $DATASET_ROOT`: merge the measurement files from all frames in one route folder to reduce IO time
-
-### Data Parsing
-After collecting and pre-processing the data, we need to parse the navigation instructions and notice instructions data with some Python scripts in `tools/data_parsing`.
-
-The script for parsing navigation instructions:
-```bash
-python3 parse_instruction.py $DATSET_ROOT 
-```
-
-The parsed navigation clips will be saved in `$DATSET_ROOT/navigation_instruction_list.txt`, under the root directory of the dataset.
-
-
-The script for parsing notice instructions:
-```bash
-python3 parse_notice.py $DATSET_ROOT 
-```
-
-The parsed notice clips will be saved in  `$DATSET_ROOT/notice_instruction_list.txt`.
-
-
-The script for parsing misleading instructions:
-```bash
-python3 parse_misleading.py $DATSET_ROOT 
-```
-
-The parsed misleading clips will be saved in `$DATSET_ROOT/misleading_data.txt`.
-
-
-## Training
-
-LMDrive's training consists of two stages: 1) the vision encoder pre-training stage, to generate visual tokens from sensor inputs; and 2) the instruction-finetuning stage, to align the instruction/vision and control signal. 
-
-LMDrive is trained on 8 A100 GPUs with 80GB memory (the first stage can be trained on GPUS with 32G memory). To train on fewer GPUs, you can reduce the `batch-size` and the `learning-rate` while maintaining their proportion.
-Please download the multi-modal dataset with instructions collected in the CARLA simulator we use in the paper [here](https://huggingface.co/datasets/OpenDILabCommunity/LMDrive) or [openxlab (uploading)](https://openxlab.org.cn/datasets/deepcs233/LMDrive)], if you do not collect the dataset by yourself. You can only download part of them to verify our framework or your improvement.
-
-    
-### Vision encoder pre-training
-
-Pretrain takes around 2~3 days for the visual encoder on 8x A100 (80G). Once the training is completed, you can locate the checkpoint of the vision encoder in the `output/` directory.
+## 설치
 
 ```bash
-cd vision_encoder
-bash scripts/train.sh
+pip install -r requirements.txt
 ```
 
-Some options to note:
+Python 3.10, torch 2.8.0+cu128, transformers 4.31.0, RTX 5060 Ti 16GB 에서 확인했습니다.
+`torch-scatter` 는 없어도 됩니다(PointPillars 가 순수 PyTorch 대체 경로를 씁니다).
+`matplotlib` 은 `tools/render_vision_tokens.py` 에만, `huggingface-hub` 은
+`tools/prepare_assets.py --download-*` 에만 필요합니다.
 
-- `GPU_NUM`:  the number of GPUs you want to use. By default, it is set to 8.
-- `DATASET_ROOT`: the root directory for storing the dataset.
-- `--model`: the structure of visual model. You can choose memfuser_baseline_e1d3_r26 which replaces ResNet50 with ResNet26. It's also possible to create new model variants in `visual_encoder/timm/models/memfuser.py`
-- `--train-towns/train-weathers`: the data filter for the training dataset. Similarly, there are corresponding options, `val-towns/val-weathers` to filter the validation dataset accordingly.
+transformers 는 **4.31.0 고정**입니다. 이 버전이 LLaMA GQA 를 지원하면서도 DDIA 가 교체하는
+3-value `LlamaAttention` API 를 유지합니다. 상위 버전을 쓰려면 `models/ddia_attention.py` 에
+어댑터가 필요합니다.
 
-### Instruction finetuning 
-
-Instruction finetuning takes around 2~3 days for the visual encoder on 8x A100 (80G). Once the training is completed, you can locate the checkpoint of the adapter and qformer in the `lavis/output/` directory.
+## 준비물
 
 ```bash
-cd LAVIS
-bash run.sh 8 lavis/projects/lmdrive/notice_llava15_visual_encoder_r50_seq40.yaml # 8 is the GPU number
+# 1. 사전학습 가중치 (최초 1회) -> data/external/
+python tools/prepare_assets.py --download-language --download-qformer
+
+# 2. 시간순 분할 -> configs/splits/
+python tools/create_split.py ../MoraiDrive/dataset_local/competition_train \
+    configs/splits/my_split.json --train-fraction 0.8 --purge-frames 25
+python tools/audit_split.py ../MoraiDrive/dataset_local/competition_train \
+    configs/splits/my_split.json
+
+# 3. 신호등 라벨 사이드카 -> data/processed/traffic_labels/
+python tools/build_traffic_labels.py \
+    --dataset-root ../MoraiDrive/dataset_local/competition_train \
+    --split-file configs/splits/my_split.json \
+    --output data/processed/traffic_labels/my_split.json \
+    --report data/processed/traffic_labels/my_split_report.json
+
+# 4. 주행 지시문 -> data/processed/instructions/
+python tools/build_instructions.py --dataset-root ../MoraiDrive/dataset_local/competition_train \
+    --output data/processed/instructions/my_split.jsonl
 ```
 
-Some options in the config.yaml to note:
+MORAI 수집 데이터는 CARLA 와 같은 형식입니다. 경로마다 `rgb_front/left/right/rear`,
+`lidar`, `measurements_full`, `measurements_all.json` 이 있고 루트에 `dataset_index.txt`
+가 있습니다. LiDAR 축은 MORAI 가 FLU(전방-좌-상), LMDrive 인코더가 FRU(전방-우-상)라서
+`lidar_axis_policy="morai_flu_to_lmdrive_fru"` 가 경계에서 y 부호만 뒤집습니다.
+원본 기록과 궤적/경로 라벨은 손대지 않습니다.
 
-- `preception_model`:  the model architecture of the vision encoder.
-- `preception_model_ckpt`: the checkpoint path of the vision encoder.
-- `llm_model`: the checkpoint path of the llm (Vicuna/LLaVA).
-- `use_notice_prompt`: whether to use notice instruction data when training.
-- `split_section_num_for_visual_encoder`: the number of sections the frames are divided into during the forward encoding of visual features. Higher values can save more memory, and it needs to be a factor of `token_max_length`.
-- **datasets:**
-  - `storage`: the root directory for storing the dataset.
-  - `towns/weathers`: the data filter for training/evaluating.
-  - `token_max_length`: the maximum number of frames, if the number of frames exceeds this value, they will be truncated.
-  - `sample_interval`: the interval at which frames are sampled.
+## 학습
 
-## Evaluation
-Start a CARLA server (described above) and run the required agent. The adequate routes and scenarios files are provided in ```leaderboard/data``` and the required variables need to be set in ```leaderboard/scripts/run_evaluation.sh```.
+### 1단계 — 비전 인코더
 
-Some options need to be updated in the `leaderboard/team_code/lmdrive_config.py`:
-- `preception_model`:  the model architecture of the vision encoder.
-- `preception_model_ckpt`: the checkpoint path of the vision encoder (obtained in the vision encoder pretraining stage).
-- `llm_model`: the checkpoint path of the llm (LLaMA/Vicuna/LLaVA).
-- `lmdrive_ckpt`: the checkpoint path of the lmdrive (obtained in the instruction finetuing stage).
-
-Update ```leaderboard/scripts/run_evaluation.sh``` to include the following code for evaluating the model on Town05 Long Benchmark.
-```shell
-export CARLA_ROOT=/path/to/carla/root
-export TEAM_AGENT=leaderboard/team_code/lmdrive_agent.py
-export TEAM_CONFIG=leaderboard/team_code/lmdrive_config.py
-export CHECKPOINT_ENDPOINT=results/lmdrive_result.json
-export SCENARIOS=leaderboard/data/official/all_towns_traffic_scenarios_public.json
-export ROUTES=leaderboard/data/LangAuto/long.xml
+```bash
+python train.py vision-encoder ../MoraiDrive/dataset_local/competition_train \
+    --split-file configs/splits/morai_full_loop_80_20.json \
+    --traffic-label-sidecar data/processed/traffic_labels/full_loop_80_20.json \
+    --output outputs/checkpoints/vision_encoder/run1 \
+    --epochs 25 --warmup-epochs 5 --batch-size 2 --accumulation-steps 16 \
+    --rgb-hue-jitter 0
 ```
 
-```shell
-CUDA_VISIBLE_DEVICES=0 ./leaderboard/scripts/run_evaluation.sh
+`--rgb-hue-jitter 0` 이 기본값입니다. 신호등은 색으로 구분하므로 hue 증강을 끄고
+밝기·대비·채도 증강만 씁니다. `--warm-start` 는 가중치만 가져와 새 학습을 시작하고
+(체크포인트 SHA-256 을 반드시 함께 선언해야 합니다), `--resume` 은 옵티마이저·에폭까지
+이어받습니다. 출력: `checkpoint-last.pth.tar`, `model-best.pth.tar`, `metrics.jsonl`,
+`run_provenance.json`, `feature_contract.json`.
+
+### 1.5단계 — 시각 토큰 캐시
+
+```bash
+python tools/cache_vision_tokens.py \
+    --dataset-root ../MoraiDrive/dataset_local/competition_train \
+    --split-file configs/splits/morai_full_loop_80_20.json \
+    --checkpoint outputs/checkpoints/vision_encoder/run1/model-best.pth.tar \
+    --output data/processed/vision_tokens/run1 --batch-size 1 --workers 2
 ```
 
-Here, the `long.json` and `long.xml` files are replaced with `short.json` and `short.xml` for the evaluation of the agent in the LangAuto-Short benchmark.
+2단계는 이 캐시만 읽습니다. 인코더는 학습 중에 아예 돌지 않으므로 GPU 메모리와 시간이
+크게 줄고, 캐시가 어느 체크포인트에서 나왔는지 sha256 으로 묶여 검증됩니다.
 
-For LangAuto-Tiny benchmark evaluation, replace the `long.json` and `long.xml` files with `tiny.json` and `tiny.xml`:
+### 2단계 — VLDrive
 
-```shell
-export SCENARIOS=leaderboard/data/LangAuto/tiny.json
-export ROUTES=leaderboard/data/LangAuto/tiny.xml
+```bash
+python train.py vldrive --config configs/vldrive_train.json --output outputs/logs/run1
 ```
 
-### LangAuto-Notice
+먼저 preflight 가 돌아 그래디언트가 흐르는지, 미래 프레임이 과거로 새지 않는지,
+금지된 교사 입력이 들어오지 않는지 확인하고 실패하면 학습을 시작하지 않습니다.
+`--mode preflight` 로 검사만, `--mode evaluate --checkpoint ...` 로 평가만 할 수 있습니다.
+학습이 끝나면 얼린 가중치가 정말 안 바뀌었는지(`frozen_unchanged`) 확인합니다.
+출력: `model-best.pt`, `model-last.pt`, `checkpoint.pt`, `training.jsonl`,
+`epoch_metrics.jsonl`, `provenance.json`, `report.json`.
 
-Set the `agent_use_notice` as True in the lmdriver_config.py.
+전체를 한 번에 돌리려면 `python tools/run_pipeline.py` 를 씁니다.
 
+## 평가
 
-## Citation
-If you find our repo, dataset or paper useful, please cite us as
-```bibtex
-@misc{shao2023lmdrive,
-      title={LMDrive: Closed-Loop End-to-End Driving with Large Language Models}, 
-      author={Hao Shao and Yuxuan Hu and Letian Wang and Steven L. Waslander and Yu Liu and Hongsheng Li},
-      year={2023},
-      eprint={2312.07488},
-      archivePrefix={arXiv},
-      primaryClass={cs.CV}
-}
+```bash
+# 1단계: 웨이포인트 L1, ADE/FDE, 신호등 정확도
+python evaluate.py vision-encoder ../MoraiDrive/dataset_local/competition_train \
+    --split-file configs/splits/morai_full_loop_80_20.json \
+    --checkpoint outputs/checkpoints/vision_encoder/run1/model-best.pth.tar
+
+# 2단계: 궤적 지표 + val_predictions.json
+python evaluate.py vldrive --config configs/vldrive_train.json \
+    --checkpoint outputs/logs/run1/model-best.pt --output outputs/logs/run1-eval
 ```
 
-## Acknowledgements
-This implementation is based on code from several repositories.
-- [InterFuser](https://github.com/opendilab/InterFuser)
-- [Transfuser](https://github.com/autonomousvision/transfuser)
-- [2020_CARLA_challenge](https://github.com/bradyz/2020_CARLA_challenge)
-- [CARLA Leaderboard](https://github.com/carla-simulator/leaderboard)
-- [Scenario Runner](https://github.com/carla-simulator/scenario_runner)
-- [LAVIS](https://github.com/salesforce/LAVIS)
-- [pytorch-image-models](https://github.com/huggingface/pytorch-image-models)
+시뮬레이터를 띄우는 폐루프 주행 평가는 이 저장소에 없습니다. 모델 성능이 어느 정도
+나온 뒤에 MORAI 와 연결합니다.
 
+## 인코더가 무엇을 보는지 확인
 
-## License
-All code within this repository is under [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
+```bash
+python tools/inspect_vision_tokens.py --checkpoint <ckpt> --label run1 \
+    --frames 991,1591,2491 --output outputs/logs/tokens/run1
+python tools/render_vision_tokens.py --probe-root outputs/logs/tokens --labels run1 \
+    --frames 991,1591,2491 \
+    --dataset-root ../MoraiDrive/dataset_local/competition_train \
+    --output outputs/logs/tokens/run1.png
+```
+
+언어 모델을 거치지 않고 인코더 토큰만 뽑아 프레임별 BEV 토큰 세기를 그립니다.
+
+## 재구성 전 코드와의 대응
+
+| 재구성 후 | 재구성 전 |
+|---|---|
+| `train.py vision-encoder`, `utils/vision_encoder_training.py` | `vision_encoder/train_morai_pretrain.py` |
+| `train.py vldrive` | `LAVIS/train_vldrive.py` |
+| `models/vision_encoder.py`, `resnet.py`, `transformer.py`, `pointpillars.py` | `vision_encoder/timm/models/{memfuser,resnet,...,pointpillar}.py` |
+| `models/qformer.py` | `LAVIS/lavis/models/blip2_models/Qformer.py` |
+| `models/{ccdp,qformer_mefa,ddia_attention,multimodal_sequence,tinyllama_backbone,visual_token_interface}.py` | `LAVIS/lavis/models/vldrive/` 의 같은 이름 |
+| `models/frozen_vision_encoder.py` | `LAVIS/lavis/models/vldrive/visual_encoder.py` |
+| `models/language_model.py` | `LAVIS/lavis/models/vldrive/vldrive_model.py` |
+| `models/vldrive.py` | `LAVIS/lavis/models/vldrive/training_model.py` |
+| `datasets/morai_perception_dataset.py` | `vision_encoder/timm/data/carla_dataset.py` 의 `MoraiExpertDataset` |
+| `datasets/{transforms,lidar,loader}.py` | `vision_encoder/timm/data/{transforms_carla_factory,carla_loader}.py` |
+| `datasets/{split_manifest,traffic_labels}.py` | `vision_encoder/{morai_data,morai_traffic_labels}.py` |
+| `datasets/morai_expert_dataset.py`, `sensor_adapter.py` | `LAVIS/lavis/datasets/datasets/morai/` |
+| `utils/runtime.py` | `LAVIS/lavis/common/morai_runtime.py` |
+| `utils/{trainer,training,metrics}.py` | `LAVIS/lavis/runners/{vldrive_trainer,morai_trainer,morai_metrics}.py` |
+| `configs/vldrive_train*.json` | `LAVIS/lavis/projects/vldrive/morai_paper*.json` |
+| `configs/splits/` | `vision_encoder/configs/` |
+| `data/external/` | `LAVIS/assets/pretrained/`, `weights/`, `.runtime/lmdrive_official/` |
+| `data/processed/vision_tokens/`, `instructions/` | `LAVIS/.runtime/morai_vldrive/` |
+| `data/processed/traffic_labels/` | `vision_encoder/.runtime/traffic_labels_v2/` |
+| `outputs/checkpoints/vision_encoder/` | `vision_encoder/output_morai/`, `LAVIS/assets/pretrained/vision_encoder/` |
+
+## 재구성 전과 달라진 점
+
+- **LAVIS 프레임워크를 걷어냈습니다.** 우리 코드가 LAVIS 에서 실제로 쓰던 것은 Q-Former,
+  `registry`, `BaseModel` 세 가지뿐이었습니다. Q-Former 는 그대로 옮겼고, 레지스트리 등록과
+  `BaseModel` 상속은 없앴습니다(`nn.Module` 직접 상속). 쓰이지 않던
+  `BaseModel.load_checkpoint_from_config` 경로도 제거했습니다.
+- **timm 포크를 걷어냈습니다.** 200여 개의 무관한 모델 대신 인코더에 실제로 필요한 4개
+  파일만 남겼습니다. 파라미터 이름은 그대로라 기존 체크포인트가 계속 로드됩니다.
+- **`stage6e` 데이터 형식을 제거했습니다.** 현재 모든 설정이 `morai_expert_cache_v1` 을
+  쓰고, ROS 로 직접 수집하던 초기 경로는 더 이상 사용하지 않습니다(설계 기록은
+  `docs/stage6_*.md`).
+- **신호등 라벨 사이드카를 다시 생성했습니다.** 사이드카는 자기를 만든 코드의 해시를
+  기록하고 로드할 때 전체 재현 비교를 합니다. 파일이 옮겨져 해시가 바뀌었으므로
+  다시 만들었고, 라벨 레코드 자체는 이전과 **바이트 단위로 동일**합니다.
+- **체크포인트 출처 기록 경로가 바뀌었습니다.** `utils/training.py:source_hashes` 가
+  이제 `models/`, `datasets/`, `utils/`, `train.py`, `evaluate.py` 를 해시합니다.
+  이전 체크포인트는 출처 불일치로 재개되지 않습니다(이전 학습 결과는 모두 삭제했습니다).
+- 진단·재현용 일회성 스크립트 약 25개를 지웠습니다. 그 결과 보고서는 `docs/reports/` 에
+  그대로 있습니다.
+
+## 재구성 전후 동일성 검증
+
+원본 코드를 지우기 전에, 같은 입력을 넣어 텐서 단위로 비교했습니다.
+
+- **1단계 데이터셋 44개 항목 완전 일치** — train/validation 각각에 대해 샘플 수, 프레임
+  목록, 9개 입력 텐서(카메라 5, LiDAR, 점 개수, 속도, 목표점)와 5개 타깃 텐서.
+- **1단계 인코더 완전 일치** — 실제 MORAI 체크포인트를 양쪽에 `strict=True` 로 올려
+  state_dict 키 888개가 같고, 검출/웨이포인트/신호등/정지선/BEV 5개 출력과 106x256 시각
+  토큰이 CPU 결정론 모드에서 비트 단위로 같습니다.
+- **테스트 148 passed, 1 skipped** — 남긴 테스트 파일 17개의 테스트 개수가 이동 전과
+  하나도 다르지 않습니다(지운 일회성 스크립트의 테스트 42개만 함께 제거).
+- **실제 학습 동작 확인** — 1단계: 4배치 학습 + 검증 + 체크포인트 + feature contract
+  검증(`strict_load: All keys matched`, 토큰 [1,106,256]). 2단계: preflight 통과,
+  4 업데이트, 학습 대상 가중치는 변하고 얼린 가중치는 그대로, 검증 FDE 28.868 -> 28.020.
+  `evaluate.py` 가 같은 체크포인트에서 같은 값을 재현합니다.
+
+## 알려진 제약
+
+- **2단계 성능은 아직 목표에 못 미칩니다.** 위 스모크 값(FDE 약 28 m)은 2윈도우 2에폭
+  결과라 성능 지표가 아닙니다. 본 학습 결과와 원인 분석은 `docs/reports/` 를 보세요.
+- **데이터가 한 경로(4240프레임)뿐입니다.** 시나리오를 늘려 더 수집해야 합니다.
+- `tools/labeling`, `tools/preprocess`, `tools/carla` 는 CARLA 시절 스크립트라 지금
+  파이프라인에서 실행되지 않습니다. 유지보수 대상 판은 `../LMDrive/tools/` 입니다.
+- `LAVIS/.pytest_cache` 디렉터리가 WSL 권한 문제로 남아 있습니다(12KB). 관리자 권한
+  터미널에서 `rd /s /q LAVIS` 로 지우면 됩니다.
+
+## 라이선스
+
+`LICENSE` 참고. Q-Former 는 LAVIS(BSD-3-Clause), 비전 인코더 구조는 LMDrive(Apache-2.0),
+TinyLlama 는 Apache-2.0 입니다.

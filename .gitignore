@@ -8,19 +8,16 @@ MoraiDrive/dataset_local/
 MoraiDrive/.runtime/data_collection/
 MoraiDrive/data_collection/routes/generated/
 MoraiDrive/data_collection/output/
-VLDrive/vision_encoder/output_morai/
-VLDrive/vision_encoder/.cache/
-VLDrive/LAVIS/.runtime/
-VLDrive/LAVIS/assets/pretrained/
-VLDrive/LAVIS/outputs/
 
-# Downloaded reference checkpoints and sampled CARLA frames. Restore with
-# tools/morai/inspect_vision_tokens.py notes; never commit the weights.
+# VLDrive weights, caches and training runs; see VLDrive/.gitignore for the
+# per-folder rules. Rebuild with VLDrive/tools/prepare_assets.py and
+# VLDrive/tools/cache_vision_tokens.py.
+VLDrive/data/external/
+VLDrive/data/raw/
+VLDrive/data/processed/vision_tokens/
+VLDrive/outputs/checkpoints/
+VLDrive/outputs/logs/
 VLDrive/.runtime/
-
-# Traffic-label sidecars and evaluation scratch space, rebuilt by
-# vision_encoder/tools/build_traffic_labels_v2.py
-VLDrive/vision_encoder/.runtime/
 
 # Per-frame capture logs from data collection. Older runs are already tracked;
 # new runs stay local because a single manifest can exceed 70 MB.
