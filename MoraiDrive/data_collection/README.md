@@ -4,6 +4,47 @@
 LMDrive 호환 데이터셋으로 변환합니다. 기본 `sync_native_files` 모드는 ROS 제어
 서비스를 호출하지 않으므로 실행 중인 Expert와 Runtime에 Collector만 추가할 수 있습니다.
 
+대규모 수집에는 [internal_sensor_record](internal_sensor_record/README.md) backend를
+권장합니다. 팀의 최신 Scenario Runner·Expert는 그대로 사용하면서 MORAI 내부 센서
+동기화 10 Hz 원본을 Windows 로컬 SSD에 먼저 저장하고, 비싼 decode·hash·GT 결합은 주행 뒤에
+수행합니다. `sync_native_files`는 External Sync exact-tick reference/debug 경로로
+계속 보존합니다.
+
+```bash
+./data_collection/tools/01_internal_sensor_record_preflight.sh
+./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_name
+./data_collection/tools/03_validate_internal_sensor_record.py campaign_name
+```
+
+수집 결과는 항상 Git에서 제외되는 `MoraiDrive/dataset`으로 보인다. 저장소가 Windows
+드라이브(`/mnt/c` 등)에 clone되어 있으면 이 폴더가 실제 저장소다. 저장소가 WSL
+`/home`에 있으면 Windows MORAI가 ext4에 직접 기록할 수 없으므로, 01번 preflight가
+이 폴더를 PC별 Windows 저장소로 향하는 symlink로 만든다. 기본 실제 저장소는
+`C:\\MoraiDriveData`다.
+
+PC별 설정은 Git에서 제외되는
+`MoraiDrive/.runtime/data_collection/local_machine.json`에 둔다. 예시는
+`data_collection/local_machine.example.json`이다. 환경변수가 이 파일보다 우선한다.
+현재 PC처럼 별도 SSD를 쓰려면 다음 중 하나를 사용한다.
+
+```bash
+export MORAI_STORAGE_ROOT=/mnt/c/MoraiDriveData
+./data_collection/tools/01_internal_sensor_record_preflight.sh
+./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_name
+```
+
+또는 ignored 로컬 설정에 저장하면 새 터미널마다 export할 필요가 없다.
+
+```json
+{"storage_root":"/mnt/d/MoraiDrive","launcher_root":"/mnt/c/MoraiLauncher_Win"}
+```
+
+`MoraiDrive/dataset`이 일반 폴더로 이미 존재하는 경우에는 안전을 위해 자동으로
+바꾸지 않는다. 새 PC에서는 01번을 먼저 실행해 연결을 만들면 된다. WSL `/home/...`
+자체는 Windows MORAI의 Sensor Record 대상이 될 수 없으므로 실제 바이트는 C/D에
+남는다. 원본 데이터와 `.runtime` 의존성은 Git에 포함되지 않으며, 다른 PC에서는
+`requirements.txt`의 의존성을 한 번 설치해야 한다.
+
 ## 실행
 
 Expert와 Sync Runtime을 실행하고 센서 캡처 기록이 생성된 뒤, 새 터미널에서
@@ -17,10 +58,10 @@ python3 data_collection/collect.py --duration 120
 실행합니다. 경로 설정은 `config.py` 위치를 기준으로 만들어지므로 작업 디렉터리에
 따라 달라지지 않습니다. Python 의존성은 `requirements.txt`를 참고하세요.
 
-### C: 드라이브에 직접 저장
+### 저장소의 dataset 폴더에 저장
 
-기본 저장 루트는 `/mnt/c/AIMDrive` (Windows `C:\AIMDrive`)입니다.
-이미지, LiDAR 및 메타데이터는 이 경로 아래에 직접 저장됩니다.
+기본 dataset 경로는 `<repo>/MoraiDrive/dataset`입니다.
+이미지, LiDAR 및 메타데이터는 이 경로 아래에 저장됩니다.
 `archive_root` 기본값은 빈 문자열이므로 종료 후 Z:로 복사하지 않습니다.
 최신 Runtime manifest는 자동 선택합니다.
 
@@ -32,7 +73,7 @@ python3 data_collection/collect.py --duration 1800
 `--archive-root <복사할_경로>`를 명시하세요. 기존 수집 파일은 자동 이동하지 않습니다.
 
 gRPC object·신호등 라벨은 dataset writer와 별개로 로컬 SQLite 파일에 먼저
-보관됩니다. 기본 위치는 `/mnt/c/DCM/label_spool`이며,
+보관됩니다. 기본 위치는 `MoraiDrive/dataset/.label_spool`이며,
 필요하면 `--label-spool-dir <로컬_경로>`로 변경할 수 있습니다.
 
 ## SyncMode 객체·신호 라벨
@@ -59,8 +100,8 @@ SyncMode에서 `/Object_topic`과 `/GetTrafficLightStatus`가 발행되지 않�
 
 | 설정 | 용도 / 현재 기본값 |
 |---|---|
-| `MAP_DIR`, `MORAI_LAUNCHER` | MGeo 맵 폴더와 MORAI Launcher 설치 폴더 |
-| `DATASET.dataset_root` | 수집 중 결과 저장: `/mnt/c/AIMDrive` |
+| `MAP_DIR`, `MORAI_LAUNCHER` | MGeo 맵 폴더와 PC별 MORAI Launcher 설치 폴더 |
+| `DATASET.dataset_root` | 수집 중 결과 저장: `<repo>/MoraiDrive/dataset` |
 | `DATASET.archive_root` | 기본 `""`: 수집 후 복사 안 함 |
 | `DATASET.job_name`, `route_name` | `competition_train`, `full_loop` |
 | `DATASET.map_id`, `map_source_dir` | 맵 식별자와 MGeo JSON 폴더 |
@@ -108,6 +149,11 @@ run_note: str = ""            # 예: "lfd_gain0.65_max_v60"
 기본 모드 외에 `sync`, `realtime`, `grpc_legacy` 구현도 남아 있습니다.
 `sync` 모드는 Collector가 SyncMode를 직접 제어하므로 독립 Sync Runtime과 함께
 실행하지 않습니다. `legacy_udp/`는 이전 UDP 수집 구현입니다.
+
+`realtime`의 callback 도착 시각만으로 카메라 물리 노출 frame을 인증하지 않습니다.
+Internal Sensor Record 결과도 MORAI의 공식 노출시각 상한이 없는 동안에는
+`physical_simultaneity_verified=false`를 유지하며, 검증된 동일 filename 묶음과
+teacher association 품질을 별도로 기록합니다.
 
 ## 기본 검증
 

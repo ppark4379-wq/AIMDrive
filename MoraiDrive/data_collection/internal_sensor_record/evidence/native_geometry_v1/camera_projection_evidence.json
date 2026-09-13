@@ -1,0 +1,62 @@
+{
+  "schema": "morai_measured_camera_projection_v1",
+  "sensor_file_sha256": "17cb45f05f8044339d23964ca308c0810eb7e71ba10ada04769be779cb1c24b2",
+  "rotation_convention": "Rz(yaw) Ry(pitch) Rx(roll), using persisted preset angles; raw ROS TF retained independently",
+  "fov_axis": "horizontal",
+  "physical_transforms": {
+    "front": {
+      "translation": {
+        "x": 1.899999976158142,
+        "y": 0.0,
+        "z": 1.2000000476837158
+      },
+      "rotation": {
+        "x": 0.0,
+        "y": 0.01745240643728351,
+        "z": 0.0,
+        "w": 0.9998476951563913
+      }
+    },
+    "left": {
+      "translation": {
+        "x": 1.149999976158142,
+        "y": 0.6499999761581421,
+        "z": 1.2000000476837158
+      },
+      "rotation": {
+        "x": -0.0499904803327303,
+        "y": 0.07139380484326965,
+        "z": 0.5713938048432696,
+        "w": 0.8160349234517084
+      }
+    },
+    "right": {
+      "translation": {
+        "x": 1.149999976158142,
+        "y": -0.6499999761581421,
+        "z": 1.2000000476837158
+      },
+      "rotation": {
+        "x": -0.049990480332730285,
+        "y": -0.07139380484326967,
+        "z": 0.5713938048432695,
+        "w": -0.8160349234517085
+      }
+    },
+    "rear": {
+      "translation": {
+        "x": -0.14000000059604645,
+        "y": 0.0,
+        "z": 1.2000000476837158
+      },
+      "rotation": {
+        "x": -0.01745240643728351,
+        "y": 1.0686516840418957e-18,
+        "z": 0.9998476951563913,
+        "w": 6.122301397540666e-17
+      }
+    }
+  },
+  "silhouette_evidence_sha256": "04ce5b680cab65e2b252c0e79491b30c1a51cbeb88afaa77d37fe25610e8d3bc",
+  "scope": "Observed current standard camera setup; not exposure-phase or all-build certification"
+}

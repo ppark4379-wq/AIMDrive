@@ -1,10 +1,15 @@
 numpy
 opencv-python
 pyyaml
+pyproj
+scipy
+Pillow
+psutil
 
 # gRPC (third_party/grpc_inha_univ가 요구)
-grpcio>=1.50.0
-grpcio-tools>=1.50.0
+grpcio==1.62.3
+grpcio-tools==1.62.3
+protobuf==4.25.8
 
 # ROS1 관련은 apt으로 별도 설치 (pip 패키지 아님)
 # sudo apt install ros-noetic-cv-bridge

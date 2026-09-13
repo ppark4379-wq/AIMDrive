@@ -14,6 +14,7 @@ from collections import Counter
 import json
 import math
 import os
+import re
 import time
 
 from config import ROS, GRPC, DATASET, COLLECTOR
@@ -53,11 +54,12 @@ def _valid_wgs84(latitude: float, longitude: float) -> bool:
 def _prepare_dataset_root(path: str) -> str:
     """Resolve the output root and fail before ROS startup if the drive is unavailable."""
     dataset_root = os.path.abspath(os.path.expanduser(path))
-    if dataset_root == "/mnt/z" or dataset_root.startswith("/mnt/z/"):
-        if not os.path.ismount("/mnt/z"):
+    match = re.match(r"^(/mnt/[A-Za-z])(?:/|$)", dataset_root)
+    if match:
+        mount_root = match.group(1)
+        if not os.path.ismount(mount_root):
             raise RuntimeError(
-                "Windows Z: 드라이브가 WSL /mnt/z에 마운트되지 않았습니다. "
-                "`sudo mount -t drvfs Z: /mnt/z` 실행 후 다시 시도하세요."
+                "Windows 드라이브가 WSL에 마운트되지 않았습니다: " + mount_root
             )
     try:
         os.makedirs(dataset_root, exist_ok=True)

@@ -1,5 +1,10 @@
 # data_collection 문서
 
+대규모 Windows-local 수집과 후처리 계약은
+[`../internal_sensor_record/README.md`](../internal_sensor_record/README.md)를 먼저
+참조합니다. 기존 문서는 External Sync `sync_native_files` reference backend와
+공통 LMDrive dataset 변환을 설명합니다.
+
 | 문서 | 내용 |
 |---|---|
 | [architecture.md](architecture.md) | 소스 구조, ROS 동기화, 수집 흐름, MGeo route 라벨 |

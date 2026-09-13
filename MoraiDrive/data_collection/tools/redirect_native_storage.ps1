@@ -1,8 +1,14 @@
-# Run in an elevated Windows PowerShell after stopping Simulator and collectors.
-# Existing C: data is retained in SynchronousMode.before-z-* directories.
+# Legacy Sync Runtime storage redirect. Run in elevated Windows PowerShell only
+# after stopping Simulator and collectors. Existing data is retained.
+param([Parameter(Mandatory=$true)][string]$LauncherRoot,
+      [Parameter(Mandatory=$true)][string]$RawRoot)
 $ErrorActionPreference = 'Stop'
-$launcher = 'C:\Users\Autonav\Desktop\MoraiLauncher_Win'
-$rawRoot = 'Z:\DCM\morai_raw'
+if ($LauncherRoot -notmatch '^[A-Za-z]:\\' -or
+    $RawRoot -notmatch '^[A-Za-z]:\\') {
+    throw 'LauncherRoot and RawRoot must be absolute Windows drive paths.'
+}
+$launcher = $LauncherRoot.TrimEnd('\')
+$rawRoot = $RawRoot.TrimEnd('\')
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = New-Object Security.Principal.WindowsPrincipal($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -11,8 +17,8 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 if (Get-Process -Name Simulator -ErrorAction SilentlyContinue) {
     throw 'Close MORAI Simulator, Sync Runtime and Collector first.'
 }
-if (-not (Test-Path 'Z:\DCM')) {
-    throw 'Z:\DCM is unavailable in this administrator session. Connect RaiDrive first.'
+if (-not (Test-Path (Split-Path $rawRoot -Qualifier))) {
+    throw 'RawRoot drive is unavailable in this administrator session.'
 }
 $pairs = @(
     @{ Source = "$launcher\SensorData\SynchronousMode"; Target = "$rawRoot\camera\SynchronousMode" },
@@ -31,7 +37,7 @@ try {
         }
         $backup = $null
         if ($existing) {
-            $backup = $pair.Source + '.before-z-' + [guid]::NewGuid().ToString('N')
+            $backup = $pair.Source + '.before-redirect-' + [guid]::NewGuid().ToString('N')
             Move-Item -LiteralPath $pair.Source -Destination $backup
         }
         $change = @{ Source = $pair.Source; Backup = $backup; Linked = $false }
@@ -59,13 +65,7 @@ try {
     }
     throw
 }
-# Use Z directly from WSL; do not depend on WSL resolving Windows network links.
-$config = Join-Path $PSScriptRoot '..\config.py'
-$text = [IO.File]::ReadAllText($config)
-$text = [regex]::Replace($text, '(?m)^(    morai_camera_sync_base: str = ).*$', '$1"/mnt/z/DCM/morai_raw/camera/SynchronousMode"')
-$text = [regex]::Replace($text, '(?m)^(    morai_lidar_sync_base: str = ).*$', '$1"/mnt/z/DCM/morai_raw/lidar/SynchronousMode"')
-[IO.File]::WriteAllText($config, $text, (New-Object Text.UTF8Encoding($false)))
 foreach ($change in $changed) {
     if ($change.Backup) { Write-Host "Old data retained: $($change.Backup)" }
 }
-Write-Host 'Native storage redirected to Z; collector input paths updated. Start a new Runtime session.'
+Write-Host 'Native storage redirected. Pass the corresponding WSL paths through collector CLI/environment; repository files were not edited.'

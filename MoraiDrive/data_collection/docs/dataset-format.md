@@ -3,7 +3,7 @@
 ## 출력 구조
 
 ```text
-Z:\DCM\data_collector\                           # DATA_ROOT
+<repo>/MoraiDrive/dataset/                       # logical DATA_ROOT
 └── <작업명>/
     ├── dataset_index.txt                         # 성공 route와 프레임 수
     ├── navigation_instruction_list.txt           # 현재 빈 파일, 생성기 구현 예정

@@ -1,0 +1,352 @@
+"""Build and read visual-pretraining labels from sealed Sensor Record runs.
+
+The native PNG/BIN bytes stay on the configured local spool. A manifest references those
+bytes by their audited relative path and SHA256; it does not duplicate them.
+Teacher state is serialized only as a target and never returned as an encoder
+input.
+"""
+from bisect import bisect_left
+from collections import Counter
+import json
+import math
+from pathlib import Path
+
+import numpy as np
+
+from .labels import HORIZONS, render_object_target
+
+
+LEGACY_SCHEMA = "morai_sensor_record_visual_manifest_v1"
+SCHEMA = "morai_sensor_record_visual_manifest_v2"
+REQUIRED_ROLES = ("camera_1", "camera_2", "camera_3", "camera_4", "lidar", "gps", "imu")
+
+
+def _safe_child(root, relative):
+    relative = Path(relative)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise ValueError("Unsafe Sensor Record asset path: " + str(relative))
+    path = (Path(root) / relative).resolve()
+    root = Path(root).resolve()
+    if root not in path.parents:
+        raise ValueError("Sensor Record asset escapes source root: " + str(relative))
+    return path
+
+
+def dense_ego_timeline(active_signals, max_gap_ns=50_000_000):
+    """Collapse exact duplicate Ego callbacks into one simulation-time series."""
+    unique = {}
+    for row in active_signals:
+        if row.get("role") != "ego" or row.get("source_timestamp_ns") is None:
+            continue
+        signal = row.get("signal") or {}
+        position = signal.get("position") or []
+        if len(position) < 2 or signal.get("yaw") is None or signal.get("speed") is None:
+            raise ValueError("Incomplete Ego signal in sealed active timeline")
+        value = (float(position[0]), float(position[1]),
+                 float(signal["yaw"]), float(signal["speed"]))
+        if not np.isfinite(value).all():
+            raise ValueError("Nonfinite Ego signal")
+        stamp = int(row["source_timestamp_ns"])
+        previous = unique.get(stamp)
+        if previous is not None and previous != value:
+            raise ValueError("Conflicting Ego values at one source timestamp")
+        unique[stamp] = value
+    if len(unique) < 2:
+        raise ValueError("Insufficient Ego source timeline")
+    times = np.asarray(sorted(unique), dtype=np.int64)
+    values = np.asarray([unique[int(t)] for t in times], dtype=np.float64)
+    gaps = np.diff(times)
+    if np.any(gaps <= 0) or int(gaps.max()) > int(max_gap_ns):
+        raise ValueError("Ego source timeline has a gap or reversal")
+    values[:, 2] = np.unwrap(values[:, 2])
+    return times, values
+
+
+def interpolate_ego(times, values, stamp_ns, max_bracket_ns=50_000_000):
+    stamp_ns = int(stamp_ns)
+    pos = bisect_left(times, stamp_ns)
+    if pos < len(times) and int(times[pos]) == stamp_ns:
+        value = values[pos]
+    else:
+        if pos == 0 or pos == len(times):
+            raise ValueError("Sensor time is outside Ego source timeline")
+        if int(times[pos] - times[pos - 1]) > int(max_bracket_ns):
+            raise ValueError("Sensor time lacks a bounded Ego source bracket")
+        alpha = (stamp_ns - int(times[pos - 1])) / float(times[pos] - times[pos - 1])
+        value = values[pos - 1] * (1.0 - alpha) + values[pos] * alpha
+    return {"x": float(value[0]), "y": float(value[1]),
+            "yaw": float(value[2]), "speed": float(value[3])}
+
+
+def waypoint_at_sensor_time(times, values, stamp_ns):
+    """LMDrive waypoint axes at 0.5..2.5 s from the sensor simulation time."""
+    origin = interpolate_ego(times, values, stamp_ns)
+    future_ns = int(stamp_ns) + np.rint(HORIZONS * 1_000_000_000).astype(np.int64)
+    if int(future_ns[-1]) > int(times[-1]):
+        raise ValueError("Incomplete 2.5 second future Ego horizon")
+    future = np.column_stack([
+        np.interp(future_ns, times, values[:, 0]),
+        np.interp(future_ns, times, values[:, 1]),
+    ])
+    delta = future - [origin["x"], origin["y"]]
+    c, s = math.cos(origin["yaw"]), math.sin(origin["yaw"])
+    forward = c * delta[:, 0] + s * delta[:, 1]
+    left = -s * delta[:, 0] + c * delta[:, 1]
+    result = np.column_stack([-left, -forward]).astype(np.float32)
+    if not np.isfinite(result).all():
+        raise ValueError("Nonfinite waypoint target")
+    return origin, result
+
+
+def objects_for_entry(gt, geometry):
+    geometry_rows = {str(row.get("instance_key")): row for row in geometry.get("objects", [])}
+    result = []
+    for obj in gt.get("object_gt", {}).get("objects", []):
+        size = obj.get("size_wlh_m") or []
+        position = obj.get("position") or []
+        velocity = obj.get("velocity_kmh") or []
+        if min(len(size), len(position), len(velocity)) < 3:
+            raise ValueError("Incomplete object geometry in sealed GT timeline")
+        key = str(obj.get("instance_key"))
+        audit = geometry_rows.get(key, {})
+        result.append({
+            "id": str(obj.get("id")),
+            "instance_key": key,
+            "model_name": str(obj.get("model_name") or obj.get("name") or ""),
+            "x": float(position[0]), "y": float(position[1]),
+            "heading_deg": float(obj["heading_deg"]),
+            "width": float(size[0]), "length": float(size[1]), "height": float(size[2]),
+            "vel_x": float(velocity[0]) / 3.6, "vel_y": float(velocity[1]) / 3.6,
+            "geometry_valid": bool(audit.get("api_box_geometry_candidate")),
+        })
+    return result
+
+
+def detection_for_entry(entry):
+    if not entry.get("object_valid"):
+        return np.zeros((2500, 8), np.float32), False, "masked_by_sensor_record_audit"
+    frame = {"ego_raw": entry["ego_pose"], "capture": {}}
+    return render_object_target(frame, entry.get("objects", []), grpc_bounds=True)
+
+
+def _verify_seal(folder, seal_name="COMPLETE.json"):
+    from async_capture.sensor_record_admission import verify_sealed_directory
+    return verify_sealed_directory(folder, seal_name)
+
+
+def verify_episode_evidence(episode, expected):
+    episode = Path(episode).resolve()
+    stage_dirs = {
+        "quality": ("quality", "QUALITY_COMPLETE.json"),
+        "native_audit": ("native_audit", "COMPLETE.json"),
+        "gt_timeline": ("gt_timeline_v1", "COMPLETE.json"),
+        "object_geometry": ("object_geometry_audit_v1", "COMPLETE.json"),
+        "route_signal": ("route_signal_audit_v1", "COMPLETE.json"),
+        "motion_time": ("motion_time_v1", "COMPLETE.json"),
+        "admission": ("admission_v1", "COMPLETE.json"),
+    }
+    from async_capture.journal import digest
+    for key, (relative, seal_name) in stage_dirs.items():
+        folder = episode / relative
+        _verify_seal(folder, seal_name)
+        if expected.get(key) != digest(folder / seal_name):
+            raise ValueError("Sensor Record evidence seal changed: " + key)
+
+
+def official_route_tracker(contract, route_report):
+    """Rebuild the exact audited competition route used for navigation input.
+
+    The target is a point on the official global path 25 m ahead.  It is not
+    derived from future Ego motion.  Both source files are checked against the
+    already sealed route-signal audit before any target is published.
+    """
+    from async_capture.journal import digest
+    from data_collection.mgeo_navigation import MGeoMap, MGeoRouteTracker, load_official_route
+
+    data_collection_root = Path(__file__).resolve().parents[2]
+    scenario_root = data_collection_root.parent / "scenario_runner"
+    traffic = contract.get("capture", {}).get("traffic_light_ground_truth", {})
+    map_root = Path(traffic.get("map_root", "")).resolve()
+    route_definition = scenario_root / "config/full_loop_links.yaml"
+    global_path = map_root / "2026_molit_comp_global_path.txt"
+    if not map_root.is_dir() or not route_definition.is_file() or not global_path.is_file():
+        raise ValueError("Audited official route inputs are unavailable")
+    if digest(route_definition) != route_report.get("route_definition_sha256"):
+        raise ValueError("Official route definition differs from the sealed route audit")
+    if digest(global_path) != route_report.get("global_path_sha256"):
+        raise ValueError("Official global path differs from the sealed route audit")
+    route_key = str(traffic.get("route_key") or "")
+    if not route_key:
+        raise ValueError("Sensor contract has no official route key")
+    world = MGeoMap(str(map_root / "link_set.json"),
+                    node_set_path=str(map_root / "node_set.json"))
+    route = load_official_route(str(route_definition), str(global_path), route_key)
+    tracker = MGeoRouteTracker(world, route)
+    provenance = {
+        "source": "sealed_official_global_path_lookahead_v1",
+        "route_key": route_key,
+        "target_distance_m": float(tracker.target_distance_m),
+        "route_definition_sha256": route_report["route_definition_sha256"],
+        "global_path_sha256": route_report["global_path_sha256"],
+    }
+    return tracker, provenance
+
+
+def build_episode_manifest(episode, *, campaign_validation_sha256, split):
+    """Build one lightweight manifest from an already admitted episode."""
+    from async_capture.journal import digest
+    episode = Path(episode).resolve()
+    run = episode.parent
+    stages = {
+        "quality": (episode / "quality", "QUALITY_COMPLETE.json"),
+        "native_audit": (episode / "native_audit", "COMPLETE.json"),
+        "gt_timeline": (episode / "gt_timeline_v1", "COMPLETE.json"),
+        "object_geometry": (episode / "object_geometry_audit_v1", "COMPLETE.json"),
+        "route_signal": (episode / "route_signal_audit_v1", "COMPLETE.json"),
+        "motion_time": (episode / "motion_time_v1", "COMPLETE.json"),
+        "admission": (episode / "admission_v1", "COMPLETE.json"),
+    }
+    evidence = {}
+    for key, (folder, seal_name) in stages.items():
+        _verify_seal(folder, seal_name)
+        evidence[key] = digest(folder / seal_name)
+
+    load = lambda path: json.loads(Path(path).read_text(encoding="utf-8"))
+    admission = load(episode / "admission_v1/frames.json")
+    gt_frames = load(episode / "gt_timeline_v1/frames.json")
+    geometry = load(episode / "object_geometry_audit_v1/frames.json")
+    signals = load(episode / "route_signal_audit_v1/frames.json")
+    route_report = load(episode / "route_signal_audit_v1/report.json")
+    active = load(episode / "quality/active_signals.json")
+    native = load(episode / "native_audit/report.json")
+    contract_path = run / "sensor_contract.json"
+    contract = load(contract_path)
+    if not (len(admission) == len(gt_frames) == len(geometry) == len(signals)):
+        raise ValueError("Sensor Record target timelines have different lengths")
+    times, ego_values = dense_ego_timeline(active)
+    route_tracker, navigation_contract = official_route_tracker(contract, route_report)
+    source_root = Path(native["source_root"]).resolve()
+    if not source_root.is_dir():
+        raise ValueError("Native Sensor Record source root is unavailable")
+
+    entries, counts = [], Counter(raw_frames=len(admission))
+    for index, (admit, gt, geom, signal) in enumerate(zip(admission, gt_frames, geometry, signals)):
+        if any(int(row.get("index", -1)) != index for row in (admit, gt, geom, signal)):
+            raise ValueError("Sensor Record frame index mismatch")
+        if not admit.get("dataset_build_candidate"):
+            counts["excluded_frames"] += 1
+            continue
+        stamp = int(admit["lidar_source_time_ns"])
+        if stamp != int(gt["lidar_source_ns"]):
+            raise ValueError("Admission and GT LiDAR source time differ")
+        ego, waypoints = waypoint_at_sensor_time(times, ego_values, stamp)
+        route_progress = route_tracker.update(ego["x"], ego["y"], ego["yaw"])
+        audited_route_index = signal.get("route_index")
+        if (audited_route_index is not None
+                and int(audited_route_index) != int(route_progress.route_index)):
+            raise ValueError("Rebuilt official route progress differs from sealed audit")
+        navigation = {
+            "route_target_valid": True,
+            "route_index": int(route_progress.route_index),
+            "target_x": float(route_progress.target_x),
+            "target_y": float(route_progress.target_y),
+            "target_route_index": int(route_progress.target_route_index),
+            "target_source": "official_route_lookahead",
+            "distance_to_route_m": float(route_progress.distance_to_route_m),
+        }
+        objects = objects_for_entry(gt, geom)
+        object_valid = bool(
+            admit.get("object_gt_transport_timing_candidate")
+            and admit.get("full_actor_inventory_transport_candidate")
+            and admit.get("object_model_identity_candidate")
+            and admit.get("object_api_box_geometry_candidate")
+            and geom.get("api_box_geometry_candidate")
+        )
+        temporary = {"object_valid": object_valid, "ego_pose": ego, "objects": objects}
+        detection, rendered_valid, reason = detection_for_entry(temporary)
+        if object_valid and not rendered_valid:
+            raise ValueError("Object audit and renderer disagree: " + str(reason))
+        object_positive = bool(object_valid and np.any(detection[:, 0] > 0))
+        light = int(signal.get("training_label", -1))
+        if not (admit.get("traffic_light_gt_transport_timing_candidate")
+                and admit.get("route_signal_binding_candidate")
+                and signal.get("valid") is True and light in (0, 1)):
+            light = -1
+
+        roles, assets, sizes = {}, {}, {}
+        if set(admit.get("assets", {})) != set(REQUIRED_ROLES):
+            raise ValueError("Training candidate lacks a required native asset")
+        for role in REQUIRED_ROLES:
+            meta = admit["assets"][role]
+            relative = str(meta["relative_path"])
+            # native_audit/COMPLETE.json already seals the full byte/size audit.
+            # Re-statting 7 files for every frame across WSL/9p takes minutes
+            # and adds no independent evidence here.  The loader checks size
+            # and SHA256 on the first actual read of each selected asset.
+            _safe_child(source_root, relative)
+            roles[role] = relative
+            assets[relative] = str(meta["sha256"])
+            sizes[relative] = int(meta["size_bytes"])
+        entries.append({
+            "frame_id": index,
+            "sensor_time_ns": stamp,
+            "native_filename_time_ns": int(admit["native_filename_time_ns"]),
+            "waypoints": waypoints.tolist(),
+            "ego_pose": ego,
+            "navigation": navigation,
+            "objects": objects,
+            "object_valid": object_valid,
+            "object_positive": object_positive,
+            "traffic_light": light,
+            "asset_roles": roles,
+            "assets": assets,
+            "asset_sizes": sizes,
+        })
+        counts["waypoint_frames"] += 1
+        counts["navigation_target_frames"] += 1
+        counts["object_frames"] += int(object_valid)
+        counts["object_positive_frames"] += int(object_positive)
+        counts["traffic_light_" + str(light)] += 1
+    if not entries:
+        raise ValueError("No admitted Sensor Record training frames")
+    return {
+        "schema": SCHEMA,
+        "source_clock": "sensor_record_simulation_time",
+        "route": str(episode),
+        "episode": str(episode),
+        "native_root": str(source_root),
+        "split": split,
+        "navigation_contract": navigation_contract,
+        "contract": contract,
+        "contract_sha256": digest(contract_path),
+        "evidence_seal_sha256": evidence,
+        "campaign_validation_sha256": campaign_validation_sha256,
+        "object_exclusion_policy": None,
+        "excluded_light_ids": [],
+        "report": {
+            "counts": dict(counts),
+            "all_tasks_have_training_examples": all(counts[k] > 0 for k in (
+                "waypoint_frames", "object_positive_frames", "traffic_light_0", "traffic_light_1")),
+            "teacher_motion": {
+                "status": "consistent_motion",
+                "method": "interpolated_full_rate_ego_source_timeline_v1",
+                "clock": "sensor_record_simulation_time",
+            },
+            "task_mask_policy": "waypoint=admission; object=transport+inventory+identity+geometry; light=transport+route-binding+pure-color",
+            "physical_simultaneity_verified": False,
+            "official_camera_exposure_timestamp_available": False,
+            "validation_scope": "Sensor Record internal synchronization and empirical audits",
+        },
+        "entries": entries,
+        "training_visible": True,
+    }
+
+
+def read_native_lidar(path):
+    raw = np.fromfile(path, dtype="<f4")
+    if not len(raw) or len(raw) % 4:
+        raise ValueError("Invalid native XYZI float32 payload: " + str(path))
+    points = raw.reshape(-1, 4)
+    if not np.isfinite(points).all():
+        raise ValueError("Nonfinite native LiDAR payload: " + str(path))
+    return points

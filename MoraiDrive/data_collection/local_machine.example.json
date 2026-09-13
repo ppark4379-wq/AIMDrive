@@ -1,0 +1,7 @@
+{
+  "storage_root": "/mnt/c/MoraiDriveData",
+  "launcher_root": "/mnt/c/MoraiLauncher_Win",
+  "catkin_workspace": "~/catkin_ws",
+  "ros_root": "/opt/ros/noetic",
+  "powershell_exe": "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
+}

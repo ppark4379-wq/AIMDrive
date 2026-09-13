@@ -1,0 +1,322 @@
+{
+  "schema": "morai_visual_sensor_contract_v1",
+  "raw_lidar_axes": "FLU",
+  "encoder_lidar_axes": "FRU",
+  "lidar_sweeps": 1,
+  "preprocessing": "lmdrive_compat",
+  "velocity_input": "constant_zero",
+  "target_point_input": "constant_zero",
+  "waypoint_offsets_source_seconds": [
+    0.5,
+    1,
+    1.5,
+    2,
+    2.5
+  ],
+  "waypoint_output_axes": "right_negative_forward",
+  "object_geometry_verified": false,
+  "object_geometry_note": "Candidate generic gRPC W/L/H box contract. Do not train object head before live geometry verification.",
+  "traffic_light_target": "pure red=0 / pure green=1; mixed yellow/arrow phases masked",
+  "camera_fov_degrees": {
+    "front": 90,
+    "left": 130,
+    "right": 130,
+    "rear": 90
+  },
+  "fov_evidence": "user-confirmed earlier; not a current UI read",
+  "lidar_channel_count": null,
+  "calibration_evidence_sha256": "66b920c58500547ec328278070c494bac4edecb57e7b48f7003da31ac3a2fd04",
+  "transforms": {
+    "/map->/base_link": {
+      "transform": {
+        "header": {
+          "seq": 0,
+          "stamp": {
+            "secs": 1788841223,
+            "nsecs": 581000000
+          },
+          "frame_id": "/map"
+        },
+        "child_frame_id": "/base_link",
+        "transform": {
+          "translation": {
+            "x": -81.0761947631836,
+            "y": -336.1775817871094,
+            "z": 28.852527618408203
+          },
+          "rotation": {
+            "x": -0.000452471780590713,
+            "y": -0.004184830468147993,
+            "z": -0.5176022052764893,
+            "w": -0.8556110262870789
+          }
+        }
+      },
+      "topic": "/tf",
+      "receive_monotonic_ns": 88679823972969
+    },
+    "/base_link->Camera-1": {
+      "transform": {
+        "header": {
+          "seq": 0,
+          "stamp": {
+            "secs": 1788841223,
+            "nsecs": 581000000
+          },
+          "frame_id": "/base_link"
+        },
+        "child_frame_id": "Camera-1",
+        "transform": {
+          "translation": {
+            "x": 1.899999976158142,
+            "y": 0.0,
+            "z": 1.2000000476837158
+          },
+          "rotation": {
+            "x": 0.0,
+            "y": 0.017452405765652657,
+            "z": 0.0,
+            "w": 0.9998477101325989
+          }
+        }
+      },
+      "topic": "/tf",
+      "receive_monotonic_ns": 88679823972969
+    },
+    "/base_link->Camera-2": {
+      "transform": {
+        "header": {
+          "seq": 0,
+          "stamp": {
+            "secs": 1788841223,
+            "nsecs": 581000000
+          },
+          "frame_id": "/base_link"
+        },
+        "child_frame_id": "Camera-2",
+        "transform": {
+          "translation": {
+            "x": 1.149999976158142,
+            "y": 0.6499999761581421,
+            "z": 1.2000000476837158
+          },
+          "rotation": {
+            "x": -0.04999048635363579,
+            "y": -0.07139381021261215,
+            "z": -0.5713938474655151,
+            "w": -0.8160349726676941
+          }
+        }
+      },
+      "topic": "/tf",
+      "receive_monotonic_ns": 88679823972969
+    },
+    "/base_link->Camera-3": {
+      "transform": {
+        "header": {
+          "seq": 0,
+          "stamp": {
+            "secs": 1788841223,
+            "nsecs": 581000000
+          },
+          "frame_id": "/base_link"
+        },
+        "child_frame_id": "Camera-3",
+        "transform": {
+          "translation": {
+            "x": 1.149999976158142,
+            "y": -0.6499999761581421,
+            "z": 1.2000000476837158
+          },
+          "rotation": {
+            "x": -0.04999048635363579,
+            "y": 0.07139381021261215,
+            "z": -0.5713938474655151,
+            "w": 0.8160349726676941
+          }
+        }
+      },
+      "topic": "/tf",
+      "receive_monotonic_ns": 88679823972969
+    },
+    "/base_link->Camera-4": {
+      "transform": {
+        "header": {
+          "seq": 0,
+          "stamp": {
+            "secs": 1788841223,
+            "nsecs": 581000000
+          },
+          "frame_id": "/base_link"
+        },
+        "child_frame_id": "Camera-4",
+        "transform": {
+          "translation": {
+            "x": -0.14000000059604645,
+            "y": 0.0,
+            "z": 1.2000000476837158
+          },
+          "rotation": {
+            "x": -0.017452405765652657,
+            "y": -7.628688791783134e-10,
+            "z": -0.9998477101325989,
+            "w": -4.370473050130386e-08
+          }
+        }
+      },
+      "topic": "/tf",
+      "receive_monotonic_ns": 88679823972969
+    },
+    "/base_link->Lidar3D-5": {
+      "transform": {
+        "header": {
+          "seq": 0,
+          "stamp": {
+            "secs": 1788841223,
+            "nsecs": 581000000
+          },
+          "frame_id": "/base_link"
+        },
+        "child_frame_id": "Lidar3D-5",
+        "transform": {
+          "translation": {
+            "x": 1.0,
+            "y": 0.0,
+            "z": 1.4800000190734863
+          },
+          "rotation": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0,
+            "w": 1.0
+          }
+        }
+      },
+      "topic": "/tf",
+      "receive_monotonic_ns": 88679823972969
+    },
+    "/base_link->GPS-6": {
+      "transform": {
+        "header": {
+          "seq": 0,
+          "stamp": {
+            "secs": 1788841223,
+            "nsecs": 581000000
+          },
+          "frame_id": "/base_link"
+        },
+        "child_frame_id": "GPS-6",
+        "transform": {
+          "translation": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "rotation": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0,
+            "w": 1.0
+          }
+        }
+      },
+      "topic": "/tf",
+      "receive_monotonic_ns": 88679823972969
+    },
+    "/base_link->IMU-7": {
+      "transform": {
+        "header": {
+          "seq": 0,
+          "stamp": {
+            "secs": 1788841223,
+            "nsecs": 581000000
+          },
+          "frame_id": "/base_link"
+        },
+        "child_frame_id": "IMU-7",
+        "transform": {
+          "translation": {
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "rotation": {
+            "x": 0.0,
+            "y": -2.677552179974896e-09,
+            "z": 0.0,
+            "w": 1.0
+          }
+        }
+      },
+      "topic": "/tf",
+      "receive_monotonic_ns": 88679823972969
+    }
+  },
+  "capture": {
+    "camera_topic": "/image_jpeg/compressed",
+    "camera_frame_ids": {
+      "Camera-1": "front",
+      "Camera-2": "left",
+      "Camera-3": "right",
+      "Camera-4": "rear"
+    },
+    "max_sensor_age_sec": 0.25,
+    "pending_anchors": 8,
+    "actor_ground_truth": {
+      "target": "auto",
+      "period_sec": 0.1,
+      "traffic_source_period_sec": 0.05,
+      "traffic_query_attempts": 2,
+      "identity_queries_per_cycle": 8,
+      "rpc_timeout_sec": 0.15,
+      "max_age_sec": 0.15,
+      "max_rpc_duration_sec": 0.1,
+      "geometry_verified": false,
+      "source_timestamp_units_per_second": 1000000,
+      "normalization_revision": "actor_si_velocity_v2"
+    },
+    "expert_control_topic": "/ctrl_cmd_0",
+    "recover_stream_gaps": true
+  },
+  "profile": "morai_mission_grpc_candidate_v1",
+  "map_id": "R_KR_PR_K-city_2025",
+  "object_calibrations": {
+    "OBJ_Kia_Niro": {
+      "verified": true,
+      "object_type": "static",
+      "stationary_only": true,
+      "ros_size_xyz_m": [
+        4.340000152587891,
+        2.059999942779541,
+        1.5499999523162842
+      ],
+      "center_offset_flu_m": [
+        1.4033170409926767,
+        -0.029617849475982196,
+        0.4412555694580078
+      ],
+      "dimensions_lwh_m": [
+        4.347029685974121,
+        2.065110206604004,
+        1.5562955141067505
+      ],
+      "evidence_sha256": "3079b446295bad7b9dc35d995f63ec380e827592cbcbd234d4a708e680983e0a",
+      "scope": "Measured static OBJ_Kia_Niro at observed scale. Other models and moving actors remain unverified."
+    }
+  },
+  "lidar_reference": "base_link",
+  "lidar_to_base": {
+    "translation_xyz": [
+      1.0,
+      0.0,
+      1.4800000190734863
+    ],
+    "rotation_xyzw": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ]
+  },
+  "signal_binding": "current_lane_stopline; <=2m lane error, <=20deg heading error, <=45m along direct link"
+}

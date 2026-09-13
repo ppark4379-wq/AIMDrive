@@ -1,10 +1,11 @@
 ﻿"""Copy a finalized local run to an archive, retaining the local source.
 
-Retry: python3 data_collection/writer/archive.py --local-root /mnt/c/DCM/data_collector --route-dir <local-run> --archive-root /mnt/z/DCM/data_collector
+Retry: python3 data_collection/writer/archive.py --local-root <dataset-root> --route-dir <local-run> --archive-root <archive-root>
 """
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import tempfile
@@ -58,9 +59,12 @@ def archive_route(local_root, route_dir, archive_root):
     episode = next((e for e in summary['episodes'] if e['route'] == key), None)
     if not episode or episode['status'] != 'completed':
         raise RuntimeError('Only successfully finalized runs can be archived')
-    if str(archive) == '/mnt/z' or str(archive).startswith('/mnt/z/'):
-        if not os.path.ismount('/mnt/z'):
-            raise RuntimeError('Z: is not mounted at /mnt/z; local data retained. Mount and retry archive.py')
+    match = re.match(r'^(/mnt/[A-Za-z])(?:/|$)', str(archive))
+    if match and not os.path.ismount(match.group(1)):
+        raise RuntimeError(
+            'Archive Windows drive is not mounted; local data retained: '
+            + match.group(1)
+        )
     destination_job = archive / relative.parts[0]
     print('[collect/archive] copying {} -> {} (local files retained)'.format(route, archive / relative), flush=True)
     try:
@@ -85,7 +89,7 @@ def archive_route(local_root, route_dir, archive_root):
         _write(index, '\n'.join(lines) + '\n')
     except Exception as exc:
         raise RuntimeError('Archive copy failed; local data retained at {}. Retry archive.py: {}'.format(route, exc)) from exc
-    print('[collect/archive] Z:/archive file writes completed; NAS upload completion is managed by the drive provider', flush=True)
+    print('[collect/archive] archive file writes completed; remote durability is managed by the configured drive provider', flush=True)
     return str(archive / relative)
 
 

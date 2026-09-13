@@ -3,6 +3,7 @@ __pycache__/
 *.pyo
 
 # Data collection outputs (not code)
+MoraiDrive/dataset
 MoraiDrive/dataset/
 MoraiDrive/dataset_local/
 MoraiDrive/.runtime/data_collection/

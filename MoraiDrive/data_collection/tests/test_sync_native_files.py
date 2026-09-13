@@ -54,8 +54,8 @@ def _record(frame):
             "camera_front": "CAMERA_1/{}_Intensity.png".format(frame),
             "camera_left": "CAMERA_2/{}_Intensity.png".format(frame),
             "camera_right": "CAMERA_3/{}_Intensity.png".format(frame),
-            "camera_rear": "CAMERA_5/{}_Intensity.png".format(frame),
-            "lidar": "LIDAR_4/{}_Intensity.bin".format(frame),
+            "camera_rear": "CAMERA_4/{}_Intensity.png".format(frame),
+            "lidar": "LIDAR_5/{}_Intensity.bin".format(frame),
         },
     )
 
@@ -113,15 +113,15 @@ class SyncNativeFilesTest(unittest.TestCase):
 
             frame = 104
             image = np.zeros((8, 8, 3), dtype=np.uint8)
-            for directory in ("CAMERA_1", "CAMERA_2", "CAMERA_3", "CAMERA_5"):
+            for directory in ("CAMERA_1", "CAMERA_2", "CAMERA_3", "CAMERA_4"):
                 path = os.path.join(root, directory)
                 os.makedirs(path)
                 self.assertTrue(cv2.imwrite(
                     os.path.join(path, "{}_Intensity.png".format(frame)), image
                 ))
-            os.makedirs(os.path.join(root, "LIDAR_4"))
+            os.makedirs(os.path.join(root, "LIDAR_5"))
             np.asarray([[1.0, 2.0, 3.0, 0.5]], dtype=np.float32).tofile(
-                os.path.join(root, "LIDAR_4", "{}_Intensity.bin".format(frame))
+                os.path.join(root, "LIDAR_5", "{}_Intensity.bin".format(frame))
             )
             payload = MoraiSyncFileSource(
                 root, timeout_sec=0.2, poll_interval_sec=0.005, stable_checks=1
@@ -137,21 +137,21 @@ class SyncNativeFilesTest(unittest.TestCase):
             lidar_base = os.path.join(root, "lidar_base")
             camera_root = os.path.join(camera_base, session_id)
             lidar_root = os.path.join(lidar_base, session_id)
-            for directory in ("CAMERA_1", "CAMERA_2", "CAMERA_3", "CAMERA_5"):
+            for directory in ("CAMERA_1", "CAMERA_2", "CAMERA_3", "CAMERA_4"):
                 os.makedirs(os.path.join(camera_root, directory))
-            os.makedirs(os.path.join(lidar_root, "LIDAR_4"))
+            os.makedirs(os.path.join(lidar_root, "LIDAR_5"))
             image = np.zeros((8, 8, 3), dtype=np.uint8)
             manifest_path = os.path.join(root, "capture_manifest.jsonl")
             journal = CaptureJournal(manifest_path, queue_size=16)
             for frame in range(104, 159, 5):
                 self.assertTrue(journal.submit(_record(frame)))
-                for directory in ("CAMERA_1", "CAMERA_2", "CAMERA_3", "CAMERA_5"):
+                for directory in ("CAMERA_1", "CAMERA_2", "CAMERA_3", "CAMERA_4"):
                     cv2.imwrite(
                         os.path.join(camera_root, directory, "{}_Intensity.png".format(frame)),
                         image,
                     )
                 np.asarray([[1.0, 2.0, 3.0, 0.5]], dtype=np.float32).tofile(
-                    os.path.join(lidar_root, "LIDAR_4", "{}_Intensity.bin".format(frame))
+                    os.path.join(lidar_root, "LIDAR_5", "{}_Intensity.bin".format(frame))
                 )
             journal.close()
 
@@ -222,9 +222,9 @@ class SyncNativeFilesTest(unittest.TestCase):
             lidar_base = os.path.join(root, "lidar_base")
             camera_root = os.path.join(camera_base, session_id)
             lidar_root = os.path.join(lidar_base, session_id)
-            for directory in ("CAMERA_1", "CAMERA_2", "CAMERA_3", "CAMERA_5"):
+            for directory in ("CAMERA_1", "CAMERA_2", "CAMERA_3", "CAMERA_4"):
                 os.makedirs(os.path.join(camera_root, directory))
-            os.makedirs(os.path.join(lidar_root, "LIDAR_4"))
+            os.makedirs(os.path.join(lidar_root, "LIDAR_5"))
 
             frame = 104
             manifest_path = os.path.join(root, "capture_manifest.jsonl")
@@ -233,12 +233,12 @@ class SyncNativeFilesTest(unittest.TestCase):
             self.assertTrue(journal.submit(record))
             journal.close()
             image = np.zeros((8, 8, 3), dtype=np.uint8)
-            for directory in ("CAMERA_1", "CAMERA_2", "CAMERA_3", "CAMERA_5"):
+            for directory in ("CAMERA_1", "CAMERA_2", "CAMERA_3", "CAMERA_4"):
                 cv2.imwrite(
                     os.path.join(camera_root, directory, "104_Intensity.png"), image
                 )
             np.asarray([[1.0, 2.0, 3.0, 0.5]], dtype=np.float32).tofile(
-                os.path.join(lidar_root, "LIDAR_4", "104_Intensity.bin")
+                os.path.join(lidar_root, "LIDAR_5", "104_Intensity.bin")
             )
 
             labels = GrpcLabelSnapshot(

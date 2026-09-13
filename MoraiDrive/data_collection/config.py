@@ -3,15 +3,39 @@ Central config for the MORAI -> LMDrive dataset conversion pipeline.
 
 기본 수집은 독립 Sync Runtime의 manifest와 MORAI 센서 저장 파일을 읽는다.
 맵·경로·저장 위치·실행 옵션은 이 파일에서 변경한다.
+대규모 internal Sensor Record backend는 internal_sensor_record/의 고정 계약과
+전용 entrypoint를 사용하며, 이 legacy/default dispatch 설정을 덮어쓰지 않는다.
 """
 from dataclasses import dataclass, field
 from typing import Dict
 from pathlib import Path
+import json
+import os
 
 
 MORAI_DRIVE = Path(__file__).resolve().parents[1]
 MAP_DIR = MORAI_DRIVE / "scenario_runner/data/R_KR_PR_K-city_2025"
-MORAI_LAUNCHER = Path("/mnt/c/MoraiLauncher_Win")
+LOCAL_MACHINE_CONFIG = MORAI_DRIVE / ".runtime/data_collection/local_machine.json"
+
+
+def _machine_setting(environment_name, local_key, default):
+    value = os.environ.get(environment_name, "").strip()
+    if value:
+        return value
+    if LOCAL_MACHINE_CONFIG.is_file():
+        document = json.loads(LOCAL_MACHINE_CONFIG.read_text(encoding="utf-8"))
+        if not isinstance(document, dict):
+            raise ValueError("local_machine.json must contain one JSON object")
+        value = document.get(local_key, default)
+        if not isinstance(value, str):
+            raise ValueError(local_key + " must be a string")
+        return value
+    return default
+
+
+MORAI_LAUNCHER = Path(
+    _machine_setting("MORAI_LAUNCHER_ROOT", "launcher_root", "/mnt/c/MoraiLauncher_Win")
+).expanduser().resolve()
 
 
 @dataclass
@@ -31,7 +55,7 @@ class CollectorConfig:
     # 특정 실행을 다시 수집하려면 capture_manifest에 파일 경로를 지정한다.
     capture_manifest: str = ""
     manifest_root: str = str(MORAI_DRIVE / ".runtime/sync_runtime")
-    label_spool_dir: str = "/mnt/c/DCM/label_spool"
+    label_spool_dir: str = str(MORAI_DRIVE / "dataset/.label_spool")
     morai_sync_root: str = ""
     morai_sync_base: str = ""
     # 두 센서 저장 위치에서 이름이 같은 최신 세션을 선택한다.
@@ -81,7 +105,7 @@ class ROSConfig:
 
 @dataclass
 class GrpcConfig:
-    host: str = "172.24.176.1"           # WSL에서 확인한 Windows 호스트(MORAI gRPC) 주소
+    host: str = "auto"                   # WSL default gateway 또는 환경변수로 해석
     port: int = 7789
     client_key: str = "MoraiDataCollector"
     map_name: str = ""                   # 비우면 MORAI SIM에 이미 로드된 맵/ego 사용
@@ -103,7 +127,9 @@ class GrpcConfig:
 
 @dataclass
 class DatasetConfig:
-    dataset_root: str = "/mnt/c/AIMDrive"
+    # Machine-local and ignored by Git. The internal recorder exposes its
+    # Windows-backed acquisition spool through this same repository path.
+    dataset_root: str = str(MORAI_DRIVE / "dataset")
     archive_root: str = ""  # Local collection only; archive requires an explicit opt-in.
     job_name: str = "competition_train"
     route_name: str = "full_loop"
@@ -122,7 +148,7 @@ class DatasetConfig:
 
 @dataclass
 class CameraExtrinsics:
-    """단위: m / deg. 차량 원점 기준 상대 오프셋 (CARLA 컨벤션: x=전방+, y=우측+, z=상방+)."""
+    """aim_sensorset.json에 저장된 MORAI 차량 상대 pose와 영상 규격."""
     x: float
     y: float
     z: float
@@ -147,28 +173,26 @@ class LidarExtrinsics:
 @dataclass
 class SensorConfig:
     """
-    TODO: 아래 값은 아직 MORAI 실측치가 아니라 CARLA 원본
-    (LMDrive/leaderboard/team_code/base_agent.py:137-224)을 그대로 옮긴
-    자리표시자입니다. MORAI 차량에 실제로 카메라/LiDAR를 장착할 위치가
-    정해지면 x/y/z/yaw를 교체하세요.
+    MORAI 26.R1.H3 aim_sensorset.json의 실제 활성 센서 값이다.
 
-    원점 기준 미확정: CARLA는 이 원점이 차체 바운딩박스 중심이었지만,
-    MORAI의 ego pose API가 후륜축/차체중심/GPS안테나 중 무엇을 기준으로
-    좌표를 주는지 아직 확인 전입니다. 이게 CARLA와 다르면 카메라 오프셋도
-    그 기준에 맞게 다시 재야 하고, 다르면 waypoint 예측에 체계적 오차가
-    생길 수 있습니다 (자세한 내용은 대화 로그 참고).
+    이 값은 센서 파일의 pose·FOV·해상도를 재현한다. MORAI Ego pose 원점의
+    물리적 정의와 카메라의 ms 단위 노출 시각 보증은 별도 미확정 사항이다.
     """
-    origin_reference: str = "UNCONFIRMED: MORAI ego pose 원점이 차체중심/후륜축/GPS안테나 중 무엇인지 확인 필요"
+    origin_reference: str = "MORAI vehicle-relative sensor pose; exact physical Ego origin remains unverified"
 
     cameras: Dict[str, CameraExtrinsics] = field(default_factory=lambda: {
-        "front": CameraExtrinsics(x=1.3, y=0.0, z=2.3, yaw=0.0,   width=1200, height=900),
-        "left":  CameraExtrinsics(x=1.3, y=0.0, z=2.3, yaw=-60.0, width=400,  height=300),
-        "right": CameraExtrinsics(x=1.3, y=0.0, z=2.3, yaw=60.0,  width=400,  height=300),
-        "rear":  CameraExtrinsics(x=-1.3, y=0.0, z=2.3, yaw=180.0, width=400, height=300),
+        "front": CameraExtrinsics(x=1.90, y=0.00, z=1.20, pitch=2.0,
+                                  yaw=0.0, width=1280, height=720, fov=90.0),
+        "left":  CameraExtrinsics(x=1.15, y=0.65, z=1.20, pitch=10.0,
+                                  yaw=70.0, width=640, height=480, fov=130.0),
+        "right": CameraExtrinsics(x=1.15, y=-0.65, z=1.20, pitch=10.0,
+                                  yaw=290.0, width=640, height=480, fov=130.0),
+        "rear":  CameraExtrinsics(x=-0.14, y=0.00, z=1.20, pitch=2.0,
+                                  yaw=180.0, width=640, height=480, fov=90.0),
     })
 
     lidar: LidarExtrinsics = field(
-        default_factory=lambda: LidarExtrinsics(x=1.3, y=0.0, z=2.5, yaw=-90.0)
+        default_factory=lambda: LidarExtrinsics(x=1.0, y=0.0, z=1.48, yaw=0.0)
     )
 
 

@@ -9,7 +9,10 @@ import cv2
 import numpy as np
 
 
-REQUIRED_SENSOR_DIRS = ("CAMERA_1", "CAMERA_2", "CAMERA_3", "CAMERA_5", "LIDAR_4")
+# Active AIM sensor-set IDs (aim_sensorset.json, MORAI 26.R1.H3).
+REQUIRED_SENSOR_DIRS = (
+    "CAMERA_1", "CAMERA_2", "CAMERA_3", "CAMERA_4", "LIDAR_5"
+)
 MANIFEST_TO_VIEW = {
     "camera_front": "front",
     "camera_left": "left",
