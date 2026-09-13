@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 import os
 import time
-from typing import Dict
+from typing import Dict, Optional
 
 import cv2
 import numpy as np
@@ -20,7 +20,7 @@ MANIFEST_TO_VIEW = {
 
 @dataclass(frozen=True)
 class NativeImagePayload:
-    encoded: bytes
+    encoded: Optional[bytes]
     encoding: str = "png"
     image: object = None
 
@@ -161,7 +161,7 @@ class MoraiSyncFileSource:
                 if stable_count >= self.stable_checks:
                     try:
                         return self._decode(native_frame, expected)
-                    except (OSError, ValueError, RuntimeError) as error:
+                    except (OSError, ValueError, RuntimeError, cv2.error) as error:
                         decode_error = str(error)
                 else:
                     decode_error = "files are not size-stable yet"
@@ -183,7 +183,12 @@ class MoraiSyncFileSource:
             decoded = cv2.imdecode(np.frombuffer(encoded, np.uint8), cv2.IMREAD_COLOR)
             if decoded is None:
                 raise RuntimeError("cannot decode {}".format(expected[manifest_name]))
-            cameras[view_name] = NativeImagePayload(encoded=encoded)
+            # Reuse the image validated here. Decoding again in the writer
+            # bypasses this loader's retry/IncompleteNativeFrame handling.
+            cameras[view_name] = NativeImagePayload(
+                encoded=None,
+                image=cv2.cvtColor(decoded, cv2.COLOR_BGR2RGB),
+            )
 
         lidar = np.fromfile(expected["lidar"], dtype=np.float32)
         if lidar.size == 0 or lidar.size % 4:

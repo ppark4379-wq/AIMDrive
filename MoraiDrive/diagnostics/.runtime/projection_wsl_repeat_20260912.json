@@ -1,0 +1,72 @@
+[
+  {
+    "exe": "/usr/bin/python3",
+    "run": 1,
+    "exit": -11,
+    "stdout": "",
+    "stderr": "Fatal Python error: Segmentation fault\n\nCurrent thread 0x00007decf41c2740 (most recent call first):\n  File \"/home/jun/AIMDrive/MoraiDrive/diagnostics/probe_projection_types.py\", line 26 in <module>\n"
+  },
+  {
+    "exe": "/usr/bin/python3",
+    "run": 2,
+    "exit": 0,
+    "stdout": "{\"mode\": \"stdlib\", \"python\": \"3.8.10 (default, Mar 18 2025, 20:04:55) \\n[GCC 9.4.0]\", \"executable\": \"/usr/bin/python3\", \"numpy\": null, \"status\": \"pass\", \"iterations\": 10000000, \"seconds\": 4.945084717008285}\n",
+    "stderr": ""
+  },
+  {
+    "exe": "/usr/bin/python3",
+    "run": 3,
+    "exit": 0,
+    "stdout": "{\"mode\": \"stdlib\", \"python\": \"3.8.10 (default, Mar 18 2025, 20:04:55) \\n[GCC 9.4.0]\", \"executable\": \"/usr/bin/python3\", \"numpy\": null, \"status\": \"pass\", \"iterations\": 10000000, \"seconds\": 5.044735153001966}\n",
+    "stderr": ""
+  },
+  {
+    "exe": "/usr/bin/python3",
+    "run": 4,
+    "exit": 0,
+    "stdout": "{\"mode\": \"stdlib\", \"python\": \"3.8.10 (default, Mar 18 2025, 20:04:55) \\n[GCC 9.4.0]\", \"executable\": \"/usr/bin/python3\", \"numpy\": null, \"status\": \"pass\", \"iterations\": 10000000, \"seconds\": 4.84252092699171}\n",
+    "stderr": ""
+  },
+  {
+    "exe": "/usr/bin/python3",
+    "run": 5,
+    "exit": 0,
+    "stdout": "{\"mode\": \"stdlib\", \"python\": \"3.8.10 (default, Mar 18 2025, 20:04:55) \\n[GCC 9.4.0]\", \"executable\": \"/usr/bin/python3\", \"numpy\": null, \"status\": \"fail\", \"traceback\": \"Traceback (most recent call last):\\n  File \\\"/home/jun/AIMDrive/MoraiDrive/diagnostics/probe_projection_types.py\\\", line 31, in <module>\\n    ratio = ((position.x-start.x)*dx+(position.y-start.y)*dy)/length_sq\\nTypeError: unsupported operand type(s) for +: 'range_iterator' and 'float'\\n\", \"locals\": {\"dx\": {\"type\": \"<class 'float'>\", \"repr\": \"0.2961746903376934\"}, \"dy\": {\"type\": \"<class 'float'>\", \"repr\": \"-0.40284023864666096\"}, \"length_sq\": {\"type\": \"<class 'float'>\", \"repr\": \"0.24999970506952734\"}, \"ratio\": {\"type\": \"<class 'float'>\", \"repr\": \"1.0\"}, \"x\": {\"type\": \"<class 'float'>\", \"repr\": \"45.26925351886639\"}, \"y\": {\"type\": \"<class 'float'>\", \"repr\": \"323.2522620537129\"}, \"distance\": {\"type\": \"<class 'float'>\", \"repr\": \"698.5526136563423\"}}, \"iterations\": 5124914, \"seconds\": 2.6603506820101757}\n",
+    "stderr": ""
+  },
+  {
+    "exe": "/home/jun/AIMDrive/MoraiDrive/expert/.runtime/python/cpython-3.8.20-linux-x86_64-gnu/bin/python3",
+    "run": 1,
+    "exit": 0,
+    "stdout": "{\"mode\": \"stdlib\", \"python\": \"3.8.20 (default, Oct  2 2024, 16:34:12) \\n[Clang 18.1.8 ]\", \"executable\": \"/home/jun/AIMDrive/MoraiDrive/expert/.runtime/python/cpython-3.8.20-linux-x86_64-gnu/bin/python3\", \"numpy\": null, \"status\": \"pass\", \"iterations\": 10000000, \"seconds\": 5.398913667013403}\n",
+    "stderr": ""
+  },
+  {
+    "exe": "/home/jun/AIMDrive/MoraiDrive/expert/.runtime/python/cpython-3.8.20-linux-x86_64-gnu/bin/python3",
+    "run": 2,
+    "exit": 0,
+    "stdout": "{\"mode\": \"stdlib\", \"python\": \"3.8.20 (default, Oct  2 2024, 16:34:12) \\n[Clang 18.1.8 ]\", \"executable\": \"/home/jun/AIMDrive/MoraiDrive/expert/.runtime/python/cpython-3.8.20-linux-x86_64-gnu/bin/python3\", \"numpy\": null, \"status\": \"pass\", \"iterations\": 10000000, \"seconds\": 5.367611304012826}\n",
+    "stderr": ""
+  },
+  {
+    "exe": "/home/jun/AIMDrive/MoraiDrive/expert/.runtime/python/cpython-3.8.20-linux-x86_64-gnu/bin/python3",
+    "run": 3,
+    "exit": 0,
+    "stdout": "{\"mode\": \"stdlib\", \"python\": \"3.8.20 (default, Oct  2 2024, 16:34:12) \\n[Clang 18.1.8 ]\", \"executable\": \"/home/jun/AIMDrive/MoraiDrive/expert/.runtime/python/cpython-3.8.20-linux-x86_64-gnu/bin/python3\", \"numpy\": null, \"status\": \"pass\", \"iterations\": 10000000, \"seconds\": 5.442778836993966}\n",
+    "stderr": ""
+  },
+  {
+    "exe": "/home/jun/AIMDrive/MoraiDrive/expert/.runtime/python/cpython-3.8.20-linux-x86_64-gnu/bin/python3",
+    "run": 4,
+    "exit": 0,
+    "stdout": "{\"mode\": \"stdlib\", \"python\": \"3.8.20 (default, Oct  2 2024, 16:34:12) \\n[Clang 18.1.8 ]\", \"executable\": \"/home/jun/AIMDrive/MoraiDrive/expert/.runtime/python/cpython-3.8.20-linux-x86_64-gnu/bin/python3\", \"numpy\": null, \"status\": \"pass\", \"iterations\": 10000000, \"seconds\": 5.454232604999561}\n",
+    "stderr": ""
+  },
+  {
+    "exe": "/home/jun/AIMDrive/MoraiDrive/expert/.runtime/python/cpython-3.8.20-linux-x86_64-gnu/bin/python3",
+    "run": 5,
+    "exit": 0,
+    "stdout": "{\"mode\": \"stdlib\", \"python\": \"3.8.20 (default, Oct  2 2024, 16:34:12) \\n[Clang 18.1.8 ]\", \"executable\": \"/home/jun/AIMDrive/MoraiDrive/expert/.runtime/python/cpython-3.8.20-linux-x86_64-gnu/bin/python3\", \"numpy\": null, \"status\": \"pass\", \"iterations\": 10000000, \"seconds\": 5.533749694994185}\n",
+    "stderr": ""
+  }
+]

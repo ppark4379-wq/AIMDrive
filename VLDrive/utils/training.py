@@ -89,9 +89,10 @@ def gradient_report(model):
 
 @torch.no_grad()
 def evaluate(model, dataset, indices, device, *, save_predictions=None, on_progress=None):
-    from .metrics import TrajectoryMetrics
+    from .metrics import TrajectoryMetrics, TokenRetentionMetrics
     model.eval()
     metrics = TrajectoryMetrics()
+    retention = TokenRetentionMetrics()
     speed_abs = torch.zeros(5, dtype=torch.float64)
     total_loss = 0.
     predictions = []
@@ -100,6 +101,7 @@ def evaluate(model, dataset, indices, device, *, save_predictions=None, on_progr
         with autocast(model):
             output = model(item['model_inputs'], compute_auxiliary=False)
             loss, _ = objective(output, item['training_targets'], model.config)
+        retention.update(output['selected_count'])
         last_sample = item['metadata']['sample_ids'][-1]
         metrics.update(output['trajectory'][:, -1], item['training_targets']['future_trajectory'][:, -1],
                        item['metadata']['run_id'], last_sample)
@@ -114,6 +116,15 @@ def evaluate(model, dataset, indices, device, *, save_predictions=None, on_progr
     result = metrics.compute()
     result.update(speed_mae_mps=(speed_abs / len(indices)).mean().item(),
                   speed_horizon_mae_mps=(speed_abs / len(indices)).tolist(), objective=total_loss / len(indices))
+    pruning_enabled = getattr(model.config, 'ccdp', False)
+    target = getattr(model.config, 'target_retention', 1.0) if pruning_enabled else 1.0
+    token_report = retention.compute(target)
+    token_report['applicable'] = pruning_enabled and model.config.selection_policy == 'reference_bernoulli'
+    if not token_report['applicable']:
+        # Visual-only models intentionally retain all tokens; they have no CCDP
+        # target or collapse criterion. Keep counts without reporting a failure.
+        token_report.update(passed=None, checks={})
+    result['token_retention'] = token_report
     if save_predictions is not None:
         path = Path(save_predictions)
         pending = path.with_suffix(path.suffix + '.pending')
@@ -273,6 +284,7 @@ def train(model, optimizer, dataset, indices, *, start_update, updates, seed, de
     start = time.monotonic()
     with Path(log_path).open('x') as log:
         for step in range(start_update, updates):
+            noise_scale = model.set_training_update(step) if hasattr(model, 'set_training_update') else None
             epoch, offset = divmod(step, len(indices))
             generator = torch.Generator().manual_seed(seed + epoch)
             order = torch.randperm(len(indices), generator=generator).tolist()
@@ -287,6 +299,9 @@ def train(model, optimizer, dataset, indices, *, start_update, updates, seed, de
             loss.backward()
             norm = torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], 10., error_if_nonfinite=True)
             optimizer.step()
+            values.update(selection_noise_scale=noise_scale,
+                          weighted_reconstruction=model.config.reconstruction_weight * values['reconstruction'],
+                          weighted_pruning=model.config.pruning_weight * values['pruning'])
             values.update(update=step + 1, objective=loss.item(), grad_norm=norm.item(), index=index,
                           selected_tokens_mean=output['selected_count'].float().mean().item(),
                           selected_tokens_min=int(output['selected_count'].min()),

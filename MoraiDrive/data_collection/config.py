@@ -31,6 +31,7 @@ class CollectorConfig:
     # 특정 실행을 다시 수집하려면 capture_manifest에 파일 경로를 지정한다.
     capture_manifest: str = ""
     manifest_root: str = str(MORAI_DRIVE / ".runtime/sync_runtime")
+    label_spool_dir: str = "/mnt/c/DCM/label_spool"
     morai_sync_root: str = ""
     morai_sync_base: str = ""
     # 두 센서 저장 위치에서 이름이 같은 최신 세션을 선택한다.
@@ -102,12 +103,13 @@ class GrpcConfig:
 
 @dataclass
 class DatasetConfig:
-    dataset_root: str = "/mnt/z/DCM/data_collector"
+    dataset_root: str = "/mnt/c/AIMDrive"
+    archive_root: str = ""  # Local collection only; archive requires an explicit opt-in.
     job_name: str = "competition_train"
     route_name: str = "full_loop"
     # 폴더명: <route>_<drive_tag>_<날짜·시간>_<run_note>
     # 자동으로 장애물을 감지하지 않으므로 실제 실험 조건에 맞게 지정한다.
-    drive_tag: str = "basic_drive"
+    drive_tag: str = "npc_spon"
     run_note: str = ""  # 예: "lfd_gain0.65_max_v60". 실제 변경 사항을 직접 기록
     append_timestamp: bool = True
     map_id: str = "R_KR_PR_K-city_2025"

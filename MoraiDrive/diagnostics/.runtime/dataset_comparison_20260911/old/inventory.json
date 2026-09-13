@@ -1,0 +1,72 @@
+﻿{
+    "gnss":  {
+                 "zero":  0,
+                 "bytes":  null,
+                 "count":  0
+             },
+    "rgb_rear":  {
+                     "zero":  1,
+                     "bytes":  99135507,
+                     "count":  1576
+                 },
+    "rgb_front":  {
+                      "zero":  1,
+                      "bytes":  283147714,
+                      "count":  1576
+                  },
+    "birdview":  {
+                     "zero":  0,
+                     "bytes":  null,
+                     "count":  0
+                 },
+    "measurements_full":  {
+                              "zero":  0,
+                              "bytes":  15527115,
+                              "count":  1576
+                          },
+    "topdown":  {
+                    "zero":  0,
+                    "bytes":  null,
+                    "count":  0
+                },
+    "rgb_right":  {
+                      "zero":  1,
+                      "bytes":  112891020,
+                      "count":  1576
+                  },
+    "imu":  {
+                "zero":  0,
+                "bytes":  null,
+                "count":  0
+            },
+    "measurements":  {
+                         "zero":  0,
+                         "bytes":  7249308,
+                         "count":  1576
+                     },
+    "rgb_left":  {
+                     "zero":  1,
+                     "bytes":  102599933,
+                     "count":  1576
+                 },
+    "3d_bbs":  {
+                   "zero":  0,
+                   "bytes":  575240,
+                   "count":  1576
+               },
+    "actors_data":  {
+                        "zero":  0,
+                        "bytes":  3152,
+                        "count":  1576
+                    },
+    "affordances":  {
+                        "zero":  0,
+                        "bytes":  505638,
+                        "count":  1576
+                    },
+    "lidar":  {
+                  "zero":  1,
+                  "bytes":  725961600,
+                  "count":  1576
+              }
+}

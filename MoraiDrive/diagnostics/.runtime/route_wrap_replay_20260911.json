@@ -1,0 +1,35 @@
+{
+  "frames": 3442,
+  "wraps": [
+    {
+      "frame": 2282,
+      "from": 4427,
+      "to": 1
+    }
+  ],
+  "invalid_before": 1200,
+  "invalid_after": 42,
+  "invalid_first": [
+    1706,
+    1707,
+    1708
+  ],
+  "invalid_last": [
+    1745,
+    1746,
+    1747
+  ],
+  "max_distance_m": 3.9456151310744585,
+  "last": {
+    "frame": 3441,
+    "route_index": 866,
+    "distance_m": 0.2408975655202793,
+    "target": [
+      -60.23746269867212,
+      -20.010432680155283
+    ],
+    "light_id": "C1256W000016",
+    "waypoints": 50
+  },
+  "raw_data_modified": false
+}

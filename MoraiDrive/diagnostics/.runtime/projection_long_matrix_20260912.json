@@ -1,0 +1,44 @@
+[
+  {
+    "round": 1,
+    "exe": "/usr/bin/python3",
+    "exit": -11,
+    "stdout": "",
+    "stderr": "Fatal Python error: Segmentation fault\n\nCurrent thread 0x0000757f68e52740 (most recent call first):\n  File \"/home/jun/AIMDrive/MoraiDrive/expert/src/expert/src/planning/highway_lane_planning/lane_map.py\", line 106 in _projection_xy\n  File \"/home/jun/AIMDrive/MoraiDrive/expert/src/expert/src/planning/highway_lane_planning/lane_map.py\", line 123 in project\n  File \"/home/jun/AIMDrive/MoraiDrive/diagnostics/.runtime/probe_real_projection_long.py\", line 16 in <module>\n"
+  },
+  {
+    "round": 1,
+    "exe": "/home/jun/AIMDrive/MoraiDrive/expert/.runtime/python/cpython-3.8.20-linux-x86_64-gnu/bin/python3",
+    "exit": 0,
+    "stdout": "{\"status\": \"pass\", \"iterations\": 35412, \"seconds\": 15.000012981996406, \"python\": \"3.8.20 (default, Oct  2 2024, 16:34:12) \\n[Clang 18.1.8 ]\", \"numpy\": \"1.17.4\"}\n",
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "exe": "/usr/bin/python3",
+    "exit": 0,
+    "stdout": "{\"status\": \"pass\", \"iterations\": 38338, \"seconds\": 15.000070826994488, \"python\": \"3.8.10 (default, Mar 18 2025, 20:04:55) \\n[GCC 9.4.0]\", \"numpy\": \"1.17.4\"}\n",
+    "stderr": ""
+  },
+  {
+    "round": 2,
+    "exe": "/home/jun/AIMDrive/MoraiDrive/expert/.runtime/python/cpython-3.8.20-linux-x86_64-gnu/bin/python3",
+    "exit": 0,
+    "stdout": "{\"status\": \"pass\", \"iterations\": 35139, \"seconds\": 15.00010731301154, \"python\": \"3.8.20 (default, Oct  2 2024, 16:34:12) \\n[Clang 18.1.8 ]\", \"numpy\": \"1.17.4\"}\n",
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "exe": "/usr/bin/python3",
+    "exit": 0,
+    "stdout": "{\"status\": \"pass\", \"iterations\": 38523, \"seconds\": 15.000266340997769, \"python\": \"3.8.10 (default, Mar 18 2025, 20:04:55) \\n[GCC 9.4.0]\", \"numpy\": \"1.17.4\"}\n",
+    "stderr": ""
+  },
+  {
+    "round": 3,
+    "exe": "/home/jun/AIMDrive/MoraiDrive/expert/.runtime/python/cpython-3.8.20-linux-x86_64-gnu/bin/python3",
+    "exit": 0,
+    "stdout": "{\"status\": \"pass\", \"iterations\": 36403, \"seconds\": 15.000253336009337, \"python\": \"3.8.20 (default, Oct  2 2024, 16:34:12) \\n[Clang 18.1.8 ]\", \"numpy\": \"1.17.4\"}\n",
+    "stderr": ""
+  }
+]

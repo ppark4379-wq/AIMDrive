@@ -17,34 +17,23 @@ python3 data_collection/collect.py --duration 120
 실행합니다. 경로 설정은 `config.py` 위치를 기준으로 만들어지므로 작업 디렉터리에
 따라 달라지지 않습니다. Python 의존성은 `requirements.txt`를 참고하세요.
 
-### NAS 또는 로컬 저장 선택
+### C: 드라이브에 직접 저장
 
-dataset 저장 위치는 실행할 때 `--dataset-root`로 선택합니다. 현재 `config.py`의
-`COLLECTOR.capture_manifest`에 값이 들어 있으므로, 아래 명령의
-`--capture-manifest ""`는 최신 Runtime manifest를 자동 선택하기 위해 필요합니다.
-
-NAS(Z: 드라이브)에 저장:
-
-```bash
-python3 data_collection/collect.py \
-  --duration 3600 \
-  --capture-manifest "" \
-  --dataset-root /mnt/z/DCM/data_collector
-```
-
-로컬 C: 드라이브에 먼저 저장:
+기본 저장 루트는 `/mnt/c/AIMDrive` (Windows `C:\AIMDrive`)입니다.
+이미지, LiDAR 및 메타데이터는 이 경로 아래에 직접 저장됩니다.
+`archive_root` 기본값은 빈 문자열이므로 종료 후 Z:로 복사하지 않습니다.
+최신 Runtime manifest는 자동 선택합니다.
 
 ```bash
-python3 data_collection/collect.py \
-  --duration 3600 \
-  --capture-manifest "" \
-  --dataset-root /mnt/c/Users/autonav009/Desktop/AIMDrive/MoraiDrive/dataset_local
+python3 data_collection/collect.py --duration 1800
 ```
+
+`--dataset-root`로 저장 루트를 변경할 수 있습니다. 별도 복사가 필요한 경우에만
+`--archive-root <복사할_경로>`를 명시하세요. 기존 수집 파일은 자동 이동하지 않습니다.
 
 gRPC object·신호등 라벨은 dataset writer와 별개로 로컬 SQLite 파일에 먼저
-보관됩니다. 기본 위치는 `MoraiDrive/.runtime/data_collection/label_spool/`이며,
-필요하면 `--label-spool-dir <로컬_경로>`로 변경할 수 있습니다. NAS가 느려도 이
-spool은 NAS에 두지 마세요.
+보관됩니다. 기본 위치는 `/mnt/c/DCM/label_spool`이며,
+필요하면 `--label-spool-dir <로컬_경로>`로 변경할 수 있습니다.
 
 ## SyncMode 객체·신호 라벨
 
@@ -71,8 +60,9 @@ SyncMode에서 `/Object_topic`과 `/GetTrafficLightStatus`가 발행되지 않�
 | 설정 | 용도 / 현재 기본값 |
 |---|---|
 | `MAP_DIR`, `MORAI_LAUNCHER` | MGeo 맵 폴더와 MORAI Launcher 설치 폴더 |
-| `DATASET.dataset_root` | `MoraiDrive/dataset/` |
-| `DATASET.job_name`, `route_name` | `sync_attach_test`, `full_loop` |
+| `DATASET.dataset_root` | 수집 중 결과 저장: `/mnt/c/AIMDrive` |
+| `DATASET.archive_root` | 기본 `""`: 수집 후 복사 안 함 |
+| `DATASET.job_name`, `route_name` | `competition_train`, `full_loop` |
 | `DATASET.map_id`, `map_source_dir` | 맵 식별자와 MGeo JSON 폴더 |
 | `COLLECTOR.route_definition` | 공식 경로 링크를 정의한 YAML |
 | `COLLECTOR.global_path` | 공식 경로 좌표 TXT |
@@ -148,3 +138,11 @@ split 생성기는 기본적으로 `results/episode_summary.json`에 `completed`
 - [앞으로 할 작업](docs/roadmap.md)
 
 이전 UDP 수집기는 `legacy_udp/`에 보존되어 있지만 현재 수집에는 사용하지 않습니다.
+
+## 폐루프 반복 주행의 경로 라벨
+
+START와 END 좌표가 일치하는 폐루프는 END 이후 START 구간으로 재진입하면 다음 회차를 추적합니다. 현재 경로의 마지막 25m에서만 시작 50m를 재진입 후보로 검사하며, 경로와의 거리 3m 이내·진행 방향 60도 이내·기존 후보보다 좋은 위치 일치를 요구합니다. 열린 경로는 END에서 유지합니다.
+
+폐루프에서는 near/target 목표점과 future_waypoints도 START로 이어집니다. 이는 컬렉터의 라벨 처리이며 Expert의 주행이나 수집 시간을 변경하지 않습니다. 적용하려면 컬렉터를 재시작해야 하며, 이미 저장된 프레임은 자동으로 수정하지 않습니다.
+
+2026-09-11 19:48 수집본 3,442프레임 오프라인 재생: frame 2282에서 route_index 4427→1로 전환, route_valid=false가 1,200→42프레임으로 감소했습니다. 마지막 경로 오차는 약 389.69m→0.24m이며 미래 waypoint는 50개입니다. 남은 42프레임(1706~1747)은 회차 전환과 별개의 경로 편차입니다.

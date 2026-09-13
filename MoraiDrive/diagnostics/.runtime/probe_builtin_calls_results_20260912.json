@@ -1,0 +1,44 @@
+[
+  {
+    "exe": "/usr/bin/python3",
+    "run": 1,
+    "exit": 0,
+    "stdout": "{\"status\": \"pass\", \"iterations\": 3000000, \"seconds\": 0.505435500992462}\n",
+    "stderr": ""
+  },
+  {
+    "exe": "/usr/bin/python3",
+    "run": 2,
+    "exit": 1,
+    "stdout": "{\"status\": \"fail\", \"iterations\": 477549, \"traceback\": \"Traceback (most recent call last):\\n  File \\\"/home/jun/AIMDrive/MoraiDrive/diagnostics/.runtime/probe_builtin_calls_20260912.py\\\", line 9, in <module>\\n    if value!=coordinate:raise ValueError(\\\"wrong value\\\")\\nValueError: wrong value\\n\", \"getattr_binding\": \"<built-in function getattr>\", \"float_binding\": \"<class 'float'>\"}\n",
+    "stderr": ""
+  },
+  {
+    "exe": "/usr/bin/python3",
+    "run": 3,
+    "exit": 1,
+    "stdout": "{\"status\": \"fail\", \"iterations\": 2392518, \"traceback\": \"Traceback (most recent call last):\\n  File \\\"/home/jun/AIMDrive/MoraiDrive/diagnostics/.runtime/probe_builtin_calls_20260912.py\\\", line 7, in <module>\\n    if getattr(coordinate,\\\"ndim\\\",0)!=0:raise ValueError(\\\"not scalar\\\")\\nTypeError: 'int' object is not callable\\n\", \"getattr_binding\": \"<built-in function getattr>\", \"float_binding\": \"<class 'float'>\"}\n",
+    "stderr": ""
+  },
+  {
+    "exe": "/home/jun/AIMDrive/MoraiDrive/expert/.runtime/python/cpython-3.8.20-linux-x86_64-gnu/bin/python3",
+    "run": 1,
+    "exit": 0,
+    "stdout": "{\"status\": \"pass\", \"iterations\": 3000000, \"seconds\": 0.567786330007948}\n",
+    "stderr": ""
+  },
+  {
+    "exe": "/home/jun/AIMDrive/MoraiDrive/expert/.runtime/python/cpython-3.8.20-linux-x86_64-gnu/bin/python3",
+    "run": 2,
+    "exit": 0,
+    "stdout": "{\"status\": \"pass\", \"iterations\": 3000000, \"seconds\": 0.5965702650137246}\n",
+    "stderr": ""
+  },
+  {
+    "exe": "/home/jun/AIMDrive/MoraiDrive/expert/.runtime/python/cpython-3.8.20-linux-x86_64-gnu/bin/python3",
+    "run": 3,
+    "exit": 0,
+    "stdout": "{\"status\": \"pass\", \"iterations\": 3000000, \"seconds\": 0.5491645299771335}\n",
+    "stderr": ""
+  }
+]

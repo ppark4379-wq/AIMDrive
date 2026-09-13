@@ -6,6 +6,45 @@ import torch
 HORIZONS_S = (0.5, 1.0, 1.5, 2.0, 2.5)
 
 
+class TokenRetentionMetrics:
+    """Count deterministic selections across window/frame occurrences.
+
+    Bounds are diagnostic acceptance criteria, not evidence of semantic token
+    quality. The caller evaluates the real inference policy, without Gumbel noise.
+    """
+    def __init__(self, total_tokens=106):
+        if total_tokens < 2:
+            raise ValueError('At least two visual tokens required')
+        self.total_tokens = total_tokens
+        self.histogram = torch.zeros(total_tokens + 1, dtype=torch.long)
+
+    def update(self, counts):
+        value = counts.detach().double().cpu().flatten()
+        if not value.numel() or not bool(torch.isfinite(value).all()) or not bool(value.eq(value.round()).all()):
+            raise ValueError('Expected finite integer token counts')
+        if bool(((value < 1) | (value > self.total_tokens)).any()):
+            raise ValueError('Invalid retained-token count')
+        self.histogram += torch.bincount(value.long(), minlength=self.total_tokens + 1)
+
+    def compute(self, target_retention=.3, tolerance=.15):
+        frames = int(self.histogram.sum())
+        if not frames:
+            raise ValueError('Cannot report empty token counts')
+        support = self.histogram.nonzero().flatten()
+        mean = float((self.histogram * torch.arange(self.total_tokens + 1)).sum()) / frames
+        ratio = mean / self.total_tokens
+        all_keep = int(self.histogram[-1]) / frames
+        one_token = int(self.histogram[1]) / frames
+        checks = dict(mean_near_target=abs(ratio - target_retention) <= tolerance,
+                      not_all_keep_collapse=all_keep < .95, not_one_token_collapse=one_token < .95)
+        return dict(frame_occurrences=frames, total_tokens=self.total_tokens, mean_tokens=mean,
+                    min_tokens=int(support.min()), max_tokens=int(support.max()),
+                    mean_retention=ratio, target_retention=target_retention, tolerance=tolerance,
+                    all_keep_fraction=all_keep, one_token_fraction=one_token,
+                    histogram={str(int(k)): int(self.histogram[k]) for k in support},
+                    checks=checks, passed=all(checks.values()))
+
+
 class TrajectoryMetrics:
     def __init__(self, *, coordinate_convention="forward_left"):
         # The expert cache preserves the LMDrive head's [left, -forward]

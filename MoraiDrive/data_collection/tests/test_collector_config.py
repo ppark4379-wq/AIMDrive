@@ -30,6 +30,9 @@ class CollectorConfigTest(unittest.TestCase):
             self.assertEqual(args.mode, 'sync_native_files')
             self.assertEqual(args.capture_manifest, str(new))
             self.assertEqual(args.dataset_root, DATASET.dataset_root)
+            self.assertEqual(args.label_spool_dir, COLLECTOR.label_spool_dir)
+            self.assertTrue(args.label_spool_dir)
+            self.assertTrue(Path(args.label_spool_dir).is_absolute())
             self.assertTrue(Path(args.global_path).is_absolute())
             self.assertEqual(resolve_capture_manifest(str(old), root), str(old))
 

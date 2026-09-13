@@ -1,0 +1,14 @@
+[
+  {
+    "mode": "stdlib",
+    "returncode": -11,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "mode": "numpy124",
+    "returncode": 0,
+    "stdout": "{\"mode\": \"numpy124\", \"python\": \"3.8.10 (default, Mar 18 2025, 20:04:55) \\n[GCC 9.4.0]\", \"executable\": \"/usr/bin/python3\", \"numpy\": \"1.24.4\", \"status\": \"pass\", \"iterations\": 10000000, \"seconds\": 10.830549142003292}\n",
+    "stderr": ""
+  }
+]

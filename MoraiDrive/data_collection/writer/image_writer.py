@@ -4,6 +4,7 @@ from typing import Dict, Iterable
 
 import cv2
 import numpy as np
+from .atomic_io import atomic_path
 
 
 class ImageWriter:
@@ -18,6 +19,7 @@ class ImageWriter:
 
     def write(self, frame_id: int, images: Dict[str, object]):
         params = [cv2.IMWRITE_JPEG_QUALITY, self.quality] if self.ext == "jpg" else []
+        written = []
         for name, camera in images.items():
             path = os.path.join(self.dirs[name], f"{frame_id:04d}.{self.ext}")
             encoded = getattr(camera, "encoded", None)
@@ -27,8 +29,10 @@ class ImageWriter:
             ):
                 # CompressedImage already contains a JPEG. Writing its bytes
                 # directly avoids four decode/colour-convert/re-encode cycles.
-                with open(path, "wb") as output:
-                    output.write(encoded)
+                with atomic_path(path) as temporary:
+                    with open(temporary, "wb") as output:
+                        output.write(encoded)
+                written.append(path)
                 continue
 
             img_rgb = getattr(camera, "image", camera)
@@ -38,9 +42,18 @@ class ImageWriter:
                 )
                 if img_bgr is None:
                     raise RuntimeError(f"Failed to decode camera image: {name}")
-                cv2.imwrite(path, img_bgr, params)
+                self._write_image(path, img_bgr, params)
+                written.append(path)
                 continue
             if img_rgb is None:
                 raise RuntimeError(f"Camera frame has no image payload: {name}")
             img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
-            cv2.imwrite(path, img_bgr, params)
+            self._write_image(path, img_bgr, params)
+            written.append(path)
+        return written
+
+    @staticmethod
+    def _write_image(path, image, params):
+        with atomic_path(path) as temporary:
+            if not cv2.imwrite(temporary, image, params):
+                raise OSError("Failed to save camera image: {}".format(path))

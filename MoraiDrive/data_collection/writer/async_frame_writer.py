@@ -6,8 +6,9 @@ import threading
 
 class AsyncFrameWriter:
     def __init__(self, dataset_writer, image_writer, lidar_writer, queue_size=32,
-                 block_when_full=False):
+                 block_when_full=False, on_commit=None):
         self.dataset_writer = dataset_writer
+        self._on_commit = on_commit
         self.image_writer = image_writer
         self.lidar_writer = lidar_writer
         self._queue = queue.Queue(maxsize=max(1, int(queue_size)))
@@ -49,6 +50,10 @@ class AsyncFrameWriter:
                     ) from exc
         self._raise_if_failed()
 
+    def check_health(self):
+        """Surface worker errors even while no new frames arrive."""
+        self._raise_if_failed()
+
     def close(self):
         if self._closed:
             self._raise_if_failed()
@@ -71,18 +76,24 @@ class AsyncFrameWriter:
                     frame_id, measurement, full_measurement, gnss, imu,
                     actors, affordances, cameras, lidar_points,
                 ) = job
-                self.dataset_writer.write_frame(
-                    frame_id,
-                    measurement,
-                    full_measurement,
-                    gnss=gnss,
-                    imu=imu,
-                    actors=actors,
-                    affordances=affordances,
-                )
-                self.image_writer.write(frame_id, cameras)
+                transactional = getattr(self.dataset_writer, "transactional", False) is True
+                if transactional and (set(cameras) != set(self.image_writer.dirs)
+                                      or lidar_points is None):
+                    raise ValueError("Complete camera set and LiDAR are required for frame commit")
+                image_paths = self.image_writer.write(frame_id, cameras)
+                sensor_files = list(image_paths or []) if transactional else []
                 if lidar_points is not None:
-                    self.lidar_writer.write(frame_id, lidar_points)
+                    lidar_path = self.lidar_writer.write(frame_id, lidar_points)
+                    if transactional:
+                        sensor_files.append(lidar_path)
+                extra = {"sensor_files": sensor_files} if transactional else {}
+                self.dataset_writer.write_frame(
+                    frame_id, measurement, full_measurement,
+                    gnss=gnss, imu=imu, actors=actors, affordances=affordances,
+                    **extra
+                )
+                if self._on_commit is not None:
+                    self._on_commit(frame_id, full_measurement)
             except BaseException as exc:
                 self._error = exc
             finally:

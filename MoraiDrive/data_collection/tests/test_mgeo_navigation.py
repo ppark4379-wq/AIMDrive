@@ -152,6 +152,59 @@ class MGeoMapTest(unittest.TestCase):
             self.assertIsInstance(waypoint[1], float)
             self.assertIsInstance(waypoint[2], int)
 
+    def _official_loop_tracker(self, initial_route_index=None):
+        from pathlib import Path
+        scenario = Path(__file__).resolve().parents[2] / 'scenario_runner'
+        map_dir = scenario / 'data/R_KR_PR_K-city_2025'
+        route = load_official_route(str(scenario / 'config/full_loop_links.yaml'),
+                                   str(map_dir / '2026_molit_comp_global_path.txt'))
+        return MGeoRouteTracker(MGeoMap(str(map_dir / 'link_set.json')), route,
+                                initial_route_index=initial_route_index)
+
+    def test_closed_route_tracks_two_laps_and_wraps_targets(self):
+        tracker = self._official_loop_tracker()
+        end = len(tracker.points) - 1
+        for lap in range(2):
+            for index in list(range(0, end, 10)) + [end - 2, end]:
+                x, y = tracker.points[index]
+                progress = tracker.update(x, y, tracker._point_heading(index))
+                self.assertLess(progress.distance_to_route_m, 0.6)
+                self.assertEqual(len(progress.future_waypoints), 50)
+                if index == 10:
+                    self.assertLess(progress.route_index, 20)
+            lookahead = tracker.get_future_waypoints(end, 50)
+            self.assertEqual(lookahead[0][:2], list(tracker.points[0]))
+            self.assertEqual(lookahead[1][:2], list(tracker.points[1]))
+            self.assertGreater(progress.target_route_index, 0)
+            self.assertLess(progress.target_route_index, 100)
+
+    def test_closed_route_does_not_reset_at_stop_wrong_heading_or_midroute(self):
+        tracker = self._official_loop_tracker()
+        end = len(tracker.points) - 1
+        tracker._route_index = end
+        x, y = tracker.points[end]
+        for _ in range(5):
+            self.assertEqual(tracker.update(x, y, tracker._point_heading(end)).route_index, end)
+        x, y = tracker.points[10]
+        self.assertEqual(tracker.update(x, y, tracker._point_heading(10) + math.pi).route_index, end)
+        tracker._route_index = 2000
+        self.assertGreaterEqual(tracker.update(x, y, tracker._point_heading(10)).route_index, 2000)
+        tracker._route_index = end
+        self.assertLess(tracker.update(x, y, tracker._point_heading(10)).route_index, 20)
+
+    def test_open_route_keeps_end_and_clipped_waypoints(self):
+        links = [{'idx': 'open', 'points': [[0, 0, 0], [10, 0, 0], [20, 0, 0]]}]
+        with tempfile.TemporaryDirectory() as root:
+            path = os.path.join(root, 'link_set.json')
+            with open(path, 'w') as f:
+                json.dump(links, f)
+            tracker = MGeoRouteTracker(MGeoMap(path), {'nav_link_ids': ['open']})
+            tracker.update(20, 0, 0)
+            progress = tracker.update(0, 0, 0)
+            self.assertEqual(progress.route_index, 2)
+            self.assertEqual(progress.target_route_index, 2)
+            self.assertEqual(len(progress.future_waypoints), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

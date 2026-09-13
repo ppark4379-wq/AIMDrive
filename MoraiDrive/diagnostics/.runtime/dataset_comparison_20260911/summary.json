@@ -1,0 +1,740 @@
+{
+  "old": {
+    "frames": 1576,
+    "keys": [
+      "actors_data",
+      "affected_light_id",
+      "brake",
+      "capture_manifest_record",
+      "command",
+      "control_age_frames",
+      "control_mode",
+      "control_reused",
+      "control_source_sequence",
+      "ego_raw",
+      "ego_state_source_frame",
+      "expert_control_raw",
+      "far_node_x",
+      "far_node_y",
+      "frame_id",
+      "future_waypoints",
+      "gps_x",
+      "gps_y",
+      "grpc_label_tick_raw",
+      "grpc_label_timestamp_raw",
+      "gt_command",
+      "gt_objects_available",
+      "gt_objects_raw",
+      "is_bike_present",
+      "is_junction",
+      "is_junction_vehicle_present",
+      "is_lane_vehicle_present",
+      "is_pedestrian_present",
+      "is_red_light_present",
+      "is_stop_sign_present",
+      "is_vehicle_present",
+      "morai_camera_sync_session_root",
+      "morai_lidar_sync_session_root",
+      "morai_sync_session_id",
+      "native_sync_frame",
+      "navigation",
+      "near_node_x",
+      "near_node_y",
+      "next_ego_raw",
+      "next_ego_state_source_frame",
+      "object_available",
+      "runtime_session_id",
+      "sample_index",
+      "scenario_id",
+      "should_brake",
+      "should_slow",
+      "simulator_labels_source",
+      "speed",
+      "steer",
+      "stop_sign",
+      "target_speed",
+      "theta",
+      "throttle",
+      "traffic_light",
+      "traffic_lights",
+      "traffic_scope",
+      "x",
+      "x_command",
+      "y",
+      "y_command"
+    ],
+    "navigation_keys": [
+      "affected_light_id_raw",
+      "affected_light_state_lmdrive",
+      "affected_light_state_raw",
+      "current_link_id",
+      "distance_to_link_m",
+      "route_index",
+      "route_link_index",
+      "route_valid"
+    ],
+    "tick_range": [
+      131,
+      8006
+    ],
+    "tick_deltas": {
+      "5": 1575
+    },
+    "sim_span_sec": 157.5,
+    "unique_ticks": 1576,
+    "provenance": 1601,
+    "incomplete": 1576,
+    "incomplete_reasons": {
+      "matching gRPC ActorStates unavailable": 1576
+    },
+    "incomplete_before_first": 26,
+    "incomplete_after_last": 1550,
+    "incomplete_between": 0,
+    "tick_match": 1576,
+    "ego_tick_match": 1576,
+    "next_tick_match": 1576,
+    "control_modes": {
+      "fresh": 1576
+    },
+    "control_reused": 0,
+    "traffic_light": {
+      "None": 258,
+      "4": 69,
+      "0": 1021,
+      "2": 228
+    },
+    "affected": 1318,
+    "matched_light": 1249,
+    "light_ids": [
+      "C1256W000016",
+      "C1256W000052",
+      "C1256W000077",
+      "C1256W000091",
+      "C1256W000123"
+    ],
+    "red": 1021,
+    "route_valid": {
+      "True": 1576
+    },
+    "route_distance_max": 0.4203642136795823,
+    "route_distance_median": 0.24018609648260472,
+    "stationary": 918,
+    "distance_travelled_m": 543.9630942131298,
+    "actor_frames": 0,
+    "gt_available": 1576,
+    "target_speed": {
+      "0.0": 1576
+    },
+    "commands": {
+      "4": 1397,
+      "3": 145,
+      "2": 34
+    },
+    "short_waypoints": 0,
+    "last": {
+      "frame_id": 1575,
+      "speed": 5.43990774474001,
+      "navigation": {
+        "current_link_id": "A2256W000318",
+        "distance_to_link_m": 0.11332636524585395,
+        "route_index": 1154,
+        "route_link_index": 15,
+        "route_valid": true,
+        "affected_light_id_raw": "C1256W000052",
+        "affected_light_state_raw": 16,
+        "affected_light_state_lmdrive": 2
+      },
+      "future_waypoints": [
+        [
+          -55.34638973752568,
+          92.81901652125075,
+          2
+        ],
+        [
+          -54.99723349610248,
+          93.1769116288491,
+          2
+        ],
+        [
+          -54.64807725467928,
+          93.53480673644745,
+          2
+        ],
+        [
+          -54.27240383779828,
+          93.86476032511626,
+          2
+        ],
+        [
+          -53.87588432183918,
+          94.16934566525971,
+          2
+        ],
+        [
+          -53.47936480588008,
+          94.47393100540316,
+          2
+        ],
+        [
+          -53.08284528992098,
+          94.7785163455466,
+          2
+        ],
+        [
+          -52.66812845636093,
+          95.05781893792718,
+          2
+        ],
+        [
+          -52.25341162280088,
+          95.33712153030775,
+          2
+        ],
+        [
+          -51.82952927038725,
+          95.60230760582674,
+          2
+        ],
+        [
+          -51.40564691797361,
+          95.86749368134572,
+          2
+        ],
+        [
+          -50.972944855896586,
+          96.11803009535447,
+          2
+        ],
+        [
+          -50.54024279381956,
+          96.36856650936322,
+          2
+        ],
+        [
+          -50.0942735398862,
+          96.59464342333155,
+          2
+        ],
+        [
+          -49.637901872817494,
+          96.7989101643756,
+          2
+        ],
+        [
+          -49.181530205748786,
+          97.00317690541965,
+          2
+        ],
+        [
+          -48.723381887436744,
+          97.203426603248,
+          2
+        ],
+        [
+          -48.26354913091466,
+          97.39977712357833,
+          2
+        ],
+        [
+          -47.80371637439258,
+          97.59612764390866,
+          2
+        ],
+        [
+          -47.33487548550279,
+          97.7698700846203,
+          2
+        ],
+        [
+          -46.866034596613005,
+          97.94361252533193,
+          2
+        ],
+        [
+          -46.39103347847041,
+          98.09972154914166,
+          2
+        ],
+        [
+          -45.91249730657208,
+          98.2446157799647,
+          2
+        ],
+        [
+          -45.430567364824206,
+          98.37776056943561,
+          2
+        ],
+        [
+          -44.93893758553077,
+          98.46881068984693,
+          2
+        ],
+        [
+          -44.443138619858075,
+          98.53345165301015,
+          2
+        ],
+        [
+          -43.944873410617454,
+          98.57506613598841,
+          2
+        ],
+        [
+          -43.44660820137683,
+          98.61668061896667,
+          2
+        ],
+        [
+          -42.94770834881948,
+          98.64982075761986,
+          2
+        ],
+        [
+          -42.44880849626213,
+          98.68296089627306,
+          2
+        ],
+        [
+          -41.94990864370478,
+          98.71610103492625,
+          2
+        ],
+        [
+          -41.70069433480967,
+          98.73265545303002,
+          2
+        ],
+        [
+          -41.70069433480967,
+          98.73265545303002,
+          4
+        ],
+        [
+          -41.20071157496074,
+          98.73664142983222,
+          4
+        ],
+        [
+          -40.700728815111816,
+          98.74062740663442,
+          4
+        ],
+        [
+          -40.20074605526289,
+          98.74461338343662,
+          4
+        ],
+        [
+          -39.700763295413964,
+          98.74859936023881,
+          4
+        ],
+        [
+          -39.20078053556504,
+          98.75258533704101,
+          4
+        ],
+        [
+          -38.70079777571611,
+          98.75657131384321,
+          4
+        ],
+        [
+          -38.200815015867185,
+          98.76055729064541,
+          4
+        ],
+        [
+          -37.70086352321917,
+          98.76741990169363,
+          4
+        ],
+        [
+          -37.20091203057115,
+          98.77428251274185,
+          4
+        ],
+        [
+          -36.70096053792314,
+          98.78114512379007,
+          4
+        ],
+        [
+          -36.20100904527512,
+          98.78800773483829,
+          4
+        ],
+        [
+          -35.701057552627105,
+          98.79487034588651,
+          4
+        ],
+        [
+          -35.20110605997909,
+          98.80173295693473,
+          4
+        ],
+        [
+          -34.70115456733107,
+          98.80859556798295,
+          4
+        ],
+        [
+          -34.20120307468306,
+          98.81545817903117,
+          4
+        ],
+        [
+          -33.70125158203504,
+          98.82232079007939,
+          4
+        ],
+        [
+          -33.201300089387026,
+          98.82918340112761,
+          4
+        ]
+      ]
+    },
+    "example_light": {
+      "frame_id": 242,
+      "traffic_lights": [
+        {
+          "tl_id": "C1256W000077",
+          "state": 1
+        }
+      ],
+      "traffic_light": 0,
+      "navigation": {
+        "current_link_id": "A2256W000236",
+        "distance_to_link_m": 0.17525158978105343,
+        "route_index": 327,
+        "route_link_index": 3,
+        "route_valid": true,
+        "affected_light_id_raw": "C1256W000077",
+        "affected_light_state_raw": 1,
+        "affected_light_state_lmdrive": 0
+      }
+    }
+  },
+  "new": {
+    "frames": 3442,
+    "keys": [
+      "actors_data",
+      "affected_light_id",
+      "brake",
+      "capture_manifest_record",
+      "command",
+      "control_age_frames",
+      "control_mode",
+      "control_reused",
+      "control_source_sequence",
+      "ego_raw",
+      "ego_state_source_frame",
+      "expert_control_raw",
+      "far_node_x",
+      "far_node_y",
+      "frame_id",
+      "future_waypoints",
+      "gps_x",
+      "gps_y",
+      "grpc_label_tick_raw",
+      "grpc_label_timestamp_raw",
+      "gt_command",
+      "gt_objects_available",
+      "gt_objects_raw",
+      "is_bike_present",
+      "is_junction",
+      "is_junction_vehicle_present",
+      "is_lane_vehicle_present",
+      "is_pedestrian_present",
+      "is_red_light_present",
+      "is_stop_sign_present",
+      "is_vehicle_present",
+      "morai_camera_sync_session_root",
+      "morai_lidar_sync_session_root",
+      "morai_sync_session_id",
+      "native_sync_frame",
+      "navigation",
+      "near_node_x",
+      "near_node_y",
+      "next_ego_raw",
+      "next_ego_state_source_frame",
+      "object_available",
+      "runtime_session_id",
+      "sample_index",
+      "scenario_id",
+      "should_brake",
+      "should_slow",
+      "simulator_labels_source",
+      "speed",
+      "steer",
+      "stop_sign",
+      "target_speed",
+      "theta",
+      "throttle",
+      "traffic_light",
+      "traffic_lights",
+      "traffic_scope",
+      "x",
+      "x_command",
+      "y",
+      "y_command"
+    ],
+    "navigation_keys": [
+      "affected_light_id_raw",
+      "affected_light_state_lmdrive",
+      "affected_light_state_raw",
+      "current_link_id",
+      "distance_to_link_m",
+      "route_index",
+      "route_link_index",
+      "route_valid"
+    ],
+    "tick_range": [
+      161,
+      17366
+    ],
+    "tick_deltas": {
+      "5": 3441
+    },
+    "sim_span_sec": 344.1,
+    "unique_ticks": 3442,
+    "provenance": 3442,
+    "incomplete": 32,
+    "incomplete_reasons": {
+      "gRPC label history not yet aligned": 32
+    },
+    "incomplete_before_first": 32,
+    "incomplete_after_last": 0,
+    "incomplete_between": 0,
+    "tick_match": 3442,
+    "ego_tick_match": 3442,
+    "next_tick_match": 3442,
+    "control_modes": {
+      "fresh": 3442
+    },
+    "control_reused": 0,
+    "traffic_light": {
+      "0": 894,
+      "2": 127,
+      "4": 30,
+      "None": 2391
+    },
+    "affected": 1051,
+    "matched_light": 1021,
+    "light_ids": [
+      "C1256W000016",
+      "C1256W000052",
+      "C1256W000123",
+      "LCS01"
+    ],
+    "red": 894,
+    "route_valid": {
+      "True": 2242,
+      "False": 1200
+    },
+    "route_distance_max": 389.6932342139348,
+    "route_distance_median": 0.24200293266515024,
+    "stationary": 1241,
+    "distance_travelled_m": 2205.439471770498,
+    "actor_frames": 0,
+    "gt_available": 3442,
+    "target_speed": {
+      "0.0": 3442
+    },
+    "commands": {
+      "4": 3095,
+      "3": 234,
+      "2": 63,
+      "1": 50
+    },
+    "short_waypoints": 1178,
+    "last": {
+      "frame_id": 3441,
+      "speed": 0.00011011931472248847,
+      "navigation": {
+        "current_link_id": "A2256W000751",
+        "distance_to_link_m": 389.69184399874314,
+        "route_index": 4429,
+        "route_link_index": 38,
+        "route_valid": false,
+        "affected_light_id_raw": null,
+        "affected_light_state_raw": null,
+        "affected_light_state_lmdrive": null
+      },
+      "future_waypoints": [
+        [
+          -131.68979755061446,
+          -428.3310229377821,
+          4
+        ]
+      ]
+    },
+    "example_light": {
+      "frame_id": 0,
+      "traffic_lights": [
+        {
+          "tl_id": "C1256W000016",
+          "state": 1
+        }
+      ],
+      "traffic_light": 0,
+      "navigation": {
+        "current_link_id": "A2256W000202",
+        "distance_to_link_m": 0.15564416465357514,
+        "route_index": 825,
+        "route_link_index": 9,
+        "route_valid": true,
+        "affected_light_id_raw": "C1256W000016",
+        "affected_light_state_raw": 1,
+        "affected_light_state_lmdrive": 0
+      }
+    }
+  },
+  "new_inventory": {
+    "3d_bbs": {
+      "count": 3442,
+      "zero": 0,
+      "bytes": 1263214
+    },
+    "actors_data": {
+      "count": 3442,
+      "zero": 0,
+      "bytes": 6884
+    },
+    "affordances": {
+      "count": 3442,
+      "zero": 0,
+      "bytes": 1109375
+    },
+    "birdview": {
+      "count": 0,
+      "zero": 0,
+      "bytes": 0
+    },
+    "gnss": {
+      "count": 0,
+      "zero": 0,
+      "bytes": 0
+    },
+    "imu": {
+      "count": 0,
+      "zero": 0,
+      "bytes": 0
+    },
+    "lidar": {
+      "count": 3442,
+      "zero": 0,
+      "bytes": 1586514176
+    },
+    "measurements": {
+      "count": 3442,
+      "zero": 0,
+      "bytes": 11498230
+    },
+    "measurements_full": {
+      "count": 3442,
+      "zero": 0,
+      "bytes": 29435631
+    },
+    "rgb_front": {
+      "count": 3442,
+      "zero": 0,
+      "bytes": 308945317
+    },
+    "rgb_left": {
+      "count": 3442,
+      "zero": 0,
+      "bytes": 117814731
+    },
+    "rgb_rear": {
+      "count": 3442,
+      "zero": 0,
+      "bytes": 91128137
+    },
+    "rgb_right": {
+      "count": 3442,
+      "zero": 0,
+      "bytes": 120154584
+    },
+    "topdown": {
+      "count": 0,
+      "zero": 0,
+      "bytes": 0
+    }
+  },
+  "old_inventory": {
+    "gnss": {
+      "zero": 0,
+      "bytes": null,
+      "count": 0
+    },
+    "rgb_rear": {
+      "zero": 1,
+      "bytes": 99135507,
+      "count": 1576
+    },
+    "rgb_front": {
+      "zero": 1,
+      "bytes": 283147714,
+      "count": 1576
+    },
+    "birdview": {
+      "zero": 0,
+      "bytes": null,
+      "count": 0
+    },
+    "measurements_full": {
+      "zero": 0,
+      "bytes": 15527115,
+      "count": 1576
+    },
+    "topdown": {
+      "zero": 0,
+      "bytes": null,
+      "count": 0
+    },
+    "rgb_right": {
+      "zero": 1,
+      "bytes": 112891020,
+      "count": 1576
+    },
+    "imu": {
+      "zero": 0,
+      "bytes": null,
+      "count": 0
+    },
+    "measurements": {
+      "zero": 0,
+      "bytes": 7249308,
+      "count": 1576
+    },
+    "rgb_left": {
+      "zero": 1,
+      "bytes": 102599933,
+      "count": 1576
+    },
+    "3d_bbs": {
+      "zero": 0,
+      "bytes": 575240,
+      "count": 1576
+    },
+    "actors_data": {
+      "zero": 0,
+      "bytes": 3152,
+      "count": 1576
+    },
+    "affordances": {
+      "zero": 0,
+      "bytes": 505638,
+      "count": 1576
+    },
+    "lidar": {
+      "zero": 1,
+      "bytes": 725961600,
+      "count": 1576
+    }
+  }
+}
