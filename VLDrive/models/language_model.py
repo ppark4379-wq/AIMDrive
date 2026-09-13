@@ -155,21 +155,3 @@ class VLDriveModel(nn.Module):
         if debug is not None:
             debug["predicted_waypoint_shape"] = tuple(predicted_waypoints.shape)
         return VLDriveOutput(predicted_waypoints, predicted_end_logits, hidden_states, sequence, debug)
-
-    @classmethod
-    def from_config(cls, cfg):
-        model = cls(
-            tinyllama_model_name_or_path=cfg.get("tinyllama_model_name_or_path", DEFAULT_TINYLLAMA_CHECKPOINT),
-            tinyllama_cache_dir=cfg.get("tinyllama_cache_dir"),
-            local_files_only=cfg.get("local_files_only", False),
-            freeze_tinyllama=cfg.get("freeze_tinyllama", False),
-            use_ddia=cfg.get("use_ddia", True),
-            visual_feature_dim=cfg.get("visual_feature_dim", 256),
-            use_visual_projection=cfg.get("use_visual_projection", True),
-            max_instruction_length=cfg.get("max_instruction_length", 64),
-            debug_vldrive=cfg.get("debug_vldrive", False),
-            precision=cfg.get("precision", "fp16"),
-        )
-        # Loading the pretrained language checkpoint above is sufficient; the
-        # driving weights come from outputs/checkpoints via utils.trainer.
-        return model
