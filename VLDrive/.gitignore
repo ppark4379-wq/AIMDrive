@@ -1,2 +1,20 @@
-# Local model checkpoints are downloaded separately and must not be committed.
-weights/
+# Downloaded weights (TinyLlama, bert-base-uncased, the official LMDrive
+# encoder) and generated caches.  Rebuild with tools/prepare_assets.py,
+# tools/cache_vision_tokens.py and tools/build_instructions.py.
+/data/external/
+/data/raw/
+/data/processed/vision_tokens/
+
+# Training runs: checkpoints, logs, metrics, predictions.
+/outputs/checkpoints/
+/outputs/logs/
+
+# Local caches (torch hub, Hugging Face, run locks).
+/.runtime/
+
+__pycache__/
+*.py[cod]
+*.pt
+*.pth
+*.pth.tar
+*.log

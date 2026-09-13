@@ -1,0 +1,23 @@
+# VLDrive training and offline evaluation.
+# Install the CUDA PyTorch wheel that matches your GPU first; the upstream
+# torch==2.0.1 pin is deliberately not repeated because it cannot run on an
+# RTX 5060 Ti (Blackwell).  Verified with Python 3.10, torch 2.8.0+cu128.
+torch>=2.0
+torchvision>=0.15
+# 4.31 adds LLaMA GQA while keeping the three-value LlamaAttention API that
+# DDIA replaces.  Newer transformers need an adapter in models/ddia_attention.py.
+transformers==4.31.0
+tokenizers>=0.13.3,<0.14
+safetensors
+sentencepiece
+numpy==1.26.4
+pillow
+opencv-python
+scikit-image
+pyyaml
+tqdm
+
+# Optional
+# matplotlib        tools/render_vision_tokens.py only
+# huggingface-hub   tools/prepare_assets.py --download-* only
+# torch-scatter     faster PointPillars reductions; a pure PyTorch fallback is built in
