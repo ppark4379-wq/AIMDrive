@@ -52,6 +52,7 @@ class MoraiDrivingConfig:
     language_policy: str = 'last_layer'  # frozen / last_layer / full
     ccdp: bool = True
     selection_policy: str = 'fixed_budget'  # fixed_budget / reference_bernoulli
+    selection_noise_anneal_updates: int = 0  # 0 preserves reference Gumbel; >=2 ends at zero noise
     mefa: bool = True
     memory_size: int = 10
     query_count: int = 32
@@ -81,6 +82,11 @@ class MoraiDrivingConfig:
             raise ValueError('Unknown language ablation')
         if self.selection_policy not in ('fixed_budget', 'reference_bernoulli'):
             raise ValueError('Unknown CCDP selection policy')
+        steps = self.selection_noise_anneal_updates
+        if isinstance(steps, bool) or not isinstance(steps, int) or steps < 0 or steps == 1:
+            raise ValueError('selection_noise_anneal_updates must be 0 or an integer >= 2')
+        if steps and (not self.ccdp or self.selection_policy != 'reference_bernoulli'):
+            raise ValueError('Noise annealing requires dynamic CCDP')
         if self.language_policy not in ('frozen', 'last_layer', 'full'):
             raise ValueError('Unknown LM trainability policy')
         if self.precision not in ('bf16', 'fp32'):
@@ -166,6 +172,19 @@ class MoraiDrivingModel(nn.Module):
         if self.language is None:
             self.route_token.requires_grad_(False)
         self.to(device)
+
+    def set_training_update(self, update):
+        """Derive selection noise from the zero-based global optimizer step.
+
+        Recomputed on every update, including resume; independent of a run's
+        requested final update count. Evaluation always uses deterministic argmax.
+        """
+        if isinstance(update, bool) or not isinstance(update, int) or update < 0:
+            raise ValueError('Training update must be a nonnegative integer')
+        steps = self.config.selection_noise_anneal_updates
+        scale = max(0.0, 1.0 - update / (steps - 1)) if steps else 1.0
+        self.connector.ccdp.gumbel_noise_scale = scale
+        return scale
 
     def encode_visual(self, sensors):
         outputs = []

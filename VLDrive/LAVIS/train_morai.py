@@ -76,6 +76,8 @@ def main():
     write_json(output / 'window_indices.json', indices)
     print('Loading actual pretrained visual encoder and lightweight LM...', flush=True)
     model = MoraiDrivingModel(config, device=device)
+    if settings.get('activation_checkpoint_language') and model.language is not None:
+        model.language.gradient_checkpointing_enable()
     write_json(output / 'model.json', model.describe())
     optimizer = make_optimizer(model, **settings.get('optimizer', {}))
     start_update = 0
@@ -84,6 +86,7 @@ def main():
         start_update = saved['updates']
         if args.mode != 'evaluate' and saved['settings'] != {k: v for k, v in settings.items() if k != 'updates'}:
             raise ValueError('Resume requires the same data selection, optimizer and random schedule')
+    model.set_training_update(start_update)
     report = dict(schema='morai-goal-stack-report-v1', full_goal_graph=config.input_mode == 'raw'
         and config.language_mode == 'ddia' and config.ccdp and config.mefa,
         start_update=start_update, semantic_annotations=datasets['train'].describe()['semantic_annotation_count'],
@@ -149,6 +152,14 @@ def main():
     report['completed_wall_time'] = time.time()
     write_json(output / 'report.json', report)
     print(json.dumps(report, indent=2), flush=True)
+    if settings.get('require_healthy_retention') and config.ccdp and config.selection_policy == 'reference_bernoulli':
+        final = report.get('after', {})
+        if 'validation' in report:
+            final = {'val': report['validation']}
+        failed = [split for split, result in final.items() if not result['token_retention']['passed']]
+        if failed:
+            raise RuntimeError('Deterministic CCDP retention failed for ' + ', '.join(failed)
+                               + '; checkpoint and report preserved in ' + str(output))
 
 
 if __name__ == '__main__':

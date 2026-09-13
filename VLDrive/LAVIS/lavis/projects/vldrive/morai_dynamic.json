@@ -36,10 +36,13 @@
     "checkpoint_visual": true,
     "max_instruction_tokens": 128,
     "selection_policy": "reference_bernoulli",
+    "selection_noise_anneal_updates": 64,
     "reconstruction_formulation": "eq8",
-    "reconstruction_reduction": "sum",
+    "reconstruction_reduction": "mean",
     "reconstruction_layers": 4,
     "target_retention": 0.3
   },
-  "checkpoint_every": 80
+  "checkpoint_every": 80,
+  "activation_checkpoint_language": true,
+  "require_healthy_retention": true
 }

@@ -17,6 +17,7 @@ Independent implementation choices are explicitly documented:
 
 from __future__ import annotations
 
+import math
 from typing import Dict, Optional, Tuple
 
 import torch
@@ -78,6 +79,9 @@ class CCDPTokenSparsifier(nn.Module):
         self.dim = int(dim)
         self.target_retention = float(target_retention)
         self.temperature = float(temperature)
+        # Default preserves the reference Gumbel policy exactly. MORAI may
+        # anneal noise by global optimizer update; this is not softmax tau.
+        self.gumbel_noise_scale = 1.0
         self.route_context_dim = int(route_context_dim)
         self.ego_context_dim = int(ego_context_dim)
 
@@ -130,6 +134,19 @@ class CCDPTokenSparsifier(nn.Module):
         hard: bool,
     ) -> torch.Tensor:
         if selection_mode == "gumbel":
+            scale = self.gumbel_noise_scale
+            if not math.isfinite(scale) or not 0.0 <= scale <= 1.0:
+                raise ValueError("Gumbel noise scale must be finite and in [0,1]")
+            if scale != 1.0:
+                # Same hard per-token decisions as argmax at zero noise, with
+                # a softmax straight-through gradient. No fixed token budget.
+                noise = -torch.empty_like(logits).exponential_().log() if scale else 0.0
+                scores = (logits + scale * noise) / self.temperature
+                soft = scores.softmax(-1)
+                if not hard:
+                    return soft[..., 1]
+                discrete = torch.zeros_like(soft).scatter_(-1, scores.argmax(-1, keepdim=True), 1.0)
+                return (discrete - soft.detach() + soft)[..., 1]
             one_hot = F.gumbel_softmax(
                 logits,
                 tau=self.temperature,
