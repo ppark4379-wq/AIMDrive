@@ -219,6 +219,7 @@ def source_hashes(root):
     paths.update(root / p for p in (
         'lavis/__init__.py', 'lavis/models/__init__.py', 'lavis/runners/__init__.py',
         'lavis/common/morai_runtime.py', 'lavis/runners/morai_trainer.py',
+        'lavis/common/dist_utils.py',
         'lavis/runners/morai_metrics.py', 'lavis/runners/morai_visual_trainer.py',
         'train_morai.py', 'train_morai_visual.py', 'train_vldrive.py', 'lavis/runners/vldrive_trainer.py'))
     return {str(p.relative_to(root)): sha256(p) for p in sorted(paths)}
@@ -245,7 +246,9 @@ def restore_checkpoint(path, model, optimizer, *, provenance, restore_rng=True):
     integrity = json.loads(path.with_suffix('.sha256.json').read_text())
     if path.stat().st_size != integrity['bytes'] or sha256(path) != integrity['sha256']:
         raise ValueError('Checkpoint file integrity failure')
-    state = torch.load(path, map_location='cpu')
+    # Only locally produced, integrity-checked training checkpoints are supported.
+    # RNG state includes NumPy objects, beyond torch's weights-only allowlist.
+    state = torch.load(path, map_location='cpu', weights_only=False, mmap=True)
     if state['schema'] != getattr(model, 'checkpoint_schema', 'morai-goal-stack-v1') or state['model_config'] != asdict(model.config):
         raise ValueError('Checkpoint/model contract mismatch')
     if state['provenance'] != provenance:

@@ -69,6 +69,7 @@ def create_carla_rgb_transform(
     interpolation="bilinear",
     mean=IMAGENET_DEFAULT_MEAN,
     std=IMAGENET_DEFAULT_STD,
+    hue_jitter=None,
 ):
 
     if isinstance(input_size, (tuple, list)):
@@ -106,7 +107,9 @@ def create_carla_rgb_transform(
                     brightness=color_jitter,
                     contrast=color_jitter,
                     saturation=color_jitter,
-                    hue=color_jitter,
+                    # Keep legacy callers unchanged; MORAI can preserve signal
+                    # colors without disabling brightness/contrast augmentation.
+                    hue=color_jitter if hue_jitter is None else hue_jitter,
                 )
             )
     tfl.append(transforms.CenterCrop(img_size))

@@ -263,6 +263,16 @@ class CCDPTokenSparsifier(nn.Module):
         soft_retention_per_frame_flat = (
             probabilities_flat[..., 1].mean(dim=-1)
         )
+        # Optional downstream stability loss, separate from paper Eq. 12.
+        # BCE on logits keeps dL/d(keep-drop)=p_keep-R nonzero even when
+        # softmax/Gumbel is saturated. Its weight defaults to zero in MEFA.
+        # This pulls each probability toward R, so it regularizes token-score
+        # contrast as well as retention and is an explicit experimental choice.
+        retention_logit_loss_per_frame_flat = F.binary_cross_entropy_with_logits(
+            logits_flat[..., 1] - logits_flat[..., 0],
+            torch.full_like(logits_flat[..., 0], self.target_retention),
+            reduction="none",
+        ).mean(dim=-1)
 
         output_shape_token = leading_shape + (num_tokens,)
         output_shape_logits = leading_shape + (num_tokens, 2)
@@ -297,4 +307,5 @@ class CCDPTokenSparsifier(nn.Module):
             "retention": retention_per_frame_flat.mean(),
             "soft_retention": soft_retention_per_frame_flat.mean(),
             "pruning_loss": pruning_loss,
+            "retention_logit_loss": retention_logit_loss_per_frame_flat.mean(),
         }

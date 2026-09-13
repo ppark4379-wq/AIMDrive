@@ -35,6 +35,7 @@ def create_carla_loader(
     pin_memory=False,
     fp16=False,
     persistent_workers=True,
+    hue_jitter=None,
 ):
     dataset.rgb_transform = create_carla_rgb_transform(
         input_size,
@@ -44,6 +45,7 @@ def create_carla_loader(
         interpolation=interpolation,
         mean=mean,
         std=std,
+        hue_jitter=hue_jitter,
     )
 
     dataset.rgb_center_transform = create_carla_rgb_transform(
@@ -55,6 +57,7 @@ def create_carla_loader(
         mean=mean,
         std=std,
         need_scale=False,
+        hue_jitter=hue_jitter,
     )
 
     dataset.seg_transform = create_carla_seg_transform(
@@ -86,6 +89,7 @@ def create_carla_loader(
         interpolation=interpolation,
         mean=mean,
         std=std,
+        hue_jitter=hue_jitter,
     )
 
     sampler = None

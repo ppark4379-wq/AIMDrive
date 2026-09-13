@@ -213,7 +213,7 @@ class MoraiVisionAdapterConfig:
     )
     max_lidar_points: int = 40000
     remove_ego_box_m: float = 1.2
-    use_previous_lidar_sweep: bool = True
+    use_previous_lidar_sweep: bool = False
     lidar_axis_policy: str = "morai_flu_to_lmdrive_fru"
 
     def validate(self):
@@ -684,9 +684,7 @@ class MoraiLMDriveVisionAdapter(object):
                         velocity_mps
                     )
                 ),
-                "velocity_source": (
-                    "stage6c2_smoke_constant"
-                ),
+                "velocity_source": "current_ego_speed",
                 "lidar_rotation_deg": (
                     0.0
                 ),
