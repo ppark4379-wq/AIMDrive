@@ -62,6 +62,34 @@ def control_topology(state, topic):
     return dict(topic=topic, publishers=existing, subscribers=listeners)
 
 
+def control_topology_after_stale_expert_cleanup(master, topic):
+    """Remove only unreachable AIMDrive expert registrations, then validate."""
+    caller = '/scenario_review_preflight'
+    state = master.getSystemState(caller)
+    code, message, (publishers, _subscribers, _services) = state
+    if code != 1:
+        raise RuntimeError(message)
+    existing = dict(publishers).get(topic, [])
+    candidates = [
+        node for node in existing if node.startswith('/morai_standard_')
+    ]
+    if candidates:
+        import rosgraph
+        import rosnode
+
+        stale = [
+            node for node in candidates
+            if not rosnode.rosnode_ping(
+                node, max_count=1, verbose=False, skip_cache=True
+            )
+        ]
+        if stale:
+            rosnode.cleanup_master_blacklist(rosgraph.Master(caller), stale)
+            print('[ROS] removed stale expert registrations: ' + ', '.join(stale))
+            state = master.getSystemState(caller)
+    return control_topology(state, topic)
+
+
 def raw_stop_record(outcome):
     # Raw byte completion and expert success are separate axes. Collision data
     # is useful diagnostic evidence, never an approved teacher episode.
@@ -452,7 +480,9 @@ def main():
             with process_lock('capture'):
                 mode = mode_check()
                 master = xmlrpc.client.ServerProxy(os.environ.get('ROS_MASTER_URI', 'http://127.0.0.1:11311'))
-                topology = control_topology(master.getSystemState('/scenario_review_preflight'), a.control_topic)
+                topology = control_topology_after_stale_expert_cleanup(
+                    master, a.control_topic
+                )
                 existed=master.hasParam('/scenario_review_preflight','/use_sim_time')[2]
                 original=master.getParam('/scenario_review_preflight','/use_sim_time')[2] if existed else None
                 if ros_clock_expert and original is not True:
@@ -504,7 +534,9 @@ def main():
             results = []
             for index in range(a.episodes):
                 mode_check()
-                control_topology(master.getSystemState('/scenario_review_preflight'), a.control_topic)
+                control_topology_after_stale_expert_cleanup(
+                    master, a.control_topic
+                )
                 episode = output / ('episode_%03d' % index)
                 gc, sc = copy.deepcopy(global_cfg), copy.deepcopy(cfg)
                 gc['grpc']['client_key'] = output.name + '_' + str(index)

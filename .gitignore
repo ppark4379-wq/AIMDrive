@@ -1,12 +1,14 @@
 __pycache__/
 *.pyc
 *.pyo
+.vscode/
 
 # Data collection outputs (not code)
 MoraiDrive/dataset
 MoraiDrive/dataset/
 MoraiDrive/dataset_local/
 MoraiDrive/.runtime/data_collection/
+MoraiDrive/data_collection/internal_sensor_record/.runtime/
 MoraiDrive/data_collection/routes/generated/
 MoraiDrive/data_collection/output/
 
