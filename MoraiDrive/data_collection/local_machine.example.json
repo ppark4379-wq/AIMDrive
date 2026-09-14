@@ -1,4 +1,5 @@
 {
+  "bridge_ip": "127.0.0.1",
   "storage_root": "/mnt/c/MoraiDriveData",
   "launcher_root": "/mnt/c/MoraiLauncher_Win",
   "catkin_workspace": "~/catkin_ws",

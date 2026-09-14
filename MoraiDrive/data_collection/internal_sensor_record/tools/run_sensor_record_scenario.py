@@ -133,6 +133,13 @@ def main():
                    help='Deterministic per-lap seed for weather/time/obstacle selection')
     p.add_argument('--profile-state',type=Path,
                    help='Local-storage campaign state shared across laps so environment choices do not repeat silently')
+    p.add_argument(
+        '--scenario-runtime', choices=('proven', 'current'), default='proven',
+        help=(
+            'proven: execute the pinned three-lap runtime; current: execute '
+            'the current team scenario_runner/expert checkout'
+        ),
+    )
     p.add_argument('--assembly',type=Path,default=DEFAULT_ASSEMBLY)
     p.add_argument('--sensor-set',type=Path,default=DEFAULT_SENSOR_SET)
     p.add_argument('--static-evidence',type=Path,
@@ -226,12 +233,19 @@ def main():
         observed_mode=require_free_running_mode(mode_observation,'simulation_free_run')
     finally:gt.close()
     coordination=ep/'sensor_record_coordination'
-    command=['/usr/bin/python3',str(ROOT/'tools/run_proven_three_lap_scenario.py'),
-        '--time-mode','simulation_free_run','--nearby-actors','--collision-policy','record',
+    runner = (
+        ROOT/'tools/run_proven_three_lap_scenario.py'
+        if a.scenario_runtime == 'proven'
+        else ROOT/'tools/run_async_scenario_review.py'
+    )
+    command=['/usr/bin/python3',str(runner),
+        '--time-mode','simulation_free_run','--collision-policy','record',
         '--max-speed-kmh','60','--seconds',str(a.seconds),'--audit-scope','timing','--output',str(run),
         '--sensor-record-coordination',str(coordination),
         '--raw-camera-transport',a.raw_camera_transport,'--seed',str(a.seed),
         '--grpc-target',grpc_target]
+    if a.scenario_runtime == 'proven':
+        command.append('--nearby-actors')
     if a.profile_state is not None:
         command += ['--profile-state',str(a.profile_state)]
     if a.full_lap:command.append('--full-lap')
@@ -347,6 +361,7 @@ def main():
             write_json(run/'capture_contract.json',contract)
             write_json(run/'native_setup.json',dict(storage=storage,links=links,native_root=str(native),initial_files=initial,
                 pre_reset_sensor_preflight=json.loads(preflight.stdout),command=command,
+                scenario_runtime=a.scenario_runtime,
                 raw_camera_transport=a.raw_camera_transport,
                 capture_contract_sha256=digest(run/'capture_contract.json')))
             write_json(run/'native_files_before.json',inspect_directory(native))

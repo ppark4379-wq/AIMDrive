@@ -80,9 +80,24 @@ def main():
         health_rows=snapshot.get('bridge_health',[])
         health=health_rows[-1][1] if health_rows else {}
         bridge_failures=check_bridge(health,now_ns=end,require_streams=True)
+        bridge_clock=health.get('streams',{}).get('/clock',{})
+        report['bridge_clock_ingress']=dict(bridge_clock)
+        bridge_clock_fresh=(
+            bridge_clock.get('samples',0)>=2
+            and bridge_clock.get('receive_age_ms',1e9)<=500
+        )
+        if not snapshot.get('clock'):
+            if bridge_clock_fresh:
+                failures.append('clock_ingress_not_delivered_to_ros')
+            else:
+                failures.append('morai_simulator_network_clock_not_sent')
         report['bridge_camera_ingress']=dict(
             messages=len(health_rows),
             policy=health.get('camera_ingress_policy'),
+            purpose='connection_health_only',
+            rate_scope='per_frame_id_on_shared_ros_topic',
+            validates_native_sensor_record_cadence=False,
+            expected_native_sensor_record_hz=10,
             implementation=health.get('implementation'),
             code_sha256=health.get('code_sha256'),
             streams={role:health.get('streams',{}).get(role,{})

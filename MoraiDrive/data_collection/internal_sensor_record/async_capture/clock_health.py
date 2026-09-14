@@ -35,7 +35,8 @@ def read_timex():
                 system_settings_changed=False)
 
 
-def evaluate(samples, *, max_rate_error_ppm=5000, max_wall_step_ns=50000000):
+def evaluate(samples, *, max_rate_error_ppm=20000,
+             warn_rate_error_ppm=5000, max_wall_step_ns=50000000):
     if len(samples)<2:
         raise ValueError('At least two clock samples are required')
     mono=samples[-1]['monotonic_ns']-samples[0]['monotonic_ns']
@@ -49,12 +50,22 @@ def evaluate(samples, *, max_rate_error_ppm=5000, max_wall_step_ns=50000000):
         if abs(change)>max_wall_step_ns:
             steps.append(dict(before_monotonic_ns=a['monotonic_ns'],after_monotonic_ns=b['monotonic_ns'],wall_offset_change_ns=change))
     failures=[]
-    if abs(ratio-1)*1e6>max_rate_error_ppm:
+    warnings=[]
+    rate_error_ppm=(ratio-1)*1e6
+    if abs(rate_error_ppm)>max_rate_error_ppm:
         failures.append('monotonic_rate_differs_from_raw')
+    elif abs(rate_error_ppm)>warn_rate_error_ppm:
+        # CLOCK_MONOTONIC is still causal and all receipt comparisons use the
+        # same domain.  Preserve the RAW mapping for post-run audit, but do not
+        # force a WSL restart for the bounded slew commonly observed while the
+        # Windows host clock is being disciplined.
+        warnings.append('monotonic_rate_slew_recorded')
     if steps:
         failures.append('wall_clock_step')
-    return dict(passed=not failures,failures=failures,monotonic_per_raw_second=ratio,
-                rate_error_ppm=(ratio-1)*1e6,wall_steps=steps,
+    return dict(passed=not failures,failures=failures,warnings=warnings,
+                monotonic_per_raw_second=ratio,
+                rate_error_ppm=rate_error_ppm,wall_steps=steps,
+                warn_rate_error_ppm=warn_rate_error_ppm,
                 max_rate_error_ppm=max_rate_error_ppm,max_wall_step_ns=max_wall_step_ns,
                 scope='Gross local clock health; does not calibrate sensor exposure clocks')
 

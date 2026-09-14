@@ -17,6 +17,7 @@ def summarized(report):
     return {
         "passed": bool(report["passed"]),
         "failures": list(report["failures"]),
+        "warnings": list(report.get("warnings", [])),
         "rate_error_ppm": float(report["rate_error_ppm"]),
         "wall_step_count": len(report.get("wall_steps", [])),
     }
@@ -85,6 +86,12 @@ def main():
             encoding="utf-8",
         )
     if report["passed"]:
+        if report.get("warnings"):
+            print(
+                "[WARN] WSL receive clock이 RAW 대비 %.3f ppm 보정 중입니다. "
+                "수신 인과 순서는 유효하며 monotonic/RAW 대응값을 원본에 기록합니다."
+                % float(report["rate_error_ppm"])
+            )
         print(
             "[PASS] WSL receive clock 검사: rate error %.3f ppm "
             "(%.1fs, %d회 측정)" % (
@@ -100,11 +107,13 @@ def main():
           (report["failures"], float(report["rate_error_ppm"])), file=sys.stderr)
     print("       %.0f초 동안 자동 재측정했지만 안정화되지 않았습니다." %
           float(args.wait_seconds), file=sys.stderr)
-    print("       Windows PowerShell에서 `wsl --shutdown`을 한 번 실행한 뒤 WSL과 01번을 다시 시작하세요.",
+    print("       WSL을 반복 종료하지 말고 5분간 유지한 뒤 01번을 다시 실행하세요.",
           file=sys.stderr)
-    print("       재시작 후에는 WSL IP가 바뀔 수 있습니다. 01번에 새로 표시된 IP:9090으로",
+    print("       계속 실패할 때만 Windows PowerShell에서 `wsl --shutdown`을 한 번 실행하세요.",
           file=sys.stderr)
-    print("       MORAI 차량 정보·Simulator Network(/clock)·센서를 다시 연결해야 합니다.",
+    print("       재시작했다면 MORAI 차량 정보·Simulator Network(/clock)·센서를",
+          file=sys.stderr)
+    print("       127.0.0.1:9090으로 다시 연결해야 합니다.",
           file=sys.stderr)
     print("       시스템 시간 서비스를 이 스크립트가 임의로 변경하지는 않습니다.",
           file=sys.stderr)

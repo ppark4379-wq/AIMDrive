@@ -365,7 +365,7 @@ def main():
     p.add_argument('--collision-policy', choices=('abort','record'), default='abort',
                    help='record: retain collision and post-collision raw data without collision-triggered abort; diagnostic only')
     from native_capture.ground_truth import default_grpc_target
-    p.add_argument('--grpc-target', default=default_grpc_target())
+    p.add_argument('--grpc-target')
     p.add_argument('--control-topic', default='/ctrl_cmd')
     p.add_argument('--audit-python', default=sys.executable)
     p.add_argument('--clock-trace',type=Path,
@@ -380,6 +380,8 @@ def main():
                    default='required',
                    help='required: write ROS cameras; unrecorded: omit raw writes; bridge_dropped: discard at bridge ingress; absent: diagnostic only')
     a = p.parse_args()
+    if not a.grpc_target:
+        a.grpc_target = default_grpc_target()
     if a.rosbag or a.expert_wall_clock or a.policy_study is not None \
             or a.clock_trace is not None or a.clock_trace_owner is not None:
         p.error('Experimental rosbag/wall-clock/pairing/clock-trace modes are not supported here')

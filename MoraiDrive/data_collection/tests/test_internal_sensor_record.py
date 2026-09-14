@@ -17,21 +17,42 @@ from async_capture.journal import RawWriter, records, verify_run
 from async_capture.health_policy import (
     SimulationPauseGrace, is_coherent_simulation_pause,
 )
+from async_capture.clock_health import evaluate as evaluate_local_clocks
 from async_capture.sensor_record import filename_candidates
 from bridge.camera_ingress_filter import dropped_publish_stream
 from bridge.bridge_health import (
-    BridgeMetrics, IMPLEMENTATION, REQUIRED_STREAMS, boot_id, check_bridge,
-    implementation_hashes,
+    BridgeMetrics, IMPLEMENTATION, OBSERVED_STREAMS, REQUIRED_STREAMS,
+    boot_id, check_bridge, implementation_hashes,
 )
 from async_capture.internal_sensor_record_contract import (
     _ros, sensor_set_contract_sha256,
 )
-from network_config import bridge_ip
+from network_config import bridge_ip, runtime_environment
 from native_capture.ground_truth import default_grpc_target
 from sources.morai_sync_file_source import REQUIRED_SENSOR_DIRS
 
 
 class InternalSensorRecordTest(unittest.TestCase):
+    def test_bounded_wsl_clock_slew_is_recorded_without_reboot_loop(self):
+        samples = [
+            {"monotonic_ns": 0, "monotonic_raw_ns": 0, "wall_ns": 0},
+            {
+                "monotonic_ns": 1_009_908_000,
+                "monotonic_raw_ns": 1_000_000_000,
+                "wall_ns": 1_009_908_000,
+            },
+        ]
+        report = evaluate_local_clocks(samples)
+        self.assertTrue(report["passed"])
+        self.assertEqual(report["warnings"], ["monotonic_rate_slew_recorded"])
+        self.assertAlmostEqual(report["rate_error_ppm"], 9908.0)
+
+        samples[-1]["monotonic_ns"] = 1_083_333_000
+        samples[-1]["wall_ns"] = 1_083_333_000
+        report = evaluate_local_clocks(samples)
+        self.assertFalse(report["passed"])
+        self.assertIn("monotonic_rate_differs_from_raw", report["failures"])
+
     def test_simulation_pause_grace_never_hides_partial_sensor_loss(self):
         coherent = [
             "ros_clock_not_advancing",
@@ -127,6 +148,17 @@ class InternalSensorRecordTest(unittest.TestCase):
             {"rosbridge_ingress.py", "bridge_health.py", "production_bridge.py",
              "camera_ingress_filter.py"},
         )
+
+    def test_bridge_observes_clock_without_making_it_a_sensor_stream(self):
+        metrics = BridgeMetrics()
+        metrics.observe({
+            "receive_ns": 10, "end_ns": 11, "client_id": 9,
+            "queue_ms": 0.0, "processing_ms": 0.01, "residual": 0,
+            "errors": 0, "op": "publish", "topic": "/clock",
+        })
+        self.assertIn("/clock", OBSERVED_STREAMS)
+        self.assertNotIn("/clock", REQUIRED_STREAMS)
+        self.assertEqual(metrics.snapshot(11)["streams"]["/clock"]["samples"], 1)
 
     def test_bridge_preflight_rejects_a_different_implementation_hash(self):
         now = 10_000_000_000
@@ -289,6 +321,35 @@ class InternalSensorRecordTest(unittest.TestCase):
             config, topic="/gps", frame="GPS-6",
             expected_bridge_ip="192.0.2.25",
         )["matches"])
+
+    def test_localhost_bridge_is_stable_and_ros_node_ip_remains_wsl_address(self):
+        with patch.dict(
+            "os.environ",
+            {
+                "MORAI_BRIDGE_IP": "127.0.0.1",
+                "MORAI_ROS_IP": "172.30.144.83",
+            },
+            clear=False,
+        ):
+            environment = runtime_environment()
+        self.assertEqual(environment["MORAI_BRIDGE_IP"], "127.0.0.1")
+        self.assertEqual(environment["ROS_IP"], "172.30.144.83")
+
+    def test_ignored_machine_config_can_pin_stable_localhost_bridge(self):
+        with tempfile.TemporaryDirectory(dir=str(DATA_COLLECTION.parent)) as temporary:
+            project = Path(temporary)
+            config = project / ".runtime/data_collection/local_machine.json"
+            config.parent.mkdir(parents=True)
+            config.write_text(json.dumps({"bridge_ip": "127.0.0.1"}))
+            with patch.dict(
+                "os.environ",
+                {
+                    "MORAI_PROJECT_ROOT": str(project),
+                    "MORAI_BRIDGE_IP": "",
+                },
+                clear=False,
+            ):
+                self.assertEqual(bridge_ip(), "127.0.0.1")
 
     def test_ignored_machine_config_selects_storage_without_committing_d(self):
         with tempfile.TemporaryDirectory(dir=str(DATA_COLLECTION.parent)) as temporary:

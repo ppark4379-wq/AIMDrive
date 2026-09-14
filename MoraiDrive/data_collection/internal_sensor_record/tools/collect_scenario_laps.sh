@@ -31,6 +31,7 @@ CAMPAIGN_ID="${2:-scenario_campaign_$(date +%Y%m%d_%H%M%S)}"
 BASE_SEED="${MORAI_BASE_SEED:-26091200}"
 LAP_WALL_SECONDS="${MORAI_LAP_WALL_SECONDS:-3000}"
 ANALYSIS_PYTHON="$MORAI_ANALYSIS_PYTHON"
+SCENARIO_RUNTIME="${MORAI_SCENARIO_RUNTIME:-proven}"
 CURRENT_LAP=""
 CURRENT_RUN=""
 COLLECTOR_PID=""
@@ -39,6 +40,7 @@ usage() {
     echo "사용법: $0 <바퀴 수> [campaign_id]"
     echo "예:   $0 3"
     echo "선택 환경변수: MORAI_STORAGE_ROOT, MORAI_BASE_SEED, MORAI_LAP_WALL_SECONDS, MORAI_SIMULATOR_PID"
+    echo "                MORAI_SCENARIO_RUNTIME=proven|current (기본 proven)"
 }
 
 if [[ -z "$LAPS" ]] || [[ ! "$LAPS" =~ ^[0-9]+$ ]] || (( LAPS < 1 || LAPS > 100 )); then
@@ -57,22 +59,43 @@ if [[ ! "$LAP_WALL_SECONDS" =~ ^[0-9]+$ ]] || (( LAP_WALL_SECONDS < 600 || LAP_W
     echo "[FAIL] MORAI_LAP_WALL_SECONDS는 600..3570초여야 합니다." >&2
     exit 2
 fi
+if [[ "$SCENARIO_RUNTIME" != "proven" && "$SCENARIO_RUNTIME" != "current" ]]; then
+    echo "[FAIL] MORAI_SCENARIO_RUNTIME은 proven 또는 current여야 합니다." >&2
+    exit 2
+fi
 export MORAI_ANALYSIS_PYTHON="$ANALYSIS_PYTHON"
 export MORAI_ASYNC_DEPS="$ASYNC_DEPS"
 export MORAI_STORAGE_ROOT="$SSD_ROOT"
+export MORAI_SCENARIO_RUNTIME
 
 /usr/bin/python3 "$INTEGRATION/tools/preflight_local_storage.py" --reserve-gib 70
 
 integration_log="$MORAI_PROJECT_ROOT/.runtime/data_collection/scenario_contract_check.log"
 mkdir -p "$(dirname "$integration_log")"
-if ! /usr/bin/python3 "$INTEGRATION/tools/run_async_scenario_review.py" \
-        --check --raw-camera-transport bridge_dropped --max-speed-kmh 60 \
-        >"$integration_log" 2>&1; then
-    echo "[FAIL] 최신 Scenario Runner·Expert·수집기 인터페이스가 호환되지 않습니다." >&2
+if [[ "$SCENARIO_RUNTIME" == "proven" ]]; then
+    scenario_check=(
+        /usr/bin/python3 "$INTEGRATION/tools/run_proven_three_lap_scenario.py"
+        --check --nearby-actors --time-mode simulation_free_run
+        --collision-policy record --raw-camera-transport bridge_dropped
+        --max-speed-kmh 60
+    )
+    runtime_label="검증된 고정 3바퀴 runtime"
+else
+    scenario_check=(
+        /usr/bin/python3 "$INTEGRATION/tools/run_async_scenario_review.py"
+        --check --time-mode simulation_free_run --collision-policy record
+        --raw-camera-transport bridge_dropped --max-speed-kmh 60
+    )
+    runtime_label="현재 팀 checkout runtime(실주행 재검증 필요)"
+fi
+if ! "${scenario_check[@]}" >"$integration_log" 2>&1; then
+    echo "[FAIL] 선택한 Scenario Runner·Expert·수집기 인터페이스가 호환되지 않습니다." >&2
+    echo "       runtime=$SCENARIO_RUNTIME ($runtime_label)" >&2
     tail -n 40 "$integration_log" >&2 || true
     exit 2
 fi
-echo "[PASS] 최신 Scenario Runner·Expert·수집기 정적 연결 검사"
+echo "[PASS] Scenario Runner·Expert·수집기 정적 연결 검사"
+echo "       runtime=$SCENARIO_RUNTIME ($runtime_label)"
 
 clock_report="$MORAI_PROJECT_ROOT/.runtime/data_collection/clock_preflight.json"
 /usr/bin/python3 "$INTEGRATION/tools/preflight_local_clock.py" \
@@ -327,9 +350,9 @@ PROFILE_STATE="$CAMPAIGN_DIR/profile_state.json"
 RUNS_FILE="$CAMPAIGN_DIR/runs.tsv"
 mkdir -p "$CAMPAIGN_DIR"
 printf 'lap\tseed\trun_name\tstatus\tweather\ttime_hour\tstatic_obstacle\tdynamic_obstacle\tstarted_utc\tfinished_utc\n' > "$RUNS_FILE"
-/usr/bin/python3 - "$CAMPAIGN_DIR/campaign_plan.json" "$CAMPAIGN_ID" "$LAPS" "$BASE_SEED" "$LAP_WALL_SECONDS" "$SIMULATOR_PID" <<'PY'
+/usr/bin/python3 - "$CAMPAIGN_DIR/campaign_plan.json" "$CAMPAIGN_ID" "$LAPS" "$BASE_SEED" "$LAP_WALL_SECONDS" "$SIMULATOR_PID" "$SCENARIO_RUNTIME" <<'PY'
 import json, pathlib, sys, time
-path, campaign_id, laps, seed, seconds, pid = sys.argv[1:]
+path, campaign_id, laps, seed, seconds, pid, scenario_runtime = sys.argv[1:]
 payload = {
     "schema": "morai_sensor_record_campaign_v1",
     "campaign_id": campaign_id,
@@ -337,6 +360,12 @@ payload = {
     "base_seed": int(seed),
     "lap_wall_limit_seconds": int(seconds),
     "simulator_pid": int(pid),
+    "scenario_runtime": scenario_runtime,
+    "scenario_runtime_policy": (
+        "pinned proven three-lap snapshot"
+        if scenario_runtime == "proven"
+        else "current team checkout; requires a new live full-lap validation"
+    ),
     "mode": "Simulation Time / internal sensor sync 10Hz / External Sync OFF",
     "weather_candidates": ["SUNNY", "FOGGY"],
     "time_candidates": [11, 13, 15],
@@ -394,7 +423,7 @@ on_signal() {
 }
 trap on_signal INT TERM
 
-echo "[START] campaign=$CAMPAIGN_ID, laps=$LAPS, local raw only, storage=$SSD_ROOT, Simulator PID=$SIMULATOR_PID"
+echo "[START] campaign=$CAMPAIGN_ID, laps=$LAPS, runtime=$SCENARIO_RUNTIME, local raw only, storage=$SSD_ROOT, Simulator PID=$SIMULATOR_PID"
 echo "        매 바퀴 시작점 reset, Sunny/Foggy, 11/13/15시, 정적·동적 장애물 재선택"
 echo "        주행 중에는 30초마다 진행 상태를 출력하며 상세 로그는 run별 supervisor.log에 저장합니다."
 
@@ -412,6 +441,7 @@ for ((lap=1; lap<=LAPS; lap++)); do
             --name "$CURRENT_RUN" --pid "$SIMULATOR_PID" \
             --seconds "$LAP_WALL_SECONDS" --full-lap \
             --seed "$seed" --profile-state "$PROFILE_STATE" \
+            --scenario-runtime "$SCENARIO_RUNTIME" \
             --raw-camera-transport bridge_dropped --defer-offline-review &
     COLLECTOR_PID=$!
     if wait "$COLLECTOR_PID"; then
