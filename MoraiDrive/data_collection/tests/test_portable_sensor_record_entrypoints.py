@@ -11,6 +11,7 @@ INTERNAL = DATA_COLLECTION / "internal_sensor_record"
 sys.path.insert(0, str(INTERNAL / "tools"))
 
 from configure_local_machine import (
+    catkin_build_invocation,
     discover_catkin_workspace,
     discover_launcher_root,
     discover_sensor_set,
@@ -182,6 +183,25 @@ class PortableSensorRecordEntrypointTest(unittest.TestCase):
                 discover_catkin_workspace(project),
                 (project / "expert").resolve(),
             )
+
+    def test_catkin_build_ignores_active_conda_python(self):
+        command, environment = catkin_build_invocation(
+            "/opt/ros/noetic",
+            "/tmp/portable-expert",
+            {
+                "PATH": "/tmp/conda/bin:/usr/bin",
+                "PYTHONHOME": "/tmp/conda",
+                "PYTHONPATH": "/tmp/conda/site-packages",
+                "CONDA_PREFIX": "/tmp/conda",
+            },
+        )
+        self.assertEqual(command[:2], ["bash", "-c"])
+        self.assertIn("--force-cmake", command[2])
+        self.assertIn("-DPYTHON_EXECUTABLE=/usr/bin/python3", command[2])
+        self.assertNotIn("PYTHONHOME", environment)
+        self.assertNotIn("PYTHONPATH", environment)
+        self.assertEqual(environment["PYTHONNOUSERSITE"], "1")
+        self.assertEqual(environment["CONDA_PREFIX"], "/tmp/conda")
 
     def test_runtime_adapter_consumes_clock_before_team_constructor(self):
         source = (INTERNAL / "tools/run_async_scenario_review.py").read_text()

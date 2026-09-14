@@ -174,6 +174,28 @@ def preserve_before_change(path, label):
     return backup
 
 
+def catkin_build_invocation(ros_root, workspace, environment=None):
+    """Build with ROS' system Python even when the caller activated Conda."""
+    build_environment = dict(
+        os.environ if environment is None else environment
+    )
+    build_environment.pop("PYTHONHOME", None)
+    build_environment.pop("PYTHONPATH", None)
+    build_environment["PYTHONNOUSERSITE"] = "1"
+    command = [
+        "bash",
+        "-c",
+        (
+            'source "$1"; exec catkin_make -C "$2" --force-cmake '
+            '-DPYTHON_EXECUTABLE=/usr/bin/python3'
+        ),
+        "morai-catkin-build",
+        str(Path(ros_root) / "setup.bash"),
+        str(workspace),
+    ]
+    return command, build_environment
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--storage-root", type=Path)
@@ -270,15 +292,26 @@ def main():
                 + str(catkin_workspace)
             )
         print("[SETUP] building bundled catkin workspace: " + str(catkin_workspace), flush=True)
+        command, build_environment = catkin_build_invocation(
+            config["ros_root"], catkin_workspace
+        )
+        system_python = subprocess.run(
+            ["/usr/bin/python3", "-c", "import em,catkin_pkg"],
+            env=build_environment,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=30,
+        )
+        if system_python.returncode:
+            raise RuntimeError(
+                "ROS system Python is missing em/catkin_pkg. Install "
+                "python3-empy and python3-catkin-pkg before retrying: "
+                + system_python.stderr[-1000:]
+            )
         subprocess.run(
-            [
-                "bash",
-                "-lc",
-                'source "$1"; exec catkin_make -C "$2"',
-                "morai-catkin-build",
-                str(Path(config["ros_root"]) / "setup.bash"),
-                str(catkin_workspace),
-            ],
+            command,
+            env=build_environment,
             check=True,
         )
     if not catkin_setup.is_file():
