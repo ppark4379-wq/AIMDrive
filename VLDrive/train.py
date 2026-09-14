@@ -2,13 +2,15 @@
 """Train VLDrive on MORAI data.
 
   stage 1, vision encoder pre-training
-      python train.py vision-encoder <dataset_root> \
-          --split-file configs/splits/morai_full_loop_80_20.json \
-          --output outputs/checkpoints/vision_encoder/run1
+      python train.py vision-encoder --config configs/vision_encoder_train.json
 
   stage 2, VLDrive (frozen encoder -> CCDP -> MEFA -> TinyLlama -> waypoints)
       python train.py vldrive --config configs/vldrive_train.json \
           --output outputs/logs/vldrive-run1
+
+Both stages take every training parameter from their config file.  Stage 1
+accepts no other option, so nothing on the command line or in another module
+can override a configured value; edit or copy the config instead.
 
 Stage 1 writes checkpoint-last.pth.tar / model-best.pth.tar, metrics.jsonl and
 feature_contract.json.  Stage 2 writes model-best.pt / model-last.pt,
@@ -50,8 +52,7 @@ def add_vision_encoder_arguments(parser):
 
 def run_vision_encoder(parser, args):
     from utils import vision_encoder_training
-    vision_encoder_training.check_arguments(parser, args)
-    return vision_encoder_training.run(args)
+    return vision_encoder_training.run(vision_encoder_training.config_from_args(parser, args))
 
 
 # --------------------------------------------------------------------------- stage 2

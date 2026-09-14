@@ -1,6 +1,9 @@
+import argparse
 import random
 import sys
+import tempfile
 import unittest
+from types import SimpleNamespace
 from pathlib import Path
 from unittest import mock
 
@@ -13,8 +16,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from utils import vision_encoder_training as trainer
+from utils.vision_encoder_config import ConfigError
 from datasets.loader import create_perception_loader
 from datasets.transforms import create_camera_transform
+from tests.stage1_config import make_config, write_config
 
 
 def jitter(transform):
@@ -30,13 +35,26 @@ class TinyDataset(torch.utils.data.Dataset):
 
 
 class ColorAugmentationTests(unittest.TestCase):
-    def test_cli_safe_default_and_explicit_legacy(self):
-        base = ["dataset", "--split-file", "split.json"]
-        self.assertEqual(trainer.parse_args(base).rgb_hue_jitter, 0.0)
-        self.assertEqual(trainer.parse_args(base + ["--rgb-hue-jitter", "0.4"]).rgb_hue_jitter, 0.4)
-        for value in ("-0.1", "0.51", "nan", "inf"):
-            with self.subTest(value=value), mock.patch("sys.stderr"), self.assertRaises(SystemExit):
-                trainer.parse_args(base + ["--rgb-hue-jitter", value])
+    def test_config_safe_default_and_explicit_legacy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertEqual(make_config(directory).rgb_hue_jitter, 0.0)
+            self.assertEqual(make_config(directory, rgb_hue_jitter=0.4).rgb_hue_jitter, 0.4)
+            for value in (-0.1, 0.51, float("nan"), float("inf")):
+                with self.subTest(value=value), self.assertRaises(ConfigError):
+                    make_config(directory, rgb_hue_jitter=value)
+
+    def test_stage1_command_line_cannot_override_the_config(self):
+        """--config is the whole stage-1 command line."""
+        parser = trainer.add_arguments(argparse.ArgumentParser())
+        flags = {action.option_strings[0] for action in parser._actions
+                 if action.option_strings}
+        self.assertEqual(flags, {"-h", "--config"})
+
+    def test_trainer_rejects_parameters_built_outside_a_config_file(self):
+        namespace = SimpleNamespace(rgb_hue_jitter=0.4, batch_size=1, train_stride=1,
+                                    validation_stride=1, workers=0)
+        with self.assertRaisesRegex(TypeError, "only come from a config file"):
+            trainer.make_loader(namespace, "train", True)
 
     def test_generic_legacy_transform_unchanged(self):
         common = dict(input_size=224, is_training=True, color_jitter=.4, scale=[.9, 1.1])
@@ -78,7 +96,8 @@ class ColorAugmentationTests(unittest.TestCase):
             self.assertEqual(jitter(getattr(dataset, name)).hue, (-.4, .4))
 
     def test_morai_loader_forwards_choice_without_changing_eval(self):
-        args = trainer.parse_args(["dataset", "--split-file", "split.json", "--rgb-hue-jitter", ".2"])
+        with tempfile.TemporaryDirectory() as directory:
+            args = make_config(directory, rgb_hue_jitter=0.2)
         with mock.patch.object(trainer, "MoraiPerceptionDataset", return_value=TinyDataset()):
             with mock.patch.object(trainer, "create_perception_loader", return_value="loader") as create:
                 trainer.make_loader(args, "train", True)
@@ -96,27 +115,31 @@ class ColorAugmentationTests(unittest.TestCase):
             self.assertTrue(torch.equal(legacy, safe))
 
     def test_resume_rejects_recorded_augmentation_change_before_loading_weights(self):
-        args = trainer.parse_args(["dataset", "--split-file", "split.json", "--resume", "old.pt"])
-        args.traffic_label_provenance = None
+        with tempfile.TemporaryDirectory() as directory:
+            args = make_config(directory, resume="old.pt")
+        state = trainer.RunState(implementation_sha256={}, traffic_label_provenance=None)
         checkpoint = {"split_sha256": "same", "traffic_label_provenance": None,
                       "args": {"rgb_hue_jitter": .4}}
         model = mock.Mock()
         with mock.patch.object(trainer, "sha256_file", return_value="same"):
             with mock.patch.object(torch, "load", return_value=checkpoint):
                 with self.assertRaisesRegex(ValueError, "hue augmentation differs"):
-                    trainer.load_training_initialization(model, mock.Mock(), mock.Mock(), args)
+                    trainer.load_training_initialization(model, mock.Mock(), mock.Mock(),
+                                                         args, state)
         model.load_state_dict.assert_not_called()
 
     def test_resume_same_recorded_augmentation_and_unknown_legacy(self):
-        args = trainer.parse_args(["dataset", "--split-file", "split.json", "--resume", "old.pt"])
-        args.traffic_label_provenance = None
+        with tempfile.TemporaryDirectory() as directory:
+            args = make_config(directory, resume="old.pt")
+        state = trainer.RunState(implementation_sha256={}, traffic_label_provenance=None)
         for source_args, warning in (({"rgb_hue_jitter": 0.0}, False), ({}, True)):
             checkpoint = {"split_sha256": "same", "traffic_label_provenance": None,
                           "args": source_args, "state_dict": {}, "optimizer": {},
                           "scaler": {}, "epoch": 0}
             with self.subTest(source_args=source_args), mock.patch.object(trainer, "sha256_file", return_value="same"):
                 with mock.patch.object(torch, "load", return_value=checkpoint), mock.patch("builtins.print") as log:
-                    start, _, provenance = trainer.load_training_initialization(mock.Mock(), mock.Mock(), mock.Mock(), args)
+                    start, _, provenance = trainer.load_training_initialization(
+                        mock.Mock(), mock.Mock(), mock.Mock(), args, state)
             self.assertEqual(start, 1)
             self.assertEqual(provenance["kind"], "optimizer_resume")
             self.assertEqual(log.called, warning)

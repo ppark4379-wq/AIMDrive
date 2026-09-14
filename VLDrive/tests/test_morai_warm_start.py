@@ -6,7 +6,6 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
 from unittest import mock
 
 import torch
@@ -16,6 +15,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from utils import vision_encoder_training as trainer
+from utils.vision_encoder_config import ConfigError
+from tests.stage1_config import make_config
 
 
 class TinyEncoder(torch.nn.Module):
@@ -46,16 +47,15 @@ class WarmStartTest(unittest.TestCase):
         self.split = self.root / "split.json"
         self.split.write_text(json.dumps({"split": "fixture"}), encoding="utf-8")
         self.source = self.root / "original_epoch25.pth.tar"
-        self.args = SimpleNamespace(
-            warm_start=self.source, warm_start_sha256=None, resume=None,
-            split_file=self.split, output=self.root / "new_run",
-            traffic_label_sidecar=None, traffic_label_provenance=None,
-            implementation_sha256={"fixture.py": "fixture-sha"},
-            lidar_axis_policy="morai_flu_to_lmdrive_fru",
-            batch_size=1, accumulation_steps=32,
+        self.defaults = dict(
+            dataset_root=self.root, split_file=self.split, output=self.root / "new_run",
+            traffic_label_sidecar=None, lidar_axis_policy="morai_flu_to_lmdrive_fru",
+            batch_size=1, workers=0, accumulation_steps=32,
             reference_lr=8e-5, reference_rgb_lr=3e-5, weight_decay=0.05,
             epochs=3, warmup_epochs=1,
         )
+        self.state = trainer.RunState(implementation_sha256={"fixture.py": "fixture-sha"})
+        self.args = self.build()
         source_model = TinyEncoder()
         source_optimizer, _, _ = trainer.optimizer_for(source_model, self.args)
         sum(parameter.sum() for parameter in source_model.parameters()).backward()
@@ -74,9 +74,17 @@ class WarmStartTest(unittest.TestCase):
         }
         self.write_source()
 
+    def build(self, **overrides):
+        """Every variant still reaches the trainer as a loaded config file."""
+        values = dict(self.defaults)
+        values.update(overrides)
+        return make_config(self.root, **values)
+
     def write_source(self):
         torch.save(self.checkpoint, self.source)
-        self.args.warm_start_sha256 = trainer.sha256_file(self.source)
+        self.source_sha256 = trainer.sha256_file(self.source)
+        self.args = self.build(warm_start=self.source,
+                               warm_start_sha256=self.source_sha256)
 
     def new_training_state(self):
         model = TinyEncoder()
@@ -87,7 +95,7 @@ class WarmStartTest(unittest.TestCase):
         original_sha = trainer.sha256_file(self.source)
         model, optimizer, scaler, base_lr, rgb_lr = self.new_training_state()
         start, best, provenance = trainer.load_training_initialization(
-            model, optimizer, scaler, self.args)
+            model, optimizer, scaler, self.args, self.state)
         self.assertEqual(start, 0)
         self.assertEqual(best, float("inf"))
         self.assertEqual(len(optimizer.state), 0)
@@ -108,22 +116,22 @@ class WarmStartTest(unittest.TestCase):
         sum(parameter.sum() for parameter in model.parameters()).backward()
         optimizer.step()
         trainer.prepare_output_directory(self.args)
-        self.args.run_initialization = provenance
+        self.state.run_initialization = provenance
         trainer.save_checkpoint(self.args.output / "checkpoint-last.pth.tar", model,
-                                optimizer, scaler, 0, 2.0, self.args, {})
+                                optimizer, scaler, 0, 2.0, self.args, self.state, {})
         self.assertEqual(trainer.sha256_file(self.source), original_sha)
         saved = torch.load(self.args.output / "checkpoint-last.pth.tar", weights_only=True)
         self.assertEqual(saved["epoch"], 0)
         self.assertEqual(saved["run_initialization"], provenance)
-        self.assertEqual(saved["implementation_sha256"], self.args.implementation_sha256)
+        self.assertEqual(saved["implementation_sha256"], self.state.implementation_sha256)
         self.assertEqual(saved["initialization"]["lidar_backbone"], "MORAI warm-start checkpoint")
 
     def test_checkpoint_sha_checked_before_model_mutation(self):
         model, optimizer, scaler, _, _ = self.new_training_state()
         before = copy.deepcopy(model.state_dict())
-        self.args.warm_start_sha256 = "0" * 64
+        self.args = self.build(warm_start=self.source, warm_start_sha256="0" * 64)
         with self.assertRaisesRegex(ValueError, "SHA-256"):
-            trainer.load_training_initialization(model, optimizer, scaler, self.args)
+            trainer.load_training_initialization(model, optimizer, scaler, self.args, self.state)
         for name, value in model.state_dict().items():
             torch.testing.assert_close(value, before[name], rtol=0, atol=0)
 
@@ -144,7 +152,7 @@ class WarmStartTest(unittest.TestCase):
                 self.write_source()
                 model, optimizer, scaler, _, _ = self.new_training_state()
                 with self.assertRaises(ValueError):
-                    trainer.load_training_initialization(model, optimizer, scaler, self.args)
+                    trainer.load_training_initialization(model, optimizer, scaler, self.args, self.state)
         for bad_tensor in (torch.zeros(3), torch.zeros(2, dtype=torch.float64),
                            torch.full((2,), float("nan"))):
             with self.subTest(tensor=bad_tensor):
@@ -153,7 +161,7 @@ class WarmStartTest(unittest.TestCase):
                 self.write_source()
                 model, optimizer, scaler, _, _ = self.new_training_state()
                 with self.assertRaises(ValueError):
-                    trainer.load_training_initialization(model, optimizer, scaler, self.args)
+                    trainer.load_training_initialization(model, optimizer, scaler, self.args, self.state)
 
     def test_populated_output_and_source_directory_are_protected(self):
         self.args.output.mkdir()
@@ -162,25 +170,26 @@ class WarmStartTest(unittest.TestCase):
         with self.assertRaises(FileExistsError):
             trainer.prepare_output_directory(self.args)
         self.assertEqual(old.read_text(encoding="utf-8"), "must survive")
-        self.args.output = self.source.parent
+        self.args = self.build(warm_start=self.source,
+                               warm_start_sha256=self.source_sha256,
+                               output=self.source.parent)
         with self.assertRaises(FileExistsError):
             trainer.prepare_output_directory(self.args)
         self.assertTrue(self.source.is_file())
 
     def test_resume_restores_optimizer_epoch_but_rejects_label_policy_change(self):
-        self.args.warm_start = None
-        self.args.resume = self.source
+        self.args = self.build(resume=self.source)
         model, optimizer, scaler, _, _ = self.new_training_state()
         start, best, provenance = trainer.load_training_initialization(
-            model, optimizer, scaler, self.args)
+            model, optimizer, scaler, self.args, self.state)
         self.assertEqual(start, 25)
         self.assertEqual(best, 0.3)
         self.assertGreater(len(optimizer.state), 0)
         self.assertEqual(scaler.state, {"scale": 123.0})
         self.assertFalse(provenance["exact_resume"])
-        self.args.traffic_label_provenance = {"sidecar_sha256": "corrected"}
+        self.state.traffic_label_provenance = {"sidecar_sha256": "corrected"}
         with self.assertRaisesRegex(ValueError, "traffic labels differ"):
-            trainer.load_training_initialization(model, optimizer, scaler, self.args)
+            trainer.load_training_initialization(model, optimizer, scaler, self.args, self.state)
 
     def test_rgb_freeze_does_not_freeze_fusion(self):
         model = TinyEncoder()
@@ -193,26 +202,28 @@ class WarmStartTest(unittest.TestCase):
         trainer.set_rgb_frozen(model, False)
         self.assertTrue(all(p.requires_grad for p in model.parameters()))
 
-    def test_cli_mutual_exclusion_hash_and_legacy_defaults(self):
-        base = [str(self.root), "--split-file", str(self.split)]
-        defaults = trainer.parse_args(base)
-        self.assertIsNone(defaults.warm_start)
-        self.assertIsNone(defaults.traffic_label_sidecar)
-        self.assertEqual(defaults.feature_checkpoint, "best")
-        for extra in (["--warm-start", str(self.source)],
-                      ["--resume", str(self.source), "--warm-start", str(self.source)],
-                      ["--warm-start-sha256", "0" * 64]):
-            with self.subTest(extra=extra), mock.patch("sys.stderr"):
-                with self.assertRaises(SystemExit):
-                    trainer.parse_args(base + extra)
-        parsed = trainer.parse_args(base + ["--warm-start", str(self.source),
-                                    "--warm-start-sha256", self.args.warm_start_sha256,
-                                    "--feature-checkpoint", "last"])
-        self.assertEqual(parsed.feature_checkpoint, "last")
+    def test_config_mutual_exclusion_hash_and_defaults(self):
+        plain = self.build()
+        self.assertIsNone(plain.warm_start)
+        self.assertIsNone(plain.traffic_label_sidecar)
+        self.assertEqual(plain.feature_checkpoint, "best")
+        rejected = (
+            dict(warm_start=self.source),
+            dict(resume=self.source, warm_start=self.source,
+                 warm_start_sha256="0" * 64),
+            dict(warm_start_sha256="0" * 64),
+            dict(warm_start_source_split_sha256="0" * 64),
+        )
+        for overrides in rejected:
+            with self.subTest(overrides=sorted(overrides)), self.assertRaises(ConfigError):
+                self.build(**overrides)
+        selected = self.build(warm_start=self.source,
+                              warm_start_sha256=self.source_sha256,
+                              feature_checkpoint="last")
+        self.assertEqual(selected.feature_checkpoint, "last")
 
     def test_sidecar_is_forwarded_to_dataset(self):
-        args = trainer.parse_args([str(self.root), "--split-file", str(self.split),
-                                   "--traffic-label-sidecar", str(self.root / "labels.json")])
+        args = self.build(traffic_label_sidecar=self.root / "labels.json")
         dataset = object()
         with mock.patch.object(trainer, "MoraiPerceptionDataset", return_value=dataset) as create:
             with mock.patch.object(trainer, "create_perception_loader", return_value="loader"):

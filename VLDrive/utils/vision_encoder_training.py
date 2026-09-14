@@ -1,8 +1,13 @@
 """Stage 1: train the LMDrive vision-encoder structure on synchronized MORAI data.
 
-Run it through ``python train.py vision-encoder ...``; this module holds the
-arguments, the loop and the checkpoint format so tools/ and tests/ can import
-the same code.
+Run it through ``python train.py vision-encoder --config <file>``; this module
+holds the loop and the checkpoint format so tools/ and tests/ can import the
+same code.
+
+Every training parameter comes from that config file and from nothing else.
+The command line carries only the config path, the loaded config is frozen, and
+the functions here reject anything that is not one, so no caller can substitute
+or override a value.
 
 The public full LMDrive encoder checkpoint is intentionally not used.  The
 ResNet-50d ImageNet backbone follows the paper, while PointPillars, fusion,
@@ -14,6 +19,7 @@ Formerly ``vision_encoder/train_morai_pretrain.py``.
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import hashlib
 import json
 import math
@@ -36,6 +42,7 @@ if str(ROOT) not in sys.path:
 from datasets.morai_perception_dataset import MoraiPerceptionDataset
 from datasets.loader import create_perception_loader
 from models.vision_encoder import create_vision_encoder
+from utils.vision_encoder_config import ConfigError, load_config, require_config
 
 
 MODEL_NAME = "memfuser_baseline_e1d3"
@@ -48,80 +55,24 @@ RGB_BACKBONE_SHA256 = (
 
 
 def add_arguments(parser):
-    """Stage-1 command line, shared by train.py and the tools that reuse it."""
-    parser.add_argument("dataset_root", type=Path)
-    parser.add_argument("--split-file", type=Path, required=True)
-    parser.add_argument("--output", type=Path, default=ROOT / "outputs/checkpoints/vision_encoder")
-    parser.add_argument("--epochs", type=int, default=25)
-    parser.add_argument("--warmup-epochs", type=int, default=5)
-    parser.add_argument("--batch-size", type=int, default=2)
-    parser.add_argument("--accumulation-steps", type=int, default=16)
-    parser.add_argument("--workers", type=int, default=2)
-    parser.add_argument("--log-interval", type=int, default=100)
-    parser.add_argument("--train-stride", type=int, default=1)
-    parser.add_argument("--validation-stride", type=int, default=1)
-    parser.add_argument("--reference-lr", type=float, default=7.5e-4,
-                        help="Paper LR before effective-batch/512 scaling")
-    parser.add_argument("--reference-rgb-lr", type=float, default=3e-4,
-                        help="Paper RGB LR before effective-batch/512 scaling")
-    parser.add_argument("--weight-decay", type=float, default=0.05)
-    parser.add_argument("--waypoint-weight", type=float, default=0.5)
-    parser.add_argument("--traffic-light-weight", type=float, default=0.1)
-    parser.add_argument("--clip-grad", type=float, default=5.0)
-    parser.add_argument("--freeze-rgb-epochs", type=int, default=0)
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument(
-        "--rgb-hue-jitter", type=float, default=0.0,
-        help="RGB hue augmentation amplitude [0, 0.5]. Default 0 preserves "
-             "traffic-signal colors; 0.4 reproduces the legacy transform. "
-             "Brightness, contrast, saturation and geometry are unchanged.",
-    )
-    restart = parser.add_mutually_exclusive_group()
-    restart.add_argument("--resume", type=Path,
-                         help="Restore weights, optimizer, scaler, and epoch (not RNG-exact)")
-    restart.add_argument("--warm-start", type=Path,
-                         help="Load MORAI encoder weights only into a new training run")
-    parser.add_argument("--warm-start-sha256",
-                        help="Required expected SHA-256 of --warm-start checkpoint")
-    parser.add_argument("--warm-start-source-split-sha256",
-                        help="Declare the source checkpoint's own split SHA-256 to transfer its "
-                             "weights onto a deliberately different split, such as extending "
-                             "route coverage. The declared value must match the checkpoint "
-                             "exactly, so a split change can never happen silently.")
-    parser.add_argument("--traffic-label-sidecar", type=Path,
-                        help="Audited traffic-label corrections; original dataset stays unchanged")
-    parser.add_argument("--feature-checkpoint", choices=("best", "last"), default="best",
-                        help="Checkpoint verified for connector handoff after training")
-    parser.add_argument("--max-train-batches", type=int, default=0,
-                        help="Nonzero only for a smoke/overfit test")
-    parser.add_argument("--max-validation-batches", type=int, default=0,
-                        help="Nonzero only for a smoke test")
-    parser.add_argument(
-        "--lidar-axis-policy",
-        choices=("morai_flu_to_lmdrive_fru", "native_passthrough"),
-        default="morai_flu_to_lmdrive_fru",
-    )
-    parser.add_argument("--no-amp", action="store_true")
+    """Stage-1 command line: the config file, and nothing that could override it."""
+    parser.add_argument("--config", type=Path, required=True,
+                        help="stage-1 training config, e.g. configs/vision_encoder_train.json")
     return parser
 
 
-def check_arguments(parser, args):
-    if not math.isfinite(args.rgb_hue_jitter) or not 0.0 <= args.rgb_hue_jitter <= 0.5:
-        parser.error("--rgb-hue-jitter must be finite and between 0 and 0.5")
-    if args.warm_start:
-        digest = args.warm_start_sha256 or ""
-        if len(digest) != 64 or any(c not in "0123456789abcdefABCDEF" for c in digest):
-            parser.error("--warm-start requires a 64-character --warm-start-sha256")
-        args.warm_start_sha256 = digest.lower()
-    elif args.warm_start_sha256:
-        parser.error("--warm-start-sha256 requires --warm-start")
-    return args
+def config_from_args(parser, config):
+    """Load the config named on the command line; parameters come only from it."""
+    try:
+        return load_config(config.config)
+    except ConfigError as error:
+        parser.error(str(error))
 
 
 def parse_args(argv=None):
     parser = add_arguments(argparse.ArgumentParser(
         description="MORAI expert-imitation pretraining for the VLDrive vision encoder"))
-    return check_arguments(parser, parser.parse_args(argv))
+    return parser.parse_args(argv)
 
 
 def seed_everything(seed):
@@ -135,31 +86,32 @@ def move_to_device(values, device):
     return {key: value.to(device, non_blocking=True) for key, value in values.items()}
 
 
-def make_loader(args, split, training):
-    stride = args.train_stride if training else args.validation_stride
+def make_loader(config, split, training):
+    require_config(config)
+    stride = config.train_stride if training else config.validation_stride
     dataset = MoraiPerceptionDataset(
-        root=str(args.dataset_root),
-        split_file=str(args.split_file),
+        root=str(config.dataset_root),
+        split_file=str(config.split_file),
         split=split,
         with_lidar=True,
         multi_view=True,
-        lidar_axis_policy=args.lidar_axis_policy,
+        lidar_axis_policy=config.lidar_axis_policy,
         sample_stride=stride,
-        traffic_label_sidecar=(str(args.traffic_label_sidecar)
-                               if args.traffic_label_sidecar else None),
+        traffic_label_sidecar=(str(config.traffic_label_sidecar)
+                               if config.traffic_label_sidecar else None),
     )
     loader = create_perception_loader(
         dataset,
         input_size=(3, 224, 224),
         multi_view_input_size=(3, 128, 128),
-        batch_size=args.batch_size,
+        batch_size=config.batch_size,
         is_training=training,
         scale=[0.9, 1.1] if training else [1.0, 1.0],
         color_jitter=0.4 if training else 0.0,
-        num_workers=args.workers,
+        num_workers=config.workers,
         pin_memory=True,
-        persistent_workers=args.workers > 0,
-        hue_jitter=getattr(args, "rgb_hue_jitter", 0.0) if training else 0.0,
+        persistent_workers=config.workers > 0,
+        hue_jitter=config.rgb_hue_jitter if training else 0.0,
     )
     return dataset, loader
 
@@ -171,10 +123,11 @@ def set_rgb_frozen(model, frozen):
         model.rgb_backbone.eval()
 
 
-def optimizer_for(model, args):
-    effective_batch = args.batch_size * args.accumulation_steps
-    lr = args.reference_lr * effective_batch / 512.0
-    rgb_lr = args.reference_rgb_lr * effective_batch / 512.0
+def optimizer_for(model, config):
+    require_config(config)
+    effective_batch = config.batch_size * config.accumulation_steps
+    lr = config.reference_lr * effective_batch / 512.0
+    rgb_lr = config.reference_rgb_lr * effective_batch / 512.0
     rgb_parameters = []
     other_parameters = []
     for name, parameter in model.named_parameters():
@@ -187,27 +140,28 @@ def optimizer_for(model, args):
             {"params": other_parameters, "lr": lr, "name": "fusion_lidar_heads"},
             {"params": rgb_parameters, "lr": rgb_lr, "name": "rgb_backbone"},
         ],
-        weight_decay=args.weight_decay,
+        weight_decay=config.weight_decay,
     )
     return optimizer, lr, rgb_lr
 
 
-def lr_factor(epoch, args):
-    if args.warmup_epochs > 0 and epoch < args.warmup_epochs:
-        return float(epoch + 1) / float(args.warmup_epochs)
-    cosine_epochs = max(args.epochs - args.warmup_epochs, 1)
-    progress = float(epoch - args.warmup_epochs) / float(cosine_epochs)
+def lr_factor(epoch, config):
+    if config.warmup_epochs > 0 and epoch < config.warmup_epochs:
+        return float(epoch + 1) / float(config.warmup_epochs)
+    cosine_epochs = max(config.epochs - config.warmup_epochs, 1)
+    progress = float(epoch - config.warmup_epochs) / float(cosine_epochs)
     progress = min(max(progress, 0.0), 1.0)
     return 0.5 * (1.0 + math.cos(math.pi * progress))
 
 
-def apply_epoch_lr(optimizer, base_lr, rgb_lr, epoch, args):
-    factor = lr_factor(epoch, args)
+def apply_epoch_lr(optimizer, base_lr, rgb_lr, epoch, config):
+    factor = lr_factor(epoch, config)
     optimizer.param_groups[0]["lr"] = base_lr * factor
     optimizer.param_groups[1]["lr"] = rgb_lr * factor
 
 
-def loss_and_metrics(output, target, args):
+def loss_and_metrics(output, target, config):
+    require_config(config)
     predicted_waypoints = output[1]
     waypoint_gt = target["waypoints"]
     waypoint_loss = F.l1_loss(predicted_waypoints, waypoint_gt)
@@ -228,7 +182,7 @@ def loss_and_metrics(output, target, args):
         traffic_count = torch.zeros((), device=output[2].device)
 
     distance = torch.linalg.vector_norm(predicted_waypoints - waypoint_gt, dim=-1)
-    total = args.waypoint_weight * waypoint_loss + args.traffic_light_weight * traffic_loss
+    total = config.waypoint_weight * waypoint_loss + config.traffic_light_weight * traffic_loss
     return total, {
         "waypoint_l1": waypoint_loss.detach(),
         "traffic_loss": traffic_loss.detach(),
@@ -278,9 +232,9 @@ def add_batch(total, loss, metrics):
     total["batches"] = total.get("batches", 0) + 1
 
 
-def train_epoch(model, loader, optimizer, scaler, device, args, epoch, amp_enabled):
+def train_epoch(model, loader, optimizer, scaler, device, config, epoch, amp_enabled):
     model.train()
-    rgb_frozen = epoch < args.freeze_rgb_epochs
+    rgb_frozen = epoch < config.freeze_rgb_epochs
     set_rgb_frozen(model, rgb_frozen)
     optimizer.zero_grad(set_to_none=True)
     total = empty_totals()
@@ -292,33 +246,33 @@ def train_epoch(model, loader, optimizer, scaler, device, args, epoch, amp_enabl
 
     available_batches = len(loader)
     planned_batches = (
-        min(available_batches, args.max_train_batches)
-        if args.max_train_batches
+        min(available_batches, config.max_train_batches)
+        if config.max_train_batches
         else available_batches
     )
     for batch_index, (inputs, targets) in enumerate(loader):
         if batch_index >= planned_batches:
             break
-        group_start = (batch_index // args.accumulation_steps) * args.accumulation_steps
-        group_size = min(args.accumulation_steps, planned_batches - group_start)
+        group_start = (batch_index // config.accumulation_steps) * config.accumulation_steps
+        group_size = min(config.accumulation_steps, planned_batches - group_start)
         inputs = move_to_device(inputs, device)
         targets = move_to_device(targets, device)
         with context():
             output = model(inputs)
-            loss, metrics = loss_and_metrics(output, targets, args)
+            loss, metrics = loss_and_metrics(output, targets, config)
             # Scale the final short accumulation group by its actual size.
             scaled_loss = loss / group_size
         scaler.scale(scaled_loss).backward()
         should_step = (batch_index - group_start + 1) == group_size
         if should_step:
             scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), config.clip_grad)
             scaler.step(optimizer)
             scaler.update()
             optimizer.zero_grad(set_to_none=True)
         add_batch(total, loss, metrics)
         completed = batch_index + 1
-        if completed % args.log_interval == 0 or completed == planned_batches:
+        if completed % config.log_interval == 0 or completed == planned_batches:
             print(
                 "train epoch={} batch={}/{} loss={:.6f}".format(
                     epoch, completed, planned_batches, float(loss.detach())
@@ -329,7 +283,7 @@ def train_epoch(model, loader, optimizer, scaler, device, args, epoch, amp_enabl
 
 
 @torch.no_grad()
-def validate(model, loader, device, args, amp_enabled):
+def validate(model, loader, device, config, amp_enabled):
     model.eval()
     total = empty_totals()
     context = (
@@ -339,8 +293,8 @@ def validate(model, loader, device, args, amp_enabled):
     )
     available_batches = len(loader)
     planned_batches = (
-        min(available_batches, args.max_validation_batches)
-        if args.max_validation_batches
+        min(available_batches, config.max_validation_batches)
+        if config.max_validation_batches
         else available_batches
     )
     for batch_index, (inputs, targets) in enumerate(loader):
@@ -350,10 +304,10 @@ def validate(model, loader, device, args, amp_enabled):
         targets = move_to_device(targets, device)
         with context():
             output = model(inputs)
-            loss, metrics = loss_and_metrics(output, targets, args)
+            loss, metrics = loss_and_metrics(output, targets, config)
         add_batch(total, loss, metrics)
         completed = batch_index + 1
-        if completed % args.log_interval == 0 or completed == planned_batches:
+        if completed % config.log_interval == 0 or completed == planned_batches:
             print(
                 "validation batch={}/{} loss={:.6f}".format(
                     completed, planned_batches, float(loss.detach())
@@ -363,12 +317,13 @@ def validate(model, loader, device, args, amp_enabled):
     return finalize_totals(total)
 
 
-def serializable_args(args):
-    values = vars(args).copy()
-    for key, value in values.items():
-        if isinstance(value, Path):
-            values[key] = str(value.resolve())
-    return values
+@dataclass
+class RunState:
+    """Values a run derives; the config stays frozen and authoritative."""
+
+    implementation_sha256: dict
+    traffic_label_provenance: object = None
+    run_initialization: object = None
 
 
 def sha256_file(path):
@@ -383,6 +338,7 @@ def implementation_provenance():
     """Freeze the trainer, target construction, and encoder implementation identity."""
     paths = (
         "train.py", "utils/vision_encoder_training.py",
+        "utils/vision_encoder_config.py",
         "datasets/split_manifest.py", "datasets/traffic_labels.py",
         "datasets/morai_perception_dataset.py", "datasets/lidar.py",
         "datasets/loader.py", "datasets/transforms.py",
@@ -392,31 +348,34 @@ def implementation_provenance():
     return {relative: sha256_file(ROOT / relative) for relative in paths}
 
 
-def prepare_output_directory(args):
+def prepare_output_directory(config):
     """A weights-only run may never reuse a populated output directory."""
-    output = Path(args.output)
-    if output.exists() and args.warm_start and any(output.iterdir()):
-        raise FileExistsError("Weights-only warm start requires a new or empty --output directory")
-    if output.exists() and not args.resume:
+    require_config(config)
+    output = Path(config.output)
+    if output.exists() and config.warm_start and any(output.iterdir()):
+        raise FileExistsError("Weights-only warm start requires a new or empty output.dir")
+    if output.exists() and not config.resume:
         protected = ("checkpoint-last.pth.tar", "model-best.pth.tar", "metrics.jsonl",
                      "feature_contract.json", "run_provenance.json")
         if any((output / name).exists() for name in protected):
             raise FileExistsError(
-                "Output already contains a training run; choose a new --output or --resume"
+                "Output already contains a training run; set a new output.dir "
+                "or initialization.resume"
             )
     output.mkdir(parents=True, exist_ok=True)
 
 
-def load_training_initialization(model, optimizer, scaler, args):
+def load_training_initialization(model, optimizer, scaler, config, state):
     """Keep weights-only transfer distinct from optimizer/epoch continuation."""
-    if args.warm_start:
-        source = Path(args.warm_start).resolve()
+    require_config(config)
+    if config.warm_start:
+        source = Path(config.warm_start).resolve()
         actual_sha = sha256_file(source)
-        if actual_sha != args.warm_start_sha256:
+        if actual_sha != config.warm_start_sha256:
             raise ValueError("Warm-start checkpoint SHA-256 mismatch")
         checkpoint = torch.load(str(source), map_location="cpu", weights_only=True)
-        target_split_sha = sha256_file(args.split_file)
-        declared_source_split = getattr(args, "warm_start_source_split_sha256", None)
+        target_split_sha = sha256_file(config.split_file)
+        declared_source_split = config.warm_start_source_split_sha256
         expected = {
             "model_name": MODEL_NAME,
             "feature_model_name": FEATURE_MODEL_NAME,
@@ -430,7 +389,7 @@ def load_training_initialization(model, optimizer, scaler, args):
         if initialization.get("full_lmdrive_encoder") is not False:
             raise ValueError("Warm start must be a MORAI-trained encoder, not full LMDrive weights")
         source_args = checkpoint.get("args", {})
-        if source_args.get("lidar_axis_policy") != args.lidar_axis_policy:
+        if source_args.get("lidar_axis_policy") != config.lidar_axis_policy:
             raise ValueError("Warm-start LiDAR axis policy mismatch")
         if optimizer.state:
             raise ValueError("Weights-only warm start requires a freshly created optimizer")
@@ -464,21 +423,21 @@ def load_training_initialization(model, optimizer, scaler, args):
             "schedule": "new_run_from_epoch_zero",
             "exact_resume": False,
         }
-    if args.resume:
-        source = Path(args.resume).resolve()
+    if config.resume:
+        source = Path(config.resume).resolve()
         checkpoint = torch.load(str(source), map_location="cpu", weights_only=True)
-        if checkpoint.get("split_sha256") != sha256_file(args.split_file):
+        if checkpoint.get("split_sha256") != sha256_file(config.split_file):
             raise ValueError("Resume checkpoint was trained with a different split manifest")
-        if checkpoint.get("traffic_label_provenance") != args.traffic_label_provenance:
-            raise ValueError("Resume traffic labels differ; use --warm-start for corrected labels")
+        if checkpoint.get("traffic_label_provenance") != state.traffic_label_provenance:
+            raise ValueError("Resume traffic labels differ; use initialization.warm_start for corrected labels")
         recorded_hue = checkpoint.get("args", {}).get("rgb_hue_jitter")
-        requested_hue = getattr(args, "rgb_hue_jitter", None)
+        requested_hue = config.rgb_hue_jitter
         if recorded_hue is not None and requested_hue is not None and recorded_hue != requested_hue:
-            raise ValueError("Resume RGB hue augmentation differs; use --warm-start for changed augmentation")
+            raise ValueError("Resume RGB hue augmentation differs; use initialization.warm_start for changed augmentation")
         if recorded_hue is None and requested_hue is not None:
             print(
                 "WARNING: resume checkpoint has no recorded RGB hue augmentation; "
-                "using --rgb-hue-jitter={}. Historical augmentation cannot be verified."
+                "using augmentation.rgb_hue_jitter={}. Historical augmentation cannot be verified."
                 .format(requested_hue), flush=True,
             )
         model.load_state_dict(checkpoint["state_dict"], strict=True)
@@ -514,7 +473,8 @@ def verify_rgb_backbone_cache():
     return checkpoint
 
 
-def save_checkpoint(path, model, optimizer, scaler, epoch, best_fde, args, metrics):
+def save_checkpoint(path, model, optimizer, scaler, epoch, best_fde, config, state, metrics):
+    require_config(config)
     path = Path(path)
     temporary = path.with_suffix(path.suffix + ".partial")
     torch.save(
@@ -528,19 +488,19 @@ def save_checkpoint(path, model, optimizer, scaler, epoch, best_fde, args, metri
             "model_name": MODEL_NAME,
             "feature_model_name": FEATURE_MODEL_NAME,
             "token_shape": list(TOKEN_SHAPE),
-            "split_sha256": sha256_file(args.split_file),
+            "split_sha256": sha256_file(config.split_file),
             "initialization": {
                 "full_lmdrive_encoder": False,
-                "rgb_backbone": ("MORAI warm-start checkpoint" if args.warm_start
+                "rgb_backbone": ("MORAI warm-start checkpoint" if config.warm_start
                                  else "resnet50d ImageNet pretrained"),
-                "lidar_backbone": "MORAI warm-start checkpoint" if args.warm_start else "random",
+                "lidar_backbone": "MORAI warm-start checkpoint" if config.warm_start else "random",
                 "fusion_decoder_queries_heads": (
-                    "MORAI warm-start checkpoint" if args.warm_start else "random"),
+                    "MORAI warm-start checkpoint" if config.warm_start else "random"),
             },
-            "run_initialization": args.run_initialization,
-            "traffic_label_provenance": args.traffic_label_provenance,
-            "implementation_sha256": args.implementation_sha256,
-            "args": serializable_args(args),
+            "run_initialization": state.run_initialization,
+            "traffic_label_provenance": state.traffic_label_provenance,
+            "implementation_sha256": state.implementation_sha256,
+            "args": config.flat_dict(),
         },
         temporary,
     )
@@ -561,82 +521,71 @@ def verify_feature_contract(checkpoint_path, sample_inputs, device):
     return str(result), tuple(features.shape)
 
 
-def run(args):
-    """Train the encoder; args comes from add_arguments/check_arguments."""
+def run(config):
+    """Train the encoder from a loaded config; no other source supplies a value."""
     if not torch.cuda.is_available():
         raise RuntimeError(
             "CUDA GPU is required. Verify a Blackwell-capable PyTorch/CUDA build before training."
         )
-    if (
-        args.epochs <= 0
-        or args.batch_size <= 0
-        or args.accumulation_steps <= 0
-        or args.log_interval <= 0
-    ):
-        raise ValueError(
-            "epochs, batch-size, accumulation-steps, and log-interval must be positive"
-        )
-
-    args.dataset_root = args.dataset_root.expanduser().resolve()
-    args.split_file = args.split_file.expanduser().resolve()
-    args.output = args.output.expanduser().resolve()
-    if args.traffic_label_sidecar:
-        args.traffic_label_sidecar = args.traffic_label_sidecar.expanduser().resolve()
-    prepare_output_directory(args)
-    args.implementation_sha256 = implementation_provenance()
-    seed_everything(args.seed)
+    require_config(config)
+    state = RunState(implementation_sha256=implementation_provenance())
+    prepare_output_directory(config)
+    seed_everything(config.seed)
 
     backbone_path = verify_rgb_backbone_cache()
     print("verified RGB backbone: {}".format(backbone_path))
 
     device = torch.device("cuda:0")
-    amp_enabled = not args.no_amp
-    train_dataset, train_loader = make_loader(args, "train", True)
-    val_dataset, val_loader = make_loader(args, "validation", False)
-    args.traffic_label_provenance = getattr(train_dataset, "traffic_label_provenance", None)
-    if args.traffic_label_provenance != getattr(val_dataset, "traffic_label_provenance", None):
+    amp_enabled = config.amp
+    train_dataset, train_loader = make_loader(config, "train", True)
+    val_dataset, val_loader = make_loader(config, "validation", False)
+    state.traffic_label_provenance = getattr(train_dataset, "traffic_label_provenance", None)
+    if state.traffic_label_provenance != getattr(val_dataset, "traffic_label_provenance", None):
         raise ValueError("Train and validation traffic-label provenance differs")
-    if args.traffic_label_sidecar and not args.traffic_label_provenance:
+    if config.traffic_label_sidecar and not state.traffic_label_provenance:
         raise ValueError("Dataset did not validate the requested traffic-label sidecar")
     print("train samples={} validation samples={}".format(len(train_dataset), len(val_dataset)))
 
     model = create_vision_encoder({"name": MODEL_NAME}).to(device)
-    optimizer, base_lr, rgb_lr = optimizer_for(model, args)
+    optimizer, base_lr, rgb_lr = optimizer_for(model, config)
     scaler = torch.amp.GradScaler("cuda", enabled=amp_enabled)
-    start_epoch, best_fde, args.run_initialization = load_training_initialization(
-        model, optimizer, scaler, args
+    start_epoch, best_fde, state.run_initialization = load_training_initialization(
+        model, optimizer, scaler, config, state
     )
-    if start_epoch >= args.epochs:
-        raise ValueError("No epochs remain; --epochs is the total for --resume. "
-                         "Use --warm-start with a new output for additional weights-only training.")
+    if start_epoch >= config.epochs:
+        raise ValueError("No epochs remain; schedule.epochs is the total for a resume. "
+                         "Use initialization.warm_start with a new output directory instead.")
     provenance = {
         "schema": "morai_vision_encoder_run_v2",
-        "initialization": args.run_initialization,
-        "split_sha256": sha256_file(args.split_file),
-        "traffic_label_provenance": args.traffic_label_provenance,
-        "implementation_sha256": args.implementation_sha256,
+        "initialization": state.run_initialization,
+        "split_sha256": sha256_file(config.split_file),
+        "traffic_label_provenance": state.traffic_label_provenance,
+        "implementation_sha256": state.implementation_sha256,
         "actual_base_lr": base_lr,
         "actual_rgb_lr": rgb_lr,
-        "args": serializable_args(args),
+        "config_path": str(config.config_path),
+        "config_sha256": config.config_sha256,
+        "config": config.source_document(),
+        "args": config.flat_dict(),
     }
     # Resume appends a new audit entry without replacing the original run manifest.
-    provenance_path = args.output / "run_provenance.json"
-    if args.resume and provenance_path.exists():
-        provenance_path = args.output / ("resume_provenance_{}.json".format(time.time_ns()))
+    provenance_path = config.output / "run_provenance.json"
+    if config.resume and provenance_path.exists():
+        provenance_path = config.output / ("resume_provenance_{}.json".format(time.time_ns()))
     with provenance_path.open("x", encoding="utf-8") as handle:
         handle.write(json.dumps(provenance, indent=2) + "\n")
     print(json.dumps(provenance, sort_keys=True), flush=True)
 
-    history_path = args.output / "metrics.jsonl"
-    last_path = args.output / "checkpoint-last.pth.tar"
-    best_path = args.output / "model-best.pth.tar"
+    history_path = config.output / "metrics.jsonl"
+    last_path = config.output / "checkpoint-last.pth.tar"
+    best_path = config.output / "model-best.pth.tar"
     started = time.time()
-    for epoch in range(start_epoch, args.epochs):
-        apply_epoch_lr(optimizer, base_lr, rgb_lr, epoch, args)
+    for epoch in range(start_epoch, config.epochs):
+        apply_epoch_lr(optimizer, base_lr, rgb_lr, epoch, config)
         train_metrics = train_epoch(
-            model, train_loader, optimizer, scaler, device, args, epoch, amp_enabled
+            model, train_loader, optimizer, scaler, device, config, epoch, amp_enabled
         )
-        val_metrics = validate(model, val_loader, device, args, amp_enabled)
+        val_metrics = validate(model, val_loader, device, config, amp_enabled)
         record = {
             "epoch": epoch,
             "elapsed_sec": time.time() - started,
@@ -651,11 +600,12 @@ def run(args):
         is_best = val_metrics["fde_m"] < best_fde
         if is_best:
             best_fde = val_metrics["fde_m"]
-        save_checkpoint(last_path, model, optimizer, scaler, epoch, best_fde, args, val_metrics)
+        save_checkpoint(last_path, model, optimizer, scaler, epoch, best_fde, config, state,
+                        val_metrics)
         if is_best:
             shutil.copy2(last_path, best_path)
 
-    selected_path = best_path if args.feature_checkpoint == "best" else last_path
+    selected_path = best_path if config.feature_checkpoint == "best" else last_path
     if not selected_path.is_file():
         raise RuntimeError("Training produced no selected feature checkpoint")
     sample_inputs, _ = next(iter(val_loader))
@@ -664,19 +614,19 @@ def run(args):
     report = {
         "best_checkpoint": str(best_path),
         "selected_checkpoint": str(selected_path),
-        "checkpoint_selection": args.feature_checkpoint,
+        "checkpoint_selection": config.feature_checkpoint,
         "selected_checkpoint_sha256": sha256_file(selected_path),
-        "run_initialization": args.run_initialization,
-        "traffic_label_provenance": args.traffic_label_provenance,
-        "implementation_sha256": args.implementation_sha256,
+        "run_initialization": state.run_initialization,
+        "traffic_label_provenance": state.traffic_label_provenance,
+        "implementation_sha256": state.implementation_sha256,
         "strict_load": load_result,
         "connector_token_shape": list(shape),
-        "lidar_axis_policy": args.lidar_axis_policy,
+        "lidar_axis_policy": config.lidar_axis_policy,
         "velocity_source": "current_ego_speed",
         "target_point_source": "global_path_x_command_y_command_training_head_only",
         "waypoint_gt_source": "future_synchronized_ego_positions",
     }
-    (args.output / "feature_contract.json").write_text(
+    (config.output / "feature_contract.json").write_text(
         json.dumps(report, indent=2) + "\n", encoding="utf-8"
     )
     print(json.dumps(report, indent=2))

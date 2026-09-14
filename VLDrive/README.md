@@ -36,6 +36,8 @@ VLDrive/
 ├── train.py                  두 단계 학습 진입점 (하위 명령으로 단계 선택)
 ├── evaluate.py               체크포인트 오프라인 평가 (시뮬레이터 불필요)
 ├── configs/
+│   ├── vision_encoder_train.json     1단계 설정 (학습 파라미터의 유일한 출처)
+│   ├── vision_encoder_train_smoke.json  2배치 1에폭 스모크
 │   ├── vldrive_train.json            2단계 기본 설정 (80/20 분할, 15에폭)
 │   ├── vldrive_train_fullroute.json  전체 경로 인코더 + 95/05 분할
 │   ├── vldrive_train_smoke.json      2윈도우 2에폭 스모크
@@ -65,7 +67,8 @@ VLDrive/
 │   └── loader.py                    DataLoader 와 카메라 변환 부착
 ├── utils/
 │   ├── runtime.py            오프라인 캐시 설정, sha256 출처 기록, 수치 어댑터, 경로 해석
-│   ├── vision_encoder_training.py  1단계 학습 루프 (인자·에폭·체크포인트)
+│   ├── vision_encoder_config.py  1단계 config 로더 (frozen, 누락·미지 키·타입 거부)
+│   ├── vision_encoder_training.py  1단계 학습 루프 (에폭·체크포인트)
 │   ├── trainer.py            2단계 학습/preflight/평가/체크포인트
 │   ├── training.py           배치·autocast·시드·그래디언트 보고 공통 함수
 │   └── metrics.py            궤적 지표 (ADE, FDE, 구간별 오차)
@@ -126,19 +129,33 @@ MORAI 수집 데이터는 CARLA 와 같은 형식입니다. 경로마다 `rgb_fr
 ### 1단계 — 비전 인코더
 
 ```bash
-python train.py vision-encoder ../MoraiDrive/dataset_local/competition_train \
-    --split-file configs/splits/morai_full_loop_80_20.json \
-    --traffic-label-sidecar data/processed/traffic_labels/full_loop_80_20.json \
-    --output outputs/checkpoints/vision_encoder/run1 \
-    --epochs 25 --warmup-epochs 5 --batch-size 2 --accumulation-steps 16 \
-    --rgb-hue-jitter 0
+python train.py vision-encoder --config configs/vision_encoder_train.json
 ```
 
-`--rgb-hue-jitter 0` 이 기본값입니다. 신호등은 색으로 구분하므로 hue 증강을 끄고
-밝기·대비·채도 증강만 씁니다. `--warm-start` 는 가중치만 가져와 새 학습을 시작하고
-(체크포인트 SHA-256 을 반드시 함께 선언해야 합니다), `--resume` 은 옵티마이저·에폭까지
-이어받습니다. 출력: `checkpoint-last.pth.tar`, `model-best.pth.tar`, `metrics.jsonl`,
-`run_provenance.json`, `feature_contract.json`.
+**모든 학습 파라미터는 config 파일에서만 옵니다.** 명령줄은 `--config` 하나뿐이고,
+불러온 config 는 frozen 이며, 학습 함수들은 config 객체가 아닌 값을 거부합니다. 즉
+명령줄에서도 다른 모듈에서도 설정값을 덮어쓸 수 없습니다. 다른 설정으로 돌리려면
+config 를 고치거나 복사하세요.
+
+config 는 빠진 키, 모르는 키, 잘못된 타입, 범위를 벗어난 값을 모두 거부합니다.
+따라서 "안 적었으니 기본값" 같은 경로가 없고, 오타가 조용히 무시되지도 않습니다.
+`configs/vision_encoder_train_smoke.json` 은 2배치·1에폭 스모크용입니다.
+
+주요 키:
+
+| 키 | 뜻 |
+|---|---|
+| `dataset.root`, `dataset.split_file` | 수집 데이터 루트와 시간순 분할 파일 |
+| `dataset.traffic_label_sidecar` | 감사된 신호등 라벨 마스크 (없으면 `null`) |
+| `augmentation.rgb_hue_jitter` | 0 이 기본. 신호등은 색으로 구분하므로 hue 증강을 끄고 밝기·대비·채도만 씁니다. 0.4 는 legacy 재현용 |
+| `schedule.epochs`, `warmup_epochs`, `accumulation_steps` | 에폭 수와 누적 스텝 |
+| `initialization.warm_start` + `warm_start_sha256` | 가중치만 가져와 새 학습 시작. SHA-256 을 함께 선언해야 합니다 |
+| `initialization.resume` | 옵티마이저·에폭까지 이어받기. `warm_start` 와 동시 지정 불가 |
+| `output.dir` | 결과 디렉터리 |
+
+출력: `checkpoint-last.pth.tar`, `model-best.pth.tar`, `metrics.jsonl`,
+`run_provenance.json`, `feature_contract.json`. `run_provenance.json` 과 체크포인트에는
+사용한 config 의 경로·SHA-256·내용이 그대로 기록됩니다.
 
 ### 1.5단계 — 시각 토큰 캐시
 
@@ -172,8 +189,7 @@ python train.py vldrive --config configs/vldrive_train.json --output outputs/log
 
 ```bash
 # 1단계: 웨이포인트 L1, ADE/FDE, 신호등 정확도
-python evaluate.py vision-encoder ../MoraiDrive/dataset_local/competition_train \
-    --split-file configs/splits/morai_full_loop_80_20.json \
+python evaluate.py vision-encoder --config configs/vision_encoder_train.json \
     --checkpoint outputs/checkpoints/vision_encoder/run1/model-best.pth.tar
 
 # 2단계: 궤적 지표 + val_predictions.json
@@ -216,6 +232,7 @@ python tools/render_vision_tokens.py --probe-root outputs/logs/tokens --labels r
 | `utils/runtime.py` | `LAVIS/lavis/common/morai_runtime.py` |
 | `utils/{trainer,training,metrics}.py` | `LAVIS/lavis/runners/{vldrive_trainer,morai_trainer,morai_metrics}.py` |
 | `configs/vldrive_train*.json` | `LAVIS/lavis/projects/vldrive/morai_paper*.json` |
+| `configs/vision_encoder_train*.json`, `utils/vision_encoder_config.py` | `vision_encoder/train_morai_pretrain.py` 의 argparse 인자 |
 | `configs/splits/` | `vision_encoder/configs/` |
 | `data/external/` | `LAVIS/assets/pretrained/`, `weights/`, `.runtime/lmdrive_official/` |
 | `data/processed/vision_tokens/`, `instructions/` | `LAVIS/.runtime/morai_vldrive/` |

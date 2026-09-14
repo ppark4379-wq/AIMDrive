@@ -14,7 +14,7 @@
 | `cache_vision_tokens.py` | 얼린 1단계 인코더로 프레임별 [106,256] 시각 토큰을 미리 계산해 `data/processed/vision_tokens/` 에 저장합니다. 프레임 단위 재개 가능. | 1단계 → 2단계 사이 |
 | `run_pipeline.py` | 인코더 미세조정 → 토큰 캐시 → preflight → 2단계 학습을 순차 실행합니다. 단계별 게이트가 있어 중단 후 이어서 돌릴 수 있습니다. | 전체 재현 |
 | `evaluate_traffic_departures.py` | 신호등 상태가 바뀌는 구간에서 인코더 예측이 어떻게 달라지는지 측정합니다. | 진단 |
-| `paired_hue_finetune.py` | hue 증강 유무를 짝지어 비교하는 인코더 미세조정. 신호등 색 신호가 증강에 씻겨나가는지 확인용. | 진단 |
+| `paired_hue_finetune.py` | hue 증강 유무를 짝지어 비교하는 인코더 미세조정. **현재 비활성**: 학습 파라미터를 코드(`trainer_args`)에서 만들어 넘기는데, 1단계는 config 파일에서 온 값만 받습니다. 고정 프로토콜 값을 `configs/` 로 옮기면 되살아납니다. | 진단 |
 | `inspect_vision_tokens.py` | 언어 모델을 거치지 않고 인코더 토큰만 뽑아 JSON/NPY 로 덤프합니다. | 시각화 1/2 |
 | `render_vision_tokens.py` | 위 덤프를 프레임별 BEV 토큰 세기 맵 이미지로 그립니다(matplotlib 필요). | 시각화 2/2 |
 
