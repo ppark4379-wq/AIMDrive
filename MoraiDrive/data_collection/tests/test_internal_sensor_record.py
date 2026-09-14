@@ -17,6 +17,7 @@ from async_capture.journal import RawWriter, records, verify_run
 from async_capture.health_policy import (
     SimulationPauseGrace, is_coherent_simulation_pause,
 )
+from async_capture.clock_health import evaluate as evaluate_local_clocks
 from async_capture.sensor_record import filename_candidates
 from bridge.camera_ingress_filter import dropped_publish_stream
 from bridge.bridge_health import (
@@ -32,6 +33,26 @@ from sources.morai_sync_file_source import REQUIRED_SENSOR_DIRS
 
 
 class InternalSensorRecordTest(unittest.TestCase):
+    def test_bounded_wsl_clock_slew_is_recorded_without_reboot_loop(self):
+        samples = [
+            {"monotonic_ns": 0, "monotonic_raw_ns": 0, "wall_ns": 0},
+            {
+                "monotonic_ns": 1_009_908_000,
+                "monotonic_raw_ns": 1_000_000_000,
+                "wall_ns": 1_009_908_000,
+            },
+        ]
+        report = evaluate_local_clocks(samples)
+        self.assertTrue(report["passed"])
+        self.assertEqual(report["warnings"], ["monotonic_rate_slew_recorded"])
+        self.assertAlmostEqual(report["rate_error_ppm"], 9908.0)
+
+        samples[-1]["monotonic_ns"] = 1_083_333_000
+        samples[-1]["wall_ns"] = 1_083_333_000
+        report = evaluate_local_clocks(samples)
+        self.assertFalse(report["passed"])
+        self.assertIn("monotonic_rate_differs_from_raw", report["failures"])
+
     def test_simulation_pause_grace_never_hides_partial_sensor_loss(self):
         coherent = [
             "ros_clock_not_advancing",
