@@ -12,6 +12,56 @@ from expert.src.planning.highway_lane_planning import parameters
 
 
 class LongitudinalControlTest(unittest.TestCase):
+    def test_recorded_handoff_target_accelerates_gradually(self):
+        from expert.src.planning.lattice_planning import parameters as static_p
+        controller = self._controller(0.)
+        controller.previous_target_velocity = 2.6
+        controller.control_dt = .1
+        ego = SimpleNamespace(velocity=2.6)
+        recorded = SimpleNamespace(mode='static_obstacle', debug_details={'static_avoidance': {
+            'planner': 'recorded_route_graph', 'path_validated': True}})
+        speed = controller._smooth_static_target_speed(5.55, ego, recorded)
+        self.assertAlmostEqual(speed, 2.6+static_p.STATIC_TARGET_ACCEL*.1)
+        rejoined = SimpleNamespace(mode='static_obstacle', debug_details={})
+        for _ in range(30):
+            controller.previous_target_velocity = speed
+            previous = speed
+            speed = controller._smooth_static_target_speed(16.67, ego, rejoined)
+            self.assertLessEqual(speed-previous, static_p.STATIC_TARGET_ACCEL*.1+1e-8)
+            self.assertGreater(speed, previous)
+
+    def test_recorded_acceleration_filter_preserves_emergency_and_signal_stops(self):
+        controller = self._controller(0.)
+        controller._static_speed_ramp = True
+        controller.previous_target_velocity = 5.
+        result = SimpleNamespace(mode='static_obstacle', debug_details={})
+        ego = SimpleNamespace(velocity=5.)
+        self.assertEqual(controller._smooth_static_target_speed(0., ego, result), 0.)
+        self.assertEqual(controller._smooth_static_target_speed(1., ego, result), 1.)
+
+    def test_static_target_filter_does_not_change_unrelated_driving(self):
+        controller = self._controller(0.)
+        controller.previous_target_velocity = 2.
+        ego = SimpleNamespace(velocity=2.)
+        result = SimpleNamespace(mode='inactive', debug_details={})
+        self.assertEqual(controller._smooth_static_target_speed(16., ego, result), 16.)
+        controller._static_speed_ramp = True
+        result.mode = 'roundabout_entry'
+        self.assertEqual(controller._smooth_static_target_speed(8., ego, result), 8.)
+
+    def test_recorded_handoff_lookahead_changes_gradually(self):
+        controller = self._controller(0.)
+        controller.control_dt = .1
+        controller.pure_pursuit = SimpleNamespace(lfd_gain=.65, min_lfd=2., max_lfd=30.)
+        ego = SimpleNamespace(velocity=4.)
+        recorded = SimpleNamespace(active=True, reason='static_recorded_follow', debug_details={'static_avoidance': {
+            'planner': 'recorded_route_graph'}})
+        self.assertEqual(controller._recorded_lookahead_limits(ego, recorded), (1.5,1.5))
+        recorded.active = False
+        recorded.reason = 'static_recorded_rejoined'
+        recorded.debug_details = {}
+        self.assertEqual(controller._recorded_lookahead_limits(ego, recorded), (1.6,1.6))
+
     def _controller(self, previous_command):
         controller = AutonomousDriving.__new__(AutonomousDriving)
         controller.sampling_rate = parameters.PLANNER_UPDATE_RATE
@@ -45,6 +95,31 @@ class LongitudinalControlTest(unittest.TestCase):
         self.assertAlmostEqual(
             parameters.ACCEL_COMMAND_RISE_RATE / parameters.PLANNER_UPDATE_RATE,
             command,
+        )
+
+    def test_roundabout_release_skips_brake_ramp_from_full_stop(self):
+        controller = self._controller(-1.0)
+        controller.previous_target_velocity = 0.0
+
+        self.assertTrue(
+            controller._roundabout_entry_fast_release(
+                8.33, SimpleNamespace(reason="roundabout_entry_cruise")
+            )
+        )
+        self.assertTrue(
+            controller._roundabout_entry_fast_release(
+                3.5, SimpleNamespace(reason="roundabout_entry_follow_lead")
+            )
+        )
+
+    def test_non_roundabout_release_keeps_normal_smoothing(self):
+        controller = self._controller(-1.0)
+        controller.previous_target_velocity = 0.0
+
+        self.assertFalse(
+            controller._roundabout_entry_fast_release(
+                8.33, SimpleNamespace(reason="highway_acc_override")
+            )
         )
 
     def test_pid_reset_discards_accumulated_acceleration(self):
@@ -113,22 +188,32 @@ class LongitudinalControlTest(unittest.TestCase):
         self.assertEqual(2, controller.pid.reset_count)
 
     def test_highway_lane_uses_only_lane_planner_for_vehicle_acc(self):
+        controller = AutonomousDriving.__new__(AutonomousDriving)
+        controller.lattice_planning_process = SimpleNamespace(
+            roundabout_entry_should_ignore_legacy_acc=lambda *_: False
+        )
         vehicle = {"object_info": SimpleNamespace(type=1)}
         pedestrian = {"object_info": SimpleNamespace(type=0)}
         traffic_light = {"object_info": SimpleNamespace(type=3)}
         result = SimpleNamespace(mode="highway_lane")
 
-        entries = AutonomousDriving._legacy_acc_entries(
-            result, [vehicle, pedestrian, traffic_light]
+        entries = controller._legacy_acc_entries(
+            SimpleNamespace(), result, [vehicle, pedestrian, traffic_light]
         )
 
         self.assertEqual([pedestrian, traffic_light], entries)
 
     def test_non_highway_keeps_legacy_vehicle_acc(self):
+        controller = AutonomousDriving.__new__(AutonomousDriving)
+        controller.lattice_planning_process = SimpleNamespace(
+            roundabout_entry_should_ignore_legacy_acc=lambda *_: False
+        )
         vehicle = {"object_info": SimpleNamespace(type=1)}
         result = SimpleNamespace(mode="inactive")
 
-        entries = AutonomousDriving._legacy_acc_entries(result, [vehicle])
+        entries = controller._legacy_acc_entries(
+            SimpleNamespace(), result, [vehicle]
+        )
 
         self.assertEqual([vehicle], entries)
 

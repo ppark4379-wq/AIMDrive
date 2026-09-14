@@ -9,6 +9,7 @@ import numpy as np
 from ...localization.point import Point
 from . import parameters
 from .lane_map import HighwayLaneMap
+from .merge_safety import MergeSafety
 from .structures import HighwayCandidatePath, HighwayPlanningResult
 
 
@@ -42,6 +43,9 @@ class HighwayLanePlanner:
         self._predictive_merge_last_speed = 0.0
         self._predictive_merge_last_clear_time = float("inf")
         self._predictive_merge_dropout_hold_time = 0.0
+        self.merge_safety = MergeSafety(self)
+        self._merge_guard_active = False
+        self._front_lead_speed = None
 
     def set_control_dt(self, control_dt):
         control_dt = float(control_dt)
@@ -53,7 +57,8 @@ class HighwayLanePlanner:
         duration = float(reference_cycles) / parameters.PLANNER_UPDATE_RATE
         return max(1, int(math.ceil(duration / self.control_dt - 1e-9)))
 
-    def plan(self, vehicle_state, reference_path, vehicle_entries):
+    def plan(self, vehicle_state, reference_path, vehicle_entries, desired_velocity=None,
+             prediction_path=None):
         ego_match = self._resolve_ego_lane(vehicle_state)
         if ego_match is None:
             self._reset()
@@ -71,11 +76,17 @@ class HighwayLanePlanner:
             vehicle_state, ego_match, object_matches, vehicle_entries
         )
         acc_target_velocity = self._acc_speed_limit(
-            vehicle_state.velocity, nearest_distance, ttc
+            vehicle_state.velocity, nearest_distance, ttc, self._front_lead_speed
         )
         front_acc_target_velocity = acc_target_velocity
+        merge_reference = prediction_path if prediction_path is not None else reference_path
+        if self.state in (self.CHANGE_LEFT, self.CHANGE_RIGHT) and self.active_candidate is not None:
+            merge_reference = self.active_candidate.points
         raw_merge_acc_target_velocity = self._merge_acc_speed_limit(
-            vehicle_state, ego_match, object_matches, vehicle_entries
+            vehicle_state, ego_match, object_matches, vehicle_entries,
+            reference_path=merge_reference,
+            desired_velocity=(min(desired_velocity, front_acc_target_velocity)
+                              if desired_velocity is not None else None),
         )
         merge_acc_target_velocity = self._stabilize_merge_speed_limit(
             raw_merge_acc_target_velocity, vehicle_state.velocity
@@ -134,6 +145,29 @@ class HighwayLanePlanner:
             predicted_object_paths=predicted_paths,
             debug_details=debug_details,
         )
+
+        if self._merge_guard_active:
+            safety = self.merge_safety.details
+            debug_details["merge_safety"] = {key: value for key, value in safety.items()
+                                             if key != "predicted_paths"}
+            common["predicted_object_paths"] = safety.get("predicted_paths", [])
+            # These paths also include unmatched/held tracks, so they must not
+            # be zipped against the ordinary lane-match list by the renderer.
+            common["object_lane_matches"] = []
+            if self.state not in (self.CHANGE_LEFT, self.CHANGE_RIGHT) and not current_link.excluded:
+                limited = not math.isinf(acc_target_velocity)
+                self.state = self.ACC if limited else self.KEEP
+                return HighwayPlanningResult(
+                    keep_candidate.points if self.changed_lane_hold else reference_path,
+                    active=self.changed_lane_hold,
+                    obstacle_detected=limited, acc_override=limited,
+                    acc_target_velocity=acc_target_velocity, highway_state=self.state,
+                    candidates=[keep_candidate],
+                    reason=("highway_lane_emergency_stop" if acc_target_velocity <= 0.05
+                            else "highway_lane_merge_acc" if limited
+                            else "highway_lane_merge_clear"),
+                    **common
+                )
 
         if self.state in (self.CHANGE_LEFT, self.CHANGE_RIGHT):
             if ego_match.distance <= parameters.MANEUVER_COMPLETE_DISTANCE:
@@ -517,12 +551,33 @@ class HighwayLanePlanner:
         return True
 
     def _merge_acc_speed_limit(
-        self, vehicle_state, ego_match, object_matches, vehicle_entries=()
+        self, vehicle_state, ego_match, object_matches, vehicle_entries=(),
+        reference_path=None, desired_velocity=None,
     ):
         """Return a speed ceiling when two different links reach one merge."""
         ego_link = ego_match.lane_link
         self._last_merge_debug = []
         self._merge_go_object_ids = set()
+        limit = self.merge_safety.limit(
+            vehicle_state, ego_match, object_matches, vehicle_entries,
+            reference_path=reference_path, desired_velocity=desired_velocity,
+        )
+        self._merge_guard_active = limit is not None
+        if self._merge_guard_active:
+            details = self.merge_safety.details
+            priority = "EGO" if details["decision"] == "GO" else "OTHER"
+            if details["zone"] == "FIRST_PREDICTIVE":
+                self._predictive_merge_priority = priority
+                self._merge_zone_priority = None
+            else:
+                self._merge_zone_priority = priority
+                self._predictive_merge_priority = None
+            self._last_merge_debug.append(
+                "{} {} conflict={} target={:.2f}m/s".format(
+                    details["zone"], details["decision"], details.get("conflict"), limit
+                )
+            )
+            return limit
         ego_distance = max(0.0, ego_link.length - ego_match.s)
         ego_speed = max(0.0, float(vehicle_state.velocity))
 
@@ -1580,6 +1635,11 @@ class HighwayLanePlanner:
 
     def _stabilize_merge_speed_limit(self, raw_limit, ego_speed):
         """Apply emergency reductions now and release transient ACC smoothly."""
+        if self._merge_guard_active:
+            # The new ceiling has already passed trajectory validation. Keeping
+            # an obsolete lower cap would prolong braking after the car clears.
+            self._merge_speed_limit_state = raw_limit
+            return raw_limit
         previous = self._merge_speed_limit_state
         recovery_step = parameters.MERGE_ACC_RECOVERY_RATE * self.control_dt
         if not math.isinf(raw_limit):
@@ -1652,6 +1712,7 @@ class HighwayLanePlanner:
         self, vehicle_state, ego_match, object_matches, vehicle_entries=()
     ):
         nearest = float("inf")
+        self._front_lead_speed = None
         minimum_ttc = float("inf")
         matched_object_ids = set()
         for entry, object_match in object_matches:
@@ -1671,7 +1732,9 @@ class HighwayLanePlanner:
                 0.0, vehicle_state.velocity - float(object_info.velocity)
             )
             object_ttc = gap / closing_speed if closing_speed > 0.1 else float("inf")
-            nearest = min(nearest, gap)
+            if gap < nearest:
+                nearest = gap
+                self._front_lead_speed = max(0.0, float(object_info.velocity))
             minimum_ttc = min(minimum_ttc, object_ttc)
 
         # Link matching can briefly fail at merges/splits. Keep ACC available
@@ -1699,17 +1762,19 @@ class HighwayLanePlanner:
                 0.0, vehicle_state.velocity - float(object_info.velocity)
             )
             object_ttc = gap / closing_speed if closing_speed > 0.1 else float("inf")
-            nearest = min(nearest, gap)
+            if gap < nearest:
+                nearest = gap
+                self._front_lead_speed = max(0.0, float(object_info.velocity))
             minimum_ttc = min(minimum_ttc, object_ttc)
         return nearest, minimum_ttc
 
     @staticmethod
-    def _acc_speed_limit(ego_speed, gap, ttc):
+    def _acc_speed_limit(ego_speed, gap, ttc, lead_speed=None):
         """Return an explicit longitudinal speed ceiling for ACC_FOLLOW."""
         if math.isinf(gap):
             return float("inf")
         closing_speed = 0.0 if math.isinf(ttc) else gap / max(0.1, ttc)
-        lead_speed = max(0.0, ego_speed - closing_speed)
+        lead_speed = max(0.0, ego_speed - closing_speed) if lead_speed is None else lead_speed
         desired_gap = (
             parameters.ACC_STANDSTILL_DISTANCE
             + max(0.0, ego_speed) * parameters.ACC_TIME_GAP
@@ -1722,6 +1787,8 @@ class HighwayLanePlanner:
             lead_speed
             + parameters.ACC_DISTANCE_GAIN * (gap - desired_gap)
         )
+        if lead_speed > ego_speed + 0.1 and gap >= parameters.ACC_STANDSTILL_DISTANCE:
+            speed_limit = max(ego_speed, speed_limit)
         return max(0.0, speed_limit)
 
     def _build_candidate(
@@ -1847,13 +1914,13 @@ class HighwayLanePlanner:
             )
             for entry, object_match in object_matches:
                 object_info = entry["object_info"]
-                if id(object_info) in self._merge_go_object_ids:
-                    continue
                 local_position = entry.get("local_position")
                 if (
                     candidate.direction == "keep"
                     and local_position is not None
                     and local_position.x <= 0.0
+                    and object_match.lane_link.id == getattr(candidate, "target_link_id", None)
+                    and abs(local_position.y) < 1.0
                 ):
                     # A rear vehicle must never make Ego brake on a keep-lane
                     # path; braking increases the rear-end collision risk.
@@ -2060,6 +2127,8 @@ class HighwayLanePlanner:
 
     def _reset(self):
         self.reset_lateral_state()
+        self.merge_safety.reset()
+        self._merge_guard_active = False
         self._merge_speed_limit_state = float("inf")
         self._merge_decisions = {}
         self._merge_go_object_ids = set()

@@ -2,8 +2,13 @@
 # -*- coding: utf-8 -*-
 """Zone-aware process wrapper for static and highway lattice planning."""
 
+import math
+
 from . import parameters
 from .lattice_planner import LatticePlanner
+from .roundabout_entry import RoundaboutEntryPlanner
+from .static_avoidance import StaticAvoidance
+from .centerline_lattice import CenterlineLattice
 from .structures import LatticePlanningResult
 from ..highway_lane_planning import HighwayLanePlanner
 
@@ -65,7 +70,13 @@ class LatticePlanningProcess:
         self.zone_start = zone_start
         self.zone_end = zone_end
         self.zone_half_width = float(zone_half_width)
-        self.planner = planner or LatticePlanner()
+        self.planner = planner or LatticePlanner(sample_spacing=parameters.STATIC_SAMPLE_SPACING)
+        self.static_avoidance = StaticAvoidance(self.planner)
+        from ..정적장애물.recorded_planner import RecordedStaticPlanner
+        self.recorded_static = (RecordedStaticPlanner(self.planner, background=True)
+                                if zone_bounds is None and zone_start == STATIC_OBSTACLE_ZONE_START
+                                else None)
+        self.centerline_lattice = CenterlineLattice(map_data_dir)
 
         self.highway_zone_points = tuple(highway_zone_points or ())
         self.highway_zone_half_width = float(highway_zone_half_width)
@@ -75,20 +86,49 @@ class LatticePlanningProcess:
             HighwayLanePlanner(map_data_dir) if map_data_dir else None
         )
         self._highway_acc_override = False
+        self._roundabout_entry_committed = False
+        self.roundabout_planner = RoundaboutEntryPlanner(map_data_dir)
 
         self.last_result = None
         self._last_log_state = None
 
-    def run(self, vehicle_state, reference_path, object_info_list):
-        if self._is_inside_static_zone(vehicle_state):
+    def run(self, vehicle_state, reference_path, object_info_list, desired_velocity=None,
+            prediction_path=None):
+        roundabout_result = self._run_roundabout_entry_guard(
+            vehicle_state, reference_path, object_info_list, desired_velocity,
+            prediction_path,
+        )
+        if roundabout_result is not None:
+            self.static_avoidance.reset()
+            if self.highway_lane_planner is not None:
+                self.highway_lane_planner.reset()
+            result = roundabout_result
+        elif self.recorded_static is not None and (self.recorded_static.active or self.recorded_static.pending is not None or (
+                self.recorded_static.contains(vehicle_state) and any(
+                    getattr(item["object_info"], "is_static", False)
+                    and -75 < item["object_info"].position.x < -40
+                    and -164 < item["object_info"].position.y < -116
+                    for item in object_info_list))):
+            static_objects = [item["object_info"] for item in object_info_list
+                              if getattr(item["object_info"], "is_static", False)]
+            result = self.recorded_static.plan(vehicle_state, reference_path, static_objects, prediction_path)
+        elif (not self.static_avoidance.active and self.zone_bounds is None
+              and self.centerline_lattice.contains(vehicle_state)):
+            result = self.centerline_lattice.run(vehicle_state, reference_path, object_info_list)
+        elif (self.recorded_static is not None and self._is_inside_static_zone(vehicle_state)
+              and self.recorded_static.past_rejoin(vehicle_state)):
+            self.static_avoidance.reset()
+            result = LatticePlanningResult(reference_path, mode="static_obstacle", reason="static_recorded_rejoined")
+        elif self._is_inside_static_zone(vehicle_state) or self.static_avoidance.active:
             if self.highway_lane_planner is not None:
                 self.highway_lane_planner.reset()
             result = self._run_static_zone(
-                vehicle_state, reference_path, object_info_list
+                vehicle_state, reference_path, object_info_list, prediction_path
             )
         elif self._is_inside_highway_zone(vehicle_state):
             result = self._run_highway_zone(
-                vehicle_state, reference_path, object_info_list
+                vehicle_state, reference_path, object_info_list, desired_velocity,
+                prediction_path,
             )
         else:
             self._highway_acc_override = False
@@ -101,15 +141,56 @@ class LatticePlanningProcess:
         self.last_result = result
         return result
 
-    def _run_static_zone(self, vehicle_state, reference_path, object_info_list):
+    def _run_static_zone(self, vehicle_state, reference_path, object_info_list, prediction_path=None):
+        if (not self.static_avoidance.active and self.zone_bounds is None
+                and self.zone_start == STATIC_OBSTACLE_ZONE_START):
+            stop_x, stop_y = parameters.STATIC_PLANNING_STOP_POINT
+            dx, dy = self.zone_end[0] - self.zone_start[0], self.zone_end[1] - self.zone_start[1]
+            length = math.hypot(dx, dy)
+            ux, uy = dx / length, dy / length
+            progress = ((vehicle_state.position.x - stop_x) * ux
+                        + (vehicle_state.position.y - stop_y) * uy)
+            forward = math.cos(vehicle_state.yaw) * ux + math.sin(vehicle_state.yaw) * uy
+            side = -math.sin(vehicle_state.yaw) * ux + math.cos(vehicle_state.yaw) * uy
+            # First contact of the physical front bumper, including heading.
+            # Use the same reference origin as the ego collision box, without its safety margin.
+            bumper_progress = (progress + self.planner.vehicle_length * forward
+                               + self.planner.vehicle_half_width * abs(side))
+            before_line = bumper_progress < -parameters.STATIC_PLANNING_STOP_TOLERANCE
+            if before_line or forward < 0.5:
+                # Keep the original path and normal ACC/signal limits before the
+                # stop line. Only new lateral avoidance is gated here.
+                return LatticePlanningResult(reference_path, mode='static_obstacle',
+                    reason='static_wrong_direction' if forward < 0.5 else 'static_before_stop_line',
+                    debug_details={'static_avoidance': {
+                        'phase': 'wait_stop_line', 'path_validated': False,
+                        'stop_line_node': 'A1256W000807', 'stop_line_progress': bumper_progress,
+                        'stop_line_reference': 'front_bumper'}})
         static_obstacles = [
             item["object_info"]
             for item in object_info_list
             if getattr(item["object_info"], "is_static", False)
         ]
-        return self.planner.plan(vehicle_state, reference_path, static_obstacles)
+        return self.static_avoidance.plan(
+            vehicle_state, reference_path, static_obstacles, prediction_path
+        )
 
-    def _run_highway_zone(self, vehicle_state, reference_path, object_info_list):
+    def _run_roundabout_entry_guard(
+        self, vehicle_state, reference_path, object_info_list, desired_velocity=None,
+        prediction_path=None,
+    ):
+        state = self._roundabout_entry_state(vehicle_state)
+        result = self.roundabout_planner.plan(
+            vehicle_state, prediction_path if prediction_path is not None else reference_path,
+            object_info_list, state, desired_velocity
+        )
+        if result is not None:
+            result.path = reference_path
+        self._roundabout_entry_committed = self.roundabout_planner.committed
+        return result
+
+    def _run_highway_zone(self, vehicle_state, reference_path, object_info_list,
+                          desired_velocity=None, prediction_path=None):
         vehicle_entries = [
             item
             for item in object_info_list
@@ -121,7 +202,8 @@ class LatticePlanningProcess:
             if self.highway_lane_planner is not None:
                 self.highway_lane_planner.reset_lateral_state()
                 safety_result = self.highway_lane_planner.plan(
-                    vehicle_state, reference_path, vehicle_entries
+                    vehicle_state, reference_path, vehicle_entries,
+                    desired_velocity=desired_velocity, prediction_path=prediction_path,
                 )
                 self.highway_lane_planner.reset_lateral_state()
                 if safety_result.acc_override:
@@ -139,7 +221,8 @@ class LatticePlanningProcess:
             )
         if self.highway_lane_planner is not None:
             return self.highway_lane_planner.plan(
-                vehicle_state, reference_path, vehicle_entries
+                vehicle_state, reference_path, vehicle_entries,
+                desired_velocity=desired_velocity, prediction_path=prediction_path,
             )
 
         # map_data_dir를 넣지 않는 단위 테스트/호환 실행에서만 기존 offset 방식 사용
@@ -173,6 +256,93 @@ class LatticePlanningProcess:
         result.nearest_vehicle_distance = nearest_distance
         result.ttc = ttc
         return result
+
+    def roundabout_entry_should_ignore_legacy_acc(self, vehicle_state, object_info):
+        return (
+            self.roundabout_planner.active
+            and not getattr(object_info, "is_static", False)
+            and getattr(object_info, "type", -1) in (1, 2)
+        )
+
+    def _roundabout_entry_active(self, vehicle_state, reference_path):
+        return self._roundabout_entry_state(vehicle_state)["in_decision_zone"]
+
+    def _roundabout_entry_state(self, vehicle_state):
+        approach_start = parameters.ROUNDABOUT_ENTRY_APPROACH_START
+        approach_end = parameters.ROUNDABOUT_ENTRY_APPROACH_END
+        stop_point = parameters.ROUNDABOUT_ENTRY_STOP_POINT
+        along, lateral, segment_length = self._segment_coordinates(
+            vehicle_state.position, approach_start, approach_end
+        )
+        stop_along, _, _ = self._segment_coordinates(
+            stop_point, approach_start, approach_end
+        )
+        in_approach = (
+            0.0 <= along <= segment_length
+            and lateral <= parameters.ROUNDABOUT_ENTRY_APPROACH_HALF_WIDTH
+        )
+        decision_start = stop_along - parameters.ROUNDABOUT_ENTRY_STOP_BACK_DISTANCE
+        decision_end = stop_along + parameters.ROUNDABOUT_ENTRY_STOP_FORWARD_DISTANCE
+        in_decision_zone = in_approach and decision_start <= along <= decision_end
+        past_go_line = in_approach and along > decision_end
+        return {
+            "active": in_decision_zone,
+            "ego_along": along,
+            "ego_lateral": lateral,
+            "approach_length": segment_length,
+            "stop_along": stop_along,
+            "decision_start": decision_start,
+            "decision_end": decision_end,
+            "in_approach": in_approach,
+            "in_decision_zone": in_decision_zone,
+            "past_go_line": past_go_line,
+            "committed": self._roundabout_entry_committed,
+            "ego_distance": abs(stop_along - along),
+        }
+
+    @classmethod
+    def _point_in_segment_band(cls, point, start, end, half_width):
+        along, lateral, segment_length = cls._segment_coordinates(point, start, end)
+        return 0.0 <= along <= segment_length and lateral <= half_width
+
+    @staticmethod
+    def _segment_coordinates(point, start, end):
+        point_x = float(point[0]) if isinstance(point, tuple) else point.x
+        point_y = float(point[1]) if isinstance(point, tuple) else point.y
+        start_x, start_y = start
+        end_x, end_y = end
+        dx = end_x - start_x
+        dy = end_y - start_y
+        length = math.hypot(dx, dy)
+        if length < 1e-9:
+            return 0.0, math.hypot(point_x - start_x, point_y - start_y), 0.0
+        relative_x = point_x - start_x
+        relative_y = point_y - start_y
+        along = (relative_x * dx + relative_y * dy) / length
+        lateral = abs(relative_x * dy - relative_y * dx) / length
+        return along, lateral, length
+
+    @classmethod
+    def _polyline_coordinates(cls, point, polyline):
+        if len(polyline) < 2:
+            return None, float("inf"), 0.0
+        best_progress = None
+        best_lateral = float("inf")
+        progress_before = 0.0
+        total_length = 0.0
+        for start, end in zip(polyline[:-1], polyline[1:]):
+            _, _, segment_length = cls._segment_coordinates(start, start, end)
+            total_length += segment_length
+
+        for start, end in zip(polyline[:-1], polyline[1:]):
+            along, lateral, segment_length = cls._segment_coordinates(point, start, end)
+            clamped_along = max(0.0, min(segment_length, along))
+            distance_sq = lateral ** 2 + (along - clamped_along) ** 2
+            if distance_sq < best_lateral ** 2:
+                best_lateral = math.sqrt(distance_sq)
+                best_progress = progress_before + clamped_along
+            progress_before += segment_length
+        return best_progress, best_lateral, total_length
 
     @staticmethod
     def _assess_highway_risk(vehicle_state, vehicle_entries):
@@ -317,7 +487,22 @@ class LatticePlanningProcess:
             return
         self._last_log_state = state
 
-        if result.acc_override:
+        if result.mode == "roundabout_entry":
+            details = result.debug_details.get("roundabout_entry", {})
+            print(
+                "[ROUNDABOUT] {} target={:.1f}km/h conflict_id={} ttc={:.2f}s "
+                "front_id={} gap={} stop_gap={:.2f}m".format(
+                    details.get("phase"), result.acc_target_velocity * 3.6,
+                    details.get("blocker_unique_id"), result.ttc,
+                    details.get("front_id"), details.get("front_gap"),
+                    details.get("stop_gap", 0.0),
+                )
+            )
+        elif result.mode == "static_obstacle":
+            print("[STATIC] {} offset={:+.2f}m target={:.1f}km/h".format(
+                result.reason, result.selected_offset, result.acc_target_velocity * 3.6
+            ))
+        elif result.acc_override:
             ttc_text = "inf" if result.ttc == float("inf") else "{:.2f}s".format(result.ttc)
             print(
                 "[LATTICE] highway ACC PRIORITY: gap={:.2f}m, TTC={}, reason={}".format(

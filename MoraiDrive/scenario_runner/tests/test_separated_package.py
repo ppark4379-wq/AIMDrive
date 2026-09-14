@@ -128,9 +128,9 @@ class SeparatedPackageTest(unittest.TestCase):
         self.assertEqual(scenario_cfg['highway_tunnel_test_start_path_index'], 2275)
 
         expected = {
-            10: (10.0, 60.0, 'A2256W000029', 167, 'A2256W000432', 246),
-            6: (10.0, 40.0, 'A2256W000406', 78, 'A2256W001105', 83),
-            8: (10.0, 50.0, 'A2256W000175', 78, 'A2256W000422', 59),
+            10: (5.0, 60.0, 'A2256W000029', 167, 'A2256W000432', 246),
+            6: (5.0, 40.0, 'A2256W000406', 78, 'A2256W001105', 83),
+            8: (5.0, 50.0, 'A2256W000175', 78, 'A2256W000422', 59),
         }
         for spec in specs:
             values = expected[int(spec['id'])]

@@ -57,6 +57,8 @@ class LatticePlanner:
         inactive_reason="no_static_obstacle",
         active_reason="avoid_static_obstacle_right",
         mode="static_obstacle",
+        offsets=None,
+        short_lookahead_distances=None,
     ):
         if len(reference_path) < 2:
             return LatticePlanningResult(reference_path, reason="path_too_short")
@@ -76,13 +78,14 @@ class LatticePlanner:
             reference_path,
             layer="long",
             lookahead_distance=self.long_lookahead_distance,
+            offsets=offsets,
         )
-        short_candidates = self._generate_candidates(
-            vehicle_state,
-            reference_path,
-            layer="short",
-            lookahead_distance=self.short_lookahead_distance,
-        )
+        short_candidates = []
+        for distance in (short_lookahead_distances or (self.short_lookahead_distance,)):
+            short_candidates.extend(self._generate_candidates(
+                vehicle_state, reference_path, layer="short",
+                lookahead_distance=distance, offsets=offsets,
+            ))
         self._evaluate_candidates(long_candidates, relevant_obstacles, add_policy_cost=False)
         self._evaluate_candidates(
             short_candidates,
@@ -142,7 +145,7 @@ class LatticePlanner:
         return relevant
 
     def _generate_candidates(
-        self, vehicle_state, reference_path, layer, lookahead_distance
+        self, vehicle_state, reference_path, layer, lookahead_distance, offsets=None
     ):
         goal_point, goal_heading = self._find_goal(
             reference_path, lookahead_distance
@@ -158,20 +161,24 @@ class LatticePlanner:
 
         candidates = []
         half_count = (self.num_offsets - 1) // 2
-        for index in range(self.num_offsets):
+        route_normal_offsets = offsets is not None
+        if offsets is None:
+            offsets = [(index - half_count) * self.lateral_offset_step for index in range(self.num_offsets)]
+        for offset in offsets:
             # The path-normal convention makes negative offset the route-right side.
-            offset = (index - half_count) * self.lateral_offset_step
-            goal_y = base_goal_y + offset
+            # Offset in the reference tangent's normal, not the current ego normal.
+            candidate_goal_x = goal_x - offset * math.sin(relative_goal_yaw) if route_normal_offsets else goal_x
+            goal_y = base_goal_y + offset * math.cos(relative_goal_yaw) if route_normal_offsets else base_goal_y + offset
             candidate = CandidatePath(offset=offset, layer=layer)
             coefficients = self._solve_polynomial(
-                goal_x, goal_y, relative_goal_yaw
+                candidate_goal_x, goal_y, relative_goal_yaw
             )
             if coefficients is None:
                 candidate.valid = False
                 candidate.cost = float("inf")
             else:
                 candidate.points = self._sample_global_path(
-                    vehicle_state, goal_x, coefficients
+                    vehicle_state, candidate_goal_x, coefficients
                 )
                 if len(candidate.points) < 2:
                     candidate.valid = False
@@ -334,7 +341,7 @@ class LatticePlanner:
             start, end = points[index - 1], points[index]
         return math.atan2(end.y - start.y, end.x - start.x)
 
-    def _obb_collision(self, rear_axle_point, vehicle_yaw, obstacle):
+    def _obb_collision(self, rear_axle_point, vehicle_yaw, obstacle, extra_margin=0.0):
         """Separating-axis test between vehicle and static-obstacle OBBs."""
         vehicle_forward = (math.cos(vehicle_yaw), math.sin(vehicle_yaw))
         vehicle_left = (-vehicle_forward[1], vehicle_forward[0])
@@ -343,8 +350,8 @@ class LatticePlanner:
             rear_axle_point.y + 0.5 * self.vehicle_length * vehicle_forward[1],
         )
         vehicle_extents = (
-            0.5 * self.vehicle_length + self.collision_margin,
-            self.vehicle_half_width + self.collision_margin,
+            0.5 * self.vehicle_length + self.collision_margin + extra_margin,
+            self.vehicle_half_width + self.collision_margin + extra_margin,
         )
 
         obstacle_yaw = math.radians(float(getattr(obstacle, "heading_deg", 0.0)))

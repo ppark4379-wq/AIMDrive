@@ -32,9 +32,10 @@ class PurePursuit(object):
     def vehicle_state(self, vehicle_state):
         self._vehicle_state = vehicle_state
 
-    def calculate_steering_angle(self):
+    def calculate_steering_angle(self, lookahead_limits=None):
         lfd = self.lfd_gain * self._vehicle_state.velocity
-        lfd = np.clip(lfd, self.min_lfd, self.max_lfd)
+        min_lfd, max_lfd = lookahead_limits or (self.min_lfd, self.max_lfd)
+        lfd = np.clip(lfd, min_lfd, max_lfd)
 
         steering_angle = 0.
         lookahead_pt = None

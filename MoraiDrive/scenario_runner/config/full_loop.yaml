@@ -173,7 +173,7 @@ scenarios:
       background_warmup_distance_m: 300.0
       spawn_point_activation_retry_period_sec: 1.0
 
-      # Highway-only native SpawnPoints copied from the competition sample.
+      # Competition highway routes with a 5-second interval for denser traffic.
       # competition_spawn_4 starts beside/through the roundabout, so it is
       # intentionally excluded: roundabout traffic is owned exclusively by
       # roundabout_npc and must remain exactly six equally spaced vehicles.
@@ -207,8 +207,8 @@ scenarios:
           position: {x: 73.00800323486328, y: 265.6050109863281, z: 28.34600067138672}
           model_name: ''
           reference_vehicle_type_id: -1
-          min_spawn_period_sec: 10.0
-          max_spawn_period_sec: 10.0
+          min_spawn_period_sec: 3.0
+          max_spawn_period_sec: 3.0
           min_desired_velocity_custom_kmh: 60.0
           max_desired_velocity_custom_kmh: 60.0
           start_link: {id: A2256W000029, point_idx: 167}
@@ -221,8 +221,8 @@ scenarios:
           position: {x: 65.76899719238281, y: 309.2770080566406, z: 28.28800010681152}
           model_name: ''
           reference_vehicle_type_id: -1
-          min_spawn_period_sec: 10.0
-          max_spawn_period_sec: 10.0
+          min_spawn_period_sec: 3.0
+          max_spawn_period_sec: 3.0
           min_desired_velocity_custom_kmh: 40.0
           max_desired_velocity_custom_kmh: 40.0
           start_link: {id: A2256W000406, point_idx: 78}
@@ -235,8 +235,8 @@ scenarios:
           position: {x: 69.322998046875, y: 309.6799926757812, z: 28.32099914550781}
           model_name: ''
           reference_vehicle_type_id: -1
-          min_spawn_period_sec: 10.0
-          max_spawn_period_sec: 10.0
+          min_spawn_period_sec: 3.0
+          max_spawn_period_sec: 3.0
           min_desired_velocity_custom_kmh: 50.0
           max_desired_velocity_custom_kmh: 50.0
           start_link: {id: A2256W000175, point_idx: 78}
