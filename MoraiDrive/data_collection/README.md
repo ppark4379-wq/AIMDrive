@@ -20,8 +20,10 @@ LMDrive 호환 데이터셋으로 변환합니다. 기본 `sync_native_files` �
 Windows 저장 드라이브와 분석 Python을 검사하고, 빠진 SensorData 폴더를 만들며, 필요한
 일반 Python 패키지만 Git에서 제외된 `.runtime/data_collection/internal_sensor_record_deps`에
 설치한다. 시스템 Python, 사용자 site-packages, scenario/expert/source 파일은 변경하지
-않는다. 01은 현재 WSL IP를 표시하고 `aim_sensorset.json`의 rosbridge 주소만 백업 후
-자동 갱신한다. geometry/FOV/rate/topic은 자동 수정하지 않는다.
+않는다. 01은 Windows에서 유지되는 `127.0.0.1:9090`을 기본 연결 주소로 쓰고
+`aim_sensorset.json`의 rosbridge 주소만 백업 후 자동 갱신한다.
+geometry/FOV/rate/topic은 자동 수정하지 않는다. 차량 정보와 Simulator Network의
+`/clock` 송신도 01에 표시된 같은 주소로 연결한다.
 
 00번은 PC별 경로를 명시적으로 바꿀 때만 직접 사용한다.
 
@@ -31,8 +33,9 @@ Windows 저장 드라이브와 분석 Python을 검사하고, 빠진 SensorData 
   --patch-sensor-set
 ```
 
-00번이 만드는 PC별 설정은 Git에 포함되지 않는다. WSL bridge IP는 설정 파일에
-고정하지 않고 01·02 실행 때마다 다시 탐지한다. 01·02·03은 같은 ROS/catkin/Python
+00번이 만드는 PC별 설정은 Git에 포함되지 않는다. MORAI가 사용할 bridge 주소는
+PC별 설정에 저장하고 기본값은 `127.0.0.1`이다. WSL 내부 ROS node 주소는 매 실행마다
+별도로 탐지한다. 01·02·03은 같은 ROS/catkin/Python
 계약과 `PYTHONNOUSERSITE=1`을 사용하므로 터미널마다 Conda나 `PYTHONPATH`를 다르게
 맞출 필요가 없다.
 
@@ -56,7 +59,7 @@ export MORAI_STORAGE_ROOT=/mnt/c/MoraiDriveData
 또는 ignored 로컬 설정에 저장하면 새 터미널마다 export할 필요가 없다.
 
 ```json
-{"storage_root":"/mnt/d/MoraiDrive","launcher_root":"/mnt/c/MoraiLauncher_Win"}
+{"bridge_ip":"127.0.0.1","storage_root":"/mnt/d/MoraiDrive","launcher_root":"/mnt/c/MoraiLauncher_Win"}
 ```
 
 `MoraiDrive/dataset`이 일반 폴더로 이미 존재하는 경우에는 안전을 위해 자동으로

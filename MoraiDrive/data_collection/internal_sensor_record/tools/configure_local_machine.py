@@ -233,6 +233,13 @@ def main():
     parser.add_argument("--powershell-exe", type=Path)
     parser.add_argument("--analysis-python", type=Path)
     parser.add_argument("--sensor-set", type=Path)
+    parser.add_argument(
+        "--bridge-ip",
+        help=(
+            "Windows MORAI가 사용할 rosbridge IPv4. 기본 127.0.0.1은 "
+            "WSL 재시작 뒤에도 유지됩니다."
+        ),
+    )
     parser.add_argument("--patch-sensor-set", action="store_true")
     parser.add_argument("--no-install", action="store_true")
     parser.add_argument("--json", action="store_true", help="Print the full machine report")
@@ -260,7 +267,16 @@ def main():
     launcher = discover_launcher_root(
         args.launcher_root, existing.get("launcher_root")
     )
+    from network_config import validate_bridge_ip
+
+    selected_bridge_ip = validate_bridge_ip(
+        args.bridge_ip
+        or os.environ.get("MORAI_BRIDGE_IP")
+        or existing.get("bridge_ip")
+        or "127.0.0.1"
+    )
     config = {
+        "bridge_ip": selected_bridge_ip,
         "storage_root": str(selected(args.storage_root, "storage_root", storage_default)),
         "launcher_root": str(launcher),
         "catkin_workspace": str(catkin_workspace),
@@ -436,12 +452,15 @@ def main():
         backup = preserve_before_change(config_path, "machine_setup")
     atomic_write_json(config_path, config)
 
-    sensor_report = {"requested": bool(args.patch_sensor_set), "changed_fields": 0}
+    sensor_report = {
+        "requested": bool(args.patch_sensor_set),
+        "bridge_ip": config["bridge_ip"],
+        "changed_fields": 0,
+    }
     if args.patch_sensor_set:
-        from network_config import bridge_ip
         from async_capture.internal_sensor_record_contract import validate_sensor_set
 
-        address = bridge_ip()
+        address = config["bridge_ip"]
         sensor_path = discover_sensor_set(
             launcher,
             explicit=args.sensor_set,
@@ -481,7 +500,7 @@ def main():
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:
         print("[PASS] PC별 실행 환경 준비 완료")
-        print("       bridge IP : " + sensor_report.get("bridge_ip", "실행 시 자동 탐지"))
+        print("       bridge IP : " + config["bridge_ip"] + " (Windows 고정 연결 주소)")
         print("       저장 경로 : " + config["storage_root"])
         print("       catkin    : " + config["catkin_workspace"])
         print("       분석 Python: " + str(analysis_python))

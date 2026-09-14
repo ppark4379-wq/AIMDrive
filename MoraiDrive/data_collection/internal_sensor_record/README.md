@@ -31,9 +31,9 @@ MoraiDrive 루트에서 다음 entrypoint를 순서대로 사용한다.
 ```
 
 01·02·03은 공통 준비 단계를 자동 실행한다. 로컬 경로와 두 Python 실행 환경을 검사하고
-일반 의존성은 ignored `.runtime` 아래에 격리한다. 01은 현재 WSL IP를 표시하고
-`aim_sensorset.json`의 rosbridge 주소만 백업 후 자동 갱신한다. WSL IP는 재시작 때 바뀔
-수 있으므로 로컬 JSON에 고정하지 않는다. 누락된 Camera/LiDAR/GPS/IMU SensorData
+일반 의존성은 ignored `.runtime` 아래에 격리한다. 01은 Windows에서 유지되는
+`127.0.0.1:9090`을 기본 연결 주소로 표시하고 `aim_sensorset.json`의 rosbridge 주소만
+백업 후 자동 갱신한다. 누락된 Camera/LiDAR/GPS/IMU SensorData
 디렉터리도 준비 단계에서 생성한다. 00번은 저장 드라이브나 Launcher 경로를 명시적으로
 지정할 때만 직접 사용한다.
 
@@ -58,14 +58,16 @@ timestamp가 붙은 retry 이름을 자동 생성하며 기존 결과를 덮어�
 예전 `MORAI_D_SSD_ROOT`도 호환 목적으로
 읽지만 새 설정에는 `MORAI_STORAGE_ROOT`를 사용한다.
 
-Bridge IP는 `ip route`에서 WSL 주소를 자동 탐지한다. 출력된 주소를 MORAI 센서셋과
-차량 정보의 rosbridge 주소로 사용해야 한다. VPN/다중 NIC 때문에 자동 선택이 다르면
-`MORAI_BRIDGE_IP=<WSL IPv4>`로 지정한다. ROS master는 기본적으로 WSL 로컬
-`http://127.0.0.1:11311`을 사용한다.
+MORAI의 센서셋·차량 정보·Simulator Network(`/clock`)는 모두 01에 표시되는
+`127.0.0.1:9090`을 사용한다. Windows의 WSL localhost 전달을 사용하므로 WSL 재시작이나
+VPN에 의해 WSL NAT 주소가 바뀌어도 설정 주소는 유지된다. localhost 전달을 끈 특수
+환경에서만 `00_prepare_internal_sensor_record.sh --bridge-ip <WSL IPv4>`로 PC별 주소를
+덮어쓴다. ROS node가 광고하는 WSL 내부 주소는 이 값과 분리해 매 실행마다 자동 탐지하며,
+ROS master는 WSL 로컬 `http://127.0.0.1:11311`을 사용한다.
 
 Windows gRPC 주소는 WSL default gateway에서 자동 탐지한다. 탐지가 실패할 때만
 `MORAI_GRPC_TARGET=HOST:7789`로 명시하며 다른 PC의 과거 IP를 재사용하지 않는다.
-Bridge IP도 실행 시 자동 탐지하며 필요할 때만 `MORAI_BRIDGE_IP`로 덮어쓴다.
+Bridge 주소는 ignored PC별 설정을 읽으며 필요할 때만 `MORAI_BRIDGE_IP`로 덮어쓴다.
 MORAI Launcher, catkin, ROS 위치는 각각 `MORAI_LAUNCHER_ROOT`, `MORAI_CATKIN_WS`,
 `MORAI_ROS_ROOT`로 변경할 수 있다. 이 값도 `local_machine.example.json` 형식의 ignored
 로컬 설정에 저장할 수 있다. Python 의존성은 00번이 `requirements-runtime.txt`의

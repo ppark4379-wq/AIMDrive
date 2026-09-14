@@ -43,15 +43,15 @@ class PortableSensorRecordEntrypointTest(unittest.TestCase):
             "GPSList": [wrapped("gc")],
             "IMUList": [wrapped("ic")],
         }
-        changed = update_sensor_bridge(data, "172.19.0.55")
+        changed = update_sensor_bridge(data, "127.0.0.1")
         self.assertEqual(changed, 14)
         for key, config_key in (("cameraList", "cc"), ("Lidar3DList", "lc"),
                                 ("GPSList", "gc"), ("IMUList", "ic")):
             for item in data[key]:
                 ros = item[config_key]["rosConfig"]
-                self.assertEqual(ros["RosBridgeIP"], "172.19.0.55")
+                self.assertEqual(ros["RosBridgeIP"], "127.0.0.1")
                 self.assertEqual(
-                    ros["RosBridgeServerUrl"], "ws://172.19.0.55:9090"
+                    ros["RosBridgeServerUrl"], "ws://127.0.0.1:9090"
                 )
                 self.assertEqual(ros["Topic"], "/unchanged")
                 self.assertEqual(ros["frameID"], "unchanged")
@@ -138,15 +138,66 @@ class PortableSensorRecordEntrypointTest(unittest.TestCase):
                 "bridge_camera_ingress": {"streams": {}},
             },
         }
-        output = render(report, bridge_ip="172.30.144.83")
+        output = render(report, bridge_ip="127.0.0.1")
         self.assertIn("차량 정보 /Ego_topic", output)
         self.assertIn("Simulation Time", output)
         self.assertIn("Simulator Network", output)
-        self.assertIn("172.30.144.83:9090", output)
-        self.assertIn("wsl --shutdown", output)
+        self.assertIn("127.0.0.1:9090", output)
+        self.assertIn("차량 정보·센서셋도 같은 주소", output)
         self.assertIn("Camera 1~4", output)
         self.assertIn("LiDAR", output)
+        self.assertIn("MORAI→bridge 패킷 없음", output)
         self.assertNotIn(json.dumps(report), output)
+
+    def test_clock_ingress_delivery_failure_requests_bridge_restart(self):
+        report = {
+            "ready": False,
+            "failures": [
+                "missing_or_stale:clock",
+                "clock_ingress_not_delivered_to_ros",
+            ],
+            "streams": {
+                "clock": {"messages": 0},
+                "traffic_light": {"messages": 0},
+                "bridge_clock_ingress": {
+                    "samples": 20,
+                    "receive_age_ms": 20.0,
+                },
+                "bridge_camera_ingress": {"streams": {}},
+            },
+        }
+        output = render(report, bridge_ip="172.30.144.83")
+        self.assertIn("MORAI→bridge 수신됨, ROS 전달 없음", output)
+        self.assertIn("계측 bridge를 재시작", output)
+        self.assertNotIn("Simulator Network 재연결 필요", output)
+
+    def test_camera_ingress_rate_is_not_reported_as_native_capture_rate(self):
+        streams = {
+            role: {"messages": 4, "receive_age_s": 0.1}
+            for role in ("ego", "objects", "lidar", "gps", "imu", "clock")
+        }
+        streams["traffic_light"] = {"messages": 0}
+        streams["bridge_camera_ingress"] = {
+            "purpose": "connection_health_only",
+            "rate_scope": "per_frame_id_on_shared_ros_topic",
+            "validates_native_sensor_record_cadence": False,
+            "expected_native_sensor_record_hz": 10,
+            "streams": {
+                "Camera-%d" % index: {
+                    "samples": 27,
+                    "receive_rate_hz": 5.2,
+                    "receive_age_ms": 100.0,
+                    "dropped_before_ros": 27,
+                }
+                for index in range(1, 5)
+            },
+        }
+        output = render({"ready": True, "failures": [], "streams": streams})
+        self.assertIn("ROS 연결 확인: 5.2Hz/카메라", output)
+        self.assertIn("20.8Hz (Camera 4대가 공유하는 ROS 진단 토픽 합계)", output)
+        self.assertIn("Sensor Record 원본", output)
+        self.assertIn("수집 후 03번 검증 결과로 확정", output)
+        self.assertNotIn("수신 정상: 5.2Hz", output)
 
     def test_clock_preflight_waits_for_wsl_startup_stabilization(self):
         from unittest import mock
@@ -249,6 +300,13 @@ class PortableSensorRecordEntrypointTest(unittest.TestCase):
         self.assertEqual(environment["PYTHONNOUSERSITE"], "1")
         self.assertEqual(environment["CONDA_PREFIX"], "/tmp/conda")
 
+    def test_machine_setup_persists_stable_localhost_bridge_default(self):
+        source = (INTERNAL / "tools/configure_local_machine.py").read_text()
+        self.assertIn('or os.environ.get("MORAI_BRIDGE_IP")', source)
+        self.assertIn('or existing.get("bridge_ip")', source)
+        self.assertIn('"bridge_ip": selected_bridge_ip', source)
+        self.assertIn('--bridge-ip', source)
+
     def test_windows_interop_exec_format_failure_has_an_actionable_result(self):
         from unittest import mock
 
@@ -290,6 +348,30 @@ class PortableSensorRecordEntrypointTest(unittest.TestCase):
             constructor,
         )
         self.assertNotIn("super().__init__(*args, **kwargs)", constructor)
+
+    def test_campaign_checks_and_executes_the_same_selected_runtime(self):
+        campaign = (INTERNAL / "tools/collect_scenario_laps.sh").read_text()
+        supervisor = (
+            INTERNAL / "tools/run_sensor_record_scenario.py"
+        ).read_text()
+        self.assertIn('SCENARIO_RUNTIME="${MORAI_SCENARIO_RUNTIME:-proven}"', campaign)
+        self.assertIn('runtime=$SCENARIO_RUNTIME', campaign)
+        self.assertIn('--scenario-runtime "$SCENARIO_RUNTIME"', campaign)
+        self.assertIn("run_proven_three_lap_scenario.py", campaign)
+        self.assertIn("run_async_scenario_review.py", campaign)
+        self.assertIn("'--scenario-runtime', choices=('proven', 'current')", supervisor)
+        self.assertIn("scenario_runtime=a.scenario_runtime", supervisor)
+
+    def test_current_runtime_resolves_grpc_only_when_not_explicit(self):
+        source = (
+            INTERNAL / "tools/run_async_scenario_review.py"
+        ).read_text()
+        self.assertIn("p.add_argument('--grpc-target')", source)
+        self.assertIn("if not a.grpc_target:\n        a.grpc_target = default_grpc_target()", source)
+        self.assertNotIn(
+            "p.add_argument('--grpc-target', default=default_grpc_target())",
+            source,
+        )
 
     def test_process_lock_creates_a_clean_runtime_hierarchy(self):
         source = (INTERNAL / "process_guard.py").read_text()

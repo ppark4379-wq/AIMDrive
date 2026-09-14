@@ -82,6 +82,7 @@ ASYNC_DEPS = configured_path(
     "async_dependencies",
     RUNTIME_ROOT / "internal_sensor_record_deps",
 )
+BRIDGE_IP = setting("MORAI_BRIDGE_IP", "bridge_ip", "127.0.0.1")
 
 
 def _default_analysis_python():
