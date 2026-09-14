@@ -16,6 +16,7 @@ sys.path[:0] = [str(ROOT), str(PROJECT_ROOT)]
 from async_capture.journal import RawWriter, write_json
 from async_capture.live import RawSubscriptions
 from async_capture.clock_health import probe as probe_clocks, snapshot as clock_snapshot, evaluate as evaluate_clocks
+from async_capture.health_policy import SimulationPauseGrace
 from async_capture.provenance import software_identity
 from async_capture.sim_mode import FreeRunningModeContinuity, require_free_running_mode
 from process_guard import process_lock
@@ -35,6 +36,9 @@ def main():
     p.add_argument('--wait-for-motion',action='store_true')
     p.add_argument('--motion-timeout',type=float,default=300)
     p.add_argument('--sensor-ready-timeout',type=float,default=30)
+    p.add_argument('--sim-pause-grace-seconds',type=float,default=8,
+        help=('After capture starts, tolerate only a coherent /clock plus simulated-sensor '
+              'pause for this bounded wall interval. Partial stream loss still fails immediately.'))
     p.add_argument('--time-mode',choices=('realtime','simulation_free_run'),default='realtime',
         help='Explicit diagnostic alternative; does not change MORAI mode or claim sensor simultaneity')
     a = p.parse_args()
@@ -42,6 +46,8 @@ def main():
         p.error('Sensor readiness wait must be bounded to 1..600 wall seconds')
     if not 1 <= a.seconds <= 3600 or not 0 < a.max_gib <= 500 or not 10 <= a.reserve_gib <= 500 or not 1 <= a.motion_timeout <= 600:
         p.error('Invalid bounded run duration/capacity')
+    if not 3 <= a.sim_pause_grace_seconds <= 30:
+        p.error('Simulation pause grace must be 3..30 wall seconds')
     output = a.output or SSD_ROOT/'runs'/datetime.datetime.now().strftime('raw_%Y%m%d_%H%M%S')
     storage = require_ssd(output, check_volume=True, reserve_bytes=int((a.reserve_gib+a.max_gib)*1024**3))
     clock_preflight=probe_clocks()
@@ -77,6 +83,11 @@ def main():
             episode=episode, capture_mode='passive_async', sync_mode_preflight=mode,time_mode_contract=mode_contract,
             clock_preflight=clock_preflight,
             software=software_identity(),
+            health_continuity_policy=dict(
+                name='bounded_coherent_simulation_pause_v1',
+                grace_seconds=a.sim_pause_grace_seconds,
+                partial_stream_loss='fail_immediately',
+            ),
             topic_accounting='callbacks, not wire loss proof'),
             max_bytes=int(a.max_gib*1024**3),
             guard=lambda: require_ssd(output,reserve_bytes=int(a.reserve_gib*1024**3)))
@@ -85,6 +96,7 @@ def main():
         mode_continuity=(FreeRunningModeContinuity(a.time_mode,3)
                          if mode_observer is not None else None)
         mode_observations=[]
+        health_continuity=SimulationPauseGrace(a.sim_pause_grace_seconds)
         started = time.monotonic()
         ready_at = None
         recording_at = None
@@ -128,8 +140,25 @@ def main():
                     previous_cpu,previous_wall=cpu,wall
                     print(json.dumps(dict(state='RECORDING' if recording_at else 'WAITING_FOR_MOTION' if ready_at else 'WAITING_FOR_SENSORS',
                         elapsed=now-started, storage=writer.status(), failures=state['failures'])), flush=True)
-                    if ready_at is not None and not state['ready']:
-                        raise RuntimeError('Stream/bridge health failed: '+str(state['failures']))
+                    if ready_at is not None:
+                        decision=health_continuity.observe(
+                            state['failures'], time.monotonic_ns())
+                        if decision['action']=='hold':
+                            print(json.dumps(dict(
+                                state='SIMULATION_PAUSE_GRACE',
+                                elapsed=now-started,
+                                continuity=decision,
+                            )),flush=True)
+                        elif decision['action']=='recovered':
+                            print(json.dumps(dict(
+                                state='SIMULATION_PAUSE_RECOVERED',
+                                elapsed=now-started,
+                                continuity=decision,
+                            )),flush=True)
+                        elif decision['action']=='fail':
+                            raise RuntimeError(
+                                'Stream/bridge health failed: '+json.dumps(
+                                    decision,sort_keys=True))
                     if ready_at is None and state['ready']:
                         ready_at = now
                         if a.ready_file:
@@ -171,6 +200,8 @@ def main():
                          final_consecutive_unavailable=mode_continuity.consecutive_unavailable,
                          total_unavailable=mode_continuity.total_unavailable)
                          if mode_continuity is not None else None),
+                     health_continuity=health_continuity.snapshot(
+                         recording_end_mono_ns),
                      clock_samples=clock_samples,
                      recording_end_monotonic_ns=recording_end_mono_ns,
                      recording_end_scope='capture_loop_exit_before_subscription_shutdown'))

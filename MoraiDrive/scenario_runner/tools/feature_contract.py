@@ -50,6 +50,22 @@ def verify_feature_contract(package_root, scenario_cfg):
         "Dynamic-obstacle model pool is missing",
     )
 
+    traffic_override = scenario_cfg.get("traffic_light_wait_override", {})
+    require(
+        bool(traffic_override.get("enabled")),
+        "Traffic-light wait override must remain enabled",
+    )
+    require(
+        float(traffic_override.get("wait_wall_sec", -1.0)) == 10.0,
+        "Traffic-light override must wait 10 host-monotonic seconds",
+    )
+    require(
+        int(traffic_override.get("target_color", -1)) == 16
+        and bool(traffic_override.get("impulse"))
+        and bool(traffic_override.get("set_sibling")),
+        "Traffic-light override command contract changed",
+    )
+
     roundabout = scenario_cfg.get("roundabout_npc", {})
     require(
         int(roundabout.get("count", 0)) == 6,

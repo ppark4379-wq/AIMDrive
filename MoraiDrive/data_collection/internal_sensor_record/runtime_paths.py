@@ -20,6 +20,19 @@ LOCAL_MACHINE_CONFIG = Path(
         str(PROJECT_ROOT / ".runtime/data_collection/local_machine.json"),
     )
 ).expanduser().resolve()
+RUNTIME_ROOT = Path(
+    os.environ.get(
+        "MORAI_RUNTIME_ROOT",
+        str(PROJECT_ROOT / ".runtime/data_collection"),
+    )
+).expanduser().resolve()
+
+
+def ensure_runtime_directory(*parts):
+    """Create one ignored, checkout-local runtime directory and its parents."""
+    path = RUNTIME_ROOT.joinpath(*parts)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def load_local_machine_config():
@@ -63,6 +76,33 @@ POWERSHELL_EXE = configured_path(
     "powershell_exe",
     shutil.which("powershell.exe")
     or "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
+)
+ASYNC_DEPS = configured_path(
+    "MORAI_ASYNC_DEPS",
+    "async_dependencies",
+    RUNTIME_ROOT / "internal_sensor_record_deps",
+)
+
+
+def _default_analysis_python():
+    candidates = (
+        Path.home() / "miniconda3/envs/lmdrive/bin/python",
+        Path.home() / "miniconda3/envs/lmdrive/bin/python3.8",
+        Path("/usr/bin/python3"),
+    )
+    return next((path for path in candidates if path.is_file()), candidates[-1])
+
+
+ANALYSIS_PYTHON = configured_path(
+    "MORAI_ANALYSIS_PYTHON",
+    "analysis_python",
+    _default_analysis_python(),
+)
+SENSOR_SET_PATH = configured_path(
+    "MORAI_SENSOR_SET_PATH",
+    "sensor_set",
+    LAUNCHER_ROOT
+    / "MoraiLauncher_Win_Data/SaveFile/Sensor/26.R1.H3/aim_sensorset.json",
 )
 
 

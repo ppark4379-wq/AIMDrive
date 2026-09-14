@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Audit that collection used the current team full-loop scenario unchanged.
+"""Audit the current team full-loop scenario and disclosed interventions.
 
-This stage deliberately does not require old collector-side actor lifecycle or
-traffic-light override events. Weather, time, obstacles and traffic belong to
-the team scenario runner; the collector observes them and records provenance.
+Weather, time, obstacles and traffic belong to the team scenario runner.  The
+collector observes them and records provenance.  A route-light release after a
+prolonged stop is valid only when the command has exact-ID readback evidence;
+it remains explicitly separate from naturally changing signal samples.
 """
 import argparse
 import json
@@ -21,6 +22,112 @@ from ssd_storage import require_ssd
 
 def load(path):
     return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def summarize_traffic_interventions(events):
+    commands = [
+        row for row in events
+        if row.get("event") == "traffic_light_override"
+    ]
+    delayed_verified = [
+        row for row in events
+        if row.get("event") == "traffic_light_override_verified"
+    ]
+    timeouts = [
+        row for row in events
+        if row.get("event") == "traffic_light_override_verification_timeout"
+    ]
+    immediate_verified = sum(
+        bool(row.get("result", {}).get("verified")) for row in commands
+    )
+    verified = immediate_verified + len(delayed_verified)
+    disclosed = all(
+        row.get("intervention") is True
+        and row.get("mission_distribution_changed") is True
+        and row.get("training_visible") is False
+        for row in commands + delayed_verified + timeouts
+    )
+    return {
+        "commands": len(commands),
+        "verified": verified,
+        "verification_timeouts": len(timeouts),
+        "all_commands_verified": verified == len(commands) and not timeouts,
+        "all_events_disclosed": disclosed,
+        "light_ids": sorted({
+            str(row.get("light_id"))
+            for row in commands
+            if row.get("light_id")
+        }),
+    }
+
+
+def summarize_roundabout_observation(events, configured):
+    """Validate the three-car nearby lifecycle from its explicit event ledger."""
+    expected_count = int(configured.get("count", 0) or 0)
+    expected_speed = float(configured.get("speed_mps", 0.0) or 0.0)
+    spawns = [
+        row for row in events
+        if row.get("event") == "roundabout_spawn_contract"
+    ]
+    spawn_finishes = [
+        row for row in events
+        if row.get("event") == "actor_lifecycle_finished"
+        and row.get("action") == "roundabout_spawn"
+        and row.get("success") is True
+    ]
+    retires = [
+        row for row in events
+        if row.get("event") == "actor_lifecycle_finished"
+        and row.get("action") == "roundabout_retire"
+        and row.get("success") is True
+    ]
+    observed_counts = sorted({
+        len(set(str(actor_id) for actor_id in row.get("actor_ids", [])))
+        for row in spawns
+    })
+    spawn = spawns[0] if len(spawns) == 1 else {}
+    actor_ids = {
+        str(actor_id) for actor_id in spawn.get("actor_ids", [])
+    }
+    motion = list(spawn.get("actor_motion_contracts", []))
+    motion_ids = {str(row.get("actor_id")) for row in motion}
+    motion_acknowledged = (
+        len(motion) == expected_count
+        and motion_ids == actor_ids
+        and all(
+            row.get("speed_limit_acknowledged") is True
+            and row.get("initial_velocity_acknowledged") is True
+            for row in motion
+        )
+    )
+    retire_ids = {
+        str(actor_id)
+        for row in retires
+        for actor_id in row.get("actor_ids", [])
+    }
+    return {
+        "configured_count": expected_count,
+        "configured_speed_mps": expected_speed,
+        "observed_counts": observed_counts,
+        "spawn_events": len(spawns),
+        "spawn_lifecycle_successes": len(spawn_finishes),
+        "retire_lifecycle_successes": len(retires),
+        "actor_ids": sorted(actor_ids),
+        "motion_acknowledged": motion_acknowledged,
+        "spawn_matches_config": (
+            len(spawns) == 1
+            and expected_count > 0
+            and len(actor_ids) == expected_count
+            and abs(float(spawn.get("target_speed_mps", -1.0)) - expected_speed)
+                < 1e-9
+            and motion_acknowledged
+        ),
+        "lifecycle_complete": (
+            len(spawn_finishes) == 1
+            and len(retires) == 1
+            and retire_ids == actor_ids
+        ),
+    }
 
 
 def main():
@@ -59,10 +166,14 @@ def main():
     selected_static = profile_state.get("static_obstacle_model")
     selected_dynamic = profile_state.get("dynamic_obstacle_model")
 
-    observed_roundabout_counts = sorted({
+    legacy_roundabout_counts = sorted({
         int(row["roundabout_actor_count"])
         for row in progress if row.get("roundabout_actor_count") is not None
     })
+    roundabout_observation = summarize_roundabout_observation(events, roundabout)
+    observed_roundabout_counts = (
+        roundabout_observation["observed_counts"] or legacy_roundabout_counts
+    )
     dynamic_phases = sorted({
         str(row.get("dynamic_phase"))
         for row in progress if row.get("dynamic_phase") is not None
@@ -72,10 +183,19 @@ def main():
         str(row.get("tunnel_phase"))
         for row in progress if row.get("tunnel_phase") is not None
     })
+    traffic_interventions = summarize_traffic_interventions(events)
+    traffic_override = dict(config.get("traffic_light_wait_override", {}))
 
     checks = {
         "full_mission_completed": outcome.get("full_mission_completed") is True,
-        "scenario_enabled": config.get("clean_road_mode") is False,
+        "scenario_enabled": (
+            config.get("clean_road_mode") is False
+            or (
+                "clean_road_mode" not in config
+                and selected_static in static_models
+                and selected_dynamic in dynamic_models
+            )
+        ),
         "weather_contract": [
             str(row.get("weather", "")).upper()
             for row in config.get("profiles", [])
@@ -91,18 +211,29 @@ def main():
         "selected_static_from_pool": selected_static in static_models,
         "dynamic_pool": bool(dynamic_models),
         "selected_dynamic_from_pool": selected_dynamic in dynamic_models,
+        "traffic_override_contract": (
+            traffic_override.get("enabled") is True
+            and float(traffic_override.get("wait_wall_sec", -1.0)) == 10.0
+            and int(traffic_override.get("target_color", -1)) == 16
+        ),
+        "traffic_override_commands_verified": (
+            traffic_interventions["all_commands_verified"]
+            and traffic_interventions["all_events_disclosed"]
+        ),
         "roundabout_team_contract": (
-            int(roundabout.get("count", 0)) == 6
+            int(roundabout.get("count", 0)) == 3
             and float(roundabout.get("speed_mps", 0.0)) == 4.0
             and roundabout.get("model") == "DEFAULT_SEDAN"
         ),
-        "roundabout_observed": bool(progress)
-            and observed_roundabout_counts == [6],
+        "roundabout_observed": (
+            roundabout_observation["spawn_matches_config"]
+            and roundabout_observation["lifecycle_complete"]
+        ),
         "native_files": native.get("files_valid") is True,
         "actor_transport": actor.get("structural_valid") is True,
     }
     report = {
-        "schema": "morai_team_scenario_fidelity_audit_v1",
+        "schema": "morai_team_scenario_fidelity_audit_v3",
         "checks": checks,
         "selected_profile": {
             "weather": profile.get("weather"),
@@ -113,11 +244,16 @@ def main():
         "coverage_observations": {
             "progress_samples": len(progress),
             "roundabout_actor_counts": observed_roundabout_counts,
+            "roundabout": roundabout_observation,
             "dynamic_phases": dynamic_phases,
             "highway_active_samples": highway_samples,
             "tunnel_phases": tunnel_phases,
+            "traffic_light_interventions": traffic_interventions,
         },
         "collector_distribution_overrides": [],
+        "scenario_distribution_interventions": [
+            "traffic_light_wait_override"
+        ] if traffic_interventions["commands"] else [],
         "valid": all(checks.values()),
         "source_timestamps_modified": False,
         "physical_simultaneity_verified": False,

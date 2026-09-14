@@ -44,7 +44,7 @@ def main():
     )
     parser.add_argument(
         "--scenario-intervention-dir",
-        default="scenario_intervention_audit_v2",
+        default="scenario_intervention_audit_v3",
     )
     args = parser.parse_args()
     run = args.run.resolve()

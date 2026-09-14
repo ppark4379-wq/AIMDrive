@@ -14,7 +14,10 @@ def process_lock(kind):
     path = SSD_ROOT / 'sensor_record_auto_v1' / '.locks' / (
         'collector_' + kind + '.lock'
     )
-    path.parent.mkdir(exist_ok=True)
+    # A clean checkout has neither ``sensor_record_auto_v1`` nor ``.locks``.
+    # Direct entry points must therefore be as safe as the public shell
+    # wrappers and create the complete ignored runtime hierarchy.
+    path.parent.mkdir(parents=True, exist_ok=True)
     with path.open('a') as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)

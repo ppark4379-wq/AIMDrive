@@ -3,5 +3,7 @@
   "launcher_root": "/mnt/c/MoraiLauncher_Win",
   "catkin_workspace": "~/catkin_ws",
   "ros_root": "/opt/ros/noetic",
-  "powershell_exe": "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
+  "powershell_exe": "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
+  "analysis_python": "~/miniconda3/envs/lmdrive/bin/python",
+  "sensor_set": "/mnt/c/MoraiLauncher_Win/MoraiLauncher_Win_Data/SaveFile/Sensor/26.R1.H3/aim_sensorset.json"
 }

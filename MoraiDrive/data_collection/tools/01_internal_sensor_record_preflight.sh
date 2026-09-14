@@ -2,23 +2,38 @@
 set -Eeuo pipefail
 
 TOOLS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DATA_COLLECTION="$(cd "$TOOLS/.." && pwd)"
-INTERNAL="$DATA_COLLECTION/internal_sensor_record"
-PROJECT_ROOT="${MORAI_PROJECT_ROOT:-$(cd "$DATA_COLLECTION/.." && pwd)}"
-CATKIN_ROOT="${MORAI_CATKIN_WS:-$(MORAI_PROJECT_ROOT="$PROJECT_ROOT" PYTHONPATH="$INTERNAL" /usr/bin/python3 -c 'from runtime_paths import CATKIN_ROOT; print(CATKIN_ROOT)')}"
-ROS_ROOT="${MORAI_ROS_ROOT:-$(MORAI_PROJECT_ROOT="$PROJECT_ROOT" PYTHONPATH="$INTERNAL" /usr/bin/python3 -c 'from runtime_paths import ROS_ROOT; print(ROS_ROOT)')}"
-CATKIN_SETUP="$CATKIN_ROOT/devel/setup.bash"
-CATKIN_PYTHON="$CATKIN_ROOT/devel/lib/python3/dist-packages"
+source "$TOOLS/internal_sensor_record_env.sh"
+
+echo "[1/5] 이 PC의 WSL 주소·ROS/catkin·Python·저장 경로를 자동 준비합니다."
+echo "      Git 추적 소스는 수정하지 않습니다. PC별 설정은 .runtime에만 저장합니다."
+morai_prepare_internal_sensor_record_environment sensor-set
+morai_load_internal_sensor_record_environment
+morai_require_capture_python
+
+INTERNAL="$MORAI_INTERNAL_SENSOR_RECORD_ROOT"
 MASTER_URI="${ROS_MASTER_URI:-http://127.0.0.1:11311}"
-ROS_HOST_IP="${MORAI_BRIDGE_IP:-}"
+ROS_HOST_IP="$MORAI_BRIDGE_IP"
 CONNECT_TIMEOUT="${MORAI_CONNECT_TIMEOUT_SECONDS:-600}"
 BRIDGE_PID=""
 STARTED_BRIDGE=0
+STATUS_DIR="$MORAI_PROJECT_ROOT/.runtime/data_collection/preflight_status"
+STATUS_FILE="$STATUS_DIR/latest.json"
+STATUS_ERROR="$STATUS_DIR/latest.stderr"
+BRIDGE_LOG="$STATUS_DIR/bridge.log"
+mkdir -p "$STATUS_DIR"
 
 cleanup() {
     if [[ "$STARTED_BRIDGE" == "1" ]] && [[ -n "$BRIDGE_PID" ]] \
             && kill -0 "$BRIDGE_PID" 2>/dev/null; then
-        kill -INT "$BRIDGE_PID" 2>/dev/null || true
+        echo "[STOP] 이 터미널이 시작한 bridge와 roscore를 정리합니다."
+        kill -TERM "$BRIDGE_PID" 2>/dev/null || true
+        local deadline=$((SECONDS + 35))
+        while kill -0 "$BRIDGE_PID" 2>/dev/null && (( SECONDS < deadline )); do
+            sleep 0.2
+        done
+        if kill -0 "$BRIDGE_PID" 2>/dev/null; then
+            kill -KILL "$BRIDGE_PID" 2>/dev/null || true
+        fi
         wait "$BRIDGE_PID" 2>/dev/null || true
     fi
 }
@@ -28,42 +43,41 @@ if [[ ! "$CONNECT_TIMEOUT" =~ ^[0-9]+$ ]] || (( CONNECT_TIMEOUT < 30 )); then
     echo "[FAIL] MORAI_CONNECT_TIMEOUT_SECONDS는 30 이상의 정수여야 합니다." >&2
     exit 2
 fi
-if [[ ! -f "$ROS_ROOT/setup.bash" ]] || [[ ! -f "$CATKIN_SETUP" ]]; then
-    echo "[FAIL] ROS1 Noetic 또는 catkin workspace setup을 찾을 수 없습니다." >&2
-    exit 2
-fi
-
-set +u
-source "$ROS_ROOT/setup.bash"
-source "$CATKIN_SETUP"
-set -u
-export ROS_MASTER_URI="$MASTER_URI"
-export MORAI_PROJECT_ROOT="$PROJECT_ROOT"
-export PYTHONDONTWRITEBYTECODE=1
-export PYTHONPATH="$INTERNAL:$PROJECT_ROOT:$CATKIN_PYTHON:$ROS_ROOT/lib/python3/dist-packages${PYTHONPATH:+:$PYTHONPATH}"
-
-if [[ -z "$ROS_HOST_IP" ]]; then
-    ROS_HOST_IP="$(/usr/bin/python3 -c 'from network_config import bridge_ip; print(bridge_ip())')"
-fi
 export MORAI_BRIDGE_IP="$ROS_HOST_IP"
 export ROS_IP="$ROS_HOST_IP"
 
-echo "[CONFIG] ROS master: $ROS_MASTER_URI"
-echo "[CONFIG] MORAI bridge: ${MORAI_BRIDGE_IP}:9090"
-/usr/bin/python3 - <<'PY'
-import json
-from ssd_storage import ensure_storage_layout
-print('[CONFIG] storage: '+json.dumps(ensure_storage_layout(),ensure_ascii=False))
-PY
+echo
+echo "[2/5] 현재 PC 설정"
+echo "      MORAI 연결 주소 : ${MORAI_BRIDGE_IP}:9090"
+echo "      ROS master       : $ROS_MASTER_URI"
+echo "      원본 저장 경로   : $MORAI_STORAGE_ROOT"
+echo "      센서셋 파일      : $MORAI_SENSOR_SET_PATH"
+/usr/bin/python3 "$INTERNAL/tools/preflight_local_storage.py" --reserve-gib 70
 
-/usr/bin/python3 "$INTERNAL/tools/preflight_internal_sensor_record.py"
+echo
+echo "[3/5] MORAI 26.R1.H3와 AIM 센서 geometry/rate/topic 계약을 검사합니다."
+if ! contract_report=$(/usr/bin/python3 \
+        "$INTERNAL/tools/preflight_internal_sensor_record.py" 2>&1); then
+    echo "$contract_report" >&2
+    echo "[FAIL] 센서셋 내용이 AIM 수집 계약과 다릅니다." >&2
+    echo "       주소 외 geometry/FOV/rate/topic 차이는 자동 수정하지 않습니다." >&2
+    exit 2
+fi
+echo "[PASS] 센서셋 정적 계약 통과"
 
+echo
+echo "[4/5] ROS master와 계측 bridge를 준비합니다."
 if ss -H -ltn 'sport = :9090' 2>/dev/null | grep -q .; then
-    echo "[INFO] 9090 listener가 이미 있습니다. 실행 중인 bridge를 검증합니다."
+    listener="$(ss -H -ltnp 'sport = :9090' 2>/dev/null | head -n 1 || true)"
+    echo "[INFO] 9090 listener가 이미 있어 중복 실행하지 않습니다."
+    [[ -n "$listener" ]] && echo "       $listener"
+    echo "       아래 health 검사에서 우리 계측 bridge인지 확인합니다."
 else
-    echo "[START] instrumented bridge: $MASTER_URI"
+    echo "[START] 9090 계측 bridge를 시작합니다. 필요한 경우 roscore도 함께 시작합니다."
+    echo "        bridge 상세 로그: $BRIDGE_LOG"
     /usr/bin/python3 "$INTERNAL/tools/start_instrumented_bridge.py" \
-        --master "$MASTER_URI" --port 9090 --drop-camera-ingress &
+        --master "$MASTER_URI" --port 9090 --drop-camera-ingress \
+        >"$BRIDGE_LOG" 2>&1 &
     BRIDGE_PID=$!
     STARTED_BRIDGE=1
 fi
@@ -73,6 +87,7 @@ until rosparam list >/dev/null 2>&1; do
     if [[ "$STARTED_BRIDGE" == "1" ]] && ! kill -0 "$BRIDGE_PID" 2>/dev/null; then
         wait "$BRIDGE_PID" || true
         echo "[FAIL] bridge가 ROS master 준비 전에 종료됐습니다." >&2
+        tail -n 40 "$BRIDGE_LOG" >&2 || true
         exit 2
     fi
     if (( SECONDS >= deadline )); then
@@ -83,42 +98,58 @@ until rosparam list >/dev/null 2>&1; do
 done
 
 rosparam set /use_sim_time true
+echo "[PASS] ROS master 준비 및 /use_sim_time=true"
 echo
-echo "[WAIT] MORAI의 차량 정보, Camera 1~4, LiDAR, GPS, IMU를 ${ROS_HOST_IP}:9090에 연결하세요."
-echo "       Simulation Time / Sensor Synchronization 10Hz / External Sync OFF"
+echo "[5/5] 실제 메시지를 확인합니다."
+echo "      MORAI에서 차량 정보와 Camera 1~4·LiDAR·GPS·IMU를"
+echo "      ${ROS_HOST_IP}:9090으로 연결하세요."
+echo "      Simulation Time / Sensor Synchronization 10Hz / External Sync OFF"
+echo "      센서셋 IP가 이번 실행에서 바뀌었다면 MORAI에서 센서셋을 다시 불러온 뒤 연결하세요."
 
 deadline=$((SECONDS + CONNECT_TIMEOUT))
-last_report=""
 while (( SECONDS < deadline )); do
     if [[ "$STARTED_BRIDGE" == "1" ]] && ! kill -0 "$BRIDGE_PID" 2>/dev/null; then
         wait "$BRIDGE_PID" || true
         echo "[FAIL] 연결 대기 중 bridge가 종료됐습니다." >&2
+        tail -n 40 "$BRIDGE_LOG" >&2 || true
         exit 2
     fi
-    if last_report=$(/usr/bin/python3 \
-            "$INTERNAL/tools/probe_sensor_record_readiness.py" \
-            --seconds 4 --raw-camera-transport bridge_dropped 2>&1); then
+
+    temporary="$STATUS_FILE.tmp.$$"
+    set +e
+    /usr/bin/python3 "$INTERNAL/tools/probe_sensor_record_readiness.py" \
+        --seconds 4 --raw-camera-transport bridge_dropped \
+        >"$temporary" 2>"$STATUS_ERROR"
+    probe_code=$?
+    set -e
+    if [[ ! -s "$temporary" ]]; then
+        echo "[FAIL] 센서 상태 검사기가 보고서를 만들지 못했습니다." >&2
+        cat "$STATUS_ERROR" >&2 || true
+        exit 2
+    fi
+    mv "$temporary" "$STATUS_FILE"
+    /usr/bin/python3 "$INTERNAL/tools/render_sensor_record_readiness.py" "$STATUS_FILE"
+
+    if (( probe_code == 0 )); then
         echo
-        echo "[PASS] 필수 stream, source 진행, Camera ingress 차단을 확인했습니다."
-        echo "$last_report"
-        echo
-        echo "수집: $TOOLS/02_collect_internal_sensor_record_laps.sh 3 <campaign_id>"
+        echo "수집 실행(다른 터미널):"
+        echo "  cd $MORAI_PROJECT_ROOT"
+        echo "  ./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3"
         if [[ "$STARTED_BRIDGE" == "1" ]]; then
-            echo "이 터미널은 bridge를 유지합니다. 수집 종료 후 Ctrl-C로 닫으세요."
+            echo
+            echo "이 01번 터미널은 bridge를 유지하므로 수집이 끝날 때까지 닫지 마세요."
             wait "$BRIDGE_PID"
         fi
         exit 0
     fi
-    if [[ "$last_report" == *"BRIDGE_NOT_PATCHED:"* ]]; then
-        echo "[FAIL] 9090에서 다른 버전의 bridge가 실행 중입니다." >&2
-        echo "       기존 bridge를 종료한 뒤 이 01번 스크립트를 다시 실행하세요." >&2
-        echo "$last_report" >&2
+    if grep -q 'BRIDGE_NOT_PATCHED' "$STATUS_FILE"; then
+        echo "[FAIL] 9090 listener가 이 레포의 계측 bridge가 아닙니다." >&2
+        echo "       위에 표시된 9090 프로세스를 종료하고 01번을 다시 실행하세요." >&2
         exit 2
     fi
-    echo "[WAIT] 아직 연결이 완전하지 않습니다: $last_report"
     sleep 2
 done
 
-echo "[FAIL] 제한 시간 안에 필수 stream이 준비되지 않았습니다." >&2
-echo "$last_report" >&2
+echo "[FAIL] ${CONNECT_TIMEOUT}초 안에 필수 stream이 준비되지 않았습니다." >&2
+echo "       마지막 원본 보고서: $STATUS_FILE" >&2
 exit 2

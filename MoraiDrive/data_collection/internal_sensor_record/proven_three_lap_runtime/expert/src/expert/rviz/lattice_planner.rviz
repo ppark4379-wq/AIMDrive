@@ -1,0 +1,115 @@
+Panels:
+  - Class: rviz/Displays
+    Name: Displays
+  - Class: rviz/Selection
+    Name: Selection
+  - Class: rviz/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Alpha: 0.5
+      Cell Size: 1
+      Class: rviz/Grid
+      Color: 120; 120; 120
+      Enabled: true
+      Name: Grid
+      Plane: XY
+      Plane Cell Count: 50
+      Reference Frame: map
+      Value: true
+    - Alpha: 0.35
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 180; 180; 180
+      Enabled: true
+      Line Style: Lines
+      Line Width: 0.03
+      Name: Global Path
+      Topic: /global_path
+      Unreliable: false
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 0; 90; 255
+      Enabled: true
+      Line Style: Lines
+      Line Width: 0.12
+      Name: Selected Local Path
+      Topic: /local_path
+      Unreliable: false
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /lattice/paths
+      Name: Lattice Candidates + Ego + Status
+      Namespaces:
+        candidate_paths_long: true
+        candidate_paths_short: true
+        ego_shape: true
+        lattice_status: true
+      Queue Size: 10
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /lattice/objects
+      Name: GT Objects (OBB)
+      Namespaces:
+        lattice_objects: true
+        object_lane_labels: true
+        predicted_object_obbs: true
+        predicted_object_paths: true
+      Queue Size: 10
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /lattice/lanes
+      Name: Highway Lane Sections
+      Namespaces:
+        highway_lane_centers: true
+        highway_lane_labels: true
+      Queue Size: 10
+      Value: true
+    - Angle Tolerance: 0.1
+      Class: rviz/Odometry
+      Color: 255; 255; 0
+      Enabled: true
+      Keep: 1
+      Name: Ego Odometry
+      Position Tolerance: 0.1
+      Topic: /odom
+      Value: true
+  Enabled: true
+  Global Options:
+    Background Color: 35; 35; 35
+    Default Light: true
+    Fixed Frame: map
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz/Interact
+    - Class: rviz/MoveCamera
+    - Class: rviz/Select
+    - Class: rviz/FocusCamera
+    - Class: rviz/Measure
+  Value: true
+  Views:
+    Current:
+      Class: rviz/XYOrbit
+      Distance: 45
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0
+      Name: Top Down
+      Pitch: 1.5708
+      Target Frame: gps
+      Value: XYOrbit (rviz)
+      Yaw: 0
+    Saved Views: {}
+Window Geometry:
+  Height: 900
+  Width: 1500
+  X: 50
+  Y: 50

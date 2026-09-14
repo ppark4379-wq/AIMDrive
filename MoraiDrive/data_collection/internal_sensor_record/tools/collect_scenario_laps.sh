@@ -8,11 +8,19 @@ set -Eeuo pipefail
 TOOLS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INTEGRATION="$(cd "$TOOLS/.." && pwd)"
 PROJECT_ROOT="${MORAI_PROJECT_ROOT:-$(cd "$INTEGRATION/../.." && pwd)}"
-CATKIN_ROOT="${MORAI_CATKIN_WS:-$(MORAI_PROJECT_ROOT="$PROJECT_ROOT" PYTHONPATH="$INTEGRATION" /usr/bin/python3 -c 'from runtime_paths import CATKIN_ROOT; print(CATKIN_ROOT)')}"
-ROS_ROOT="${MORAI_ROS_ROOT:-$(MORAI_PROJECT_ROOT="$PROJECT_ROOT" PYTHONPATH="$INTEGRATION" /usr/bin/python3 -c 'from runtime_paths import ROS_ROOT; print(ROS_ROOT)')}"
+PUBLIC_TOOLS="$(cd "$INTEGRATION/../tools" && pwd)"
+source "$PUBLIC_TOOLS/internal_sensor_record_env.sh"
+echo "[PREPARE] PC별 실행 환경과 의존성을 자동 점검합니다."
+morai_prepare_internal_sensor_record_environment runtime
+morai_load_internal_sensor_record_environment
+morai_require_capture_python
+morai_require_analysis_python
+PROJECT_ROOT="$MORAI_PROJECT_ROOT"
+CATKIN_ROOT="$MORAI_CATKIN_WS"
+ROS_ROOT="$MORAI_ROS_ROOT"
 CATKIN_SETUP="$CATKIN_ROOT/devel/setup.bash"
 CATKIN_PYTHON="$CATKIN_ROOT/devel/lib/python3/dist-packages"
-ASYNC_DEPS="${MORAI_ASYNC_DEPS:-$PROJECT_ROOT/.runtime/data_collection/internal_sensor_record_deps}"
+ASYNC_DEPS="$MORAI_ASYNC_DEPS"
 SSD_ROOT="$(MORAI_PROJECT_ROOT="$PROJECT_ROOT" \
     PYTHONPATH="$INTEGRATION${PYTHONPATH:+:$PYTHONPATH}" \
     /usr/bin/python3 -c 'from ssd_storage import SSD_ROOT; print(SSD_ROOT)')"
@@ -21,10 +29,7 @@ LAPS="${1:-}"
 CAMPAIGN_ID="${2:-scenario_campaign_$(date +%Y%m%d_%H%M%S)}"
 BASE_SEED="${MORAI_BASE_SEED:-26091200}"
 LAP_WALL_SECONDS="${MORAI_LAP_WALL_SECONDS:-3000}"
-ANALYSIS_PYTHON="${MORAI_ANALYSIS_PYTHON:-}"
-CAMPAIGN_DIR="$BASE/campaigns/$CAMPAIGN_ID"
-PROFILE_STATE="$CAMPAIGN_DIR/profile_state.json"
-RUNS_FILE="$CAMPAIGN_DIR/runs.tsv"
+ANALYSIS_PYTHON="$MORAI_ANALYSIS_PYTHON"
 CURRENT_LAP=""
 CURRENT_RUN=""
 COLLECTOR_PID=""
@@ -51,64 +56,50 @@ if [[ ! "$LAP_WALL_SECONDS" =~ ^[0-9]+$ ]] || (( LAP_WALL_SECONDS < 600 || LAP_W
     echo "[FAIL] MORAI_LAP_WALL_SECONDS는 600..3570초여야 합니다." >&2
     exit 2
 fi
-if [[ -z "$ANALYSIS_PYTHON" ]] && [[ -n "${CONDA_PREFIX:-}" ]] \
-        && [[ -x "$CONDA_PREFIX/bin/python" ]]; then
-    ANALYSIS_PYTHON="$CONDA_PREFIX/bin/python"
-fi
-if [[ -z "$ANALYSIS_PYTHON" ]] \
-        && [[ -x "$HOME/miniconda3/envs/lmdrive/bin/python3.8" ]]; then
-    ANALYSIS_PYTHON="$HOME/miniconda3/envs/lmdrive/bin/python3.8"
-fi
-if [[ -z "$ANALYSIS_PYTHON" ]] || [[ ! -x "$ANALYSIS_PYTHON" ]]; then
-    ANALYSIS_PYTHON="$(command -v python3)"
-fi
-set +u
-if [[ ! -f "$ROS_ROOT/setup.bash" ]]; then
-    echo "[FAIL] ROS setup이 없습니다: $ROS_ROOT/setup.bash" >&2
-    exit 2
-fi
-source "$ROS_ROOT/setup.bash"
-if [[ ! -f "$CATKIN_SETUP" ]]; then
-    echo "[FAIL] catkin workspace setup이 없습니다: $CATKIN_SETUP" >&2
-    exit 2
-fi
-source "$CATKIN_SETUP"
-set -u
-export ROS_MASTER_URI="${ROS_MASTER_URI:-http://127.0.0.1:11311}"
-export PYTHONDONTWRITEBYTECODE=1
 export MORAI_ANALYSIS_PYTHON="$ANALYSIS_PYTHON"
 export MORAI_ASYNC_DEPS="$ASYNC_DEPS"
-export PYTHONPATH="$ASYNC_DEPS:$INTEGRATION:$PROJECT_ROOT:$CATKIN_PYTHON:$ROS_ROOT/lib/python3/dist-packages${PYTHONPATH:+:$PYTHONPATH}"
-
-export MORAI_BRIDGE_IP="${MORAI_BRIDGE_IP:-}"
-if [[ -z "$MORAI_BRIDGE_IP" ]]; then
-    MORAI_BRIDGE_IP="$(/usr/bin/python3 -c 'from network_config import bridge_ip; print(bridge_ip())')"
-    export MORAI_BRIDGE_IP
-fi
-export ROS_IP="$MORAI_BRIDGE_IP"
 export MORAI_STORAGE_ROOT="$SSD_ROOT"
 
-if ! "$ANALYSIS_PYTHON" -c 'import cv2,numpy,pyproj' >/dev/null 2>&1; then
-    echo "[FAIL] 분석 Python에 cv2, numpy, pyproj가 필요합니다: $ANALYSIS_PYTHON" >&2
+/usr/bin/python3 "$INTEGRATION/tools/preflight_local_storage.py" --reserve-gib 70
+
+integration_log="$MORAI_PROJECT_ROOT/.runtime/data_collection/scenario_contract_check.log"
+mkdir -p "$(dirname "$integration_log")"
+if ! /usr/bin/python3 "$INTEGRATION/tools/run_async_scenario_review.py" \
+        --check --raw-camera-transport bridge_dropped --max-speed-kmh 60 \
+        >"$integration_log" 2>&1; then
+    echo "[FAIL] 최신 Scenario Runner·Expert·수집기 인터페이스가 호환되지 않습니다." >&2
+    tail -n 40 "$integration_log" >&2 || true
     exit 2
 fi
-if ! /usr/bin/python3 -c 'import grpc,google.protobuf,rospy,morai_msgs' >/dev/null 2>&1; then
-    echo "[FAIL] capture Python의 gRPC/ROS dependency가 없습니다." >&2
-    echo "       README의 1회 dependency 설치를 실행하거나 MORAI_ASYNC_DEPS를 지정하세요." >&2
-    echo "       확인 경로: $ASYNC_DEPS" >&2
-    exit 2
-fi
+echo "[PASS] 최신 Scenario Runner·Expert·수집기 정적 연결 검사"
+
+clock_report="$MORAI_PROJECT_ROOT/.runtime/data_collection/clock_preflight.json"
+/usr/bin/python3 "$INTEGRATION/tools/preflight_local_clock.py" --output "$clock_report"
 
 if ! rosparam list >/dev/null 2>&1; then
-    echo "[FAIL] ROS master가 없습니다. 먼저 ./01_bridge_and_topic_check.sh를 실행하세요." >&2
+    echo "[FAIL] ROS master가 없습니다." >&2
+    echo "       다른 터미널에서 ./data_collection/tools/01_internal_sensor_record_preflight.sh 를 실행하세요." >&2
     exit 2
 fi
 if [[ "$(rosparam get /use_sim_time 2>/dev/null || true)" != "true" ]]; then
     echo "[FAIL] /use_sim_time=true가 아닙니다. 01번 실행 파일부터 다시 시작하세요." >&2
     exit 2
 fi
-if ! /usr/bin/python3 "$INTEGRATION/tools/probe_sensor_record_readiness.py" \
-        --seconds 4 --raw-camera-transport bridge_dropped; then
+readiness="$MORAI_PROJECT_ROOT/.runtime/data_collection/collection_readiness.json"
+readiness_error="$MORAI_PROJECT_ROOT/.runtime/data_collection/collection_readiness.stderr"
+set +e
+/usr/bin/python3 "$INTEGRATION/tools/probe_sensor_record_readiness.py" \
+    --seconds 4 --raw-camera-transport bridge_dropped \
+    >"$readiness" 2>"$readiness_error"
+readiness_code=$?
+set -e
+if [[ ! -s "$readiness" ]]; then
+    echo "[FAIL] 센서 상태 검사기가 보고서를 만들지 못했습니다." >&2
+    cat "$readiness_error" >&2 || true
+    exit 2
+fi
+/usr/bin/python3 "$INTEGRATION/tools/render_sensor_record_readiness.py" "$readiness"
+if (( readiness_code != 0 )); then
     echo "[FAIL] 센서 preflight가 실패했습니다. 01번 실행 파일의 연결 검사를 먼저 통과하세요." >&2
     exit 2
 fi
@@ -137,6 +128,7 @@ fi
 /usr/bin/python3 - "$INTEGRATION" "$BASE" "$SIMULATOR_PID" <<'PY'
 import csv
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -154,13 +146,18 @@ runner_path = (integration / "tools" / "run_async_scenario_review.py").resolve()
 collector_path = (integration / "tools" / "collect_async_raw.py").resolve()
 
 def lock_is_free(path):
-    path.parent.mkdir(exist_ok=True)
-    with path.open("a") as stream:
-        try:
-            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            return False
-        return True
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a") as stream:
+            try:
+                fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return False
+            return True
+    except OSError as error:
+        print("[FAIL] capture lock 저장소를 사용할 수 없습니다: %s: %s" %
+              (path, error), file=sys.stderr)
+        raise SystemExit(2)
 
 def locks_are_free():
     return lock_is_free(lock_path) and lock_is_free(campaign_lock_path)
@@ -177,6 +174,11 @@ for ledger in (base / "campaigns").glob("*/runs.tsv"):
     except (OSError, KeyError):
         continue
 
+lock_identities = {}
+for path in (lock_path, campaign_lock_path):
+    stat = path.stat()
+    lock_identities[(stat.st_dev, stat.st_ino)] = path.name
+
 candidates = []
 for proc in Path("/proc").glob("[0-9]*"):
     try:
@@ -184,22 +186,54 @@ for proc in Path("/proc").glob("[0-9]*"):
         args = [value.decode(errors="surrogateescape") for value in args if value]
     except (OSError, PermissionError):
         continue
-    if len(args) < 2:
+    held_locks = []
+    try:
+        for descriptor in (proc / "fd").iterdir():
+            try:
+                stat = descriptor.stat()
+            except (OSError, PermissionError):
+                continue
+            name = lock_identities.get((stat.st_dev, stat.st_ino))
+            if name:
+                held_locks.append(name)
+    except (OSError, PermissionError):
+        continue
+    if not held_locks:
         continue
     script_arg = next((value for value in args[1:] if value.endswith(".py")), None)
     if script_arg is None:
+        candidates.append({"pid": int(proc.name), "kind": "unknown",
+                           "held_locks": sorted(held_locks), "args": args[:8],
+                           "safe_code_identity": False})
         continue
     try:
         executable = Path(script_arg).resolve()
     except OSError:
-        continue
-    if executable not in (runner_path, collector_path) or "--output" not in args:
+        executable = Path(script_arg)
+    reference = {runner_path.name: runner_path,
+                 collector_path.name: collector_path}.get(executable.name)
+    same_code = False
+    if reference is not None:
+        try:
+            same_code = (hashlib.sha256(executable.read_bytes()).digest()
+                         == hashlib.sha256(reference.read_bytes()).digest())
+        except OSError:
+            pass
+    if reference is None or "--output" not in args:
+        candidates.append({"pid": int(proc.name), "kind": "unknown",
+                           "held_locks": sorted(held_locks), "args": args[:8],
+                           "script": str(executable),
+                           "safe_code_identity": same_code})
         continue
     try:
         output = Path(args[args.index("--output") + 1]).resolve()
     except (IndexError, OSError):
+        candidates.append({"pid": int(proc.name), "kind": "unknown",
+                           "held_locks": sorted(held_locks), "args": args[:8],
+                           "script": str(executable),
+                           "safe_code_identity": same_code})
         continue
-    if executable == runner_path:
+    if executable.name == runner_path.name:
         run = output
         kind = "scenario_runner"
     else:
@@ -209,15 +243,30 @@ for proc in Path("/proc").glob("[0-9]*"):
         run = output.parent.parent
         kind = "raw_recorder"
     if run.parent != base:
+        candidates.append({"pid": int(proc.name), "kind": kind,
+                           "held_locks": sorted(held_locks), "args": args[:8],
+                           "script": str(executable), "run": run.name,
+                           "output": str(output), "status": "different_storage_root",
+                           "safe_code_identity": same_code})
         continue
     status = terminal.get(run.name)
     candidates.append({"pid": int(proc.name), "kind": kind,
                        "run": run.name, "output": str(output), "status": status})
+    candidates[-1].update(held_locks=sorted(held_locks),
+                          script=str(executable), safe_code_identity=same_code)
 
-stale = [row for row in candidates if row["status"] == "interrupted"
-         or str(row["status"]).startswith("failed_")]
+stale = [row for row in candidates if row.get("safe_code_identity") and
+         (row.get("status") == "interrupted"
+          or str(row.get("status")).startswith("failed_"))]
 active = [row for row in candidates if row not in stale]
 if active or not stale or len({row["run"] for row in stale}) != 1:
+    print("[FAIL] 다른 수집 프로세스가 capture lock을 사용 중입니다.", file=sys.stderr)
+    for row in candidates:
+        print("       PID=%s kind=%s run=%s status=%s script=%s" % (
+            row.get("pid"), row.get("kind"), row.get("run", "?"),
+            row.get("status", "?"), row.get("script", "?")), file=sys.stderr)
+    print("       실행 중인 02번 터미널이 있으면 그 실행을 먼저 정상 종료하세요.",
+          file=sys.stderr)
     print(json.dumps({"error": "capture_lock_owner_not_safely_recoverable",
                       "candidates": candidates}, ensure_ascii=False), file=sys.stderr)
     raise SystemExit(2)
@@ -257,11 +306,21 @@ report_path.write_text(json.dumps(report, ensure_ascii=False, sort_keys=True) + 
 print("[RECOVERED] 이전 중단 run의 capture/campaign lock을 정상 해제했습니다: " + run_name)
 PY
 
-if [[ -e "$CAMPAIGN_DIR" ]]; then
-    echo "[FAIL] 같은 campaign 경로가 이미 있습니다. 기존 결과는 덮어쓰지 않습니다: $CAMPAIGN_DIR" >&2
-    exit 2
+requested_campaign="$CAMPAIGN_ID"
+if [[ -e "$BASE/campaigns/$CAMPAIGN_ID" ]]; then
+    prefix="${CAMPAIGN_ID:0:27}"
+    CAMPAIGN_ID="${prefix}_retry_$(date +%Y%m%d_%H%M%S)"
+    counter=1
+    while [[ -e "$BASE/campaigns/$CAMPAIGN_ID" ]]; do
+        CAMPAIGN_ID="${prefix}_retry_$(date +%Y%m%d_%H%M%S)_$counter"
+        counter=$((counter + 1))
+    done
+    echo "[RECOVERED] 기존 campaign '$requested_campaign'은 보존하고 새 이름을 사용합니다: $CAMPAIGN_ID"
 fi
 
+CAMPAIGN_DIR="$BASE/campaigns/$CAMPAIGN_ID"
+PROFILE_STATE="$CAMPAIGN_DIR/profile_state.json"
+RUNS_FILE="$CAMPAIGN_DIR/runs.tsv"
 mkdir -p "$CAMPAIGN_DIR"
 printf 'lap\tseed\trun_name\tstatus\tweather\ttime_hour\tstatic_obstacle\tdynamic_obstacle\tstarted_utc\tfinished_utc\n' > "$RUNS_FILE"
 /usr/bin/python3 - "$CAMPAIGN_DIR/campaign_plan.json" "$CAMPAIGN_ID" "$LAPS" "$BASE_SEED" "$LAP_WALL_SECONDS" "$SIMULATOR_PID" <<'PY'
@@ -281,7 +340,7 @@ payload = {
     "highway_native_vehicle_cap": "team scenario configuration",
     "competition_reference_spawnpoint_cap_per_point": 50,
     "mission_distribution_changes": [
-        "none; current team scenario profile is used without collector overrides"
+        "scenario route-light red-stop release after 10 host-monotonic seconds; exact-ID command/readback events are disclosed"
     ],
     "expert_max_speed_kmh": 60,
     "raw_camera_transport": "bridge_dropped",
@@ -333,6 +392,7 @@ trap on_signal INT TERM
 
 echo "[START] campaign=$CAMPAIGN_ID, laps=$LAPS, local raw only, storage=$SSD_ROOT, Simulator PID=$SIMULATOR_PID"
 echo "        매 바퀴 시작점 reset, Sunny/Foggy, 11/13/15시, 정적·동적 장애물 재선택"
+echo "        주행 중에는 30초마다 진행 상태를 출력하며 상세 로그는 run별 supervisor.log에 저장합니다."
 
 for ((lap=1; lap<=LAPS; lap++)); do
     CURRENT_LAP="$lap"
@@ -388,6 +448,7 @@ episode = run / "episode_000"
 outcome_path = episode / "outcome.json"
 events_path = episode / "events.jsonl"
 native_path = episode / "native_audit" / "report.json"
+raw_manifest_path = episode / "raw" / "raw_manifest.json"
 if not outcome_path.is_file():
     raise SystemExit(0)
 outcome = json.loads(outcome_path.read_text())
@@ -398,6 +459,8 @@ if events_path.is_file():
         if row.get("event") == "progress":
             progress.append(row)
 native = json.loads(native_path.read_text()) if native_path.is_file() else {}
+raw_manifest = (json.loads(raw_manifest_path.read_text())
+                if raw_manifest_path.is_file() else {})
 last = progress[-1] if progress else {}
 route_total = None
 episode_path = episode / "episode.json"
@@ -413,13 +476,15 @@ print(
         native.get("complete_bundles", "?"), native.get("files_valid", "?"),
     )
 )
+if raw_manifest.get("status") == "failed":
+    print("[DIAG] raw_status=failed raw_reason=%s" % raw_manifest.get("reason", "?"))
 if outcome.get("reason") == "bounded_window_elapsed":
     print(
         "[DIAG] 센서 저장 실패가 아니라 제한 시간 안에 도착점에 도달하지 "
         "못한 주행 완료 실패입니다. 이 run은 부분 데이터로 보존됩니다."
     )
 PY
-        echo "       검증: $TOOLS/validate_sensor_record_campaign.py $CAMPAIGN_DIR" >&2
+        echo "       검증: ./data_collection/tools/03_validate_internal_sensor_record.sh $CAMPAIGN_ID" >&2
         exit "$code"
     fi
 done
@@ -442,4 +507,5 @@ PY
 echo
 echo "[DONE] $LAPS바퀴 원본 수집이 끝났습니다. 원본은 아직 학습에 공개되지 않습니다."
 echo "검증 실행:"
-echo "  $TOOLS/validate_sensor_record_campaign.py $CAMPAIGN_DIR"
+echo "  cd $MORAI_PROJECT_ROOT"
+echo "  ./data_collection/tools/03_validate_internal_sensor_record.sh $CAMPAIGN_ID"

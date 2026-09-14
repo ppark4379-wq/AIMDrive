@@ -12,6 +12,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -29,7 +30,10 @@ from nas_storage import powershell
 from native_capture.ground_truth import GrpcGroundTruth, default_grpc_target
 from ssd_storage import SSD_ROOT, WINDOWS_ROOT, require_ssd, windows_path
 from network_config import runtime_environment
-from runtime_paths import CATKIN_ROOT, ROS_ROOT, WINDOWS_SENSOR_DATA_ROOT
+from runtime_paths import (
+    CATKIN_ROOT, ROS_ROOT, WINDOWS_SENSOR_DATA_ROOT,
+    ensure_runtime_directory,
+)
 from run_sensor_record_probe import verify_native_targets
 
 
@@ -90,6 +94,33 @@ def run_logged_stage(command, *, env, log, label, heartbeat_seconds=30):
                   (label, now-started), flush=True)
             next_heartbeat = now + heartbeat_seconds
     return int(process.returncode)
+
+
+def powershell_with_heartbeat(script, *, timeout, label, heartbeat_seconds=30):
+    """Keep the terminal visibly alive while the Windows UI owner blocks."""
+    finished = threading.Event()
+    started = time.monotonic()
+
+    def heartbeat():
+        while not finished.wait(heartbeat_seconds):
+            print(
+                "[CAPTURE] %s: %.0fs elapsed; Sensor Record UI가 ON이며 "
+                "상위 센서 감시가 계속 실행 중입니다." %
+                (label, time.monotonic() - started),
+                flush=True,
+            )
+
+    worker = threading.Thread(
+        target=heartbeat,
+        name="sensor-record-heartbeat",
+        daemon=True,
+    )
+    worker.start()
+    try:
+        return powershell(script, timeout=timeout)
+    finally:
+        finished.set()
+        worker.join(timeout=2)
 
 
 def main():
@@ -180,7 +211,7 @@ def main():
         str(catkin_python),str(ROS_ROOT/'lib/python3/dist-packages')])
     # Establish pre-reset receive evidence. A live gRPC Ego alone is insufficient
     # when the actual /Ego_topic vehicle-info connection has stopped sending.
-    log_root=ROOT/'.runtime/sensor_record_preflight_logs';log_root.mkdir(exist_ok=True)
+    log_root=ensure_runtime_directory('sensor_record_preflight_logs')
     env['ROS_LOG_DIR']=str(log_root)
     preflight=subprocess.run(['/usr/bin/python3',str(ROOT/'tools/probe_sensor_record_readiness.py'),
         '--raw-camera-transport',a.raw_camera_transport],
@@ -195,8 +226,8 @@ def main():
         observed_mode=require_free_running_mode(mode_observation,'simulation_free_run')
     finally:gt.close()
     coordination=ep/'sensor_record_coordination'
-    command=['/usr/bin/python3',str(ROOT/'tools/run_async_scenario_review.py'),
-        '--time-mode','simulation_free_run','--collision-policy','record',
+    command=['/usr/bin/python3',str(ROOT/'tools/run_proven_three_lap_scenario.py'),
+        '--time-mode','simulation_free_run','--nearby-actors','--collision-policy','record',
         '--max-speed-kmh','60','--seconds',str(a.seconds),'--audit-scope','timing','--output',str(run),
         '--sensor-record-coordination',str(coordination),
         '--raw-camera-transport',a.raw_camera_transport,'--seed',str(a.seed),
@@ -264,8 +295,20 @@ def main():
         try:
             deadline=time.monotonic()+65
             while not (ep/'ready.json').exists():
-                if proc.poll() is not None or (ep/'outcome.json').exists() or time.monotonic()>deadline:
-                    raise RuntimeError('Scenario ROS capture not ready')
+                if proc.poll() is not None or (ep/'outcome.json').exists():
+                    supervisor_tail=(log_path.read_text(
+                        encoding='utf-8',errors='replace')[-4000:]
+                        if log_path.is_file() else '')
+                    raise RuntimeError(
+                        'Scenario ROS capture exited before readiness '
+                        '(exit=%s). Supervisor tail:\n%s' %
+                        (proc.poll(),supervisor_tail)
+                    )
+                if time.monotonic()>deadline:
+                    raise TimeoutError(
+                        'Scenario ROS capture did not become ready within 65 seconds; '
+                        'inspect '+str(log_path)
+                    )
                 time.sleep(.2)
             plan_path=run/'plan.json'
             acquisition_path=run/'sensor_contract.json'
@@ -314,7 +357,9 @@ def main():
                 "-WallSeconds %d -CoordinationDirectory '%s' -RestoreWindow"%
                 (a.pid,ui,WINDOWS_ROOT,a.seconds-30,windows_coord))
             print('ROS ready; starting bounded automatic Sensor Record',flush=True)
-            result=json.loads(powershell(script,timeout=a.seconds+10))
+            result=json.loads(powershell_with_heartbeat(
+                script, timeout=a.seconds+10, label=a.name,
+            ))
             write_json(run/'native_ui_result.json',result)
             proc.wait(timeout=1200 if a.full_lap else 300)
             if proc.returncode:
@@ -344,6 +389,13 @@ def main():
                 quick_summary['complete_filename_bundles'],
                 quick_summary['total_bytes']/float(1024**3),
                 'deferred to 03' if a.defer_offline_review else 'starting now'),flush=True)
+            if scenario_warning is not None:
+                outcome_path=ep/'outcome.json'
+                outcome=(json.loads(outcome_path.read_text())
+                         if outcome_path.is_file() else {})
+                error=('Full-lap scenario did not complete after raw capture: '
+                       +str(outcome.get('reason') or scenario_warning))
+                postprocess_status='raw_captured_scenario_failed'
 
             # Drive and Sensor Record are already stopped. Complete the same
             # offline review without requiring another manual command/run.
@@ -367,7 +419,7 @@ def main():
                 if not a.defer_offline_review:
                     stages.append(('audit_scenario_interventions.py',[
                     '--episode',str(ep),
-                    '--output',str(ep/'scenario_intervention_audit_v2'),
+                    '--output',str(ep/'scenario_intervention_audit_v3'),
                     ]))
             if not a.defer_offline_review:
                 stages.extend([

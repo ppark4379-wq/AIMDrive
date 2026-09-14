@@ -14,6 +14,9 @@ sys.path.insert(0, str(INTERNAL))
 sys.path.insert(0, str(DATA_COLLECTION))
 
 from async_capture.journal import RawWriter, records, verify_run
+from async_capture.health_policy import (
+    SimulationPauseGrace, is_coherent_simulation_pause,
+)
 from async_capture.sensor_record import filename_candidates
 from bridge.camera_ingress_filter import dropped_publish_stream
 from bridge.bridge_health import (
@@ -29,6 +32,40 @@ from sources.morai_sync_file_source import REQUIRED_SENSOR_DIRS
 
 
 class InternalSensorRecordTest(unittest.TestCase):
+    def test_simulation_pause_grace_never_hides_partial_sensor_loss(self):
+        coherent = [
+            "ros_clock_not_advancing",
+            "bridge_missing_stream:Camera-1",
+            "bridge_missing_stream:/lidar3D",
+        ]
+        self.assertTrue(is_coherent_simulation_pause(coherent))
+        self.assertFalse(is_coherent_simulation_pause(
+            ["bridge_missing_stream:Camera-1"]
+        ))
+        self.assertFalse(is_coherent_simulation_pause(
+            coherent + ["bridge_delayed_stream:Camera-2"]
+        ))
+
+        guard = SimulationPauseGrace(8)
+        self.assertEqual(guard.observe(coherent, 10_000_000_000)["action"], "hold")
+        recovered = guard.observe([], 13_500_000_000)
+        self.assertEqual(recovered["action"], "recovered")
+        self.assertEqual(recovered["incident"]["duration_ns"], 3_500_000_000)
+
+        self.assertEqual(
+            guard.observe(["bridge_missing_stream:Camera-1"], 14_000_000_000)["action"],
+            "fail",
+        )
+
+    def test_simulation_pause_grace_remains_bounded(self):
+        failures = ["missing_or_stale_ros_clock", "bridge_missing_stream:/imu"]
+        guard = SimulationPauseGrace(8)
+        self.assertEqual(guard.observe(failures, 1_000_000_000)["action"], "hold")
+        self.assertEqual(guard.observe(failures, 9_000_000_000)["action"], "hold")
+        decision = guard.observe(failures, 9_000_000_001)
+        self.assertEqual(decision["action"], "fail")
+        self.assertEqual(decision["reason"], "coherent_simulation_pause_exceeded_grace")
+
     def test_raw_journal_round_trip_and_corruption_detection(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "raw"
@@ -131,12 +168,59 @@ class InternalSensorRecordTest(unittest.TestCase):
         ):
             self.assertEqual(default_grpc_target(), "192.0.2.10:7789")
 
-    def test_collector_adapter_has_no_scenario_distribution_override(self):
+    def test_campaign_uses_hash_pinned_proven_three_lap_runtime(self):
+        import hashlib
+
+        supervisor = (
+            INTERNAL / "tools/run_sensor_record_scenario.py"
+        ).read_text()
+        runner = (
+            INTERNAL / "tools/run_proven_three_lap_scenario.py"
+        ).read_text()
+        runtime = INTERNAL / "proven_three_lap_runtime"
+        manifest = json.loads(
+            (runtime / "PROVEN_RUNTIME_MANIFEST.json").read_text()
+        )
+        self.assertIn("run_proven_three_lap_scenario.py", supervisor)
+        self.assertIn("'--nearby-actors'", supervisor)
+        self.assertIn("Proven three-lap runtime differs", runner)
+        self.assertEqual(manifest["reference_run"], "large_scale_3laps_02_lap_001")
+        self.assertEqual(len(manifest["files"]), 108)
+        for relative in (
+            "async_capture/bundle_screen.py",
+            "async_capture/nearby_actors.py",
+            "async_capture/rosbag_recording.py",
+            "async_capture/temporal_groups.py",
+            "tools/collect_async_raw_proven.py",
+            "tools/exec_owned_rosbag.py",
+        ):
+            self.assertTrue((INTERNAL / relative).is_file(), relative)
+        for relative, expected in manifest["files"].items():
+            path = runtime / relative
+            self.assertTrue(path.is_file(), relative)
+            self.assertEqual(
+                hashlib.sha256(path.read_bytes()).hexdigest(), expected,
+                relative,
+            )
+
+    def test_collector_keeps_observation_clock_out_of_team_scenario_kwargs(self):
         source = (INTERNAL / "tools/run_async_scenario_review.py").read_text()
-        self.assertNotIn("NearbyActors", source)
-        self.assertNotIn("cfg['off_route_timeout_sec']", source)
-        self.assertNotIn("cfg['roundabout_npc']", source)
-        self.assertIn("from scenario_runner.scenarios.full_loop_scenario import FullLoopScenario", source)
+        constructor = source.split("class RawScenario", 1)[1].split(
+            "    def event", 1
+        )[0]
+        self.assertIn("sensor_record_coordination=None, clock=None", constructor)
+        self.assertIn("self.clock = clock", constructor)
+        self.assertIn(
+            "super().__init__(grpc_client, map_loader, global_cfg, scenario_cfg)",
+            constructor,
+        )
+        self.assertNotIn("super().__init__(*args, **kwargs)", constructor)
+
+    def test_sensor_record_supervisor_surfaces_child_startup_failure(self):
+        source = (INTERNAL / "tools/run_sensor_record_scenario.py").read_text()
+        self.assertIn("Scenario ROS capture exited before readiness", source)
+        self.assertIn("Supervisor tail:", source)
+        self.assertIn("did not become ready within 65 seconds", source)
 
     def test_storage_root_maps_any_windows_drive_without_d_pinning(self):
         environment = dict(os.environ)
@@ -252,6 +336,27 @@ class InternalSensorRecordTest(unittest.TestCase):
             r"F:\Apps\MoraiLauncher_Win\MoraiLauncher_Win_Data\SaveFile\SensorData",
         ])
 
+    def test_runtime_log_directory_is_created_from_a_clean_checkout(self):
+        with tempfile.TemporaryDirectory(dir=str(DATA_COLLECTION.parent)) as temporary:
+            project = Path(temporary) / "clean_checkout"
+            environment = dict(os.environ)
+            environment.update(
+                PYTHONPATH=str(INTERNAL), MORAI_PROJECT_ROOT=str(project)
+            )
+            result = subprocess.run(
+                [sys.executable, "-c", (
+                    "from runtime_paths import ensure_runtime_directory;"
+                    "print(ensure_runtime_directory('sensor_record_preflight_logs'))"
+                )],
+                env=environment, text=True, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, timeout=10, check=True,
+            )
+            expected = (
+                project / ".runtime/data_collection/sensor_record_preflight_logs"
+            ).resolve()
+            self.assertEqual(Path(result.stdout.strip()), expected)
+            self.assertTrue(expected.is_dir())
+
     def test_windows_hosted_checkout_uses_its_repository_dataset_directly(self):
         environment = dict(os.environ)
         environment.update(
@@ -286,6 +391,8 @@ class InternalSensorRecordTest(unittest.TestCase):
         first_party = [
             INTERNAL / "native_capture/ground_truth.py",
             INTERNAL / "configs/encoder_mission_candidate_v1.json",
+            INTERNAL / "tools/collect_async_raw_proven.py",
+            INTERNAL / "tools/run_proven_three_lap_scenario.py",
         ]
         for path in first_party:
             source = path.read_text()

@@ -120,6 +120,23 @@ scenarios:
       - Ped_Pet1
     # npc_vehicle_models: [VEHICLE_1, VEHICLE_2]
 
+    # Sensor Record can make Simulation Time advance much slower than wall
+    # time. If Ego remains stopped by an exact red route light for 10 host
+    # seconds, release straight movement and preserve the intervention in the
+    # collection event log. This is separate from natural signal samples.
+    traffic_light_wait_override:
+      enabled: true
+      wait_wall_sec: 10.0
+      stopped_speed_mps: 0.5
+      minimum_stopline_distance_m: 0.0
+      maximum_stopline_distance_m: 25.0
+      query_period_wall_sec: 0.25
+      retry_period_wall_sec: 1.0
+      verification_timeout_wall_sec: 2.0
+      target_color: 16
+      impulse: true
+      set_sibling: true
+
     roundabout_npc:
       count: 6
       speed_mps: 4.0
@@ -275,9 +292,10 @@ scenarios:
     goal_tolerance_m: 2.0
     timeout_sec: 0.0
     check_period_sec: 0.05
-    # Disabled: wall-clock signal waits in SyncMode can exceed 120 seconds.
+    # Route-bound red signals are released after 10 host seconds above. Abort
+    # any unrelated no-progress condition instead of hanging a batch run.
     progress_watchdog:
-      enabled: false
+      enabled: true
       timeout_sec: 120.0
       startup_grace_sec: 30.0
       minimum_progress_m: 2.0

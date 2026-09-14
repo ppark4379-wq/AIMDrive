@@ -1,6 +1,25 @@
 import os
+import socket
+import struct
 import sys
 import time
+
+
+def _windows_host_gateway():
+    """Resolve the Windows host for WSL2 without retaining another PC's IP."""
+    try:
+        with open("/proc/net/route", "r", encoding="ascii") as stream:
+            next(stream)
+            for line in stream:
+                fields = line.split()
+                if len(fields) >= 3 and fields[1] == "00000000":
+                    return socket.inet_ntoa(struct.pack("<L", int(fields[2], 16)))
+    except (OSError, ValueError, StopIteration, struct.error):
+        pass
+    raise RuntimeError(
+        "Windows MORAI gRPC host could not be discovered; set "
+        "MORAI_GRPC_TARGET=HOST:7789"
+    )
 
 
 class _ActorHandleUnavailable:
@@ -18,8 +37,23 @@ class MoraiGrpcClient:
         grpc_cfg = global_cfg["grpc"]
         path_cfg = global_cfg["paths"]
 
-        self.host = grpc_cfg.get("host", "172.19.0.55")
-        self.port = int(grpc_cfg.get("port", 7789))
+        target = os.environ.get("MORAI_GRPC_TARGET", "").strip()
+        if target:
+            if target.count(":") != 1:
+                raise ValueError("MORAI_GRPC_TARGET must be HOST:PORT")
+            self.host, port = target.rsplit(":", 1)
+        else:
+            self.host = os.environ.get(
+                "MORAI_GRPC_HOST", str(grpc_cfg.get("host", "auto"))
+            ).strip()
+            port = os.environ.get(
+                "MORAI_GRPC_PORT", str(grpc_cfg.get("port", 7789))
+            ).strip()
+        if not self.host:
+            raise ValueError("grpc.host must be 'auto' or an explicit host")
+        if not str(port).isdigit() or not 1 <= int(port) <= 65535:
+            raise ValueError("MORAI gRPC port must be in 1..65535")
+        self.port = int(port)
         self.client_key = grpc_cfg.get("client_key", "scenario_runner")
         self.grpc_src = path_cfg["grpc_src"]
 
@@ -61,6 +95,8 @@ class MoraiGrpcClient:
         Map._scenario_runner_mgeo_fetch_disabled = True
 
     def connect(self):
+        if self.host.casefold() == "auto":
+            self.host = _windows_host_gateway()
         self.client.connect(self.host, self.port)
 
         if not self.client.is_connected():
@@ -1202,6 +1238,81 @@ class MoraiGrpcClient:
         except Exception as e:
             print(f"[MORAI] get_traffic_light_color_by_link failed link={link_id}: {e}")
             return None
+
+    def get_traffic_light_state_by_id(self, traffic_light_id):
+        """Read one exact traffic light instead of inferring it from a link."""
+        from proto.morai.infrastructure.infrastructure_enum_pb2 import (
+            GET_TL_INFO_BY_TL_ID,
+        )
+
+        traffic_light_id = str(traffic_light_id or "").strip()
+        if not traffic_light_id:
+            return None
+        try:
+            result = self.world.get_traffic_light_info(
+                GET_TL_INFO_BY_TL_ID,
+                traffic_light_id,
+            )
+            if result is None:
+                return None
+            return {"id": str(result.id.value), "color": int(result.color)}
+        except Exception as error:
+            print(
+                "[MORAI] get_traffic_light_state_by_id failed "
+                f"id={traffic_light_id}: {error}"
+            )
+            return None
+
+    def set_traffic_light_color_verified(
+        self,
+        traffic_light_id,
+        color,
+        impulse=True,
+        set_sibling=True,
+    ):
+        """Set a light and return the immediate exact-ID readback evidence."""
+        traffic_light_id = str(traffic_light_id or "").strip()
+        target = int(color)
+        before = self.get_traffic_light_state_by_id(traffic_light_id)
+        try:
+            accepted = bool(
+                self.world.set_traffic_light_info(
+                    traffic_light_id,
+                    target,
+                    impulse=bool(impulse),
+                    sibling=bool(set_sibling),
+                )
+            )
+        except Exception as error:
+            print(
+                "[MORAI] set_traffic_light_color_verified failed "
+                f"id={traffic_light_id}, color={target}: {error}"
+            )
+            return {
+                "id": traffic_light_id,
+                "target_color": target,
+                "accepted": False,
+                "verified": False,
+                "before": before,
+                "after": None,
+                "error": str(error),
+            }
+        after = self.get_traffic_light_state_by_id(traffic_light_id)
+        verified = bool(
+            accepted
+            and after is not None
+            and after.get("id") == traffic_light_id
+            and int(after.get("color")) == target
+        )
+        return {
+            "id": traffic_light_id,
+            "target_color": target,
+            "accepted": accepted,
+            "verified": verified,
+            "before": before,
+            "after": after,
+            "error": None,
+        }
 
     def set_vehicle_speed(self, vehicle, speed):
         from proto.morai.actor.actor_enum_pb2 import LONG_CMD_TYPE_SPEED

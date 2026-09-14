@@ -1,5 +1,6 @@
 grpc:
-  host: 172.19.0.1
+  # WSL2에서 Windows host gateway를 실행 시 탐지한다.
+  host: auto
   port: 7789
   client_key: kcity26_scenario_runner
 

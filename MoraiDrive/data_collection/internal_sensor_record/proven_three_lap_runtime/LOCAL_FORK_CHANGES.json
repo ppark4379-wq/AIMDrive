@@ -1,0 +1,74 @@
+{
+  "schema": "morai_local_runtime_forks_v1",
+  "baseline": "UPSTREAM_PROVENANCE.json",
+  "baseline_meaning": "SHA256 values captured when the team expert and scenario runner were copied into this workspace",
+  "team_repository_policy": "read_only",
+  "expected_modified": {
+    "expert/src/expert/src/network/ros_manager.py": {
+      "component": "expert",
+      "change_class": "runtime_safety",
+      "summary": "Adds owner-process and receive-freshness fail-safe braking around Ego/Object ROS input.",
+      "sha256": "93696073be60b11cbaf3266707533b6863faeb87c54ec9406167efe253e89071"
+    },
+    "expert/src/expert/src/control/pure_pursuit.py": {
+      "component": "expert",
+      "change_class": "planning_behavior",
+      "summary": "Fails closed when no forward lookahead point exists instead of continuing with straight steering.",
+      "sha256": "53269aa3b59622edc6fbf5c0b6e23dacea77e0dc678d36fb5a8aad36edbd7cb6"
+    },
+    "expert/src/expert/src/planning/traffic_light_stop.py": {
+      "component": "expert",
+      "change_class": "planning_behavior",
+      "summary": "Uses an injectable clock and rejects negative-age or stale traffic-light observations.",
+      "sha256": "3d09b11d5bcd28d42509a168ba2447e6328362ebb47002d82535b0be1dfcffa2"
+    },
+    "expert/src/expert/src/planning/lattice_planning/planning_process.py": {
+      "component": "expert",
+      "change_class": "planning_behavior",
+      "summary": "Changes static-obstacle continuation and path-rejoin behavior after the obstacle leaves the forward window.",
+      "sha256": "84d3cedded795f77bc13cfc3ff77c645ac0ac6d04c74135d699455c1a37ef379"
+    },
+    "scenario_runner/core/full_loop_drive_base.py": {
+      "component": "scenario_runner",
+      "change_class": "clock_and_capture_integration",
+      "summary": "Adds native/host scenario clock handling and collection lifecycle coordination.",
+      "sha256": "9af5ab8d1206c3cc6d86dd310e6a898ca5dbb5bc08e516f5544ed016ad012422"
+    },
+    "scenario_runner/core/base_scenario.py": {
+      "component": "scenario_runner",
+      "change_class": "clock_and_capture_integration",
+      "summary": "Adds injectable scenario clocks and native tick-ownership guards.",
+      "sha256": "7f2ccc728407c8a72b12459cb1e1f9de30bad415d5fa2814262382572abec406"
+    },
+    "scenario_runner/tests/test_separated_package.py": {
+      "component": "scenario_runner",
+      "change_class": "verification",
+      "summary": "Extends separation and collection-profile regression coverage.",
+      "sha256": "96f1aca618f2968e35b623aaa315566405df9d0157e02ceba350c5a3ead09d4b"
+    },
+    "scenario_runner/config/full_loop.yaml": {
+      "component": "scenario_runner",
+      "change_class": "competition_collection_profile",
+      "summary": "Defines the local randomized collection profile, excludes tree obstacles, caps roundabout/highway actors, and enables bounded traffic-light override.",
+      "sha256": "9c2a643f3e5ab8242b3f2f295cda1b68a0a588df2c75db90c8b75f9901e064b1"
+    },
+    "scenario_runner/adapters/morai_grpc.py": {
+      "component": "scenario_runner",
+      "change_class": "morai_adapter",
+      "summary": "Adds exact traffic-light read/set verification and collision-data access used by collection audits.",
+      "sha256": "1a6de13e511829df6b842d85a0dfbf07c0ea819df90b3424f283fbe2d9a9199c"
+    },
+    "scenario_runner/tools/feature_contract.py": {
+      "component": "scenario_runner",
+      "change_class": "verification",
+      "summary": "Validates the local competition collection profile and its actor/traffic restrictions.",
+      "sha256": "92304c4c4eefd034f4cb215d2eb2350a37ef2301af09ada00f644d2470ef5bd3"
+    },
+    "scenario_runner/scenarios/full_loop_scenario.py": {
+      "component": "scenario_runner",
+      "change_class": "collection_orchestration",
+      "summary": "Integrates collector lifecycle, scenario clocks, actor verification, and traffic-light override into full-loop execution.",
+      "sha256": "304b0038f2dcb38300f9f0dc5d17f3e50d2ce0fcdbf489fdac1f8fdee75218ad"
+    }
+  }
+}

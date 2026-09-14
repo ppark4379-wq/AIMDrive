@@ -111,8 +111,8 @@ class RosClockGuard:
         with self.lock:
             if self.reset_seen:
                 raise RuntimeError('/clock reset during episode')
-            if self.last_progress is None or time.monotonic()-self.last_progress > 3:
-                raise RuntimeError('/clock missing or not advancing for 3 wall seconds')
+            if self.last_progress is None or time.monotonic()-self.last_progress > 10:
+                raise RuntimeError('/clock missing or not advancing for 10 wall seconds')
             if rospy.get_param('/use_sim_time', False) is not True:
                 raise RuntimeError('ROS simulation clock disabled during episode')
             return dict(clock_ns=self.last_ns, messages=self.count, duplicates=self.duplicates,

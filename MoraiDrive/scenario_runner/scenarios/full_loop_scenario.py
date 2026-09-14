@@ -14,6 +14,7 @@ from .full_loop_parts import (
     route_profile,
     static_obstacle,
     static_obstacle_watch,
+    traffic_light_override,
     tunnel,
     vehicle_common,
 )
@@ -51,6 +52,7 @@ class FullLoopScenario(FullLoopDriveBase):
         self.dynamic_obstacle_phase = "uninitialized"
         self.dynamic_obstacle_started_at = None
         self.dynamic_obstacle_min_ego_distance_m = float("inf")
+        traffic_light_override.initialize(self)
 
         configured_seed = self.cfg.get("random_seed")
         self.run_seed = (
@@ -69,6 +71,7 @@ class FullLoopScenario(FullLoopDriveBase):
 
         self.route_definition = self.load_route_definition()
         self.prepare_full_loop_route()
+        traffic_light_override.prepare(self)
         self.profile_index, self.profile, self.previous_profile_state = self.select_profile()
         self.scenario_hour = self.select_scenario_hour()
         self.scenario_time_last_verify_elapsed = float("-inf")
@@ -183,6 +186,7 @@ class FullLoopScenario(FullLoopDriveBase):
                 )
                 self.apply_time()
             self.scenario_time_last_verify_elapsed = float(elapsed)
+        traffic_light_override.update(self, elapsed, ego_state, current_s)
         if self.clean_road_mode:
             return
         self.update_dynamic_obstacle(ego_state,current_s)

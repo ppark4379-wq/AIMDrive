@@ -85,6 +85,15 @@ def main():
     log = None
     socket.setdefaulttimeout(3)
 
+    def request_stop(_signum, _frame):
+        # A process launched as a non-interactive shell background job can
+        # inherit SIGINT=ignore.  Install both handlers explicitly so the
+        # outer preflight can always reach the child cleanup in ``finally``.
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGINT, request_stop)
+    signal.signal(signal.SIGTERM, request_stop)
+
     def master_ready():
         try:
             return xmlrpc.client.ServerProxy(args.master).getPid(

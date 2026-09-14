@@ -14,6 +14,7 @@ from pathlib import Path
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 import xmlrpc.client
 
@@ -113,10 +114,20 @@ def audit_episode(episode, python, policy_study=None,
 
 
 class RawScenario(FullLoopScenario):
-    def __init__(self, *args, output, contract_path, seconds, collision_policy='abort', time_mode='realtime', expert_clock='host_wall_ros_rate', full_lap=False, record_rosbag=False, sensor_record_coordination=None, **kwargs):
+    def __init__(self, grpc_client, map_loader, global_cfg, scenario_cfg, *,
+                 output, contract_path, seconds, collision_policy='abort',
+                 time_mode='realtime', expert_clock='host_wall_ros_rate',
+                 full_lap=False, record_rosbag=False,
+                 sensor_record_coordination=None, clock=None):
         if collision_policy not in ('abort', 'record'):
             raise ValueError('Unknown collision policy')
-        super().__init__(*args, **kwargs)
+        if clock is None or not getattr(clock, 'domain', None):
+            raise ValueError('Raw scenario requires an explicit observation clock')
+        # The observation clock belongs to this collection adapter.  Keep it
+        # out of the team scenario constructor so the adapter remains
+        # compatible with the public four-argument BaseScenario API.
+        super().__init__(grpc_client, map_loader, global_cfg, scenario_cfg)
+        self.clock = clock
         self.output = Path(output).resolve()
         self.output.mkdir(exist_ok=False)
         self.contract_path = Path(contract_path).resolve()
@@ -406,7 +417,22 @@ def main():
     # still owns off-route, stall and completion decisions.
     verify_package(PROJECT_ROOT / 'scenario_runner', global_cfg, cfg, 'full_loop')
     if a.check:
-        print('Offline scenario configuration check passed; no simulator calls')
+        # Exercise the real adapter constructor against the currently pulled
+        # team FullLoopScenario. This caught a prior cross-commit ``clock``
+        # keyword leak before any MORAI reset or SensorData redirect.
+        class CheckClock:
+            domain = 'constructor_check'
+
+        with tempfile.TemporaryDirectory(prefix='morai-constructor-check-') as temporary:
+            scenario = RawScenario(
+                object(), object(), {}, {},
+                output=Path(temporary) / 'episode',
+                contract_path=Path(temporary) / 'contract.json',
+                seconds=20, clock=CheckClock(),
+            )
+            if scenario.clock.domain != CheckClock.domain:
+                raise RuntimeError('RawScenario observation clock was not retained')
+        print('Offline scenario configuration and constructor check passed; no simulator calls')
         return
     def interrupted(signum, frame):
         raise KeyboardInterrupt('supervisor signal ' + str(signum))

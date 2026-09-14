@@ -38,7 +38,7 @@ SEALED_STAGES = {
     "route_signal": ("route_signal_audit_v1", "COMPLETE.json"),
     "motion_time": ("motion_time_v1", "COMPLETE.json"),
     "exposure": ("exposure_v1", "COMPLETE.json"),
-    "scenario_interventions": ("scenario_intervention_audit_v2", "COMPLETE.json"),
+    "scenario_interventions": ("scenario_intervention_audit_v3", "COMPLETE.json"),
     "review": ("review_closeout", "COMPLETE.json"),
     "admission": ("admission_v1", "COMPLETE.json"),
 }
@@ -68,8 +68,8 @@ def offline_stages(run, episode):
         ("audit_sensor_record_exposure.py", episode / "exposure_v1", [
             "--audit", str(episode / "native_audit"), "--quality", str(episode / "quality"),
             "--output", str(episode / "exposure_v1")]),
-        ("audit_scenario_interventions.py", episode / "scenario_intervention_audit_v2", [
-            "--episode", str(episode), "--output", str(episode / "scenario_intervention_audit_v2")]),
+        ("audit_scenario_interventions.py", episode / "scenario_intervention_audit_v3", [
+            "--episode", str(episode), "--output", str(episode / "scenario_intervention_audit_v3")]),
         ("summarize_sensor_record_review.py", episode / "review_closeout", [
             "--episode", str(episode), "--output", str(episode / "review_closeout")]),
         ("admit_sensor_record_collection.py", episode / "admission_v1", [
@@ -209,7 +209,7 @@ def validate_lap(row):
     geometry = safe("episode_000/object_geometry_audit_v1/report.json")
     motion = safe("episode_000/motion_time_v1/report.json")
     review = safe("episode_000/review_closeout/report.json")
-    intervention = safe("episode_000/scenario_intervention_audit_v2/report.json")
+    intervention = safe("episode_000/scenario_intervention_audit_v3/report.json")
 
     frames = int(admission.get("frames", 0) or 0)
     counts = admission.get("counts", {})

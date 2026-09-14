@@ -13,8 +13,28 @@ LMDrive 호환 데이터셋으로 변환합니다. 기본 `sync_native_files` �
 ```bash
 ./data_collection/tools/01_internal_sensor_record_preflight.sh
 ./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_name
-./data_collection/tools/03_validate_internal_sensor_record.py campaign_name
+./data_collection/tools/03_validate_internal_sensor_record.sh campaign_name
 ```
+
+01·02·03은 실행할 때마다 공통 자동 준비를 먼저 수행한다. ROS/catkin, MORAI Launcher,
+Windows 저장 드라이브와 분석 Python을 검사하고, 빠진 SensorData 폴더를 만들며, 필요한
+일반 Python 패키지만 Git에서 제외된 `.runtime/data_collection/internal_sensor_record_deps`에
+설치한다. 시스템 Python, 사용자 site-packages, scenario/expert/source 파일은 변경하지
+않는다. 01은 현재 WSL IP를 표시하고 `aim_sensorset.json`의 rosbridge 주소만 백업 후
+자동 갱신한다. geometry/FOV/rate/topic은 자동 수정하지 않는다.
+
+00번은 PC별 경로를 명시적으로 바꿀 때만 직접 사용한다.
+
+```bash
+./data_collection/tools/00_prepare_internal_sensor_record.sh \
+  --storage-root /mnt/d/MoraiDrive \
+  --patch-sensor-set
+```
+
+00번이 만드는 PC별 설정은 Git에 포함되지 않는다. WSL bridge IP는 설정 파일에
+고정하지 않고 01·02 실행 때마다 다시 탐지한다. 01·02·03은 같은 ROS/catkin/Python
+계약과 `PYTHONNOUSERSITE=1`을 사용하므로 터미널마다 Conda나 `PYTHONPATH`를 다르게
+맞출 필요가 없다.
 
 수집 결과는 항상 Git에서 제외되는 `MoraiDrive/dataset`으로 보인다. 저장소가 Windows
 드라이브(`/mnt/c` 등)에 clone되어 있으면 이 폴더가 실제 저장소다. 저장소가 WSL
@@ -42,8 +62,8 @@ export MORAI_STORAGE_ROOT=/mnt/c/MoraiDriveData
 `MoraiDrive/dataset`이 일반 폴더로 이미 존재하는 경우에는 안전을 위해 자동으로
 바꾸지 않는다. 새 PC에서는 01번을 먼저 실행해 연결을 만들면 된다. WSL `/home/...`
 자체는 Windows MORAI의 Sensor Record 대상이 될 수 없으므로 실제 바이트는 C/D에
-남는다. 원본 데이터와 `.runtime` 의존성은 Git에 포함되지 않으며, 다른 PC에서는
-`requirements.txt`의 의존성을 한 번 설치해야 한다.
+남는다. 원본 데이터와 `.runtime` 의존성은 Git에 포함되지 않는다. 다른 PC에서는
+00번이 해당 PC 전용 의존성을 준비한다.
 
 ## 실행
 

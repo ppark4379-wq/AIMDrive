@@ -22,13 +22,20 @@ CCDP·MEFA·DDIA를 적용한다. 따라서 이 backend는 raw frame을 먼저 �
 
 ## 실행
 
-MoraiDrive 루트에서 다음 세 entrypoint를 순서대로 사용한다.
+MoraiDrive 루트에서 다음 entrypoint를 순서대로 사용한다.
 
 ```bash
 ./data_collection/tools/01_internal_sensor_record_preflight.sh
 ./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_name
-./data_collection/tools/03_validate_internal_sensor_record.py campaign_name
+./data_collection/tools/03_validate_internal_sensor_record.sh campaign_name
 ```
+
+01·02·03은 공통 준비 단계를 자동 실행한다. 로컬 경로와 두 Python 실행 환경을 검사하고
+일반 의존성은 ignored `.runtime` 아래에 격리한다. 01은 현재 WSL IP를 표시하고
+`aim_sensorset.json`의 rosbridge 주소만 백업 후 자동 갱신한다. WSL IP는 재시작 때 바뀔
+수 있으므로 로컬 JSON에 고정하지 않는다. 누락된 Camera/LiDAR/GPS/IMU SensorData
+디렉터리도 준비 단계에서 생성한다. 00번은 저장 드라이브나 Launcher 경로를 명시적으로
+지정할 때만 직접 사용한다.
 
 사용자에게 보이는 경로는 항상 Git에서 제외된 `<repo>/MoraiDrive/dataset`이다. 저장소가
 WSL `/home`에 있으면 01번 preflight가 이 경로를 Windows 저장소로 향하는 symlink로
@@ -46,8 +53,9 @@ repository dataset은 Windows 저장소로 향하는 symlink라서 같은 위치
 있다. 첫 실행에서 MORAI의
 7개 SensorData 항목이 일반 폴더라면 내용을 삭제하지 않고
 `*.data_before_<session>`으로 보존한 뒤 새 수집 경로를 연결한다. 이미 연결된 PC에서는
-기존 junction을 `*.link_before_<session>`으로 보존한다. 수집 run은 새 이름만 허용하며
-기존 결과를 덮어쓰거나 삭제하지 않는다. 예전 `MORAI_D_SSD_ROOT`도 호환 목적으로
+기존 junction을 `*.link_before_<session>`으로 보존한다. 같은 campaign 이름이 있으면
+timestamp가 붙은 retry 이름을 자동 생성하며 기존 결과를 덮어쓰거나 삭제하지 않는다.
+예전 `MORAI_D_SSD_ROOT`도 호환 목적으로
 읽지만 새 설정에는 `MORAI_STORAGE_ROOT`를 사용한다.
 
 Bridge IP는 `ip route`에서 WSL 주소를 자동 탐지한다. 출력된 주소를 MORAI 센서셋과
@@ -60,17 +68,14 @@ Windows gRPC 주소는 WSL default gateway에서 자동 탐지한다. 탐지가 
 Bridge IP도 실행 시 자동 탐지하며 필요할 때만 `MORAI_BRIDGE_IP`로 덮어쓴다.
 MORAI Launcher, catkin, ROS 위치는 각각 `MORAI_LAUNCHER_ROOT`, `MORAI_CATKIN_WS`,
 `MORAI_ROS_ROOT`로 변경할 수 있다. 이 값도 `local_machine.example.json` 형식의 ignored
-로컬 설정에 저장할 수 있다. Python 의존성은 상위 `requirements.txt`를 설치한다. ROS system
-Python에 gRPC가 없을 때는 저장소 루트에서 아래처럼 ignored runtime 경로에 한 번
-설치한다.
+로컬 설정에 저장할 수 있다. Python 의존성은 00번이 `requirements-runtime.txt`의
+고정 버전으로 격리 설치한다. 다른 target을 이미 사용한다면 `MORAI_ASYNC_DEPS`로
+그 디렉터리를 지정할 수 있다.
 
-```bash
-/usr/bin/python3 -m pip install --target \
-  .runtime/data_collection/internal_sensor_record_deps \
-  'grpcio==1.62.3' 'protobuf==4.25.8'
-```
-
-다른 target에 설치했다면 `MORAI_ASYNC_DEPS`로 그 디렉터리를 지정한다.
+신호등 앞 정지 시나리오는 official route에 연결된 정확한 신호 ID만 대상으로 한다.
+Ego가 빨간불에서 10초간 정지하면 직진 신호를 요청하며, 명령과 exact-ID readback을
+episode event에 남긴다. 이는 자연 신호 샘플과 구분되는 scenario intervention이므로
+검증 보고서에도 별도로 공개된다.
 
 ## 두 backend의 역할
 

@@ -137,8 +137,7 @@ class ScenarioRosbag:
             self.subscribers.append(rospy.Subscriber(topic, rospy.AnyMsg, observe,
                 callback_args=topic, queue_size=20, buff_size=8*1024*1024, tcp_nodelay=True))
         self.log = (self.directory/'record.log').open('x')
-        from runtime_paths import ROS_ROOT
-        command = [str(ROS_ROOT/'lib/rosbag/record'), '--publish', '--tcpnodelay',
+        command = ['/opt/ros/noetic/lib/rosbag/record', '--publish', '--tcpnodelay',
                    '--buffsize=512', '--chunksize=768', '--min-space=50G',
                    '--output-name='+str(self.path), '__ns:=/', '__name:='+self.node_name[1:]] + list(TOPICS)
         wrapper = Path(__file__).resolve().parents[1]/'tools/exec_owned_rosbag.py'
