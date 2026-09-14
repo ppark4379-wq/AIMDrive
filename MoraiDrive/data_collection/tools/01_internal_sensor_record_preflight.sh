@@ -55,6 +55,11 @@ echo "      원본 저장 경로   : $MORAI_STORAGE_ROOT"
 echo "      센서셋 파일      : $MORAI_SENSOR_SET_PATH"
 /usr/bin/python3 "$INTERNAL/tools/preflight_local_storage.py" --reserve-gib 70
 
+clock_report="$MORAI_PROJECT_ROOT/.runtime/data_collection/clock_preflight.json"
+/usr/bin/python3 "$INTERNAL/tools/preflight_local_clock.py" \
+    --wait-seconds "${MORAI_CLOCK_STABILIZATION_WAIT_SECONDS:-90}" \
+    --output "$clock_report"
+
 echo
 echo "[3/5] MORAI 26.R1.H3와 AIM 센서 geometry/rate/topic 계약을 검사합니다."
 if ! contract_report=$(/usr/bin/python3 \
@@ -102,9 +107,11 @@ rosparam set /use_sim_time true
 echo "[PASS] ROS master 준비 및 /use_sim_time=true"
 echo
 echo "[5/5] 실제 메시지를 확인합니다."
-echo "      MORAI에서 차량 정보와 Camera 1~4·LiDAR·GPS·IMU를"
+echo "      MORAI에서 차량 정보·Simulator Network(/clock)와"
+echo "      Camera 1~4·LiDAR·GPS·IMU를"
 echo "      ${ROS_HOST_IP}:9090으로 연결하세요."
 echo "      Simulation Time / Sensor Synchronization 10Hz / External Sync OFF"
+echo "      wsl --shutdown 후에는 IP가 바뀔 수 있으므로 모든 ROS 연결을 새 주소로 다시 연결하세요."
 echo "      센서셋 IP가 이번 실행에서 바뀌었다면 MORAI에서 센서셋을 다시 불러온 뒤 연결하세요."
 
 deadline=$((SECONDS + CONNECT_TIMEOUT))
@@ -129,7 +136,8 @@ while (( SECONDS < deadline )); do
         exit 2
     fi
     mv "$temporary" "$STATUS_FILE"
-    /usr/bin/python3 "$INTERNAL/tools/render_sensor_record_readiness.py" "$STATUS_FILE"
+    /usr/bin/python3 "$INTERNAL/tools/render_sensor_record_readiness.py" \
+        --bridge-ip "$ROS_HOST_IP" "$STATUS_FILE"
 
     if (( probe_code == 0 )); then
         echo

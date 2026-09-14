@@ -15,8 +15,10 @@ from configure_local_machine import (
     discover_catkin_workspace,
     discover_launcher_root,
     discover_sensor_set,
+    probe_windows_interop,
     update_sensor_bridge,
 )
+from preflight_local_clock import wait_for_stable_clock
 from render_sensor_record_readiness import render
 
 
@@ -136,12 +138,56 @@ class PortableSensorRecordEntrypointTest(unittest.TestCase):
                 "bridge_camera_ingress": {"streams": {}},
             },
         }
-        output = render(report)
+        output = render(report, bridge_ip="172.30.144.83")
         self.assertIn("차량 정보 /Ego_topic", output)
         self.assertIn("Simulation Time", output)
+        self.assertIn("Simulator Network", output)
+        self.assertIn("172.30.144.83:9090", output)
+        self.assertIn("wsl --shutdown", output)
         self.assertIn("Camera 1~4", output)
         self.assertIn("LiDAR", output)
         self.assertNotIn(json.dumps(report), output)
+
+    def test_clock_preflight_waits_for_wsl_startup_stabilization(self):
+        from unittest import mock
+
+        failed = {
+            "passed": False,
+            "failures": ["monotonic_rate_differs_from_raw"],
+            "rate_error_ppm": 9907.6,
+            "wall_steps": [],
+        }
+        passed = {
+            "passed": True,
+            "failures": [],
+            "rate_error_ppm": 2.0,
+            "wall_steps": [],
+        }
+        with mock.patch(
+            "preflight_local_clock.probe", side_effect=[failed, passed]
+        ), mock.patch(
+            "preflight_local_clock.time.clock_gettime",
+            side_effect=[100.0, 102.0, 106.0],
+        ), mock.patch("preflight_local_clock.time.sleep"):
+            result = wait_for_stable_clock(
+                wait_seconds=90.0, probe_seconds=2.0, retry_seconds=3.0
+            )
+        self.assertTrue(result["passed"])
+        self.assertEqual(len(result["stabilization"]["attempts"]), 2)
+        self.assertEqual(
+            result["stabilization"]["attempts"][0]["rate_error_ppm"],
+            9907.6,
+        )
+
+        source = (INTERNAL / "tools/preflight_local_clock.py").read_text()
+        campaign = (INTERNAL / "tools/collect_scenario_laps.sh").read_text()
+        preflight = (
+            DATA_COLLECTION / "tools/01_internal_sensor_record_preflight.sh"
+        ).read_text()
+        self.assertIn("def wait_for_stable_clock", source)
+        self.assertIn("time.CLOCK_MONOTONIC_RAW", source)
+        self.assertIn("MORAI_CLOCK_STABILIZATION_WAIT_SECONDS", campaign)
+        self.assertIn("MORAI_CLOCK_STABILIZATION_WAIT_SECONDS", preflight)
 
     def test_sensor_set_discovery_is_not_tied_to_one_drive(self):
         import tempfile
@@ -202,6 +248,33 @@ class PortableSensorRecordEntrypointTest(unittest.TestCase):
         self.assertNotIn("PYTHONPATH", environment)
         self.assertEqual(environment["PYTHONNOUSERSITE"], "1")
         self.assertEqual(environment["CONDA_PREFIX"], "/tmp/conda")
+
+    def test_windows_interop_exec_format_failure_has_an_actionable_result(self):
+        from unittest import mock
+
+        with mock.patch(
+            "configure_local_machine.subprocess.run",
+            side_effect=OSError(8, "Exec format error"),
+        ):
+            ready, detail = probe_windows_interop(
+                "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
+            )
+        self.assertFalse(ready)
+        self.assertIn("Exec format error", detail)
+
+    def test_windows_interop_probe_requires_its_exact_response(self):
+        from unittest import mock
+
+        completed = subprocess.CompletedProcess(
+            args=[], returncode=0,
+            stdout=b"morai-wsl-interop-ok", stderr=b"",
+        )
+        with mock.patch(
+            "configure_local_machine.subprocess.run", return_value=completed
+        ):
+            ready, detail = probe_windows_interop("powershell.exe")
+        self.assertTrue(ready)
+        self.assertEqual(detail, "ok")
 
     def test_runtime_adapter_consumes_clock_before_team_constructor(self):
         source = (INTERNAL / "tools/run_async_scenario_review.py").read_text()

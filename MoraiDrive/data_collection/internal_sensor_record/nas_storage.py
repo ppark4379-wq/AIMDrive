@@ -11,17 +11,24 @@ from runtime_paths import POWERSHELL_EXE
 
 def powershell(script, timeout=30):
     encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
-    process = subprocess.run(
-        [
-            str(POWERSHELL_EXE),
-            "-NoProfile",
-            "-NonInteractive",
-            "-EncodedCommand",
-            encoded,
-        ],
-        capture_output=True,
-        timeout=timeout,
-    )
+    try:
+        process = subprocess.run(
+            [
+                str(POWERSHELL_EXE),
+                "-NoProfile",
+                "-NonInteractive",
+                "-EncodedCommand",
+                encoded,
+            ],
+            capture_output=True,
+            timeout=timeout,
+        )
+    except OSError as error:
+        raise RuntimeError(
+            "WSL cannot execute powershell.exe. Close WSL/VS Code, run "
+            "`wsl --shutdown` in Windows PowerShell or Command Prompt, then "
+            "reopen WSL."
+        ) from error
     if process.returncode:
         raise RuntimeError(
             "Windows operation failed: "

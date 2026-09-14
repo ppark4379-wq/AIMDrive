@@ -75,7 +75,9 @@ fi
 echo "[PASS] 최신 Scenario Runner·Expert·수집기 정적 연결 검사"
 
 clock_report="$MORAI_PROJECT_ROOT/.runtime/data_collection/clock_preflight.json"
-/usr/bin/python3 "$INTEGRATION/tools/preflight_local_clock.py" --output "$clock_report"
+/usr/bin/python3 "$INTEGRATION/tools/preflight_local_clock.py" \
+    --wait-seconds "${MORAI_CLOCK_STABILIZATION_WAIT_SECONDS:-90}" \
+    --output "$clock_report"
 
 if ! rosparam list >/dev/null 2>&1; then
     echo "[FAIL] ROS master가 없습니다." >&2
@@ -99,7 +101,8 @@ if [[ ! -s "$readiness" ]]; then
     cat "$readiness_error" >&2 || true
     exit 2
 fi
-/usr/bin/python3 "$INTEGRATION/tools/render_sensor_record_readiness.py" "$readiness"
+/usr/bin/python3 "$INTEGRATION/tools/render_sensor_record_readiness.py" \
+    --bridge-ip "${MORAI_BRIDGE_IP:-}" "$readiness"
 if (( readiness_code != 0 )); then
     echo "[FAIL] 센서 preflight가 실패했습니다. 01번 실행 파일의 연결 검사를 먼저 통과하세요." >&2
     exit 2

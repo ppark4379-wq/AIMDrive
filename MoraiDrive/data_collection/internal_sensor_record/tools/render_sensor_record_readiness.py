@@ -44,13 +44,18 @@ def state_for(role, row, failures):
     return "대기: 미수신"
 
 
-def next_actions(report):
+def next_actions(report, bridge_ip=None):
     failures = [str(item) for item in report.get("failures", [])]
     actions = []
     if "use_sim_time_not_true" in failures or any(
         item.endswith(":clock") for item in failures
     ):
-        actions.append("MORAI Simulation Time을 켜고 /clock 송신을 연결하세요.")
+        endpoint = (bridge_ip + ":9090") if bridge_ip else "01번에 표시된 새 WSL IP:9090"
+        actions.append(
+            "MORAI를 Simulation Time Mode로 두고 Simulator Network의 ROS 주소를 "
+            "%s으로 설정한 뒤 Disconnect → Connect하여 /clock 송신을 다시 연결하세요. "
+            "wsl --shutdown 뒤에는 기존 WSL IP 연결을 재사용할 수 없습니다." % endpoint
+        )
     if any(
         item.endswith(":ego") or item.endswith(":objects")
         or item.endswith("bridge /Ego_topic") for item in failures
@@ -81,7 +86,7 @@ def next_actions(report):
     return actions
 
 
-def render(report):
+def render(report, bridge_ip=None):
     failures = report.get("failures", [])
     streams = report.get("streams", {})
     lines = ["", "센서 연결 상태"]
@@ -111,7 +116,7 @@ def render(report):
     if report.get("ready") is True:
         lines.append("\n[PASS] 수집 필수 stream이 모두 준비됐습니다.")
     else:
-        actions = next_actions(report)
+        actions = next_actions(report, bridge_ip=bridge_ip)
         lines.append("\n[WAIT] 아직 수집을 시작할 수 없습니다.")
         for action in actions or ["위 상태에서 '대기' 또는 '오류'인 항목을 확인하세요."]:
             lines.append("       - " + action)
@@ -121,6 +126,7 @@ def render(report):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("report", nargs="?", type=Path)
+    parser.add_argument("--bridge-ip")
     args = parser.parse_args()
     try:
         raw = args.report.read_text(encoding="utf-8") if args.report else sys.stdin.read()
@@ -128,7 +134,7 @@ def main():
     except (OSError, json.JSONDecodeError) as error:
         print("[FAIL] 센서 상태 보고서를 읽지 못했습니다: " + str(error), file=sys.stderr)
         raise SystemExit(2)
-    print(render(report))
+    print(render(report, bridge_ip=args.bridge_ip))
 
 
 if __name__ == "__main__":

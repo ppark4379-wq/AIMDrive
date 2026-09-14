@@ -196,6 +196,34 @@ def catkin_build_invocation(ros_root, workspace, environment=None):
     return command, build_environment
 
 
+def probe_windows_interop(powershell_exe, environment=None):
+    """Return whether WSL can execute Windows programs at all."""
+    token = "morai-wsl-interop-ok"
+    try:
+        process = subprocess.run(
+            [
+                str(powershell_exe),
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "[Console]::Write('%s')" % token,
+            ],
+            env=dict(os.environ if environment is None else environment),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=15,
+        )
+    except OSError as error:
+        return False, "%s: %s" % (type(error).__name__, error)
+    stdout = process.stdout.decode("utf-8-sig", errors="replace")
+    stderr = process.stderr.decode("utf-8-sig", errors="replace")
+    if process.returncode or token not in stdout:
+        return False, "exit=%d stdout=%r stderr=%r" % (
+            process.returncode, stdout[-300:], stderr[-500:]
+        )
+    return True, "ok"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--storage-root", type=Path)
@@ -264,6 +292,16 @@ def main():
         missing.append("Windows drive is not mounted: " + str(Path(*storage.parts[:3])))
     if missing:
         raise RuntimeError("Machine paths are not ready:\n- " + "\n- ".join(missing))
+
+    interop_ok, interop_detail = probe_windows_interop(config["powershell_exe"])
+    if not interop_ok:
+        raise RuntimeError(
+            "WSL_INTEROP_UNAVAILABLE: WSL cannot execute powershell.exe. "
+            "Close WSL/VS Code, run `wsl --shutdown` in Windows PowerShell "
+            "or Command Prompt, then reopen WSL and retry 01. If it persists, "
+            "ensure /etc/wsl.conf does not set [interop] enabled=false. "
+            "detail=" + interop_detail
+        )
 
     sensor_data_root = (
         launcher / "MoraiLauncher_Win_Data/SaveFile/SensorData"
