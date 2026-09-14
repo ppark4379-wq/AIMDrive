@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Keep this entrypoint LF-only; Windows Git checkouts are supported.
 set -Eeuo pipefail
 
 # Run N independent full laps.  Each lap resets to the official start, selects

@@ -1,2 +1,3 @@
+*.sh text eol=lf
 MoraiDrive/expert/run_isolated_python.sh text eol=lf
 MoraiDrive/diagnostics/debug_expert_python.sh text eol=lf

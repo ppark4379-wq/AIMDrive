@@ -66,6 +66,24 @@ class PortableSensorRecordEntrypointTest(unittest.TestCase):
             with self.subTest(path=path.name):
                 subprocess.run(["bash", "-n", str(path)], check=True)
 
+    def test_shell_entrypoints_are_forced_to_lf_on_windows_checkouts(self):
+        repository_root = DATA_COLLECTION.parents[1]
+        attributes = (repository_root / ".gitattributes").read_text(
+            encoding="utf-8"
+        ).splitlines()
+        self.assertIn("*.sh text eol=lf", attributes)
+        paths = [
+            DATA_COLLECTION / "tools/00_prepare_internal_sensor_record.sh",
+            DATA_COLLECTION / "tools/01_internal_sensor_record_preflight.sh",
+            DATA_COLLECTION / "tools/02_collect_internal_sensor_record_laps.sh",
+            DATA_COLLECTION / "tools/03_validate_internal_sensor_record.sh",
+            DATA_COLLECTION / "tools/internal_sensor_record_env.sh",
+            INTERNAL / "tools/collect_scenario_laps.sh",
+        ]
+        for path in paths:
+            with self.subTest(path=path.name):
+                self.assertNotIn(b"\r\n", path.read_bytes())
+
     def test_entrypoints_share_isolated_environment(self):
         shared = (DATA_COLLECTION / "tools/internal_sensor_record_env.sh").read_text()
         preflight = (

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Keep this sourced helper LF-only; Windows Git checkouts are supported.
 # Shared, deterministic environment for the three Sensor Record entrypoints.
 
 MORAI_COLLECTION_TOOLS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
