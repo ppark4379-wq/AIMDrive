@@ -9,6 +9,17 @@
 /outputs/checkpoints/
 /outputs/logs/
 
+# Recorded MORAI captures the offline inference checks read, and the laps the
+# collector writes.  Re-recorded from the simulator rather than versioned: one
+# campaign here is 8.9 GB.
+/data/native_capture/
+/data/scenario_campaign_*/
+
+# Reference clone of MORAI-Autonomous/MORAI-NetworkModule, kept beside the
+# receivers while the protocols were checked against it.  It carries its own
+# .git; re-clone it rather than vendoring it here.
+/inference/third_party/
+
 # Local caches (torch hub, Hugging Face, run locks).
 /.runtime/
 
