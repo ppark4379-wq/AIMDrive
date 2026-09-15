@@ -9,6 +9,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT.parents[1]))  # MoraiDrive: standalone data_collection imports
 sys.path.insert(0, str(ROOT / "vision_encoder"))
 
 from async_capture.journal import digest, write_json
@@ -64,7 +65,8 @@ def main():
         require_ssd(run, reserve_bytes=0)
         manifest = build_episode_manifest(run / "episode_000",
                                           campaign_validation_sha256=validation_sha,
-                                          split=split)
+                                          split=split,
+                                          expected_evidence=lap.get("input_seals", {}))
         name = "lap_%03d_%s_manifest.json" % (number, split)
         path = output / name
         write_json(path, manifest)

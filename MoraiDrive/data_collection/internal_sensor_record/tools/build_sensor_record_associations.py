@@ -17,7 +17,8 @@ from pyproj import Transformer
 from async_capture.alignment import PayloadReader,decode,recorded_classes,distribution
 from async_capture.journal import verify_run,digest,write_json
 from async_capture.sensor_record import gps_text_matches_ros
-from ssd_storage import require_ssd
+from async_capture.portable_paths import recorded_episode_directory
+from ssd_storage import require_ssd,SSD_ROOT
 
 
 def main():
@@ -31,7 +32,7 @@ def main():
         if Path(n).name!=n or digest(a.episode/'quality'/n)!=sha:raise ValueError('Quality evidence changed')
     info=load('quality/INDEX_COMPLETE.json')
     if info['raw_manifest_sha256']!=cat['raw_manifest_sha256']:raise ValueError('Different recordings')
-    raw=Path(info['raw_path']);require_ssd(raw,reserve_bytes=0)
+    raw=recorded_episode_directory(info['raw_path'],a.episode,'raw',SSD_ROOT);require_ssd(raw,reserve_bytes=0)
     manifest,_=verify_run(raw,payloads=False)
     if digest(raw/'raw_manifest.json')!=info['raw_manifest_sha256']:raise ValueError('Raw identity changed')
     classes=recorded_classes(manifest);reader=PayloadReader(raw)

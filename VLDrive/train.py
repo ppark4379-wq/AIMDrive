@@ -242,11 +242,16 @@ def main():
     stages = parser.add_subparsers(dest='stage', required=True, metavar='stage')
     stage1 = stages.add_parser('vision-encoder', help='stage 1: MORAI vision encoder pre-training')
     add_vision_encoder_arguments(stage1)
+    morai = stages.add_parser('vision-encoder-morai', help='MORAI Sensor Record multitask transfer from full LMDrive weights')
+    from utils import morai_transfer_training
+    morai_transfer_training.add_arguments(morai)
     stage2 = stages.add_parser('vldrive', help='stage 2: VLDrive training on cached visual tokens')
     add_vldrive_arguments(stage2)
     args = parser.parse_args()
     if args.stage == 'vision-encoder':
         run_vision_encoder(stage1, args)
+    elif args.stage == 'vision-encoder-morai':
+        morai_transfer_training.run(args)
     else:
         run_vldrive(args)
 

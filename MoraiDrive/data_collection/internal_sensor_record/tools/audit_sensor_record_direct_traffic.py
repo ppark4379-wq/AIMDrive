@@ -17,7 +17,8 @@ sys.path.insert(0, str(ROOT))
 from async_capture.alignment import PayloadReader
 from async_capture.journal import digest, verify_run, write_json
 from async_capture.sensor_record_admission import verify_sealed_directory
-from ssd_storage import require_ssd
+from async_capture.portable_paths import recorded_episode_directory
+from ssd_storage import require_ssd, SSD_ROOT
 from tools.build_sensor_record_gt_timeline import (
     direct_light_index, direct_light_value, selected_traffic_query,
 )
@@ -47,7 +48,7 @@ def main():
     verify_sealed_directory(quality, "QUALITY_COMPLETE.json")
     gt_seal = verify_sealed_directory(gt_dir)
     index = load(quality / "INDEX_COMPLETE.json")
-    raw = Path(index["raw_path"])
+    raw = recorded_episode_directory(index["raw_path"], args.episode, "raw", SSD_ROOT)
     manifest, _ = verify_run(raw, payloads=False)
     if manifest["run_id"] != index["raw_run_id"]:
         raise ValueError("Quality index and raw run differ")
