@@ -1,5 +1,125 @@
 {
   "files": {
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/main_runner.py": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/main_runner.py",
+      "sha256": "2ec106dde60ddc23aec15c30634f23827cb3950cd8fbcb9c5ad4b1fdb96a1954"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/README.md": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/README.md",
+      "sha256": "d108467d12e7c8f0360fa000fa86c61fe3a41c52c169783252b5c030fadbe478"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/__init__.py": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/__init__.py",
+      "sha256": "c0e290bab4df51a6dc8d9e041ae06d7073e970b16b42f4db3c1f48c622af83ba"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/.gitignore": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/.gitignore",
+      "sha256": "8ccc4aa8ddd5f29098d13b5794950a5f76e48bd35c9c3b21ac4186dc73ad5089"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/core/full_loop_drive_base.py": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/core/full_loop_drive_base.py",
+      "sha256": "b6bc47957f10a6b6477b45951e78b718305920e7a93a68f28e683564eddc5293"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/core/__init__.py": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/core/__init__.py",
+      "sha256": "e0e72100a49b68ad66c189347e4a0f593fa01b9f424004bcb5959b68664dda42"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/core/base_scenario.py": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/core/base_scenario.py",
+      "sha256": "566791a4f11ec17d82daaf2588f89cdc9468c5f00d74b34d9f06534fdffc6696"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/tests/test_separated_package.py": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/tests/test_separated_package.py",
+      "sha256": "f40fcd65c6ff9d0d7d6d720ec95e07b9134ff14918c040e6da8e92b5c1e162c0"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/tests/__init__.py": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/tests/__init__.py",
+      "sha256": "aed92cd08739a76029b443bb038db670e0133c7165179aa07028785d10f74339"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/full_loop.yaml": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/config/full_loop.yaml",
+      "sha256": "d19dfc49dc435f6365b93069b7d1203718e2940b636bdb501d61fde2dba37772"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/global.yaml": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/config/global.yaml",
+      "sha256": "4947045eab8618b879a44d099d182706df08acea0627ea0cfc5d680ca744313e"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/local.yaml.example": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/config/local.yaml.example",
+      "sha256": "2dcd584ce211d1d6d603c532c35f2e5fac74e5d3c3fd3a2a6fc8331865ed99fb"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/full_loop_links.yaml": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/config/full_loop_links.yaml",
+      "sha256": "271570a17e877995156018cbae553958aa159343ef614401b4af2a3d2725de80"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/utils/transform_utils.py": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/utils/transform_utils.py",
+      "sha256": "a0dd4901b2bda6e72d6bd82f39543690ae2805fc833efb9aec93792c5329d8bd"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/utils/link_graph.py": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/utils/link_graph.py",
+      "sha256": "36ae8ea5301fe7c5f782d6bac880a3f1472502a4089f3f87f82d025c35d91327"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/utils/map_loader.py": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/utils/map_loader.py",
+      "sha256": "fefecb56fbb217836dae818842fc4533580dd1fbcad47e9589dcc720f8a7db0c"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/utils/__init__.py": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/utils/__init__.py",
+      "sha256": "75c8d4a9828e356ad46ddc3462f1b35b8c02da1f18bf202f9b8d024b2cb8f75b"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/adapters/object_ghost_audit.py": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/adapters/object_ghost_audit.py",
+      "sha256": "528c663379fdf6dd955c142ede03f736df2ca1216d2873b7ba19d5d12b77ec85"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/adapters/expert_process.py": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/adapters/expert_process.py",
+      "sha256": "f9aa18ba39afacc084de88b4b23bba372d8351d67f3ba03d1e6cae6d776a0d6f"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/adapters/expert_controller.py": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/adapters/expert_controller.py",
+      "sha256": "0f383c085cd020d1b4e60cec41a6c319b23c4a1135f5e2d2a5e8d244e1d59399"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/adapters/morai_grpc.py": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/adapters/morai_grpc.py",
+      "sha256": "d00a1fe210f43943ecdc9f8de7834d58e1cfcdd09e60c1e2afd7830ffa699005"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/adapters/__init__.py": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/adapters/__init__.py",
+      "sha256": "510d411c954e808584834bd61bab1eed6056e9401db29e5e846bfb8acd4b77b5"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/tools/verify_separation.py": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/tools/verify_separation.py",
+      "sha256": "c8999e87a3aaa0a4209bd27383e0443a328ceaec5aaca876c56510cfad34477b"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/tools/__init__.py": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/tools/__init__.py",
+      "sha256": "aec48e56d27c712a2f4ca6299588596564a5605a9f17109dd5fbf99e567d8fef"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/tools/feature_contract.py": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/tools/feature_contract.py",
+      "sha256": "3ed0fd37fd7b50efb7989004e2f716845eb37abab1e2193584b0f1cd3453f6da"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/scenarios/full_loop_scenario.py": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/scenarios/full_loop_scenario.py",
+      "sha256": "c77b1f9cdcc157587100fd883f4ce6c55dfd0eabe3bf9cc67bacfc6f3c238bcc"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/scenarios/__init__.py": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/scenarios/__init__.py",
+      "sha256": "03fe1c3dc3740a736c5285ff2a665af8b984784bf41429e7f5398245712eed7e"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/data/R_KR_PR_K-city_2025/node_set.json": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/data/R_KR_PR_K-city_2025/node_set.json",
+      "sha256": "806f72b736c4ae11c9e9b28cef97a0522b166e87e94cd39a831fa0be913f8419"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/data/R_KR_PR_K-city_2025/link_set.json": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/data/R_KR_PR_K-city_2025/link_set.json",
+      "sha256": "3f33d89e63e37e85f56457bc582691d4f8eb07dafd4849204f484ee253a9b727"
+    },
+    "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/data/R_KR_PR_K-city_2025/2026_molit_comp_global_path.txt": {
+      "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/scenario_runner/data/R_KR_PR_K-city_2025/2026_molit_comp_global_path.txt",
+      "sha256": "f74ff6f53e27c0c4b2cc0e004e5873f7ee1f68f2107f0429f0aad55254d73ee6"
+    },
     "/home/dydwns/AIMDrive/MoraiDrive/expert/src/expert/rviz_lattice.sh": {
       "local": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/mission_runtime/expert/src/expert/rviz_lattice.sh",
       "sha256": "9aed2eb26512f5eff9c1152ec037cc652151a1a9490d093f15a0ce4989b2c369"
@@ -377,5 +497,5 @@
       "sha256": "22074537dc927f868ccb306af6252c59c067b2c3308b417e31e76a869f30b10a"
     }
   },
-  "scope": "Local expert copy retained for the proven collection runtime; team files read-only"
+  "scope": "Local runner and expert copy; team files read-only"
 }

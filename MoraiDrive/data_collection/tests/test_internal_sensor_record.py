@@ -17,31 +17,42 @@ from async_capture.journal import RawWriter, records, verify_run
 from async_capture.health_policy import (
     SimulationPauseGrace, is_coherent_simulation_pause,
 )
+from async_capture.clock_health import evaluate as evaluate_local_clocks
 from async_capture.sensor_record import filename_candidates
 from bridge.camera_ingress_filter import dropped_publish_stream
 from bridge.bridge_health import (
-    BridgeMetrics, IMPLEMENTATION, REQUIRED_STREAMS, boot_id, check_bridge,
-    implementation_hashes,
+    BridgeMetrics, IMPLEMENTATION, OBSERVED_STREAMS, REQUIRED_STREAMS,
+    boot_id, check_bridge, implementation_hashes,
 )
 from async_capture.internal_sensor_record_contract import (
     _ros, sensor_set_contract_sha256,
 )
-from network_config import bridge_ip
+from network_config import bridge_ip, runtime_environment
 from native_capture.ground_truth import default_grpc_target
-from python_environment import (
-    SYSTEM_DIST_PACKAGES,
-    build_analysis_environment,
-    build_capture_environment,
-)
-from sensor_record_barrier import (
-    prepare_coordination_directory,
-    require_stop_acknowledgement,
-    wait_for_native_quiescence,
-)
 from sources.morai_sync_file_source import REQUIRED_SENSOR_DIRS
 
 
 class InternalSensorRecordTest(unittest.TestCase):
+    def test_bounded_wsl_clock_slew_is_recorded_without_reboot_loop(self):
+        samples = [
+            {"monotonic_ns": 0, "monotonic_raw_ns": 0, "wall_ns": 0},
+            {
+                "monotonic_ns": 1_009_908_000,
+                "monotonic_raw_ns": 1_000_000_000,
+                "wall_ns": 1_009_908_000,
+            },
+        ]
+        report = evaluate_local_clocks(samples)
+        self.assertTrue(report["passed"])
+        self.assertEqual(report["warnings"], ["monotonic_rate_slew_recorded"])
+        self.assertAlmostEqual(report["rate_error_ppm"], 9908.0)
+
+        samples[-1]["monotonic_ns"] = 1_083_333_000
+        samples[-1]["wall_ns"] = 1_083_333_000
+        report = evaluate_local_clocks(samples)
+        self.assertFalse(report["passed"])
+        self.assertIn("monotonic_rate_differs_from_raw", report["failures"])
+
     def test_simulation_pause_grace_never_hides_partial_sensor_loss(self):
         coherent = [
             "ros_clock_not_advancing",
@@ -138,6 +149,17 @@ class InternalSensorRecordTest(unittest.TestCase):
              "camera_ingress_filter.py"},
         )
 
+    def test_bridge_observes_clock_without_making_it_a_sensor_stream(self):
+        metrics = BridgeMetrics()
+        metrics.observe({
+            "receive_ns": 10, "end_ns": 11, "client_id": 9,
+            "queue_ms": 0.0, "processing_ms": 0.01, "residual": 0,
+            "errors": 0, "op": "publish", "topic": "/clock",
+        })
+        self.assertIn("/clock", OBSERVED_STREAMS)
+        self.assertNotIn("/clock", REQUIRED_STREAMS)
+        self.assertEqual(metrics.snapshot(11)["streams"]["/clock"]["samples"], 1)
+
     def test_bridge_preflight_rejects_a_different_implementation_hash(self):
         now = 10_000_000_000
         health = {
@@ -178,7 +200,7 @@ class InternalSensorRecordTest(unittest.TestCase):
         ):
             self.assertEqual(default_grpc_target(), "192.0.2.10:7789")
 
-    def test_campaign_uses_main_scenario_and_hash_pinned_expert(self):
+    def test_campaign_uses_hash_pinned_proven_three_lap_runtime(self):
         import hashlib
 
         supervisor = (
@@ -187,41 +209,18 @@ class InternalSensorRecordTest(unittest.TestCase):
         runner = (
             INTERNAL / "tools/run_proven_three_lap_scenario.py"
         ).read_text()
-        review_runner = (
-            INTERNAL / "tools/run_async_scenario_review.py"
-        ).read_text()
         runtime = INTERNAL / "proven_three_lap_runtime"
         manifest = json.loads(
             (runtime / "PROVEN_RUNTIME_MANIFEST.json").read_text()
         )
         self.assertIn("run_proven_three_lap_scenario.py", supervisor)
         self.assertIn("'--nearby-actors'", supervisor)
-        self.assertIn("'--audit-python',str(analysis_python)", supervisor)
-        self.assertIn("SUPPORTED_SCENARIOS", runner)
-        self.assertIn("PRIMARY_SCENARIOS", runner)
-        self.assertIn("class RawScenario(FullLoopScenario):", runner)
-        self.assertIn("class RawMissionScenario(RawScenario, MissionScenario):", runner)
-        self.assertIn("scenario_type = collection_scenario_class(a.scenario)", runner)
-        self.assertIn("'--scenario',a.scenario", supervisor)
-        self.assertIn("software_inventory()", runner)
-        self.assertNotIn("NearbyActorsMixin", runner)
-        self.assertNotIn("cfg['nearby_actor_policy']", runner)
-        for adapter in (runner, review_runner):
-            self.assertNotIn("route_setup_attempts=1", adapter)
-            self.assertNotIn("max_laps=1", adapter)
-            self.assertIn("build_analysis_environment", adapter)
-            self.assertIn("probe_analysis_environment", adapter)
-            self.assertIn("env=analysis_env", adapter)
-            self.assertIn("'faulthandler'", adapter)
-        self.assertFalse((runtime / "scenario_runner/__init__.py").exists())
-        self.assertFalse((INTERNAL / "async_capture/nearby_actors.py").exists())
+        self.assertIn("Proven three-lap runtime differs", runner)
         self.assertEqual(manifest["reference_run"], "large_scale_3laps_02_lap_001")
-        self.assertEqual(len(manifest["files"]), 86)
-        self.assertTrue(all(
-            relative.startswith("expert/") for relative in manifest["files"]
-        ))
+        self.assertEqual(len(manifest["files"]), 108)
         for relative in (
             "async_capture/bundle_screen.py",
+            "async_capture/nearby_actors.py",
             "async_capture/rosbag_recording.py",
             "async_capture/temporal_groups.py",
             "tools/collect_async_raw_proven.py",
@@ -235,53 +234,6 @@ class InternalSensorRecordTest(unittest.TestCase):
                 hashlib.sha256(path.read_bytes()).hexdigest(), expected,
                 relative,
             )
-
-
-    def test_production_adapter_maps_all_six_main_scenarios(self):
-        environment = dict(os.environ)
-        environment["MORAI_PROJECT_ROOT"] = str(DATA_COLLECTION.parent)
-        script = (
-            "import sys;"
-            "sys.path.insert(0,'data_collection/internal_sensor_record/tools');"
-            "from run_proven_three_lap_scenario import "
-            "PRIMARY_SCENARIOS,RawScenario,RawMissionScenario,"
-            "collection_scenario_class;"
-            "assert len(PRIMARY_SCENARIOS)==6;"
-            "assert collection_scenario_class('full_loop') is RawScenario;"
-            "assert all(collection_scenario_class(name) is RawMissionScenario "
-            "for name in PRIMARY_SCENARIOS[1:]);"
-            "print('ok')"
-        )
-        result = subprocess.run(
-            [sys.executable, "-c", script],
-            cwd=DATA_COLLECTION.parent,
-            env=environment,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=20,
-        )
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.strip(), "ok")
-
-    def test_collection_shell_exposes_six_modes_and_preserves_default(self):
-        source = (INTERNAL / "tools/collect_scenario_laps.sh").read_text()
-        self.assertIn('SCENARIO="full_loop"', source)
-        self.assertIn('--scenario "$SCENARIO"', source)
-        self.assertIn(
-            "full_loop|full_loop_normal|full_loop_static|full_loop_dynamic|"
-            "full_loop_roundabout|full_loop_highway",
-            source,
-        )
-        self.assertIn('"scenario_name": scenario_name', source)
-
-    def test_failed_lap_still_preserves_raw_data_and_stops_campaign(self):
-        source = (INTERNAL / "tools/collect_scenario_laps.sh").read_text()
-        failure = source.index("원본은 보존했고 다음 reset은 진행하지 않습니다")
-        returned = source.index('exit "' + chr(36) + 'code"', failure)
-        loop_end = source.index("done", failure)
-        self.assertLess(failure, returned)
-        self.assertLess(returned, loop_end)
 
     def test_collector_keeps_observation_clock_out_of_team_scenario_kwargs(self):
         source = (INTERNAL / "tools/run_async_scenario_review.py").read_text()
@@ -369,6 +321,35 @@ class InternalSensorRecordTest(unittest.TestCase):
             config, topic="/gps", frame="GPS-6",
             expected_bridge_ip="192.0.2.25",
         )["matches"])
+
+    def test_localhost_bridge_is_stable_and_ros_node_ip_remains_wsl_address(self):
+        with patch.dict(
+            "os.environ",
+            {
+                "MORAI_BRIDGE_IP": "127.0.0.1",
+                "MORAI_ROS_IP": "172.30.144.83",
+            },
+            clear=False,
+        ):
+            environment = runtime_environment()
+        self.assertEqual(environment["MORAI_BRIDGE_IP"], "127.0.0.1")
+        self.assertEqual(environment["ROS_IP"], "172.30.144.83")
+
+    def test_ignored_machine_config_can_pin_stable_localhost_bridge(self):
+        with tempfile.TemporaryDirectory(dir=str(DATA_COLLECTION.parent)) as temporary:
+            project = Path(temporary)
+            config = project / ".runtime/data_collection/local_machine.json"
+            config.parent.mkdir(parents=True)
+            config.write_text(json.dumps({"bridge_ip": "127.0.0.1"}))
+            with patch.dict(
+                "os.environ",
+                {
+                    "MORAI_PROJECT_ROOT": str(project),
+                    "MORAI_BRIDGE_IP": "",
+                },
+                clear=False,
+            ):
+                self.assertEqual(bridge_ip(), "127.0.0.1")
 
     def test_ignored_machine_config_selects_storage_without_committing_d(self):
         with tempfile.TemporaryDirectory(dir=str(DATA_COLLECTION.parent)) as temporary:
@@ -495,128 +476,6 @@ class InternalSensorRecordTest(unittest.TestCase):
         bag_audit = required[2].read_text()
         self.assertIn("require_ssd(directory", bag_audit)
         self.assertNotIn("ROOT not in directory.parents", bag_audit)
-
-    def test_capture_environment_replaces_inherited_python_configuration(self):
-        environment = build_capture_environment({
-            "PYTHONPATH": "/tmp/poison",
-            "PYTHONHOME": "/tmp/wrong-python",
-            "KEEP_ME": "yes",
-        })
-        self.assertEqual(environment["KEEP_ME"], "yes")
-        self.assertNotIn("/tmp/poison", environment["PYTHONPATH"])
-        self.assertNotIn("PYTHONHOME", environment)
-        self.assertEqual(environment["PYTHONNOUSERSITE"], "1")
-        self.assertEqual(environment["PYTHONDONTWRITEBYTECODE"], "1")
-
-    def test_analysis_environment_prioritizes_selected_interpreter(self):
-        selected = Path("/opt/conda/bin/python")
-        with patch(
-            "python_environment.interpreter_package_paths",
-            return_value=["/opt/conda/lib/python3.8/site-packages"],
-        ):
-            environment = build_analysis_environment(
-                selected,
-                {"PYTHONPATH": "/tmp/poison", "PYTHONHOME": "/tmp/wrong"},
-            )
-        paths = environment["PYTHONPATH"].split(os.pathsep)
-        self.assertEqual(paths[0], "/opt/conda/lib/python3.8/site-packages")
-        self.assertEqual(paths[-1], str(SYSTEM_DIST_PACKAGES))
-        self.assertNotIn("/tmp/poison", paths)
-        self.assertNotIn("PYTHONHOME", environment)
-
-    def test_coordination_directory_is_fresh_and_episode_scoped(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            episode = Path(temporary) / "episode_000"
-            episode.mkdir()
-            coordination = episode / "sensor_record_coordination"
-            self.assertEqual(
-                prepare_coordination_directory(coordination, episode),
-                coordination.resolve(),
-            )
-            self.assertTrue(coordination.is_dir())
-            with self.assertRaises(FileExistsError):
-                prepare_coordination_directory(coordination, episode)
-            with self.assertRaises(ValueError):
-                prepare_coordination_directory(
-                    Path(temporary) / "outside", episode)
-
-    def test_stop_acknowledgement_requires_successful_ui_off_evidence(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            coordination = Path(temporary)
-            marker = coordination / "recording_stopped.json"
-            payload = {
-                "status": "stopped",
-                "record_on": False,
-                "stopwatch_ticks": 123,
-                "error": None,
-            }
-            marker.write_text(
-                json.dumps(payload), encoding="utf-8-sig")
-            self.assertEqual(
-                require_stop_acknowledgement(coordination), payload)
-
-            payload["record_on"] = True
-            marker.write_text(json.dumps(payload), encoding="utf-8")
-            with self.assertRaises(RuntimeError):
-                require_stop_acknowledgement(coordination)
-
-            payload["record_on"] = False
-            payload["error"] = "primary failure"
-            marker.write_text(json.dumps(payload), encoding="utf-8")
-            with self.assertRaises(RuntimeError):
-                require_stop_acknowledgement(coordination)
-
-    def test_native_quiescence_requires_nonempty_stable_storage(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            (root / "sensor.bin").write_bytes(b"data")
-            report = wait_for_native_quiescence(
-                root, stable_seconds=0, timeout_seconds=1,
-                poll_seconds=0.001,
-            )
-            self.assertTrue(report["passed"])
-            self.assertEqual(report["file_count"], 1)
-            self.assertEqual(report["total_bytes"], 4)
-
-        with tempfile.TemporaryDirectory() as temporary:
-            with self.assertRaises(TimeoutError):
-                wait_for_native_quiescence(
-                    temporary, stable_seconds=0, timeout_seconds=0.005,
-                    poll_seconds=0.001,
-                )
-
-    def test_lap_transition_wires_ack_and_quiescence_before_completion(self):
-        runner = (
-            INTERNAL / "tools/run_sensor_record_scenario.py"
-        ).read_text()
-        prepare_call = "prepare_coordination_directory(coordination,ep)"
-        stop_call = "require_stop_acknowledgement(coordination)"
-        settle_call = "native_storage_quiescence=wait_for_native_quiescence(native)"
-        quick_call = "quick_summary=quick_native_capture_summary("
-        self.assertLess(runner.index(prepare_call),
-                        runner.index("powershell_with_heartbeat(",
-                                     runner.index(prepare_call)))
-        self.assertLess(runner.index(stop_call), runner.index(settle_call))
-        self.assertLess(runner.index(settle_call), runner.index(quick_call))
-
-        owner = (
-            INTERNAL / "tools/bounded_sensor_record.ps1"
-        ).read_text()
-        self.assertLess(
-            owner.index("Coordination directory must be prepared"),
-            owner.index("$attempted=$true"),
-        )
-        self.assertIn("Move-Item -LiteralPath $temporary", owner)
-        self.assertIn("Join-Error $errorText", owner)
-        self.assertIn("recording_stopped acknowledgement failed", owner)
-
-    def test_shared_shell_uses_isolated_analysis_probe(self):
-        source = (
-            DATA_COLLECTION / "tools/internal_sensor_record_env.sh"
-        ).read_text()
-        self.assertIn("unset PYTHONHOME", source)
-        self.assertIn("build_analysis_environment", source)
-        self.assertIn("probe_analysis_environment", source)
 
 
 if __name__ == "__main__":

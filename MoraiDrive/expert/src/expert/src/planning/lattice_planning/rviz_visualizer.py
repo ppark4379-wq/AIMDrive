@@ -45,7 +45,17 @@ class LatticeRvizVisualizer:
 
     def _build_path_markers(self, result, vehicle_state, stamp):
         marker_array = MarkerArray()
-        marker_array.markers.append(self._delete_all("map", stamp))
+        static_mode = result.mode == "static_obstacle"
+        if not static_mode or not getattr(self, "_static_path_display", False):
+            marker_array.markers.append(self._delete_all("map", stamp))
+        self._static_path_display = static_mode
+        current_ids = {('candidate_paths_{}'.format(candidate.layer), index)
+                       for index, candidate in enumerate(result.candidates)}
+        for namespace, marker_id in getattr(self, '_path_marker_ids', set()) - current_ids:
+            marker = self._new_marker("map", stamp, namespace, marker_id, Marker.LINE_STRIP)
+            marker.action = Marker.DELETE
+            marker_array.markers.append(marker)
+        self._path_marker_ids = current_ids
 
         for index, candidate in enumerate(result.candidates):
             marker = self._new_marker(
@@ -80,6 +90,16 @@ class LatticeRvizVisualizer:
         marker_array.markers.append(
             self._build_status_marker(result, vehicle_state, stamp)
         )
+        guard = self._new_marker('map', stamp, 'central_guard', 0, Marker.LINE_STRIP)
+        guard_points = result.debug_details.get('central_guard', [])
+        guard.action = Marker.ADD if guard_points else Marker.DELETE
+        guard.scale.x = 0.08
+        self._set_color(guard, 1.0, 0.8, 0.0, 0.9)
+        guard.points = [RosPoint(x=x, y=y, z=.1) for x, y in guard_points]
+        marker_array.markers.append(guard)
+        if static_mode:
+            for marker in marker_array.markers:
+                marker.lifetime = rospy.Duration(1.0)
         return marker_array
 
     def _build_ego_marker(self, vehicle_state, stamp):
@@ -124,7 +144,29 @@ class LatticeRvizVisualizer:
         marker.pose.position.z = 3.0
         marker.scale.z = 0.65
 
-        if result.acc_override:
+        if result.mode == "roundabout_entry":
+            details = result.debug_details.get("roundabout_entry", {})
+            marker.text = "ROUNDABOUT: {}  {:.1f}km/h\nsource={} front={} conflict={} TTC={:.1f}s".format(
+                details.get("phase", "check").upper(),
+                details.get("final_target_velocity", result.acc_target_velocity) * 3.6,
+                details.get("speed_source", "roundabout"), details.get("front_id"),
+                details.get("blocker_unique_id"), result.ttc,
+            )
+            if result.acc_target_velocity <= 0.05:
+                self._set_color(marker, 1.0, 0.15, 0.05, 1.0)
+            else:
+                self._set_color(marker, 0.1, 0.8, 1.0, 1.0)
+        elif result.debug_details.get("merge_safety"):
+            safety = result.debug_details["merge_safety"]
+            conflict = safety.get("conflict") or {}
+            marker.text = "MERGE: {}  target={}\nvehicle={} collision={}s".format(
+                safety["decision"],
+                "AUTO" if math.isinf(result.acc_target_velocity)
+                else "{:.0f}km/h".format(result.acc_target_velocity * 3.6),
+                conflict.get("id", "none"), conflict.get("time", "none"),
+            )
+            self._set_color(marker, 1.0, 0.65, 0.0, 1.0)
+        elif result.acc_override and result.mode != "static_obstacle":
             ttc_text = "INF" if math.isinf(result.ttc) else "{:.1f}s".format(result.ttc)
             acc_target = getattr(result, "acc_target_velocity", float("inf"))
             target_text = (
@@ -146,6 +188,28 @@ class LatticeRvizVisualizer:
         elif result.active and result.mode == "highway":
             marker.text = "HIGHWAY: LATTICE  offset={:+.1f}m".format(result.selected_offset)
             self._set_color(marker, 0.1, 1.0, 0.2, 1.0)
+        elif result.mode == "static_obstacle" and result.debug_details.get("static_avoidance"):
+            details = result.debug_details["static_avoidance"]
+            marker.text = "STATIC: RIGHT LATTICE {} {} offset={:+.2f}m\n{:.1f}km/h source={}".format(
+                details.get('selected_layer', '').upper(), details.get("phase", "check").upper(), result.selected_offset,
+                details.get("final_target_velocity", result.acc_target_velocity) * 3.6,
+                details.get("speed_source", "planner"),
+            )
+            if details.get('planner') == 'recorded_route_graph':
+                marker.text = 'STATIC: RECORDED {}\n{}\n{:.1f}km/h source={}'.format(
+                    details.get('phase', '').upper(), ' -> '.join(details.get('selected_routes', [])),
+                    details.get('final_target_velocity', result.acc_target_velocity)*3.6,
+                    details.get('speed_source', 'planner'))
+            if details.get('blocked_by'):
+                marker.text += '\nBLOCK: {}'.format(details['blocked_by'])
+                if 'required_right_offset' in details:
+                    marker.text += ' need={:.2f}m limit={:.2f}m'.format(
+                        details['required_right_offset'], details['allowed_right_offset'])
+                elif 'allowed_right_offset' in details:
+                    marker.text += ' right limit={:.2f}m'.format(details['allowed_right_offset'])
+            elif 'return_distance' in details:
+                marker.text += '\nENDPOINT RETURN {:.1f}m'.format(details['return_distance'])
+            self._set_color(marker, 0.1, 0.8, 1.0, 1.0)
         elif result.active:
             marker.text = "STATIC: RIGHT LATTICE  offset={:+.1f}m".format(
                 result.selected_offset
@@ -317,6 +381,9 @@ class LatticeRvizVisualizer:
         marker_array.markers.extend(
             self._build_merge_entry_zone_markers(result, stamp)
         )
+        marker_array.markers.extend(
+            self._build_roundabout_entry_markers(result, stamp)
+        )
         return marker_array
 
     def _build_merge_entry_zone_markers(self, result, stamp):
@@ -416,6 +483,189 @@ class LatticeRvizVisualizer:
         ).format(zone_name, radius, priority, center_x, center_y, world_z)
         self._set_color(label, red, green, blue, 1.0)
         return [fill, outline, label]
+
+    def _build_roundabout_entry_markers(self, result, stamp):
+        occupied = (
+            getattr(result, "reason", "") == "roundabout_entry_occupied_stop"
+        )
+        following = getattr(result, "reason", "") == "roundabout_entry_follow_lead"
+        cruising = getattr(result, "reason", "") == "roundabout_entry_cruise"
+        red, green, blue = (
+            (1.0, 0.15, 0.05)
+            if occupied
+            else (1.0, 0.65, 0.0)
+            if following
+            else (0.1, 0.8, 1.0)
+            if cruising
+            else (0.1, 0.8, 1.0)
+        )
+        markers = []
+
+        monitor = self._new_marker(
+            frame_id="map",
+            stamp=stamp,
+            namespace="roundabout_entry_monitor",
+            marker_id=0,
+            marker_type=Marker.LINE_STRIP,
+        )
+        monitor.scale.x = 0.25
+        monitor.points = self._polyline_band_points(
+            parameters.ROUNDABOUT_ENTRY_MONITOR_POLYLINE,
+            parameters.ROUNDABOUT_ENTRY_MONITOR_HALF_WIDTH,
+            z=0.14,
+        )
+        self._set_color(monitor, red, green, blue, 0.95)
+        markers.append(monitor)
+
+        decision_start, decision_end = self._roundabout_decision_points()
+        decision = self._new_marker(
+            frame_id="map",
+            stamp=stamp,
+            namespace="roundabout_entry_decision_zone",
+            marker_id=0,
+            marker_type=Marker.LINE_STRIP,
+        )
+        decision.scale.x = 0.18
+        decision.points = self._segment_box_points(
+            decision_start,
+            decision_end,
+            parameters.ROUNDABOUT_ENTRY_APPROACH_HALF_WIDTH,
+            z=0.12,
+        )
+        self._set_color(decision, 0.0, 0.7, 1.0, 0.85)
+        markers.append(decision)
+
+        stop_line = self._new_marker(
+            frame_id="map",
+            stamp=stamp,
+            namespace="roundabout_entry_stop_line",
+            marker_id=0,
+            marker_type=Marker.LINE_STRIP,
+        )
+        stop_line.scale.x = 0.45
+        stop_line.points = self._stop_line_points(z=0.2)
+        self._set_color(stop_line, 1.0, 1.0, 1.0, 1.0)
+        markers.append(stop_line)
+
+        label = self._new_marker(
+            frame_id="map",
+            stamp=stamp,
+            namespace="roundabout_entry_label",
+            marker_id=0,
+            marker_type=Marker.TEXT_VIEW_FACING,
+        )
+        label.pose.position.x = parameters.ROUNDABOUT_ENTRY_STOP_POINT[0]
+        label.pose.position.y = parameters.ROUNDABOUT_ENTRY_STOP_POINT[1]
+        label.pose.position.z = 2.3
+        label.scale.z = 0.55
+        label.text = (
+            "ROUNDABOUT WAIT"
+            if occupied
+            else "ROUNDABOUT FOLLOW"
+            if following
+            else "ROUNDABOUT CRUISE"
+            if cruising
+            else "ROUNDABOUT CHECK"
+        )
+        self._set_color(label, red, green, blue, 1.0)
+        markers.append(label)
+        return markers
+
+    @staticmethod
+    def _roundabout_decision_points():
+        start = parameters.ROUNDABOUT_ENTRY_APPROACH_START
+        end = parameters.ROUNDABOUT_ENTRY_APPROACH_END
+        stop_point = parameters.ROUNDABOUT_ENTRY_STOP_POINT
+        dx = end[0] - start[0]
+        dy = end[1] - start[1]
+        length = math.hypot(dx, dy)
+        if length < 1e-9:
+            return stop_point, stop_point
+        ux = dx / length
+        uy = dy / length
+        stop_along = (
+            (stop_point[0] - start[0]) * ux
+            + (stop_point[1] - start[1]) * uy
+        )
+        start_along = max(
+            0.0,
+            stop_along - parameters.ROUNDABOUT_ENTRY_STOP_BACK_DISTANCE,
+        )
+        end_along = min(
+            length,
+            stop_along + parameters.ROUNDABOUT_ENTRY_STOP_FORWARD_DISTANCE,
+        )
+        return (
+            (start[0] + ux * start_along, start[1] + uy * start_along),
+            (start[0] + ux * end_along, start[1] + uy * end_along),
+        )
+
+    @staticmethod
+    def _stop_line_points(z=0.0):
+        start = parameters.ROUNDABOUT_ENTRY_APPROACH_START
+        end = parameters.ROUNDABOUT_ENTRY_APPROACH_END
+        stop = parameters.ROUNDABOUT_ENTRY_STOP_POINT
+        dx = end[0] - start[0]
+        dy = end[1] - start[1]
+        length = math.hypot(dx, dy)
+        if length < 1e-9:
+            return [RosPoint(x=stop[0], y=stop[1], z=z)]
+        nx = -dy / length
+        ny = dx / length
+        half_width = parameters.ROUNDABOUT_ENTRY_APPROACH_HALF_WIDTH
+        return [
+            RosPoint(x=stop[0] - nx * half_width, y=stop[1] - ny * half_width, z=z),
+            RosPoint(x=stop[0] + nx * half_width, y=stop[1] + ny * half_width, z=z),
+        ]
+
+    @staticmethod
+    def _segment_box_points(start, end, half_width, z=0.0):
+        dx = end[0] - start[0]
+        dy = end[1] - start[1]
+        length = math.hypot(dx, dy)
+        if length < 1e-9:
+            return [RosPoint(x=start[0], y=start[1], z=z)]
+        nx = -dy / length
+        ny = dx / length
+        corners = (
+            (start[0] - nx * half_width, start[1] - ny * half_width),
+            (end[0] - nx * half_width, end[1] - ny * half_width),
+            (end[0] + nx * half_width, end[1] + ny * half_width),
+            (start[0] + nx * half_width, start[1] + ny * half_width),
+            (start[0] - nx * half_width, start[1] - ny * half_width),
+        )
+        return [RosPoint(x=x, y=y, z=z) for x, y in corners]
+
+    @staticmethod
+    def _polyline_band_points(polyline, half_width, z=0.0):
+        if len(polyline) < 2:
+            return [RosPoint(x=polyline[0][0], y=polyline[0][1], z=z)] if polyline else []
+
+        left = []
+        right = []
+        for index, point in enumerate(polyline):
+            if index == 0:
+                prev_point = point
+                next_point = polyline[index + 1]
+            elif index == len(polyline) - 1:
+                prev_point = polyline[index - 1]
+                next_point = point
+            else:
+                prev_point = polyline[index - 1]
+                next_point = polyline[index + 1]
+            dx = next_point[0] - prev_point[0]
+            dy = next_point[1] - prev_point[1]
+            length = math.hypot(dx, dy)
+            if length < 1e-9:
+                nx, ny = 0.0, 0.0
+            else:
+                nx = -dy / length
+                ny = dx / length
+            left.append((point[0] + nx * half_width, point[1] + ny * half_width))
+            right.append((point[0] - nx * half_width, point[1] - ny * half_width))
+
+        outline = left + list(reversed(right)) + [left[0]]
+        return [RosPoint(x=x, y=y, z=z) for x, y in outline]
 
     @staticmethod
     def _new_marker(frame_id, stamp, namespace, marker_id, marker_type):

@@ -16,36 +16,14 @@ LMDrive 호환 데이터셋으로 변환합니다. 기본 `sync_native_files` �
 ./data_collection/tools/03_validate_internal_sensor_record.sh campaign_name
 ```
 
-02번은 메인 `scenario_runner`의 6개 시나리오를 직접 선택할 수 있다. 첫 번째 인자는
-회차 수이며, `--scenario`를 생략하면 기존과 동일하게 `full_loop`를 실행한다.
-
-```bash
-./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_full --scenario full_loop
-./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_normal --scenario full_loop_normal
-./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_static --scenario full_loop_static
-./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_dynamic --scenario full_loop_dynamic
-./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_roundabout --scenario full_loop_roundabout
-./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_highway --scenario full_loop_highway
-```
-
-START/END, 잘린 경로, 활성 장애물·NPC, 완료 판정은 메인 `scenario_runner`가 담당한다.
-Data Collection은 선택 이름 전달, Sensor Record 시작·종료·저장, 선택 모드에 맞는
-사후 검증을 담당한다. 한 회차가 실패하면 원본을 보존하고 다음 회차로 넘어가지 않는
-기존 정책을 유지한다.
-
-회차 전환은 Sensor Record UI의 OFF 확인을 원자적 coordination 기록으로 받은 뒤,
-native 파일의 크기와 수정 시각이 안정되고 7개 센서 bundle 검사가 통과한 경우에만
-진행한다. 따라서 앞 회차 저장 중 다음 회차가 시작되지 않는다. ROS 캡처 프로세스는
-고정된 system Python 환경을 사용하고, 오프라인 분석은 선택한 Conda 패키지를 먼저
-사용하되 system `rospkg`와 ROS 경로만 뒤에 명시적으로 추가한다.
-
-
 01·02·03은 실행할 때마다 공통 자동 준비를 먼저 수행한다. ROS/catkin, MORAI Launcher,
 Windows 저장 드라이브와 분석 Python을 검사하고, 빠진 SensorData 폴더를 만들며, 필요한
 일반 Python 패키지만 Git에서 제외된 `.runtime/data_collection/internal_sensor_record_deps`에
 설치한다. 시스템 Python, 사용자 site-packages, scenario/expert/source 파일은 변경하지
-않는다. 01은 현재 WSL IP를 표시하고 `aim_sensorset.json`의 rosbridge 주소만 백업 후
-자동 갱신한다. geometry/FOV/rate/topic은 자동 수정하지 않는다.
+않는다. 01은 Windows에서 유지되는 `127.0.0.1:9090`을 기본 연결 주소로 쓰고
+`aim_sensorset.json`의 rosbridge 주소만 백업 후 자동 갱신한다.
+geometry/FOV/rate/topic은 자동 수정하지 않는다. 차량 정보와 Simulator Network의
+`/clock` 송신도 01에 표시된 같은 주소로 연결한다.
 
 00번은 PC별 경로를 명시적으로 바꿀 때만 직접 사용한다.
 
@@ -55,8 +33,9 @@ Windows 저장 드라이브와 분석 Python을 검사하고, 빠진 SensorData 
   --patch-sensor-set
 ```
 
-00번이 만드는 PC별 설정은 Git에 포함되지 않는다. WSL bridge IP는 설정 파일에
-고정하지 않고 01·02 실행 때마다 다시 탐지한다. 01·02·03은 같은 ROS/catkin/Python
+00번이 만드는 PC별 설정은 Git에 포함되지 않는다. MORAI가 사용할 bridge 주소는
+PC별 설정에 저장하고 기본값은 `127.0.0.1`이다. WSL 내부 ROS node 주소는 매 실행마다
+별도로 탐지한다. 01·02·03은 같은 ROS/catkin/Python
 계약과 `PYTHONNOUSERSITE=1`을 사용하므로 터미널마다 Conda나 `PYTHONPATH`를 다르게
 맞출 필요가 없다.
 
@@ -80,7 +59,7 @@ export MORAI_STORAGE_ROOT=/mnt/c/MoraiDriveData
 또는 ignored 로컬 설정에 저장하면 새 터미널마다 export할 필요가 없다.
 
 ```json
-{"storage_root":"/mnt/d/MoraiDrive","launcher_root":"/mnt/c/MoraiLauncher_Win"}
+{"bridge_ip":"127.0.0.1","storage_root":"/mnt/d/MoraiDrive","launcher_root":"/mnt/c/MoraiLauncher_Win"}
 ```
 
 `MoraiDrive/dataset`이 일반 폴더로 이미 존재하는 경우에는 안전을 위해 자동으로

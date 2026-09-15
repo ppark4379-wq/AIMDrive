@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
+# Keep this entrypoint LF-only; Windows Git checkouts are supported.
 set -Eeuo pipefail
 
 TOOLS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$TOOLS/internal_sensor_record_env.sh"
 
-echo "[1/5] 이 PC의 WSL 주소·ROS/catkin·Python·저장 경로를 자동 준비합니다."
+echo "[1/5] 이 PC의 고정 MORAI 연결 주소·ROS/catkin·Python·저장 경로를 준비합니다."
 echo "      Git 추적 소스는 수정하지 않습니다. PC별 설정은 .runtime에만 저장합니다."
 morai_prepare_internal_sensor_record_environment sensor-set
 morai_load_internal_sensor_record_environment
@@ -12,7 +13,7 @@ morai_require_capture_python
 
 INTERNAL="$MORAI_INTERNAL_SENSOR_RECORD_ROOT"
 MASTER_URI="${ROS_MASTER_URI:-http://127.0.0.1:11311}"
-ROS_HOST_IP="$MORAI_BRIDGE_IP"
+MORAI_ENDPOINT_IP="$MORAI_BRIDGE_IP"
 CONNECT_TIMEOUT="${MORAI_CONNECT_TIMEOUT_SECONDS:-600}"
 BRIDGE_PID=""
 STARTED_BRIDGE=0
@@ -43,16 +44,21 @@ if [[ ! "$CONNECT_TIMEOUT" =~ ^[0-9]+$ ]] || (( CONNECT_TIMEOUT < 30 )); then
     echo "[FAIL] MORAI_CONNECT_TIMEOUT_SECONDS는 30 이상의 정수여야 합니다." >&2
     exit 2
 fi
-export MORAI_BRIDGE_IP="$ROS_HOST_IP"
-export ROS_IP="$ROS_HOST_IP"
+export MORAI_BRIDGE_IP="$MORAI_ENDPOINT_IP"
 
 echo
 echo "[2/5] 현재 PC 설정"
 echo "      MORAI 연결 주소 : ${MORAI_BRIDGE_IP}:9090"
+echo "      WSL ROS node 주소: ${ROS_IP} (내부 자동 탐지)"
 echo "      ROS master       : $ROS_MASTER_URI"
 echo "      원본 저장 경로   : $MORAI_STORAGE_ROOT"
 echo "      센서셋 파일      : $MORAI_SENSOR_SET_PATH"
 /usr/bin/python3 "$INTERNAL/tools/preflight_local_storage.py" --reserve-gib 70
+
+clock_report="$MORAI_PROJECT_ROOT/.runtime/data_collection/clock_preflight.json"
+/usr/bin/python3 "$INTERNAL/tools/preflight_local_clock.py" \
+    --wait-seconds "${MORAI_CLOCK_STABILIZATION_WAIT_SECONDS:-90}" \
+    --output "$clock_report"
 
 echo
 echo "[3/5] MORAI 26.R1.H3와 AIM 센서 geometry/rate/topic 계약을 검사합니다."
@@ -99,11 +105,31 @@ done
 
 rosparam set /use_sim_time true
 echo "[PASS] ROS master 준비 및 /use_sim_time=true"
+
+if [[ "$MORAI_ENDPOINT_IP" == 127.* ]]; then
+    set +e
+    "$MORAI_POWERSHELL_EXE" -NoProfile -NonInteractive -Command \
+        '$client = New-Object System.Net.Sockets.TcpClient; try { $result = $client.BeginConnect("127.0.0.1", 9090, $null, $null); if (-not $result.AsyncWaitHandle.WaitOne(3000)) { exit 2 }; $client.EndConnect($result); exit 0 } catch { exit 2 } finally { $client.Dispose() }' \
+        >/dev/null 2>&1
+    localhost_code=$?
+    set -e
+    if (( localhost_code != 0 )); then
+        echo "[FAIL] 이 PC의 Windows→WSL localhost 전달로 127.0.0.1:9090에 접속할 수 없습니다." >&2
+        echo "       다음 명령으로 이 PC만 WSL NAT 주소를 사용하도록 전환한 뒤 01번을 다시 실행하세요." >&2
+        echo "       ./data_collection/tools/00_prepare_internal_sensor_record.sh --bridge-ip $ROS_IP --patch-sensor-set" >&2
+        exit 2
+    fi
+    echo "[PASS] Windows→WSL 고정 주소 127.0.0.1:9090 접속 확인"
+fi
 echo
 echo "[5/5] 실제 메시지를 확인합니다."
-echo "      MORAI에서 차량 정보와 Camera 1~4·LiDAR·GPS·IMU를"
-echo "      ${ROS_HOST_IP}:9090으로 연결하세요."
+echo "      MORAI에서 차량 정보·Simulator Network(/clock)와"
+echo "      Camera 1~4·LiDAR·GPS·IMU를"
+echo "      ${MORAI_ENDPOINT_IP}:9090으로 연결하세요."
 echo "      Simulation Time / Sensor Synchronization 10Hz / External Sync OFF"
+echo "      /clock은 센서셋과 별도인 Simulator Network 연결에서 송신됩니다."
+echo "      127.0.0.1은 Windows→WSL localhost 전달을 사용하므로 WSL 재시작 뒤에도 주소가 유지됩니다."
+echo "      차량 정보와 Simulator Network도 센서셋과 같은 주소를 사용해야 합니다."
 echo "      센서셋 IP가 이번 실행에서 바뀌었다면 MORAI에서 센서셋을 다시 불러온 뒤 연결하세요."
 
 deadline=$((SECONDS + CONNECT_TIMEOUT))
@@ -128,7 +154,8 @@ while (( SECONDS < deadline )); do
         exit 2
     fi
     mv "$temporary" "$STATUS_FILE"
-    /usr/bin/python3 "$INTERNAL/tools/render_sensor_record_readiness.py" "$STATUS_FILE"
+    /usr/bin/python3 "$INTERNAL/tools/render_sensor_record_readiness.py" \
+        --bridge-ip "$MORAI_ENDPOINT_IP" "$STATUS_FILE"
 
     if (( probe_code == 0 )); then
         echo

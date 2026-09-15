@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify the retained local expert fork against copy-time provenance."""
+"""Verify local expert/scenario forks against their copy-time provenance."""
 
 import hashlib
 import json
@@ -74,7 +74,7 @@ def main():
     invalid_declarations = sorted(
         name
         for name, record in declared.items()
-        if record.get("component") != "expert"
+        if record.get("component") not in ("expert", "scenario_runner")
         or not record.get("change_class")
         or not record.get("summary")
     )

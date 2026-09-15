@@ -1,0 +1,51 @@
+{
+  "schema": "morai-vision-encoder-train-v1",
+  "seed": 42,
+  "dataset": {
+    "root": "../MoraiDrive/dataset_local/competition_train",
+    "split_file": "configs/splits/morai_full_loop_80_20.json",
+    "traffic_label_sidecar": "data/processed/traffic_labels/full_loop_80_20.json",
+    "lidar_axis_policy": "morai_flu_to_lmdrive_fru",
+    "train_stride": 1,
+    "validation_stride": 1
+  },
+  "dataloader": {
+    "batch_size": 2,
+    "workers": 2
+  },
+  "augmentation": {
+    "rgb_hue_jitter": 0.0
+  },
+  "optimizer": {
+    "reference_lr": 0.00075,
+    "reference_rgb_lr": 0.0003,
+    "weight_decay": 0.05,
+    "clip_grad": 5.0
+  },
+  "schedule": {
+    "epochs": 25,
+    "warmup_epochs": 5,
+    "accumulation_steps": 16,
+    "freeze_rgb_epochs": 0
+  },
+  "loss": {
+    "waypoint_weight": 0.5,
+    "traffic_light_weight": 0.1
+  },
+  "output": {
+    "dir": "outputs/checkpoints/vision_encoder/run1",
+    "feature_checkpoint": "best",
+    "log_interval": 100
+  },
+  "initialization": {
+    "resume": null,
+    "warm_start": null,
+    "warm_start_sha256": null,
+    "warm_start_source_split_sha256": null
+  },
+  "runtime": {
+    "amp": true,
+    "max_train_batches": 0,
+    "max_validation_batches": 0
+  }
+}

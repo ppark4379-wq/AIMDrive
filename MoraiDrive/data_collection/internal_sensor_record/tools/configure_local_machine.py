@@ -126,62 +126,6 @@ def run_import_check(python, modules, environment):
     return result.returncode == 0, result.stderr[-1000:]
 
 
-def interpreter_site_paths(python):
-    result = subprocess.run(
-        [str(python), "-I", "-c", (
-            "import json,sysconfig;"
-            "print(json.dumps([sysconfig.get_path('purelib'),"
-            "sysconfig.get_path('platlib')]))"
-        )],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        timeout=20,
-    )
-    if result.returncode:
-        raise RuntimeError(result.stderr[-1000:])
-    paths = []
-    for value in json.loads(result.stdout.strip()):
-        if not value:
-            continue
-        resolved = str(Path(value).expanduser().resolve())
-        if resolved not in paths:
-            paths.append(resolved)
-    return paths
-
-
-def run_analysis_check(python, environment):
-    result = subprocess.run(
-        [str(python), "-c", (
-            "import json,re,sys,cv2,numpy,pyproj,scipy,PIL,rospkg,rospy;"
-            "print(json.dumps({'prefix':sys.prefix,'stdlib_re':re.__file__,"
-            "'numpy':numpy.__file__}))"
-        )],
-        env=environment,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        timeout=30,
-    )
-    if result.returncode:
-        return False, result.stderr[-1000:]
-    try:
-        report = json.loads(result.stdout.strip().splitlines()[-1])
-        prefix = Path(report["prefix"]).resolve()
-        stdlib_re = Path(report["stdlib_re"]).resolve()
-        numpy_path = Path(report["numpy"]).resolve()
-    except (IndexError, KeyError, TypeError, ValueError) as error:
-        return False, "invalid analysis probe: " + repr(error)
-    if prefix != stdlib_re and prefix not in stdlib_re.parents:
-        return False, "standard library came from another Python: " + str(stdlib_re)
-    system_dist = Path("/usr/lib/python3/dist-packages").resolve()
-    if Path(python).resolve() != Path("/usr/bin/python3").resolve() and (
-        numpy_path == system_dist or system_dist in numpy_path.parents
-    ):
-        return False, "Conda loaded system numpy: " + str(numpy_path)
-    return True, ""
-
-
 def update_sensor_bridge(data, bridge_ip):
     expected = {
         "cameraList": (4, "cc"),
@@ -230,6 +174,56 @@ def preserve_before_change(path, label):
     return backup
 
 
+def catkin_build_invocation(ros_root, workspace, environment=None):
+    """Build with ROS' system Python even when the caller activated Conda."""
+    build_environment = dict(
+        os.environ if environment is None else environment
+    )
+    build_environment.pop("PYTHONHOME", None)
+    build_environment.pop("PYTHONPATH", None)
+    build_environment["PYTHONNOUSERSITE"] = "1"
+    command = [
+        "bash",
+        "-c",
+        (
+            'source "$1"; exec catkin_make -C "$2" --force-cmake '
+            '-DPYTHON_EXECUTABLE=/usr/bin/python3'
+        ),
+        "morai-catkin-build",
+        str(Path(ros_root) / "setup.bash"),
+        str(workspace),
+    ]
+    return command, build_environment
+
+
+def probe_windows_interop(powershell_exe, environment=None):
+    """Return whether WSL can execute Windows programs at all."""
+    token = "morai-wsl-interop-ok"
+    try:
+        process = subprocess.run(
+            [
+                str(powershell_exe),
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "[Console]::Write('%s')" % token,
+            ],
+            env=dict(os.environ if environment is None else environment),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=15,
+        )
+    except OSError as error:
+        return False, "%s: %s" % (type(error).__name__, error)
+    stdout = process.stdout.decode("utf-8-sig", errors="replace")
+    stderr = process.stderr.decode("utf-8-sig", errors="replace")
+    if process.returncode or token not in stdout:
+        return False, "exit=%d stdout=%r stderr=%r" % (
+            process.returncode, stdout[-300:], stderr[-500:]
+        )
+    return True, "ok"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--storage-root", type=Path)
@@ -239,6 +233,13 @@ def main():
     parser.add_argument("--powershell-exe", type=Path)
     parser.add_argument("--analysis-python", type=Path)
     parser.add_argument("--sensor-set", type=Path)
+    parser.add_argument(
+        "--bridge-ip",
+        help=(
+            "Windows MORAI가 사용할 rosbridge IPv4. 기본 127.0.0.1은 "
+            "WSL 재시작 뒤에도 유지됩니다."
+        ),
+    )
     parser.add_argument("--patch-sensor-set", action="store_true")
     parser.add_argument("--no-install", action="store_true")
     parser.add_argument("--json", action="store_true", help="Print the full machine report")
@@ -266,7 +267,16 @@ def main():
     launcher = discover_launcher_root(
         args.launcher_root, existing.get("launcher_root")
     )
+    from network_config import validate_bridge_ip
+
+    selected_bridge_ip = validate_bridge_ip(
+        args.bridge_ip
+        or os.environ.get("MORAI_BRIDGE_IP")
+        or existing.get("bridge_ip")
+        or "127.0.0.1"
+    )
     config = {
+        "bridge_ip": selected_bridge_ip,
         "storage_root": str(selected(args.storage_root, "storage_root", storage_default)),
         "launcher_root": str(launcher),
         "catkin_workspace": str(catkin_workspace),
@@ -299,6 +309,16 @@ def main():
     if missing:
         raise RuntimeError("Machine paths are not ready:\n- " + "\n- ".join(missing))
 
+    interop_ok, interop_detail = probe_windows_interop(config["powershell_exe"])
+    if not interop_ok:
+        raise RuntimeError(
+            "WSL_INTEROP_UNAVAILABLE: WSL cannot execute powershell.exe. "
+            "Close WSL/VS Code, run `wsl --shutdown` in Windows PowerShell "
+            "or Command Prompt, then reopen WSL and retry 01. If it persists, "
+            "ensure /etc/wsl.conf does not set [interop] enabled=false. "
+            "detail=" + interop_detail
+        )
+
     sensor_data_root = (
         launcher / "MoraiLauncher_Win_Data/SaveFile/SensorData"
     )
@@ -326,15 +346,26 @@ def main():
                 + str(catkin_workspace)
             )
         print("[SETUP] building bundled catkin workspace: " + str(catkin_workspace), flush=True)
+        command, build_environment = catkin_build_invocation(
+            config["ros_root"], catkin_workspace
+        )
+        system_python = subprocess.run(
+            ["/usr/bin/python3", "-c", "import em,catkin_pkg"],
+            env=build_environment,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=30,
+        )
+        if system_python.returncode:
+            raise RuntimeError(
+                "ROS system Python is missing em/catkin_pkg. Install "
+                "python3-empy and python3-catkin-pkg before retrying: "
+                + system_python.stderr[-1000:]
+            )
         subprocess.run(
-            [
-                "bash",
-                "-lc",
-                'source "$1"; exec catkin_make -C "$2"',
-                "morai-catkin-build",
-                str(Path(config["ros_root"]) / "setup.bash"),
-                str(catkin_workspace),
-            ],
+            command,
+            env=build_environment,
             check=True,
         )
     if not catkin_setup.is_file():
@@ -357,10 +388,8 @@ def main():
     dependencies.mkdir(parents=True, exist_ok=True)
 
     environment = dict(os.environ)
-    environment.pop("PYTHONHOME", None)
     environment.update(
         PYTHONNOUSERSITE="1",
-        PYTHONDONTWRITEBYTECODE="1",
         PYTHONPATH=":".join([
             str(dependencies),
             str(ROOT),
@@ -382,6 +411,7 @@ def main():
         Path.home() / "miniconda3/envs/lmdrive/bin/python3.8",
         Path("/usr/bin/python3"),
     ])
+    analysis_modules = ("cv2", "numpy", "pyproj", "scipy", "PIL")
 
     def choose_analysis():
         failures = []
@@ -389,18 +419,7 @@ def main():
             candidate = Path(candidate).expanduser().resolve()
             if not candidate.is_file():
                 continue
-            try:
-                own_paths = interpreter_site_paths(candidate)
-            except (OSError, RuntimeError, ValueError) as error:
-                failures.append(str(candidate) + ": " + repr(error))
-                continue
-            analysis_environment = dict(environment)
-            analysis_environment["PYTHONPATH"] = ":".join(
-                own_paths
-                + environment["PYTHONPATH"].split(":")
-                + ["/usr/lib/python3/dist-packages"]
-            )
-            ok, error = run_analysis_check(candidate, analysis_environment)
+            ok, error = run_import_check(candidate, analysis_modules, environment)
             if ok:
                 return candidate, failures
             failures.append(str(candidate) + ": " + error)
@@ -433,12 +452,15 @@ def main():
         backup = preserve_before_change(config_path, "machine_setup")
     atomic_write_json(config_path, config)
 
-    sensor_report = {"requested": bool(args.patch_sensor_set), "changed_fields": 0}
+    sensor_report = {
+        "requested": bool(args.patch_sensor_set),
+        "bridge_ip": config["bridge_ip"],
+        "changed_fields": 0,
+    }
     if args.patch_sensor_set:
-        from network_config import bridge_ip
         from async_capture.internal_sensor_record_contract import validate_sensor_set
 
-        address = bridge_ip()
+        address = config["bridge_ip"]
         sensor_path = discover_sensor_set(
             launcher,
             explicit=args.sensor_set,
@@ -478,7 +500,7 @@ def main():
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:
         print("[PASS] PC별 실행 환경 준비 완료")
-        print("       bridge IP : " + sensor_report.get("bridge_ip", "실행 시 자동 탐지"))
+        print("       bridge IP : " + config["bridge_ip"] + " (Windows 고정 연결 주소)")
         print("       저장 경로 : " + config["storage_root"])
         print("       catkin    : " + config["catkin_workspace"])
         print("       분석 Python: " + str(analysis_python))

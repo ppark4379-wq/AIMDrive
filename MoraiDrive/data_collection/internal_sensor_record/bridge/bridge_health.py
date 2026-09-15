@@ -30,7 +30,10 @@ IMPLEMENTATION = "stage6e-binary-json-v1"
 HEALTH_TOPIC = "/stage6e/bridge_health"
 REQUIRED_STREAMS = {"Camera-1", "Camera-2", "Camera-3", "Camera-4",
                     "/lidar3D", "/gps", "/imu", "/Ego_topic"}
-SENSOR_TOPICS = {"/image_jpeg/compressed", "/lidar3D", "/gps", "/imu", "/Ego_topic"}
+DIAGNOSTIC_STREAMS = {"/clock"}
+OBSERVED_STREAMS = REQUIRED_STREAMS | DIAGNOSTIC_STREAMS
+SENSOR_TOPICS = {"/image_jpeg/compressed", "/lidar3D", "/gps", "/imu",
+                 "/Ego_topic", "/clock"}
 
 
 def boot_id():
@@ -63,7 +66,7 @@ class BridgeMetrics:
             if row.get("op") != "publish":
                 return
             key = row.get("frame_id") if row.get("topic") == "/image_jpeg/compressed" else row.get("topic")
-            if key in REQUIRED_STREAMS:
+            if key in OBSERVED_STREAMS:
                 self.streams[key].append(row)
 
     def snapshot(self, now_ns=None):

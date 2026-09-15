@@ -5,6 +5,7 @@ from .localization.path_manager import PathManager
 from .planning.adaptive_cruise_control import AdaptiveCruiseControl
 from .planning.traffic_light_stop import TrafficLightStopController
 from .planning.lattice_planning import LatticePlanningProcess
+from .planning.lattice_planning import parameters as lattice_parameters
 from .planning.highway_lane_planning import parameters as highway_parameters
 from .control.pure_pursuit import PurePursuit
 from .control.pid import Pid
@@ -77,6 +78,8 @@ class AutonomousDriving:
         self.previous_acc_cmd = 0.0
         self._merge_curvature_floor_zone = None
         self._merge_curvature_floor_speed = None
+        self._static_reference_speed = None
+        self._static_speed_ramp = False
 
     def execute(
         self,
@@ -104,10 +107,37 @@ class AutonomousDriving:
         # Static zone: right-biased obstacle avoidance.
         # Highway zone: cost-based vehicle avoidance, or base-path ACC priority
         # when the distance/TTC risk threshold is crossed.
+        preview_start = self.path_manager.current_waypoint
+        static_maneuver = getattr(self.lattice_planning_process, "static_avoidance", None)
+        static_preview = static_maneuver is not None and (
+            static_maneuver.active or self.lattice_planning_process._is_inside_static_zone(vehicle_state)
+        )
+        recorded = getattr(self.lattice_planning_process, "recorded_static", None)
+        static_preview = static_preview or (recorded is not None and (recorded.active or recorded.contains(vehicle_state)))
+        preview_count = lattice_parameters.STATIC_PREVIEW_POINTS if static_preview else 120
+        prediction_path = self.path[preview_start:preview_start + preview_count]
+        if self.path_manager.is_closed_path and len(prediction_path) < preview_count:
+            prediction_path = prediction_path + self.path[:preview_count - len(prediction_path)]
         lattice_result = self.lattice_planning_process.run(
-            vehicle_state, local_path, planning_object_info_dic_list
+            vehicle_state, local_path, planning_object_info_dic_list,
+            desired_velocity=planned_velocity,
+            prediction_path=prediction_path,
         )
         planning_path = lattice_result.path
+        static_valid = (lattice_result.mode == 'static_obstacle' and lattice_result.active
+                        and lattice_result.debug_details.get('static_avoidance', {}).get('path_validated', False))
+        if len(local_path) >= 2:
+            self._static_reference_speed = planned_velocity if static_valid else None
+        elif static_valid and len(planning_path) >= 2:
+            cached_speed = getattr(self, '_static_reference_speed', None)
+            if cached_speed is None and lattice_result.debug_details.get('static_avoidance', {}).get('preplanned_complete'):
+                cached_speed = lattice_result.acc_target_velocity
+            if cached_speed is not None:
+                # Only a missing reference may use the saved profile. Signals,
+                # traffic and the validated held-path speed cap still apply below.
+                planned_velocity = min(cached_speed, lattice_parameters.STATIC_MAX_SPEED_KPH / 3.6)
+        else:
+            self._static_reference_speed = None
         planned_velocity = self._merge_ego_curvature_speed_floor(
             planned_velocity,
             vehicle_state.velocity,
@@ -122,7 +152,7 @@ class AutonomousDriving:
 
         # adaptive cruise control를 활용한 속도 계획
         legacy_acc_entries = self._legacy_acc_entries(
-            lattice_result, forward_object_info_dic_list
+            vehicle_state, lattice_result, forward_object_info_dic_list
         )
         self.adaptive_cruise_control.check_object(
             planning_path, legacy_acc_entries, current_traffic_light
@@ -139,12 +169,30 @@ class AutonomousDriving:
             if lattice_result.long_obstacle_detected
             else planned_velocity
         )
+        legacy_target_velocity = target_velocity
         target_velocity = min(
             target_velocity,
             signal_target_velocity,
             lattice_target_velocity,
             getattr(lattice_result, "acc_target_velocity", float("inf")),
         )
+        unconstrained_static_acceleration = target_velocity
+        target_velocity = self._smooth_static_target_speed(target_velocity, vehicle_state, lattice_result)
+        if lattice_result.mode in ("roundabout_entry", "static_obstacle"):
+            limits = {
+                "legacy_acc": legacy_target_velocity,
+                "signal": signal_target_velocity,
+                "path_speed": lattice_target_velocity,
+                ("roundabout" if lattice_result.mode == "roundabout_entry" else "static"): lattice_result.acc_target_velocity,
+            }
+            if target_velocity < unconstrained_static_acceleration:
+                limits['static_acceleration'] = target_velocity
+            key = "roundabout_entry" if lattice_result.mode == "roundabout_entry" else "static_avoidance"
+            details = lattice_result.debug_details.setdefault(key, {})
+            details.setdefault("phase", lattice_result.reason)
+            details["speed_limits"] = limits
+            details["speed_source"] = min(limits, key=limits.get)
+            details["final_target_velocity"] = max(0.0, target_velocity)
         if self.previous_target_velocity is not None:
             if (
                 target_velocity
@@ -152,15 +200,22 @@ class AutonomousDriving:
                 - highway_parameters.TARGET_SPEED_DROP_RESET_THRESHOLD
             ):
                 self.pid.reset()
-        self.previous_target_velocity = float(target_velocity)
+        fast_roundabout_release = self._roundabout_entry_fast_release(
+            target_velocity, lattice_result
+        )
+        if fast_roundabout_release:
+            self.pid.reset()
         # 속도 제어를 위한 PID control
         acc_cmd = self.pid.get_output(target_velocity, vehicle_state.velocity)
         # 합류 양보/충돌 예측이 정지를 요구하면 현재 속도와 무관하게 즉시 제동합니다.
         if target_velocity <= 0.05:
             self.pid.reset()
             acc_cmd = -1.
+        elif fast_roundabout_release:
+            acc_cmd = max(0.0, acc_cmd)
         else:
             acc_cmd = self._smooth_longitudinal_command(acc_cmd)
+        self.previous_target_velocity = float(target_velocity)
         self.previous_acc_cmd = float(acc_cmd)
         # 경로 추종을 위한 pure pursuit control
         self.pure_pursuit.path = planning_path
@@ -168,7 +223,15 @@ class AutonomousDriving:
         # CtrlCmd.front_steer in MORAI 26.R1 is a front-wheel angle in radians,
         # not a normalized [-1, 1] command. GT_BEV's pure-pursuit lateral sign
         # is selected through steering_sign and clamped to the physical limit.
-        raw_steering_rad = self.pure_pursuit.calculate_steering_angle()
+        recorded_lookahead = self._recorded_lookahead_limits(vehicle_state, lattice_result)
+        if recorded_lookahead is not None:
+            raw_steering_rad = self.pure_pursuit.calculate_steering_angle(lookahead_limits=recorded_lookahead)
+        elif lattice_result.mode == "static_obstacle" and lattice_result.active:
+            raw_steering_rad = self.pure_pursuit.calculate_steering_angle(
+                lookahead_limits=lattice_parameters.STATIC_TRACKING_LOOKAHEAD
+            )
+        else:
+            raw_steering_rad = self.pure_pursuit.calculate_steering_angle()
         requested_steer_rad = self.steering_sign * raw_steering_rad
         highway_lane_change = getattr(lattice_result, "highway_state", "") in (
             "CHANGE_LEFT",
@@ -215,6 +278,8 @@ class AutonomousDriving:
                 f"cur_v={vehicle_state.velocity:.2f}"
             )
             details = getattr(lattice_result, "debug_details", {})
+            if "static_avoidance" in details:
+                print("[STATIC] {}".format(details["static_avoidance"]))
             if details:
                 def debug_value(value, suffix=""):
                     return "inf" if np.isinf(value) else f"{value:.2f}{suffix}"
@@ -314,6 +379,50 @@ class AutonomousDriving:
                 )
             )
 
+    def _recorded_lookahead_limits(self, vehicle_state, lattice_result):
+        details = getattr(lattice_result, 'debug_details', {}).get('static_avoidance', {})
+        if getattr(lattice_result, 'active', False) and details.get('planner') == 'recorded_route_graph':
+            value = float(np.clip(self.pure_pursuit.lfd_gain*vehicle_state.velocity,
+                                  *lattice_parameters.STATIC_TRACKING_LOOKAHEAD))
+            self._recorded_last_lookahead = value
+            return (value, value)
+        previous = getattr(self, '_recorded_last_lookahead', None)
+        if previous is None:
+            return None
+        if getattr(lattice_result, 'reason', '') != 'static_recorded_rejoined':
+            self._recorded_last_lookahead = None
+            return None
+        nominal = float(np.clip(self.pure_pursuit.lfd_gain*vehicle_state.velocity,
+                                self.pure_pursuit.min_lfd, self.pure_pursuit.max_lfd))
+        dt = min(.2, max(.001, getattr(self, 'control_dt', 1./30.)))
+        value = min(nominal, previous+dt)
+        self._recorded_last_lookahead = value if value < nominal else None
+        return (value, value)
+
+    def _smooth_static_target_speed(self, target_velocity, vehicle_state, lattice_result):
+        """Carry a rise-only speed ramp through the recorded-to-global handoff."""
+        details = getattr(lattice_result, 'debug_details', {}).get('static_avoidance', {})
+        recorded = details.get('planner') == 'recorded_route_graph'
+        if recorded and details.get('path_validated', False):
+            self._static_speed_ramp = True
+        if not getattr(self, '_static_speed_ramp', False):
+            return target_velocity
+        if getattr(lattice_result, 'mode', '') in ('highway', 'highway_lane', 'roundabout_entry'):
+            self._static_speed_ramp = False
+            return target_velocity
+        previous = getattr(self, 'previous_target_velocity', None)
+        if previous is None:
+            previous = max(0., vehicle_state.velocity)
+        # Brake requests are never delayed or lifted by acceleration smoothing.
+        if target_velocity <= previous:
+            return target_velocity
+        dt = min(.2, max(.001, getattr(self, 'control_dt', 1./30.)))
+        ceiling = previous + lattice_parameters.STATIC_TARGET_ACCEL*dt
+        target = min(target_velocity, ceiling)
+        if not recorded and target >= target_velocity:
+            self._static_speed_ramp = False
+        return target
+
     @staticmethod
     def _second_merge_slowdown_band(planned_velocity, vehicle_state):
         """두 번째 합류를 지정 좌표 이후부터 35~45km/h 로 통과한다.
@@ -395,8 +504,17 @@ class AutonomousDriving:
         maximum_step = rate * self.control_dt
         return min(requested_command, previous + maximum_step)
 
-    @staticmethod
-    def _legacy_acc_entries(lattice_result, forward_entries):
+    def _roundabout_entry_fast_release(self, target_velocity, lattice_result):
+        if self.previous_target_velocity is None:
+            return False
+        if self.previous_target_velocity > 0.05 or target_velocity <= 0.05:
+            return False
+        return getattr(lattice_result, "reason", "") in (
+            "roundabout_entry_cruise",
+            "roundabout_entry_follow_lead",
+        )
+
+    def _legacy_acc_entries(self, vehicle_state, lattice_result, forward_entries):
         """Avoid applying path-distance vehicle ACC twice on mapped highways.
 
         The highway lane planner already associates vehicles with lane links,
@@ -406,8 +524,25 @@ class AutonomousDriving:
         paths remain close.  Keep pedestrians and traffic lights in the legacy
         controller, but let the lane planner be the sole vehicle authority.
         """
+        static_details = getattr(lattice_result, "debug_details", {}).get("static_avoidance", {})
+        if (getattr(lattice_result, "mode", "") == "static_obstacle"
+                and getattr(lattice_result, "active", False)
+                and static_details.get("path_validated", False)):
+            # Only bypass static vehicle ACC after validating the complete swept
+            # path. Moving vehicles, people and traffic signals keep their stops.
+            return [entry for entry in forward_entries if not (
+                getattr(entry["object_info"], "is_static", False)
+                and getattr(entry["object_info"], "type", -1) in (1, 2)
+                and abs(getattr(entry["object_info"], "velocity", 0.0)) < 0.2
+            )]
         if getattr(lattice_result, "mode", "") != "highway_lane":
-            return forward_entries
+            return [
+                entry
+                for entry in forward_entries
+                if not self.lattice_planning_process.roundabout_entry_should_ignore_legacy_acc(
+                    vehicle_state, entry["object_info"]
+                )
+            ]
         return [
             entry
             for entry in forward_entries

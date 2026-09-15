@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Score a VLDrive checkpoint on a dataset split, without a simulator.
 
-  stage 1  python evaluate.py vision-encoder <dataset_root> \
-               --split-file configs/splits/morai_full_loop_80_20.json \
+  stage 1  python evaluate.py vision-encoder --config configs/vision_encoder_train.json \
                --checkpoint outputs/checkpoints/vision_encoder/run1/model-best.pth.tar
 
   stage 2  python evaluate.py vldrive --config configs/vldrive_train.json \
@@ -49,15 +48,11 @@ def run_vision_encoder(parser, args):
     from models.vision_encoder import create_vision_encoder
     from utils import vision_encoder_training as stage1
 
-    stage1.check_arguments(parser, args)
-    args.dataset_root = args.dataset_root.expanduser().resolve()
-    args.split_file = args.split_file.expanduser().resolve()
-    if args.traffic_label_sidecar:
-        args.traffic_label_sidecar = args.traffic_label_sidecar.expanduser().resolve()
-    stage1.seed_everything(args.seed)
+    config = stage1.config_from_args(parser, args)
+    stage1.seed_everything(config.seed)
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    dataset, loader = stage1.make_loader(args, 'validation', False)
+    dataset, loader = stage1.make_loader(config, 'validation', False)
     print('validation samples={}'.format(len(dataset)))
 
     # pretrained_backbone=False: the strict load below replaces every weight.
@@ -67,13 +62,16 @@ def run_vision_encoder(parser, args):
     model.to(device).eval()
 
     started = time.time()
-    metrics = stage1.validate(model, loader, device, args, amp_enabled=not args.no_amp and device.type == 'cuda')
+    metrics = stage1.validate(model, loader, device, config,
+                              amp_enabled=config.amp and device.type == 'cuda')
     report = {
         'stage': 'vision_encoder',
         'checkpoint': str(args.checkpoint),
         'checkpoint_sha256': stage1.sha256_file(args.checkpoint),
-        'dataset_root': str(args.dataset_root),
-        'split_file': str(args.split_file),
+        'dataset_root': str(config.dataset_root),
+        'split_file': str(config.split_file),
+        'config_path': str(config.config_path),
+        'config_sha256': config.config_sha256,
         'split': 'validation',
         'samples': len(dataset),
         'elapsed_sec': time.time() - started,

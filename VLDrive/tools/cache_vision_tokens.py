@@ -86,7 +86,10 @@ def make_dataset_and_loader(args, split):
         is_training=False,
         scale=[1.0, 1.0],
         color_jitter=0.0,
-        interpolation="bilinear",
+        # No interpolation choice: datasets/transforms.py resizes with the PIL
+        # default (bicubic), and the cache must preprocess exactly as training
+        # and evaluation do, or the cached tokens would not match the encoder
+        # they were produced with.
         num_workers=args.workers,
         pin_memory=True,
         persistent_workers=args.workers > 0,

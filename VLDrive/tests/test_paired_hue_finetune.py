@@ -162,40 +162,23 @@ class TinyEncoder(torch.nn.Module):
         self.fusion = torch.nn.Linear(2, 2)
 
 
-def test_actual_cpu_updates_include_backbones_and_preserve_source(tmp_path):
-    split = tmp_path / "split.json"
-    split.write_text(json.dumps({"fixture": True}))
-    source_path = tmp_path / "source.pt"
-    source_model = TinyEncoder()
-    torch.save({"state_dict": source_model.state_dict(), "epoch": 24,
-                "model_name": pair.trainer.MODEL_NAME, "feature_model_name": pair.trainer.FEATURE_MODEL_NAME,
-                "token_shape": [106, 256], "split_sha256": pair.trainer.sha256_file(split),
-                "initialization": {"full_lmdrive_encoder": False},
-                "optimizer": {"must_not_restore": True}, "scaler": {"must_not_restore": True},
-                "args": {"lidar_axis_policy": "morai_flu_to_lmdrive_fru"}}, source_path)
-    original_sha = pair.trainer.sha256_file(source_path)
-    args = SimpleNamespace(dataset_root=tmp_path, split_file=split, traffic_label_sidecar=None,
-                           seed=607, smoke=True, output=tmp_path / "new")
+def test_tool_is_disabled_because_it_supplies_parameters_in_code(tmp_path):
+    """Stage-1 values may come only from a config file, so this tool cannot run.
+
+    ``trainer_args`` still describes the fixed paired protocol, but handing it
+    to the trainer is exactly what is no longer allowed.  Both doors are shut:
+    the entry point stops, and the trainer refuses the object.
+    """
+    with pytest.raises(SystemExit) as stop:
+        pair.main([])
+    assert "config file" in str(stop.value)
+
+    args = SimpleNamespace(dataset_root=tmp_path, split_file=tmp_path / "split.json",
+                           traffic_label_sidecar=None, seed=607, smoke=True,
+                           output=tmp_path / "new")
     config = pair.trainer_args(args)
-    config.warm_start, config.warm_start_sha256 = source_path, original_sha
-    initial_ids = []
-    for _ in range(2):
-        model = TinyEncoder()
-        optimizer, fusion_lr, rgb_lr = pair.trainer.optimizer_for(model, config)
-        scaler = torch.amp.GradScaler("cuda", enabled=False)
-        start, _, provenance = pair.trainer.load_training_initialization(model, optimizer, scaler, config)
-        assert start == 0 and not optimizer.state and not provenance["optimizer_restored"]
-        assert fusion_lr == pytest.approx(5e-6) and rgb_lr == pytest.approx(2e-6)
-        initial_ids.append(pair.model_state_identity(model))
-        initial = {name: parameter.detach().clone() for name, parameter in model.named_parameters()}
-        model.train()
-        pair.trainer.set_rgb_frozen(model, False)
-        sum(p.sum() for p in model.parameters()).backward()
-        optimizer.step()
-        assert pair.optimizer_steps(optimizer) == [1]
-        assert all(g["changed_parameters"] > 0 for g in pair.parameter_changes(model, initial).values())
-    assert initial_ids[0] == initial_ids[1]
-    assert pair.trainer.sha256_file(source_path) == original_sha
+    with pytest.raises(TypeError, match="only come from a config file"):
+        pair.trainer.optimizer_for(TinyEncoder(), config)
 
 
 def test_evaluation_mask_affects_traffic_only_not_waypoint_count():

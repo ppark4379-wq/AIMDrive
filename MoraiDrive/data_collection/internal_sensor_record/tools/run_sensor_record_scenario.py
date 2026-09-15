@@ -31,19 +31,10 @@ from native_capture.ground_truth import GrpcGroundTruth, default_grpc_target
 from ssd_storage import SSD_ROOT, WINDOWS_ROOT, require_ssd, windows_path
 from network_config import runtime_environment
 from runtime_paths import (
-    ANALYSIS_PYTHON, WINDOWS_SENSOR_DATA_ROOT,
+    CATKIN_ROOT, ROS_ROOT, WINDOWS_SENSOR_DATA_ROOT,
     ensure_runtime_directory,
 )
 from run_sensor_record_probe import verify_native_targets
-from python_environment import (
-    build_analysis_environment, build_capture_environment,
-    probe_analysis_environment,
-)
-from sensor_record_barrier import (
-    prepare_coordination_directory, require_stop_acknowledgement,
-    wait_for_native_quiescence,
-)
-from scenario_runner.scenarios.segment_modes.modes import PRIMARY_SCENARIOS
 
 
 def quick_native_capture_summary(native, *, progress=None):
@@ -135,15 +126,20 @@ def powershell_with_heartbeat(script, *, timeout, label, heartbeat_seconds=30):
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--name',required=True)
-    p.add_argument('--scenario', choices=PRIMARY_SCENARIOS, default='full_loop',
-                   help='Main Scenario Runner mode to execute (default: full_loop)')
     p.add_argument('--pid',type=int,required=True)
     p.add_argument('--seconds',type=int,default=180)
-    p.add_argument('--full-lap',action='store_true',help='Stop Sensor Record at selected-scenario route completion or the wall bound')
+    p.add_argument('--full-lap',action='store_true',help='Stop Sensor Record at verified route completion or the wall bound')
     p.add_argument('--seed',type=int,default=260910,
                    help='Deterministic per-lap seed for weather/time/obstacle selection')
     p.add_argument('--profile-state',type=Path,
                    help='Local-storage campaign state shared across laps so environment choices do not repeat silently')
+    p.add_argument(
+        '--scenario-runtime', choices=('proven', 'current'), default='proven',
+        help=(
+            'proven: execute the pinned three-lap runtime; current: execute '
+            'the current team scenario_runner/expert checkout'
+        ),
+    )
     p.add_argument('--assembly',type=Path,default=DEFAULT_ASSEMBLY)
     p.add_argument('--sensor-set',type=Path,default=DEFAULT_SENSOR_SET)
     p.add_argument('--static-evidence',type=Path,
@@ -160,17 +156,18 @@ def main():
     a=p.parse_args()
     analysis_python=Path(os.environ.get(
         'MORAI_ANALYSIS_PYTHON',
-        str(ANALYSIS_PYTHON),
+        shutil.which('python3') or sys.executable,
     )).resolve()
-    analysis_env=None
-    analysis_environment_report=None
     if not a.defer_offline_review:
-        analysis_env=build_analysis_environment(
-            analysis_python, os.environ,
-            OPENBLAS_NUM_THREADS='2', OMP_NUM_THREADS='2',
+        analysis_probe=subprocess.run(
+            [str(analysis_python),'-c','import cv2,numpy,pyproj'],
+            stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=20,
         )
-        analysis_environment_report=probe_analysis_environment(
-            analysis_python, analysis_env)
+        if analysis_probe.returncode:
+            raise RuntimeError(
+                'Offline analysis Python is missing cv2/numpy/pyproj: '
+                +str(analysis_python)+' '+analysis_probe.stderr[-500:]
+            )
     max_seconds=3570 if a.full_lap else 930
     if (not a.name.replace('_','').isalnum() or len(a.name)>80
             or not 90<=a.seconds<=max_seconds):p.error('Simple unique name up to 80 characters, 90..%d wall seconds'%max_seconds)
@@ -215,16 +212,10 @@ def main():
     # The old namespace is preserved by prepare_sensor_record_session.ps1. Do
     # not scan every old file; long histories otherwise make startup unbounded.
     previous_native_files=None
-    env=build_capture_environment(
-        dict(os.environ,**runtime_environment()))
-    capture_environment_report=dict(
-        schema='morai_capture_python_environment_v1',
-        python='/usr/bin/python3',
-        pythonpath=env['PYTHONPATH'].split(os.pathsep),
-        pythonhome_removed='PYTHONHOME' not in env,
-        no_user_site=env.get('PYTHONNOUSERSITE') == '1',
-        bytecode_disabled=env.get('PYTHONDONTWRITEBYTECODE') == '1',
-    )
+    env=dict(os.environ,**runtime_environment())
+    catkin_python=CATKIN_ROOT/'devel/lib/python3/dist-packages'
+    env['PYTHONPATH']=':'.join([os.environ.get('MORAI_ASYNC_DEPS',''),str(ROOT),str(PROJECT_ROOT),
+        str(catkin_python),str(ROS_ROOT/'lib/python3/dist-packages')])
     # Establish pre-reset receive evidence. A live gRPC Ego alone is insufficient
     # when the actual /Ego_topic vehicle-info connection has stopped sending.
     log_root=ensure_runtime_directory('sensor_record_preflight_logs')
@@ -242,14 +233,19 @@ def main():
         observed_mode=require_free_running_mode(mode_observation,'simulation_free_run')
     finally:gt.close()
     coordination=ep/'sensor_record_coordination'
-    command=['/usr/bin/python3',str(ROOT/'tools/run_proven_three_lap_scenario.py'),
-        '--scenario',a.scenario,
-        '--time-mode','simulation_free_run','--nearby-actors','--collision-policy','record',
+    runner = (
+        ROOT/'tools/run_proven_three_lap_scenario.py'
+        if a.scenario_runtime == 'proven'
+        else ROOT/'tools/run_async_scenario_review.py'
+    )
+    command=['/usr/bin/python3',str(runner),
+        '--time-mode','simulation_free_run','--collision-policy','record',
         '--max-speed-kmh','60','--seconds',str(a.seconds),'--audit-scope','timing','--output',str(run),
-        '--audit-python',str(analysis_python),
         '--sensor-record-coordination',str(coordination),
         '--raw-camera-transport',a.raw_camera_transport,'--seed',str(a.seed),
         '--grpc-target',grpc_target]
+    if a.scenario_runtime == 'proven':
+        command.append('--nearby-actors')
     if a.profile_state is not None:
         command += ['--profile-state',str(a.profile_state)]
     if a.full_lap:command.append('--full-lap')
@@ -262,7 +258,6 @@ def main():
                               previous_native_inventory_scanned=False,
                               proposed_native_session=session_plan,observed_mode=observed_mode,
                               capture_wall_seconds=a.seconds-30,scenario_command=command,
-                              capture_environment=capture_environment_report,
                               immutable_capture_preflight=immutable_preflight)))
         return
     # Ctrl-C can terminate the WSL parent before the Windows UI owner finishes
@@ -308,7 +303,6 @@ def main():
         session_record=dict(path=str(session_record),sha256=digest(session_record)))
     log_path=base/(a.name+'_supervisor.log')
     proc=None;error=None;scenario_warning=None;offline_stage_results=[]
-    native_storage_quiescence=None
     postprocess_status='pending' if a.defer_offline_review else 'running'
     with log_path.open('x') as log:
         proc=subprocess.Popen(command,env=env,stdout=log,stderr=subprocess.STDOUT)
@@ -367,13 +361,12 @@ def main():
             write_json(run/'capture_contract.json',contract)
             write_json(run/'native_setup.json',dict(storage=storage,links=links,native_root=str(native),initial_files=initial,
                 pre_reset_sensor_preflight=json.loads(preflight.stdout),command=command,
-                capture_environment=capture_environment_report,
+                scenario_runtime=a.scenario_runtime,
                 raw_camera_transport=a.raw_camera_transport,
                 capture_contract_sha256=digest(run/'capture_contract.json')))
             write_json(run/'native_files_before.json',inspect_directory(native))
             ui=windows_path(base/(a.name+'_ui'))
             windows_coord=windows_path(coordination)
-            prepare_coordination_directory(coordination,ep)
             script='& {\n'+(ROOT/'tools/bounded_sensor_record.ps1').read_text()+(
                 "\n} -SimulatorProcessId %d -OutputDirectory '%s' -AllowedRoot '%s' "
                 "-WallSeconds %d -CoordinationDirectory '%s' -RestoreWindow"%
@@ -382,8 +375,6 @@ def main():
             result=json.loads(powershell_with_heartbeat(
                 script, timeout=a.seconds+10, label=a.name,
             ))
-            result['coordination_stop_acknowledgement']=(
-                require_stop_acknowledgement(coordination))
             write_json(run/'native_ui_result.json',result)
             proc.wait(timeout=1200 if a.full_lap else 300)
             if proc.returncode:
@@ -395,11 +386,8 @@ def main():
                     scenario_warning='Scenario process exited %d after sealed raw/quality capture; preserve outcome separately'%proc.returncode
                 else:
                     raise RuntimeError('Scenario/raw audit failed before sealed capture; inspect preserved logs')
-            print('[BARRIER] Sensor Record stopped; waiting for native files to settle',
+            print('[BARRIER] Sensor Record stopped; scanning native file metadata',
                   flush=True)
-            native_storage_quiescence=wait_for_native_quiescence(native)
-            print('[BARRIER] Native files stable for %.1fs; scanning metadata' %
-                  native_storage_quiescence['stable_seconds'], flush=True)
             def native_scan_progress(role, phase, role_checked, role_files):
                 if phase == 'listing':
                     print('[BARRIER] %s: listing files' % role, flush=True)
@@ -411,7 +399,6 @@ def main():
                           (role, role_checked, int(role_files or 0)), flush=True)
             quick_summary=quick_native_capture_summary(
                 native, progress=native_scan_progress)
-            quick_summary['storage_quiescence']=native_storage_quiescence
             write_json(run/'native_files_after.json',quick_summary)
             print('Native capture barrier: %d complete seven-sensor bundles, %.2f GiB; byte audit %s'%(
                 quick_summary['complete_filename_bundles'],
@@ -430,6 +417,7 @@ def main():
             # Offline tools deserialize ROS1 wire payloads, so they need the
             # same Noetic/catkin message paths as the capture child even when
             # this supervisor was launched from a clean conda shell.
+            analysis_env=dict(env,OPENBLAS_NUM_THREADS='2',OMP_NUM_THREADS='2')
             stages=[] if a.defer_offline_review else [
                 ('audit_sensor_record_probe.py',['--run',str(run),'--raw',str(ep/'raw'),'--output',str(ep/'native_audit')]),
                 ('build_sensor_record_associations.py',['--episode',str(ep)]),
@@ -498,23 +486,18 @@ def main():
                 admission_path=ep/'admission_v1/report.json'
                 admission=json.loads(admission_path.read_text()) if admission_path.exists() else None
                 write_json(run/'NATIVE_CAPTURE_RESULT.json',dict(error=error,
-                    scenario_name=a.scenario,
                     scenario_exit_code=(proc.poll() if proc is not None else None),
                     scenario_warning=scenario_warning,
-                    capture_environment=capture_environment_report,
                     analysis_python=str(analysis_python),
-                    analysis_dependencies=[
-                        'cv2','numpy','pyproj','scipy','PIL','rospkg','rospy'],
-                    analysis_environment=analysis_environment_report,
+                    analysis_dependencies=['cv2','numpy','pyproj'],
                     postprocess_status=postprocess_status,
                     quick_native_capture=(json.loads((run/'native_files_after.json').read_text())
                         if (run/'native_files_after.json').is_file() else None),
-                    native_storage_quiescence=native_storage_quiescence,
                     offline_stage_results=offline_stage_results,
                     capture_contract_sha256=(digest(run/'capture_contract.json')
                         if (run/'capture_contract.json').exists() else None),admission=admission,
                     training_visible=False,physical_simultaneity_verified=False))
-    print(json.dumps(dict(output=str(run),scenario_name=a.scenario,error=error)),flush=True)
+    print(json.dumps(dict(output=str(run),error=error)),flush=True)
     if error:raise SystemExit(2)
 
 

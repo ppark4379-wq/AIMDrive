@@ -50,8 +50,10 @@ class LatticePlanningResult:
         highway_lane_links=None,
         object_lane_matches=None,
         predicted_object_paths=None,
+        acc_target_velocity=float("inf"),
         selected_offset=0.0,
         candidates=None,
+        debug_details=None,
         reason="inactive",
     ):
         self.path = path
@@ -69,6 +71,8 @@ class LatticePlanningResult:
         self.highway_lane_links = list(highway_lane_links or [])
         self.object_lane_matches = list(object_lane_matches or [])
         self.predicted_object_paths = list(predicted_object_paths or [])
+        self.acc_target_velocity = float(acc_target_velocity)
         self.selected_offset = float(selected_offset)
         self.candidates = list(candidates or [])
+        self.debug_details = dict(debug_details or {})
         self.reason = reason

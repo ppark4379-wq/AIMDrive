@@ -30,12 +30,9 @@ os.environ['MORAI_EXPERT_ROOT'] = str(PROJECT_ROOT / 'expert')
 from async_capture.journal import write_json, digest
 from async_capture.sim_mode import require_free_running_mode
 from process_guard import process_lock
-from python_environment import build_analysis_environment, probe_analysis_environment
 from ssd_storage import SSD_ROOT, require_ssd
-from scenario_runner.main_runner import SUPPORTED_SCENARIOS, load_configuration
+from scenario_runner.main_runner import load_configuration
 from scenario_runner.scenarios.full_loop_scenario import FullLoopScenario
-from scenario_runner.scenarios.segment_modes.modes import MISSION_MODES, PRIMARY_SCENARIOS
-from scenario_runner.scenarios.segment_modes.scenario import MissionScenario
 from scenario_runner.adapters.morai_grpc import MoraiGrpcClient
 from scenario_runner.utils.map_loader import MGeoMapLoader
 from scenario_runner.tools.verify_separation import verify_package
@@ -63,34 +60,6 @@ def control_topology(state, topic):
         raise RuntimeError('Control must have no other publisher and a simulator subscriber: ' +
                            str(dict(topic=topic, publishers=existing, subscribers=listeners)))
     return dict(topic=topic, publishers=existing, subscribers=listeners)
-
-
-def control_topology_after_stale_expert_cleanup(master, topic):
-    """Remove only unreachable AIMDrive expert registrations, then validate."""
-    caller = '/scenario_review_preflight'
-    state = master.getSystemState(caller)
-    code, message, (publishers, _subscribers, _services) = state
-    if code != 1:
-        raise RuntimeError(message)
-    existing = dict(publishers).get(topic, [])
-    candidates = [
-        node for node in existing if node.startswith('/morai_standard_')
-    ]
-    if candidates:
-        import rosgraph
-        import rosnode
-
-        stale = [
-            node for node in candidates
-            if not rosnode.rosnode_ping(
-                node, max_count=1, verbose=False, skip_cache=True
-            )
-        ]
-        if stale:
-            rosnode.cleanup_master_blacklist(rosgraph.Master(caller), stale)
-            print('[ROS] removed stale expert registrations: ' + ', '.join(stale))
-            state = master.getSystemState(caller)
-    return control_topology(state, topic)
 
 
 def raw_stop_record(outcome):
@@ -127,12 +96,6 @@ def audit_episode(episode, python, policy_study=None,
     if policy_study is not None or clock_trace is not None or clock_trace_owner is not None:
         raise ValueError('Experimental pairing/clock-trace inputs are not part of the production backend')
     episode = Path(episode)
-    analysis_env = build_analysis_environment(
-        python, os.environ,
-        OPENBLAS_NUM_THREADS='2', OMP_NUM_THREADS='2',
-        PYTHONFAULTHANDLER='1',
-    )
-    analysis_environment = probe_analysis_environment(python, analysis_env)
     steps = [('quality', 'audit_local_alignment.py', ['--raw-run', str(episode/'raw'),
               '--output', str(episode/'quality')])]
     if require_ros_clock:
@@ -141,17 +104,13 @@ def audit_episode(episode, python, policy_study=None,
     results = []
     for stage, tool, args in steps:
         with (episode/(stage+'_audit.log')).open('x') as log:
-            proc = subprocess.run(
-                [python, '-X', 'faulthandler', str(ROOT/'tools'/tool)] + args,
-                cwd=ROOT, env=analysis_env,
-                stdout=log, stderr=subprocess.STDOUT, timeout=1200)
+            proc = subprocess.run([python, str(ROOT/'tools'/tool)] + args, cwd=ROOT,
+                                  stdout=log, stderr=subprocess.STDOUT, timeout=1200)
         results.append(dict(stage=stage, exit_code=proc.returncode))
         if proc.returncode:
-            return dict(status='failed', stages=results,
-                        analysis_environment=analysis_environment)
+            return dict(status='failed', stages=results)
     write_json(episode/'comparison_summary.json', summarize_episode(episode))
-    return dict(status='diagnostic_complete', stages=results,
-                analysis_environment=analysis_environment)
+    return dict(status='diagnostic_complete', stages=results)
 
 
 class RawScenario(FullLoopScenario):
@@ -208,8 +167,7 @@ class RawScenario(FullLoopScenario):
             raise RuntimeError('No reset/retry inside an existing raw episode')
         super().setup_expert_controller()
         runtime_path = Path(self.expert_controller.runtime_config_path)
-        setup = dict(scenario_name=self.scenario_name,
-                     seed=self.run_seed, profile=self.profile, time_hour=self.scenario_hour,
+        setup = dict(seed=self.run_seed, profile=self.profile, time_hour=self.scenario_hour,
                      global_config=self.global_cfg, scenario_config=self.cfg,
                      route_length_m=self.route_length_m, scenario_clock=self.clock.domain,
                      global_path_sha256=digest(Path(self.cfg['global_path'])),
@@ -388,25 +346,9 @@ class RawScenario(FullLoopScenario):
         write_json(self.output / 'outcome.json', self.outcome)
 
 
-class RawMissionScenario(RawScenario, MissionScenario):
-    """Collection lifecycle layered on the main segment scenario."""
-
-
-def collection_scenario_class(name):
-    """Select only a main Scenario Runner class; keep collection as an adapter."""
-    base = SUPPORTED_SCENARIOS.get(name)
-    if base is FullLoopScenario:
-        return RawScenario
-    if base is MissionScenario:
-        return RawMissionScenario
-    raise ValueError("Unsupported collection scenario: " + str(name))
-
-
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--check', action='store_true')
-    p.add_argument('--scenario', choices=PRIMARY_SCENARIOS, default='full_loop',
-                   help='Main Scenario Runner mode to execute (default: full_loop)')
     p.add_argument('--rosbag', action='store_true', help=argparse.SUPPRESS)
     p.add_argument('--audit-scope', choices=('timing',), default='timing')
     p.add_argument('--time-mode',choices=('simulation_free_run',),default='simulation_free_run')
@@ -415,7 +357,7 @@ def main():
     p.add_argument('--output', type=Path)
     p.add_argument('--episodes', type=int, default=1)
     p.add_argument('--seconds', type=float, default=90, help='Maximum driving wall seconds; stop earlier at route completion')
-    p.add_argument('--full-lap', action='store_true', help='Require selected-scenario route completion; permit a bounded wall budget up to 3540 seconds')
+    p.add_argument('--full-lap', action='store_true', help='Require route completion; permit a bounded wall budget up to 3540 seconds')
     p.add_argument('--max-speed-kmh', type=float, default=20)
     p.add_argument('--seed', type=int, default=260910)
     p.add_argument('--profile-state',type=Path,
@@ -423,7 +365,7 @@ def main():
     p.add_argument('--collision-policy', choices=('abort','record'), default='abort',
                    help='record: retain collision and post-collision raw data without collision-triggered abort; diagnostic only')
     from native_capture.ground_truth import default_grpc_target
-    p.add_argument('--grpc-target', default=default_grpc_target())
+    p.add_argument('--grpc-target')
     p.add_argument('--control-topic', default='/ctrl_cmd')
     p.add_argument('--audit-python', default=sys.executable)
     p.add_argument('--clock-trace',type=Path,
@@ -438,6 +380,8 @@ def main():
                    default='required',
                    help='required: write ROS cameras; unrecorded: omit raw writes; bridge_dropped: discard at bridge ingress; absent: diagnostic only')
     a = p.parse_args()
+    if not a.grpc_target:
+        a.grpc_target = default_grpc_target()
     if a.rosbag or a.expert_wall_clock or a.policy_study is not None \
             or a.clock_trace is not None or a.clock_trace_owner is not None:
         p.error('Experimental rosbag/wall-clock/pairing/clock-trace modes are not supported here')
@@ -466,17 +410,14 @@ def main():
     global_cfg, _, cfg = load_configuration()
     global_cfg['grpc']['host'], port = a.grpc_target.rsplit(':', 1)
     global_cfg['grpc']['port'] = int(port)
-    cfg.update(random_seed=a.seed,
+    cfg.update(random_seed=a.seed, route_setup_attempts=1, max_laps=1,
                expert_max_velocity_kmh=a.max_speed_kmh,
                expert_python_executable='/usr/bin/python3',
                expert_ros_remaps=['/ctrl_cmd:=' + a.control_topic])
-    if a.scenario in MISSION_MODES:
-        cfg['mission_mode'] = a.scenario
-    scenario_type = collection_scenario_class(a.scenario)
     # The collection adapter never rewrites route/progress safety policy. A
     # collision can be retained as evidence, while the current team scenario
     # still owns off-route, stall and completion decisions.
-    verify_package(PROJECT_ROOT / 'scenario_runner', global_cfg, cfg, a.scenario)
+    verify_package(PROJECT_ROOT / 'scenario_runner', global_cfg, cfg, 'full_loop')
     if a.check:
         # Exercise the real adapter constructor against the currently pulled
         # team FullLoopScenario. This caught a prior cross-commit ``clock``
@@ -485,8 +426,8 @@ def main():
             domain = 'constructor_check'
 
         with tempfile.TemporaryDirectory(prefix='morai-constructor-check-') as temporary:
-            scenario = scenario_type(
-                object(), object(), {}, cfg,
+            scenario = RawScenario(
+                object(), object(), {}, {},
                 output=Path(temporary) / 'episode',
                 contract_path=Path(temporary) / 'contract.json',
                 seconds=20, clock=CheckClock(),
@@ -513,9 +454,7 @@ def main():
             with process_lock('capture'):
                 mode = mode_check()
                 master = xmlrpc.client.ServerProxy(os.environ.get('ROS_MASTER_URI', 'http://127.0.0.1:11311'))
-                topology = control_topology_after_stale_expert_cleanup(
-                    master, a.control_topic
-                )
+                topology = control_topology(master.getSystemState('/scenario_review_preflight'), a.control_topic)
                 existed=master.hasParam('/scenario_review_preflight','/use_sim_time')[2]
                 original=master.getParam('/scenario_review_preflight','/use_sim_time')[2] if existed else None
                 if ros_clock_expert and original is not True:
@@ -567,9 +506,7 @@ def main():
             results = []
             for index in range(a.episodes):
                 mode_check()
-                control_topology_after_stale_expert_cleanup(
-                    master, a.control_topic
-                )
+                control_topology(master.getSystemState('/scenario_review_preflight'), a.control_topic)
                 episode = output / ('episode_%03d' % index)
                 gc, sc = copy.deepcopy(global_cfg), copy.deepcopy(cfg)
                 gc['grpc']['client_key'] = output.name + '_' + str(index)
@@ -580,7 +517,7 @@ def main():
                 scenario = None
                 try:
                     client.connect()
-                    scenario = scenario_type(client, MGeoMapLoader(gc['paths']['mgeo_root']), gc, sc,
+                    scenario = RawScenario(client, MGeoMapLoader(gc['paths']['mgeo_root']), gc, sc,
                         output=episode, contract_path=contract_path, seconds=a.seconds,
                         collision_policy=a.collision_policy,time_mode=a.time_mode,expert_clock=expert_clock,full_lap=a.full_lap,
                         record_rosbag=a.rosbag,sensor_record_coordination=a.sensor_record_coordination,

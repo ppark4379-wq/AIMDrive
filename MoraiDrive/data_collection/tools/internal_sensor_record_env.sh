@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Keep this sourced helper LF-only; Windows Git checkouts are supported.
 # Shared, deterministic environment for the three Sensor Record entrypoints.
 
 MORAI_COLLECTION_TOOLS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,6 +22,7 @@ morai_load_internal_sensor_record_environment() {
     export MORAI_ASYNC_DEPS="${MORAI_ASYNC_DEPS:-$(morai_runtime_value ASYNC_DEPS)}"
     export MORAI_ANALYSIS_PYTHON="${MORAI_ANALYSIS_PYTHON:-$(morai_runtime_value ANALYSIS_PYTHON)}"
     export MORAI_SENSOR_SET_PATH="${MORAI_SENSOR_SET_PATH:-$(morai_runtime_value SENSOR_SET_PATH)}"
+    export MORAI_BRIDGE_IP="${MORAI_BRIDGE_IP:-$(morai_runtime_value BRIDGE_IP)}"
 
     local ros_setup="$MORAI_ROS_ROOT/setup.bash"
     local catkin_setup="$MORAI_CATKIN_WS/devel/setup.bash"
@@ -41,16 +43,14 @@ morai_load_internal_sensor_record_environment() {
     set -u
 
     export ROS_MASTER_URI="${ROS_MASTER_URI:-http://127.0.0.1:11311}"
-    unset PYTHONHOME
     export PYTHONNOUSERSITE=1
     export PYTHONDONTWRITEBYTECODE=1
     export PYTHONPATH="$MORAI_ASYNC_DEPS:$MORAI_INTERNAL_SENSOR_RECORD_ROOT:$MORAI_PROJECT_ROOT:$MORAI_CATKIN_WS/devel/lib/python3/dist-packages:$MORAI_ROS_ROOT/lib/python3/dist-packages"
 
-    if [[ -z "${MORAI_BRIDGE_IP:-}" ]]; then
-        MORAI_BRIDGE_IP="$(/usr/bin/python3 -c 'from network_config import bridge_ip; print(bridge_ip())')"
-    fi
-    export MORAI_BRIDGE_IP
-    export ROS_IP="$MORAI_BRIDGE_IP"
+    # Never reuse ROS_IP inherited from a shell opened before `wsl --shutdown`.
+    # MORAI_ROS_IP is the deliberate escape hatch for an unusual ROS network.
+    ROS_IP="$(/usr/bin/python3 -c 'from network_config import wsl_ip; print(wsl_ip())')"
+    export ROS_IP
     export MORAI_STORAGE_ROOT="${MORAI_STORAGE_ROOT:-$(/usr/bin/python3 -c 'from ssd_storage import SSD_ROOT; print(SSD_ROOT)')}"
     export MORAI_INTERNAL_ENV_READY=1
 }
@@ -78,16 +78,8 @@ morai_require_capture_python() {
 }
 
 morai_require_analysis_python() {
-    if [[ ! -x "$MORAI_ANALYSIS_PYTHON" ]] || ! /usr/bin/python3 - \
-            "$MORAI_ANALYSIS_PYTHON" >/dev/null 2>&1 <<'PY'
-import os
-from pathlib import Path
-import sys
-from python_environment import build_analysis_environment, probe_analysis_environment
-python = Path(sys.argv[1]).resolve()
-probe_analysis_environment(python, build_analysis_environment(python, os.environ))
-PY
-    then
+    if [[ ! -x "$MORAI_ANALYSIS_PYTHON" ]] || ! "$MORAI_ANALYSIS_PYTHON" -c \
+            'import cv2,numpy,pyproj,scipy,PIL' >/dev/null 2>&1; then
         echo "[FAIL] 분석 Python 의존성이 준비되지 않았습니다: $MORAI_ANALYSIS_PYTHON" >&2
         echo "       ./data_collection/tools/00_prepare_internal_sensor_record.sh 를 실행하세요." >&2
         return 2

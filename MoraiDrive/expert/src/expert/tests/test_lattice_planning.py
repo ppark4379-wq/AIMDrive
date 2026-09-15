@@ -30,9 +30,9 @@ class LatticePlanningTest(unittest.TestCase):
         self.assertTrue(result.obstacle_detected)
         self.assertLess(result.selected_offset, 0.0)
         self.assertIsNot(result.path, self.path)
-        self.assertEqual(18, len(result.candidates))
-        self.assertEqual(9, sum(path.layer == "long" for path in result.candidates))
-        self.assertEqual(9, sum(path.layer == "short" for path in result.candidates))
+        self.assertEqual(2 * parameters.NUM_OFFSETS, len(result.candidates))
+        self.assertEqual(parameters.NUM_OFFSETS, sum(path.layer == "long" for path in result.candidates))
+        self.assertEqual(parameters.NUM_OFFSETS, sum(path.layer == "short" for path in result.candidates))
         self.assertTrue(all(hasattr(path, "curvature_cost") for path in result.candidates))
         self.assertGreater(
             max(path.curvature_cost for path in result.candidates if path.valid),
@@ -100,7 +100,8 @@ class LatticePlanningTest(unittest.TestCase):
         self.assertEqual("outside_zone", outside.reason)
 
         inside_process = LatticePlanningProcess(zone_bounds=(-5.0, 5.0, -5.0, 5.0))
-        inside = inside_process.run(self.ego, self.path, detected)
+        inside = inside_process.run(self.ego, self.path, detected,
+                                    prediction_path=[Point(float(x), 0.0) for x in range(81)])
         self.assertTrue(inside.active)
         self.assertLess(inside.selected_offset, 0.0)
 
@@ -128,6 +129,28 @@ class LatticePlanningTest(unittest.TestCase):
         self.assertTrue(process._is_inside_highway_zone(inside))
         self.assertFalse(process._is_inside_highway_zone(outside))
 
+
+    def test_roundabout_entry_ignores_zone_when_global_path_is_elsewhere(self):
+        process = LatticePlanningProcess(highway_zone_points=())
+        blocker = ObjectInfo(
+            -98.17,
+            326.67,
+            5.0,
+            1,
+            name="roundabout_vehicle",
+            size_x=4.5,
+            size_y=2.0,
+        )
+
+        result = process.run(
+            self.ego,
+            self.path,
+            [{"object_info": blocker, "local_position": Point(12.0, 0.0)}],
+        )
+
+        self.assertNotEqual("roundabout_entry_occupied_stop", result.reason)
+        self.assertFalse(process._roundabout_entry_active(self.ego, self.path))
+
     def test_highway_safe_vehicle_uses_cost_based_lattice(self):
         process = LatticePlanningProcess(
             zone_bounds=(100.0, 110.0, 100.0, 110.0),
@@ -153,7 +176,7 @@ class LatticePlanningTest(unittest.TestCase):
         self.assertTrue(result.active)
         self.assertFalse(result.acc_override)
         self.assertEqual("highway_vehicle_lattice", result.reason)
-        self.assertEqual(18, len(result.candidates))
+        self.assertEqual(2 * parameters.NUM_OFFSETS, len(result.candidates))
         self.assertTrue(
             all(candidate.right_preference_cost == 0.0 for candidate in result.candidates)
         )

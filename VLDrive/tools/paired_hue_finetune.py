@@ -1,6 +1,17 @@
 #!/usr/bin/env python3
 """Bounded, paired MORAI encoder fine-tuning: legacy hue .4 versus hue omitted.
 
+DISABLED.  This tool supplies its own training parameters to the stage-1
+trainer through ``trainer_args``, which is the one thing stage-1 no longer
+permits: training values may come only from a config file loaded by
+``utils.vision_encoder_config.load_config``.  The trainer rejects any other
+object, so this tool stops before it can run.
+
+To bring it back, move the fixed protocol values out of ``trainer_args`` into a
+config file under ``configs/`` and load it here.  The protocol's own pinning
+(SOURCE_SHA, protocol_sha256, implementation_sha256) still applies; hash the
+config file alongside them so the paired arms stay reproducible.
+
 Preparation is CPU/read-only with respect to inputs. GPU execution requires an
 explicit --action run and the shared training lock. Original assets are never
 overwritten; this diagnostic does not promote a checkpoint automatically.
@@ -639,7 +650,19 @@ def run(args):
         print(json.dumps({"completed": str(args.output), "smoke": args.smoke}), flush=True)
 
 
+DISABLED_REASON = (
+    "tools/paired_hue_finetune.py is disabled: it builds stage-1 training "
+    "parameters in code (trainer_args), and stage-1 now accepts them only from "
+    "a config file. Move the protocol values into configs/ and load them with "
+    "utils.vision_encoder_config.load_config to re-enable it."
+)
+
+
 def main(argv=None):
+    raise SystemExit(DISABLED_REASON)
+
+
+def _disabled_main(argv=None):
     args = parse_args(argv)
     if args.action == "prepare":
         prepare(args)
