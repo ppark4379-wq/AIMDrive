@@ -11,7 +11,8 @@ sys.path.insert(0,str(ROOT))
 from async_capture.actor_inventory_audit import parse_snapshot,audit_snapshots
 from async_capture.alignment import PayloadReader
 from async_capture.journal import digest,verify_run,write_json
-from ssd_storage import require_ssd
+from async_capture.portable_paths import recorded_episode_directory
+from ssd_storage import require_ssd,SSD_ROOT
 
 
 def verified(folder, seal_name):
@@ -34,7 +35,7 @@ def main():
     index=json.loads((a.episode/'quality/INDEX_COMPLETE.json').read_text())
     if tseal['raw_manifest_sha256']!=index['raw_manifest_sha256']:
         raise ValueError('GT timeline and actor inventory use different raw runs')
-    raw=Path(index['raw_path']);manifest,_=verify_run(raw,payloads=False)
+    raw=recorded_episode_directory(index['raw_path'],a.episode,'raw',SSD_ROOT);manifest,_=verify_run(raw,payloads=False)
     rows=json.loads((a.episode/'quality/active_signals.json').read_text())
     reader=PayloadReader(raw);snapshots=[];payload_failures=[];failed_rpc_records=[]
     identity_records=[];identity_failures=[];model_identities={}

@@ -19,7 +19,8 @@ from async_capture.journal import digest,verify_run,write_json
 from async_capture.native_gt_timeline import (collapse_source_rows,event_times,
     interpolate_object_value,nearby_events,nearby_light_events,object_discontinuities,
     source_bracket,source_times,stable_light_value,traffic_transitions)
-from ssd_storage import require_ssd
+from async_capture.portable_paths import recorded_episode_directory
+from ssd_storage import require_ssd,SSD_ROOT
 
 
 def vector(v):return [float(v.x),float(v.y),float(v.z)]
@@ -187,7 +188,7 @@ def main():
     if actor_source_units<=0:raise ValueError('Invalid actor source clock units')
     if cat['raw_manifest_sha256']!=index['raw_manifest_sha256']:raise ValueError('Different raw recordings')
     exact={r['relative_path']:r for r in cat['comparison'] if r['role']=='lidar' and r.get('exact_xyzi_array_equal')}
-    raw=Path(index['raw_path']);require_ssd(raw,reserve_bytes=0)
+    raw=recorded_episode_directory(index['raw_path'],a.episode,'raw',SSD_ROOT);require_ssd(raw,reserve_bytes=0)
     manifest,_=verify_run(raw,payloads=False);classes=recorded_classes(manifest);reader=PayloadReader(raw)
     active=load(a.episode/'quality/active_signals.json')
     model_identities={};identity_records=[]

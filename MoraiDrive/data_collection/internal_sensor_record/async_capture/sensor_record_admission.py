@@ -38,17 +38,103 @@ def validate_runtime_mode(mode):
     return {"valid": all(checks.values()), "checks": checks}
 
 
-def validate_native_session_snapshot(snapshot):
+def _is_within(path, root):
+    path = Path(path).resolve()
+    root = Path(root).resolve()
+    return path == root or root in path.parents
+
+
+def _safe_local_file(path, root):
+    """Return True only for a regular, non-symlink file contained by root."""
+    path = Path(path)
+    root = Path(root)
+    if not path.is_file() or path.is_symlink() or root.is_symlink():
+        return False
+    try:
+        relative = path.relative_to(root)
+    except ValueError:
+        return False
+    current = root
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            return False
+    return _is_within(path, root)
+
+
+def _verify_pinned_file(item, *, local_copy=None, local_root=None):
+    """Resolve one immutable artifact without weakening its recorded digest."""
+    recorded_text = item.get("path", "") if isinstance(item, dict) else ""
+    expected = item.get("sha256") if isinstance(item, dict) else None
+    recorded = Path(recorded_text) if recorded_text else None
+    if (recorded is not None and expected and recorded.is_file()
+            and not recorded.is_symlink() and digest(recorded) == expected):
+        return {"valid": True, "path": str(recorded), "resolution": "recorded_path"}
+    local_copy = Path(local_copy) if local_copy is not None else None
+    if not (
+        recorded is not None
+        and expected
+        and local_copy is not None
+        and local_root is not None
+        and recorded.name == local_copy.name
+        and _safe_local_file(local_copy, local_root)
+        and digest(local_copy) == expected
+    ):
+        return {"valid": False, "path": None, "resolution": "unresolved"}
+    return {"valid": True, "path": str(local_copy.resolve()),
+            "resolution": "run_local_exact_sha256_copy"}
+
+
+def validate_native_session_snapshot(snapshot, *, transferred_run=None):
+    transferred_run = (Path(transferred_run).resolve()
+                       if transferred_run is not None else None)
+    portable_identity = bool(
+        transferred_run is not None
+        and snapshot.get("session_name") == transferred_run.name
+    )
     checks = {
         "prepared_before_capture": snapshot.get("prepared_before_capture") is True,
         "session_name": bool(snapshot.get("session_name")),
         "native_root": bool(snapshot.get("native_root")),
+        "portable_run_identity": portable_identity if transferred_run is not None else True,
     }
+    resolutions = {}
     for key in ("session_plan", "session_apply", "session_record"):
         item = snapshot.get(key, {})
-        path = Path(item.get("path", ""))
-        checks[key] = bool(path.is_file() and item.get("sha256") == digest(path))
-    return {"valid": all(checks.values()), "checks": checks}
+        recorded_name = Path(item.get("path", "")).name
+        local_copy = (transferred_run / recorded_name
+                      if portable_identity and recorded_name else None)
+        result = _verify_pinned_file(
+            item, local_copy=local_copy, local_root=transferred_run)
+        checks[key] = result["valid"]
+        resolutions[key] = result
+    return {"valid": all(checks.values()), "checks": checks,
+            "resolutions": resolutions}
+
+
+def _verify_producer_snapshot(snapshot, producer, *, transferred_run=None):
+    if not snapshot or not producer or snapshot.get("files", {}) != producer:
+        return {"valid": False, "root": None, "resolution": "unresolved"}
+    roots = [(Path(snapshot.get("root", "")), "recorded_path")]
+    if transferred_run is not None:
+        roots.append((Path(transferred_run) / "software_snapshot",
+                      "run_local_exact_sha256_copy"))
+    for root, resolution in roots:
+        if not root.is_dir() or root.is_symlink():
+            continue
+        valid = True
+        for name, expected in producer.items():
+            relative = Path(name)
+            path = root / relative
+            if (relative.is_absolute() or ".." in relative.parts
+                    or not _safe_local_file(path, root)
+                    or digest(path) != expected):
+                valid = False
+                break
+        if valid:
+            return {"valid": True, "root": str(root.resolve()),
+                    "resolution": resolution}
+    return {"valid": False, "root": None, "resolution": "unresolved"}
 
 
 def build_capture_contract(preflight, plan, *, plan_sha256, producer_software,
@@ -112,21 +198,21 @@ def build_capture_contract(preflight, plan, *, plan_sha256, producer_software,
 
 
 def verify_capture_contract(contract, plan, plan_path):
+    transferred_run = Path(plan_path).resolve().parent
+    native_snapshot = contract.get("native_session", {})
+    portable_identity = native_snapshot.get("session_name") == transferred_run.name
     runtime = validate_runtime_mode(plan.get("mode", {}))
     static = validate_preflight_snapshot(contract.get("static_preflight", {}))
-    session = validate_native_session_snapshot(contract.get("native_session", {}))
+    session = validate_native_session_snapshot(
+        native_snapshot, transferred_run=transferred_run)
     producer=contract.get("producer_software",{})
     snapshot=contract.get('producer_software_snapshot')
-    producer_valid=bool(producer)
+    producer_resolution = None
     if snapshot:
-        snapshot_root=Path(snapshot.get('root',''))
-        snapshot_files=snapshot.get('files',{})
-        producer_valid &= bool(snapshot_root.is_dir() and snapshot_files==producer)
-        for name,expected in producer.items():
-            path=snapshot_root/name
-            producer_valid &= bool(not Path(name).is_absolute() and '..' not in Path(name).parts
-                                   and path.is_file() and not path.is_symlink()
-                                   and digest(path)==expected)
+        producer_resolution = _verify_producer_snapshot(
+            snapshot, producer,
+            transferred_run=transferred_run if portable_identity else None)
+        producer_valid = producer_resolution["valid"]
     else:
         # Legacy contracts did not archive their source. Keep their original
         # fail-closed current-worktree check instead of silently upgrading them.
@@ -136,9 +222,16 @@ def verify_capture_contract(contract, plan, plan_path):
             producer_valid &= bool(not Path(name).is_absolute() and '..' not in Path(name).parts
                                    and path.is_file() and digest(path)==expected)
     acquisition=contract.get('acquisition_contract',{})
-    acquisition_path=Path(acquisition.get('path',''))
-    acquisition_valid=bool(acquisition_path.is_file() and
-        acquisition.get('sha256')==digest(acquisition_path))
+    acquisition_name = Path(acquisition.get('path', '')).name
+    acquisition_resolution = _verify_pinned_file(
+        acquisition,
+        local_copy=(transferred_run / acquisition_name
+                    if portable_identity and acquisition_name else None),
+        local_root=transferred_run,
+    )
+    acquisition_valid = acquisition_resolution["valid"]
+    acquisition_path = (Path(acquisition_resolution["path"])
+                        if acquisition_valid else None)
     expected_transport = plan.get('arguments', {}).get(
         'raw_camera_transport', 'required'
     )
@@ -180,7 +273,12 @@ def verify_capture_contract(contract, plan, plan_path):
     }
     return {"valid": all(checks.values()), "checks": checks,
             "static_preflight_checks": static["checks"],
-            "native_session_checks": session["checks"]}
+            "native_session_checks": session["checks"],
+            "artifact_resolution": {
+                "native_session": session["resolutions"],
+                "producer_software_snapshot": producer_resolution,
+                "acquisition_contract": acquisition_resolution,
+            }}
 
 
 def verify_sealed_directory(folder, seal_name="COMPLETE.json"):

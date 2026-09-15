@@ -9,6 +9,49 @@ from ssd_storage import WINDOWS_ROOT
 WINDOWS_BASE = PureWindowsPath(WINDOWS_ROOT) / 'sensor_record_auto_v1'
 
 
+def _transferred_native_mirror(run, recorded_root, ssd_root):
+    """Resolve a copied run without rewriting capture-time identity evidence.
+
+    Team transfers place the seven native role directories directly below the
+    copied run.  The signed capture metadata still names the original PC's
+    ``native_sessions/<run>`` path.  Accept the local mirror only when the run
+    name, original session identity and completed quick barrier all agree.
+    """
+    run=Path(run)
+    run_root=run.parent if re.fullmatch(r'episode_[0-9]+',run.name) else run
+    base=Path(ssd_root)/'sensor_record_auto_v1'
+    try:
+        run_root.relative_to(base)
+    except ValueError:
+        return None
+    if Path(recorded_root).name != run_root.name:
+        return None
+    session_path=run_root/'SESSION.json'
+    result_path=run_root/'NATIVE_CAPTURE_RESULT.json'
+    if not session_path.is_file() or not result_path.is_file():
+        return None
+    session=json.loads(session_path.read_text())
+    result=json.loads(result_path.read_text())
+    if session.get('plan',{}).get('session') != run_root.name:
+        return None
+    quick=result.get('quick_native_capture',{})
+    if result.get('error') is not None or quick.get('passed') is not True:
+        return None
+    if not all((run_root/role).is_dir() for role in ROLES):
+        return None
+    return run_root
+
+
+def same_recorded_native_source(run, audited_root, contract_root, ssd_root):
+    """Compare source identity while allowing one verified transferred mirror."""
+    if not audited_root or not contract_root:
+        return False
+    if Path(audited_root) == Path(contract_root):
+        return True
+    mirror=_transferred_native_mirror(run,Path(contract_root),ssd_root)
+    return mirror is not None and mirror.resolve()==Path(audited_root).resolve()
+
+
 def native_root_from_links(rows, ssd_root):
     if len(rows) != len(ROLES) or {r['role'] for r in rows} != set(ROLES):
         raise ValueError('Expected exactly seven distinct sensor junctions')
@@ -60,7 +103,13 @@ def recorded_native_root(run, ssd_root):
             raise ValueError('No unambiguous recorded native source root')
         return found[0]
     root = Path(next(iter(roots)))
-    relative = root.relative_to(Path(ssd_root)/'sensor_record_auto_v1')
+    try:
+        relative = root.relative_to(Path(ssd_root)/'sensor_record_auto_v1')
+    except ValueError:
+        mirror=_transferred_native_mirror(run,root,ssd_root)
+        if mirror is None:
+            raise ValueError('Recorded native root belongs to another storage and no verified local mirror exists')
+        return mirror
     if relative.parts != ('native',) and not (
         len(relative.parts) == 2 and relative.parts[0] == 'native_sessions'
         and re.fullmatch(r'[A-Za-z0-9_]{1,80}', relative.parts[1])

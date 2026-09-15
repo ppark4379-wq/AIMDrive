@@ -10,10 +10,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from async_capture.journal import digest, write_json
+from async_capture.native_session import same_recorded_native_source
 from async_capture.sensor_record_admission import (
     build_frame_admission, reason_counts, summarize_live_streams,
     SENSOR_SCENE_STATE_CONTRACT, verify_capture_contract, verify_sealed_directory,
 )
+from ssd_storage import SSD_ROOT
 
 
 def load(path):
@@ -90,7 +92,9 @@ def main():
         raise ValueError("Object geometry audit is invalid or linked to different raw evidence")
     if route_signal_audit.get("raw_manifest_sha256") not in raw_ids:
         raise ValueError("Route signal audit is linked to different raw evidence")
-    if native.get("source_root") != contract.get("native_session", {}).get("native_root"):
+    if not same_recorded_native_source(
+            args.episode,native.get("source_root"),
+            contract.get("native_session", {}).get("native_root"),SSD_ROOT):
         raise ValueError("Native audit source differs from the pre-capture session")
     native_report_sha = digest(evidence_dirs["native_audit"] / "report.json")
     if (seal_contents["gt_timeline"].get("raw_manifest_sha256") not in raw_ids
