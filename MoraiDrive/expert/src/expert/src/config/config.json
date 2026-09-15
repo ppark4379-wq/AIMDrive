@@ -80,8 +80,8 @@
     "traffic_light_stop": {
       "stop_statuses": [1],
       "route_lateral_threshold": 2.0,
-      "max_lookahead": 120.0,
-      "stop_margin": 11.0,
+      "max_lookahead": 150.0,
+      "stop_margin": 13.0,
       "comfortable_deceleration": 2.5,
       "signal_timeout": 2.0,
       "hold_on_stale": true
