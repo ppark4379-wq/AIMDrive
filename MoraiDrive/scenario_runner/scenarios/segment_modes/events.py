@@ -57,6 +57,13 @@ def resolve_profile_models(context):
         context, zones.dynamic, "dynamic_obstacle_models",
         context.grpc.get_available_pedestrian_models, "dynamic pedestrian",
     )
+    for models, key in (
+        (context.static_obstacle_models, "static_obstacle_model"),
+        (context.dynamic_obstacle_models, "dynamic_obstacle_model"),
+    ):
+        previous = context.previous_profile_state.get(key)
+        if previous in models and len(models) > 1:
+            models.append(models.pop(models.index(previous)))
     context.static_obstacle_model = (
         context.static_obstacle_models[0] if zones.static else "OFF"
     )

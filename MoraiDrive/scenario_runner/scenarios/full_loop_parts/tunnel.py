@@ -193,10 +193,13 @@ def spawn_tunnel_sudden_brake_npc(self, current_s, elapsed):
     self.tunnel_npc = actor
     self.tunnel_npc_last_xy = None
     self.tunnel_npc_spawn_elapsed = float(elapsed)
+    self.tunnel_npc_brake_scenario_time = None
+    self.tunnel_npc_stopped_scenario_time = None
     self.tunnel_npc_brake_wall_time = None
     self.tunnel_npc_stopped_wall_time = None
     self.tunnel_npc_forced_stop = False
     self.tunnel_npc_approach_slowed = False
+    self.tunnel_npc_resumed_scenario_time = None
     self.tunnel_npc_resumed_wall_time = None
     self.tunnel_event_phase = "cruising"
     self.tunnel_event_result.update({
@@ -286,7 +289,8 @@ def _command_tunnel_hard_brake(
         self.tunnel_npc, 0.0, enabled=True
     )
     brake_ok = self.grpc.set_vehicle_speed(self.tunnel_npc, 0.0)
-    self.tunnel_npc_brake_wall_time = time.time()
+    self.tunnel_npc_brake_scenario_time = self._scenario_now()
+    self.tunnel_npc_brake_wall_time = self.tunnel_npc_brake_scenario_time
     self.tunnel_event_phase = "braking"
     ego_speed = float(ego_state.get("speed", 0.0))
     self.tunnel_event_result.update({
@@ -322,7 +326,8 @@ def _resume_tunnel_npc_after_event(self, elapsed, npc_s, route_gap, reason):
         self.tunnel_npc, resume_speed
     )
     resumed = bool(pause_ok or limit_ok or speed_ok or velocity_ok)
-    self.tunnel_npc_resumed_wall_time = time.time()
+    self.tunnel_npc_resumed_scenario_time = self._scenario_now()
+    self.tunnel_npc_resumed_wall_time = self.tunnel_npc_resumed_scenario_time
     self.tunnel_event_phase = "departing"
     self.tunnel_event_result.update({
         "resumed_after_event": resumed,
@@ -519,7 +524,7 @@ def update_tunnel_sudden_brake(self, elapsed, ego_state, current_s):
             f"speed_drop={speed_drop:.1f}, route_gap={route_gap:.1f}m"
         )
 
-    now = time.time()
+    now = self._scenario_now()
     if (
         not self.tunnel_event_result.get("stop_confirmed")
         and speed <= float(cfg.get("stopped_speed_threshold_mps", 0.5))
@@ -533,6 +538,7 @@ def update_tunnel_sudden_brake(self, elapsed, ego_state, current_s):
             npc_s - self.tunnel_entry_s
         )
         self.tunnel_event_result["stopped_route_gap_m"] = route_gap
+        self.tunnel_npc_stopped_scenario_time = now
         self.tunnel_npc_stopped_wall_time = now
         print(
             f"[FullLoop] tunnel NPC STOP CONFIRMED "
@@ -542,7 +548,7 @@ def update_tunnel_sudden_brake(self, elapsed, ego_state, current_s):
 
     if (
         not self.tunnel_event_result.get("stop_confirmed")
-        and now - float(self.tunnel_npc_brake_wall_time)
+        and now - float(self.tunnel_npc_brake_scenario_time)
             >= float(cfg.get("stop_confirm_timeout_sec", 1.0))
         and not self.tunnel_npc_forced_stop
     ):
@@ -565,8 +571,8 @@ def update_tunnel_sudden_brake(self, elapsed, ego_state, current_s):
     if (
         self.tunnel_event_result.get("stop_confirmed")
         and self.tunnel_event_result.get("ego_reaction_detected")
-        and self.tunnel_npc_stopped_wall_time is not None
-        and now - self.tunnel_npc_stopped_wall_time
+        and self.tunnel_npc_stopped_scenario_time is not None
+        and now - self.tunnel_npc_stopped_scenario_time
             >= float(cfg.get("stop_hold_sec", 3.0))
     ):
         self._resume_tunnel_npc_after_event(

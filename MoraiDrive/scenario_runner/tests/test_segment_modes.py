@@ -103,37 +103,18 @@ class MissionModesTest(unittest.TestCase):
         scenario.grpc.world._sim_adapter._actor_stub.GetAllActorsState.return_value = (
             SimpleNamespace(states=[state])
         )
+        scenario.grpc.get_all_obstacle_states.return_value = [state]
         with redirect_stdout(io.StringIO()), patch.object(highway.time, "sleep"):
             scenario.setup()
 
-    def test_static_disappearance_stops_real_runner_timeline_before_goal(self):
-        from itertools import count
+    def test_static_disappearance_fails_exact_state_verification(self):
         scenario = self.make_scenario("full_loop_static")
         self.setup_scenario(scenario)
-        scenario.grpc.world._sim_adapter._actor_stub.GetAllActorsState.return_value = (
-            SimpleNamespace(states=[])
-        )
-        scenario.grpc.get_time.return_value = scenario.scenario_hour
-        first = scenario.route_points[0]
-        scenario.grpc.get_ego_motion_state.return_value = dict(
-            x=first[0], y=first[1], yaw_deg=0.0, speed=0.0,
-            current_link=scenario.start_link,
-        )
-        controller = Mock()
-        controller.is_running.return_value = True
-        scenario.expert_controller = controller
-        scenario.static_obstacle_watch.next_sample_at = 0.0
-        scenario.static_obstacle_watch.started_at = 0.0
-        capture = io.StringIO()
-        with redirect_stdout(capture), patch(
-            "scenario_runner.scenarios.full_loop_parts.static_obstacle_watch.time.monotonic",
-            side_effect=count(1.0, 0.21),
-        ), patch("scenario_runner.core.full_loop_drive_base.time.sleep"):
-            with self.assertRaisesRegex(RuntimeError, "status=missing"):
-                scenario.run_expert_timeline()
-        controller.stop_process.assert_called_once()
-        scenario.grpc.stop_ego_control.assert_called_once()
-        self.assertNotIn("GOAL REACHED", capture.getvalue())
+        scenario.grpc.get_all_obstacle_states.return_value = []
+        with patch(
+            "scenario_runner.scenarios.full_loop_parts.static_obstacle.time.sleep"
+        ), self.assertRaisesRegex(RuntimeError, "disappeared"):
+            scenario.verify_static_obstacle(1.0, 0.0)
 
     def test_six_primary_modes_plus_legacy_commands(self):
         self.assertEqual(len(PRIMARY_SCENARIOS), 6)
@@ -223,7 +204,11 @@ class MissionModesTest(unittest.TestCase):
                 self.setup_scenario(scenario)
                 grpc = scenario.grpc
                 self.assertEqual(grpc.spawn_obstacle.call_count, int(mode.zones.static))
-                self.assertEqual(grpc.spawn_vehicle.call_count, 6 if mode.zones.roundabout else 0)
+                self.assertEqual(grpc.spawn_vehicle.call_count, 0)
+                self.assertEqual(
+                    scenario.roundabout_lifecycle_state,
+                    "armed" if mode.zones.roundabout else "disabled",
+                )
                 self.assertEqual(grpc.create_vehicle_spawn_point.call_count, 3 if mode.zones.highway else 0)
                 grpc.spawn_pedestrian.assert_not_called()  # Dynamic spawn is approach-triggered.
                 self.assertEqual(scenario.dynamic_obstacle_phase, "waiting" if mode.zones.dynamic else "disabled")
@@ -258,30 +243,132 @@ class MissionModesTest(unittest.TestCase):
         self.assertEqual(vars(call["transform"].location), expected)
         self.assertEqual(scenario.grpc.obstacle_ids_near.call_count, 2)
         scenario.grpc.destroy_obstacles_near.assert_called_once()
+        scenario.static_obstacle.set_physics.assert_called_once_with(False)
+        self.assertEqual(scenario.static_obstacle_expected["actor_id"], "static-actor")
 
-    def test_roundabout_six_equal_positions_and_existing_controls(self):
+    def test_roundabout_three_equal_positions_and_existing_controls(self):
         scenario = self.make_scenario("full_loop_roundabout")
         self.setup_scenario(scenario)
-        self.assertEqual(len(scenario.roundabout_npcs), 6)
+        self.assertEqual(scenario.roundabout_lifecycle_state, "armed")
+        scenario.grpc.spawn_vehicle.assert_not_called()
+
+        zone = scenario.route_definition["zones"]["roundabout"]
+        entry = next(
+            checkpoint
+            for checkpoint in scenario.route_definition["checkpoints"]
+            if str(checkpoint["id"]) == str(zone["ego_entry_checkpoint"])
+        )
+        trigger_s = scenario.path_s_at_index(entry["path_index"]) - 100.0
+        roundabout.update_roundabout_npcs(
+            scenario,
+            elapsed=1.0,
+            ego_state={"x": 0.0, "y": 0.0},
+            current_s=trigger_s,
+        )
+        self.assertEqual(len(scenario.roundabout_npcs), 3)
+        self.assertEqual(scenario.roundabout_lifecycle_state, "spawned")
         for call in scenario.grpc.spawn_vehicle.call_args_list:
             self.assertEqual(call.kwargs["velocity"], 4.0)
             self.assertEqual(call.kwargs["model_name"], "DEFAULT_SEDAN")
-        self.assertEqual(scenario.grpc.set_vehicle_route.call_count, 6)
-        self.assertEqual(scenario.grpc.set_vehicle_ai.call_count, 6)
-        self.assertEqual(scenario.grpc.set_vehicle_speed_limit.call_count, 6)
-        self.assertEqual(scenario.grpc.set_vehicle_velocity.call_count, 6)
-        # Re-running the unchanged original function must make identical placements/routes.
+        self.assertEqual(scenario.grpc.set_vehicle_route.call_count, 3)
+        self.assertEqual(scenario.grpc.set_vehicle_ai.call_count, 3)
+        self.assertEqual(scenario.grpc.set_vehicle_speed_limit.call_count, 3)
+        self.assertEqual(scenario.grpc.set_vehicle_velocity.call_count, 3)
+
         original = self.make_scenario("full_loop_roundabout")
         original.route_definition = scenario.route_definition
         original.roundabout_npcs, original.scenario_actors = [], []
         with redirect_stdout(io.StringIO()):
-            roundabout.spawn_roundabout_npcs(original)
+            roundabout.spawn_roundabout_npcs_now(original)
         actual = scenario.grpc.spawn_vehicle.call_args_list
         baseline = original.grpc.spawn_vehicle.call_args_list
-        self.assertEqual([vars(c.kwargs["transform"].location) for c in actual],
-                         [vars(c.kwargs["transform"].location) for c in baseline])
-        self.assertEqual([c.args[1] for c in scenario.grpc.set_vehicle_route.call_args_list],
-                         [c.args[1] for c in original.grpc.set_vehicle_route.call_args_list])
+        self.assertEqual(
+            [vars(call.kwargs["transform"].location) for call in actual],
+            [vars(call.kwargs["transform"].location) for call in baseline],
+        )
+        self.assertEqual(
+            [call.args[1] for call in scenario.grpc.set_vehicle_route.call_args_list],
+            [call.args[1] for call in original.grpc.set_vehicle_route.call_args_list],
+        )
+
+    def test_roundabout_retires_owned_actors_30m_after_exit(self):
+        scenario = self.make_scenario("full_loop_roundabout")
+        self.setup_scenario(scenario)
+        zone = scenario.route_definition["zones"]["roundabout"]
+        checkpoints = {
+            str(item["id"]): item
+            for item in scenario.route_definition["checkpoints"]
+        }
+        entry_s = scenario.path_s_at_index(
+            checkpoints[str(zone["ego_entry_checkpoint"])]["path_index"]
+        )
+        exit_s = scenario.path_s_at_index(
+            checkpoints[str(zone["ego_exit_checkpoint"])]["path_index"]
+        )
+        roundabout.update_roundabout_npcs(
+            scenario, 1.0, {"x": 0.0, "y": 0.0}, entry_s - 100.0
+        )
+        scenario.grpc.get_all_vehicle_states.return_value = [
+            SimpleNamespace(
+                actor_info=SimpleNamespace(
+                    id=SimpleNamespace(value=item["actor"].get_id())
+                ),
+                transform=transform(1.0, 1.0, 0.0, 0.0),
+            )
+            for item in scenario.roundabout_npcs
+        ]
+        scenario.grpc.destroy_vehicle_by_id.return_value = True
+        roundabout.update_roundabout_npcs(
+            scenario, 2.0, {"x": 0.0, "y": 0.0}, exit_s + 30.01
+        )
+        self.assertEqual(scenario.roundabout_lifecycle_state, "retired")
+        self.assertEqual(scenario.grpc.destroy_vehicle_by_id.call_count, 3)
+        self.assertEqual(scenario.roundabout_npcs, [])
+
+    def test_roundabout_stall_retires_only_owned_three_actors(self):
+        scenario = self.make_scenario("full_loop_roundabout")
+        scenario.event = Mock()
+        self.setup_scenario(scenario)
+        zone = scenario.route_definition["zones"]["roundabout"]
+        checkpoints = {
+            str(item["id"]): item
+            for item in scenario.route_definition["checkpoints"]
+        }
+        entry_s = scenario.path_s_at_index(
+            checkpoints[str(zone["ego_entry_checkpoint"])]["path_index"]
+        )
+        trigger_s = entry_s - 100.0
+        roundabout.update_roundabout_npcs(
+            scenario, 1.0, {"x": 0.0, "y": 0.0}, trigger_s
+        )
+        scenario.grpc.get_all_vehicle_states.return_value = [
+            SimpleNamespace(
+                actor_info=SimpleNamespace(
+                    id=SimpleNamespace(value=item["actor"].get_id())
+                ),
+                transform=transform(1.0, 1.0, 0.0, 0.0),
+            )
+            for item in scenario.roundabout_npcs
+        ]
+        scenario.grpc.destroy_vehicle_by_id.return_value = True
+        roundabout.update_roundabout_npcs(
+            scenario, 46.0, {"x": 0.0, "y": 0.0}, trigger_s
+        )
+        self.assertEqual(scenario.roundabout_lifecycle_state, "retired")
+        self.assertEqual(scenario.grpc.destroy_vehicle_by_id.call_count, 3)
+        calls = [call for call in scenario.event.call_args_list]
+        named = [(call.args[0], call.kwargs) for call in calls]
+        self.assertTrue(any(
+            name == "actor_lifecycle_finished"
+            and fields.get("retire_reason") == "progress_stall"
+            and fields.get("success") is True
+            for name, fields in named
+        ))
+        for name, fields in named:
+            if name in ("actor_lifecycle_started", "actor_lifecycle_finished"):
+                self.assertNotIn("training_visible", fields)
+            if name == "roundabout_spawn_contract":
+                self.assertIs(fields.get("training_visible"), False)
 
     def test_dynamic_arm_coordinates_direction_trigger_unchanged(self):
         scenario = self.make_scenario("full_loop_dynamic")
@@ -317,12 +404,45 @@ class MissionModesTest(unittest.TestCase):
             scenario.on_expert_timeline_tick(1.0, {}, scenario.highway_exit_s, 53.3)
             cleanup.assert_called_once_with(scenario.highway_exit_s)
 
+    def test_highway_activates_100m_early_and_stops_distant_spawners(self):
+        scenario = self.make_scenario("full_loop_highway")
+        self.setup_scenario(scenario)
+        activation_s = scenario.highway_activation_s - 100.0
+        self.assertFalse(highway.activate_highway_spawn_points(scenario, 1.0, activation_s - 0.01))
+        scenario.grpc.enable_vehicle_spawn_point.reset_mock()
+        scenario.grpc.enable_vehicle_spawn_point.return_value = True
+        self.assertTrue(highway.activate_highway_spawn_points(scenario, 1.0, activation_s))
+        self.assertEqual(scenario.grpc.enable_vehicle_spawn_point.call_count, 3)
+        self.assertTrue(all(item["enabled"] for item in scenario.highway_spawn_points))
+
+        highway_zone = scenario.route_definition["zones"]["highway"]
+        checkpoints = {
+            str(item["id"]): item
+            for item in scenario.route_definition["checkpoints"]
+        }
+        entry_s = scenario.path_s_at_index(
+            checkpoints[str(highway_zone["ego_entry_checkpoint"])]["path_index"]
+        )
+        scenario.grpc.enable_vehicle_spawn_point.reset_mock()
+        highway.update_highway_actor_lifecycle(
+            scenario, 2.0, {"x": -10000.0, "y": -10000.0}, entry_s + 220.01
+        )
+        self.assertTrue(scenario.nearby_highway_stopped)
+        self.assertEqual(scenario.grpc.enable_vehicle_spawn_point.call_count, 3)
+        self.assertTrue(all(not item["enabled"] for item in scenario.highway_spawn_points))
+        self.assertFalse(highway.activate_highway_spawn_points(scenario, 3.0, activation_s + 1.0))
+
     def test_weather_time_model_reroll_and_history_isolation(self):
         for name in MISSION_MODES:
             a, b = self.make_scenario(name, 1), self.make_scenario(name, 2)
             self.setup_scenario(a)
             self.setup_scenario(b)
             self.assertEqual([a.profile["weather"], b.profile["weather"]], ["SUNNY", "FOGGY"])
+            self.assertNotEqual(a.scenario_hour, b.scenario_hour)
+            if MISSION_MODES[name].zones.static:
+                self.assertNotEqual(a.static_obstacle_model, b.static_obstacle_model)
+            if MISSION_MODES[name].zones.dynamic:
+                self.assertNotEqual(a.dynamic_obstacle_model, b.dynamic_obstacle_model)
             for item in [a, b]:
                 self.assertIn(item.scenario_hour, [11, 13, 15])
                 self.assertEqual(item.cfg["profile_state_path"],

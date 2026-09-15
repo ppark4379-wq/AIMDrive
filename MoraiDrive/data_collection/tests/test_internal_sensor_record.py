@@ -168,7 +168,7 @@ class InternalSensorRecordTest(unittest.TestCase):
         ):
             self.assertEqual(default_grpc_target(), "192.0.2.10:7789")
 
-    def test_campaign_uses_hash_pinned_proven_three_lap_runtime(self):
+    def test_campaign_uses_main_scenario_and_hash_pinned_expert(self):
         import hashlib
 
         supervisor = (
@@ -177,18 +177,35 @@ class InternalSensorRecordTest(unittest.TestCase):
         runner = (
             INTERNAL / "tools/run_proven_three_lap_scenario.py"
         ).read_text()
+        review_runner = (
+            INTERNAL / "tools/run_async_scenario_review.py"
+        ).read_text()
         runtime = INTERNAL / "proven_three_lap_runtime"
         manifest = json.loads(
             (runtime / "PROVEN_RUNTIME_MANIFEST.json").read_text()
         )
         self.assertIn("run_proven_three_lap_scenario.py", supervisor)
         self.assertIn("'--nearby-actors'", supervisor)
-        self.assertIn("Proven three-lap runtime differs", runner)
+        self.assertIn(
+            "from scenario_runner.main_runner import PACKAGE_ROOT as SCENARIO_PACKAGE_ROOT",
+            runner,
+        )
+        self.assertIn("class RawScenario(FullLoopScenario):", runner)
+        self.assertIn("software_inventory()", runner)
+        self.assertNotIn("NearbyActorsMixin", runner)
+        self.assertNotIn("cfg['nearby_actor_policy']", runner)
+        for adapter in (runner, review_runner):
+            self.assertNotIn("route_setup_attempts=1", adapter)
+            self.assertNotIn("max_laps=1", adapter)
+        self.assertFalse((runtime / "scenario_runner/__init__.py").exists())
+        self.assertFalse((INTERNAL / "async_capture/nearby_actors.py").exists())
         self.assertEqual(manifest["reference_run"], "large_scale_3laps_02_lap_001")
-        self.assertEqual(len(manifest["files"]), 108)
+        self.assertEqual(len(manifest["files"]), 86)
+        self.assertTrue(all(
+            relative.startswith("expert/") for relative in manifest["files"]
+        ))
         for relative in (
             "async_capture/bundle_screen.py",
-            "async_capture/nearby_actors.py",
             "async_capture/rosbag_recording.py",
             "async_capture/temporal_groups.py",
             "tools/collect_async_raw_proven.py",
@@ -202,6 +219,15 @@ class InternalSensorRecordTest(unittest.TestCase):
                 hashlib.sha256(path.read_bytes()).hexdigest(), expected,
                 relative,
             )
+
+
+    def test_failed_lap_still_preserves_raw_data_and_stops_campaign(self):
+        source = (INTERNAL / "tools/collect_scenario_laps.sh").read_text()
+        failure = source.index("원본은 보존했고 다음 reset은 진행하지 않습니다")
+        returned = source.index('exit "' + chr(36) + 'code"', failure)
+        loop_end = source.index("done", failure)
+        self.assertLess(failure, returned)
+        self.assertLess(returned, loop_end)
 
     def test_collector_keeps_observation_clock_out_of_team_scenario_kwargs(self):
         source = (INTERNAL / "tools/run_async_scenario_review.py").read_text()

@@ -13,6 +13,16 @@ def ego():
 
 
 class SyncRuntimeTest(unittest.TestCase):
+    def test_external_scenario_clock_is_injected_without_collection_dependency(self):
+        clock = SimpleNamespace(
+            domain="grpc_simulation_timestamp",
+            now=Mock(return_value=12.5),
+        )
+        scenario = FullLoopDriveBase(Mock(), None, {}, {}, clock=clock)
+        self.assertIs(scenario.clock, clock)
+        self.assertEqual(scenario.clock.domain, "grpc_simulation_timestamp")
+        self.assertEqual(scenario.clock.now(), 12.5)
+
     def test_requires_message_after_active_observed(self):
         bridge = SyncRuntimeBridge({})
         bridge.rospy = Mock()
@@ -147,6 +157,7 @@ class SyncRuntimeTest(unittest.TestCase):
             'reset_ego_motion_on_start': True,
             'reset_ego_motion_wait_sec': 0,
         })
+        scenario.runtime_bridge = Mock()
         scenario.start_tf = object()
         scenario.expert_controller = Mock(stop_process=calls.stop_old)
         def setup():
@@ -158,6 +169,30 @@ class SyncRuntimeTest(unittest.TestCase):
         self.assertLess(names.index('stop_old'), names.index('grpc.set_ego_transform'))
         self.assertLess(names.index('grpc.set_ego_transform'), names.index('grpc.reset_ego_motion'))
         self.assertLess(names.index('grpc.reset_ego_motion'), names.index('start_new'))
+
+    def test_collection_owned_runtime_preserves_proven_ego_call_order(self):
+        calls = Mock()
+        scenario = FullLoopDriveBase(calls.grpc, None, {}, {
+            'reset_ego_motion_on_start': True,
+            'reset_ego_motion_wait_sec': 0,
+        })
+        scenario.start_tf = object()
+        scenario.expert_controller = Mock(stop_process=calls.stop_old)
+        def setup():
+            scenario.expert_controller = Mock(start_process=calls.start_new)
+        scenario.setup_expert_controller = setup
+        with patch('time.sleep'):
+            scenario.configure_drive_from_start()
+        names = [call[0] for call in calls.mock_calls]
+        self.assertNotIn('grpc.reset_ego_motion', names)
+        self.assertLess(names.index('grpc.set_ego_transform'), names.index('stop_old'))
+        self.assertLess(names.index('stop_old'), names.index('start_new'))
+
+        expected = RuntimeError('original collection gRPC failure')
+        calls.grpc.get_ego_motion_state.side_effect = expected
+        with self.assertRaises(RuntimeError) as caught:
+            scenario.get_ego_motion_state()
+        self.assertIs(caught.exception, expected)
 
     def test_default_driving_timeout_is_disabled(self):
         from ..main_runner import load_configuration

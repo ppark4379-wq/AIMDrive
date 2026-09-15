@@ -436,7 +436,7 @@ def main():
     global_cfg, _, cfg = load_configuration()
     global_cfg['grpc']['host'], port = a.grpc_target.rsplit(':', 1)
     global_cfg['grpc']['port'] = int(port)
-    cfg.update(random_seed=a.seed, route_setup_attempts=1, max_laps=1,
+    cfg.update(random_seed=a.seed,
                expert_max_velocity_kmh=a.max_speed_kmh,
                expert_python_executable='/usr/bin/python3',
                expert_ros_remaps=['/ctrl_cmd:=' + a.control_topic])

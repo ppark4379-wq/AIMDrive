@@ -18,16 +18,15 @@ import xmlrpc.client
 ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = ROOT.parents[1]
 PROVEN_RUNTIME = ROOT / 'proven_three_lap_runtime'
-sys.path[:0] = [str(ROOT), str(PROVEN_RUNTIME)]
+sys.path[:0] = [str(ROOT), str(PROJECT_ROOT), str(PROVEN_RUNTIME)]
 os.environ['MORAI_GRPC_SRC'] = str(
     PROJECT_ROOT / 'data_collection/third_party/grpc_inha_univ/src')
 os.environ['MORAI_EXPERT_ROOT'] = str(PROVEN_RUNTIME / 'expert')
 from async_capture.journal import write_json, digest
-from async_capture.nearby_actors import NearbyActorsMixin, POLICY as NEARBY_POLICY
 from async_capture.sim_mode import require_free_running_mode
 from process_guard import process_lock
 from ssd_storage import SSD_ROOT, require_ssd
-from scenario_runner.main_runner import load_configuration
+from scenario_runner.main_runner import PACKAGE_ROOT as SCENARIO_PACKAGE_ROOT, load_configuration
 from scenario_runner.scenarios.full_loop_scenario import FullLoopScenario
 from scenario_runner.adapters.morai_grpc import MoraiGrpcClient
 from scenario_runner.utils.map_loader import MGeoMapLoader
@@ -36,6 +35,29 @@ from async_capture.scenario_simulation import SimulationObservationClock, start_
 from async_capture.rosbag_recording import ScenarioRosbag
 from async_capture.route_signal_contract import build_route_signal_contract
 from native_capture.ground_truth import default_grpc_target
+
+
+def software_inventory():
+    files = [
+        Path(__file__).resolve(),
+        ROOT / 'tools/collect_async_raw_proven.py',
+        ROOT / 'async_capture/rosbag_recording.py',
+        ROOT / 'tools/exec_owned_rosbag.py',
+        ROOT / 'async_capture/bundle_screen.py',
+        ROOT / 'async_capture/temporal_groups.py',
+    ]
+    files += sorted((PROJECT_ROOT / 'scenario_runner').rglob('*.py'))
+    files += sorted((PROJECT_ROOT / 'scenario_runner/config').glob('*.yaml'))
+    files += sorted((PROVEN_RUNTIME / 'expert').rglob('*.py'))
+    inventory = {}
+    for source in files:
+        source = source.resolve()
+        if ROOT == source or ROOT in source.parents:
+            name = source.relative_to(ROOT).as_posix()
+        else:
+            name = 'project/' + source.relative_to(PROJECT_ROOT).as_posix()
+        inventory[name] = digest(source)
+    return inventory
 
 
 class SimulationTimeClient(MoraiGrpcClient):
@@ -180,7 +202,7 @@ def audit_episode(episode, python, policy_study=None, time_mode='realtime', requ
     return dict(status='diagnostic_complete', stages=results)
 
 
-class RawScenario(NearbyActorsMixin, FullLoopScenario):
+class RawScenario(FullLoopScenario):
     def __init__(self, *args, output, contract_path, seconds, collision_policy='abort', time_mode='realtime', expert_clock='host_wall_ros_rate', full_lap=False, record_rosbag=False, sensor_record_coordination=None, **kwargs):
         if collision_policy not in ('abort', 'record'):
             raise ValueError('Unknown collision policy')
@@ -424,7 +446,7 @@ class RawScenario(NearbyActorsMixin, FullLoopScenario):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--check', action='store_true')
-    p.add_argument('--nearby-actors', action='store_true', help='Opt-in recorded actor lifetime experiment; expert unchanged')
+    p.add_argument('--nearby-actors', action='store_true', help='Compatibility option; actor lifecycle is owned by the main scenario runner')
     p.add_argument('--rosbag', action='store_true', help='Record original ROS topics including ReplayInfo before expert launch')
     p.add_argument('--audit-scope', choices=('full','timing'), default='full',
                    help='timing: raw integrity and clock checks; defer expensive image geometry studies')
@@ -458,6 +480,9 @@ def main():
     a = p.parse_args()
     if not a.grpc_target:
         a.grpc_target = default_grpc_target()
+    # The main adapter supports environment discovery; the collection command
+    # remains authoritative about the exact target as it was before migration.
+    os.environ['MORAI_GRPC_TARGET'] = a.grpc_target
     if a.time_mode=='simulation_free_run' and a.policy_study:
         p.error('Simulation diagnostic cannot use a RealTime policy study')
     ros_clock_expert = a.time_mode=='simulation_free_run' and not a.expert_wall_clock
@@ -483,19 +508,12 @@ def main():
     global_cfg, _, cfg = load_configuration()
     global_cfg['grpc']['host'], port = a.grpc_target.rsplit(':', 1)
     global_cfg['grpc']['port'] = int(port)
-    cfg.update(random_seed=a.seed, route_setup_attempts=1, max_laps=1,
+    cfg.update(random_seed=a.seed,
                expert_max_velocity_kmh=a.max_speed_kmh,
                expert_python_executable='/usr/bin/python3',
                expert_ros_remaps=['/ctrl_cmd:=' + a.control_topic])
-    cfg['roundabout_npc']['count'] = 3
-    if a.nearby_actors:
-        cfg['nearby_actor_policy'] = dict(NEARBY_POLICY)
-    if a.collision_policy=='record':
-        # Diagnostic continuation only; driver algorithms and sensor-failure guards stay intact.
-        # Base runner does not interpret zero as disabled: zero aborts at once.
-        # This diagnostic records departures and is bounded by wall time instead.
-        cfg['off_route_timeout_sec']=1e12
-        cfg['progress_watchdog']=dict(cfg.get('progress_watchdog',{}),enabled=False)
+    # Scenario policy is loaded only from the main scenario_runner. This
+    # collector owns capture, collision recording and the outer wall bound.
     manifest_path = PROVEN_RUNTIME / 'PROVEN_RUNTIME_MANIFEST.json'
     manifest = json.loads(manifest_path.read_text())
     mismatches = []
@@ -508,7 +526,7 @@ def main():
         raise RuntimeError(
             'Proven three-lap runtime differs from recorded reference: '
             + str(mismatches[:5]))
-    verify_package(PROVEN_RUNTIME / 'scenario_runner', global_cfg, cfg, 'full_loop')
+    verify_package(SCENARIO_PACKAGE_ROOT, global_cfg, cfg, 'full_loop')
     if a.check:
         print('Offline scenario configuration check passed; no simulator calls')
         return
@@ -558,11 +576,7 @@ def main():
                 mode=mode, topology=topology, storage=storage, training_visible=False, nas_used=False,
                 original_use_sim_time=original, expert_clock=expert_clock,
                 note='Same seed/profile inputs per episode; explicit speed cap and wall budget; only runner goal confirms a full lap',
-                software={str(f.relative_to(ROOT)):digest(f) for f in
-                          [Path(__file__).resolve(),ROOT/'tools/collect_async_raw_proven.py',
-                           ROOT/'async_capture/rosbag_recording.py',ROOT/'tools/exec_owned_rosbag.py',
-                           ROOT/'async_capture/nearby_actors.py', ROOT/'async_capture/bundle_screen.py',
-                           ROOT/'async_capture/temporal_groups.py'] + sorted(PROVEN_RUNTIME.rglob('*.py'))},
+                software=software_inventory(),
                 proven_runtime_manifest=dict(path=str(manifest_path),sha256=digest(manifest_path))))
             contract = json.loads((ROOT/'configs/encoder_mission_candidate_v1.json').read_text())
             contract['capture']['actor_ground_truth']['target'] = a.grpc_target

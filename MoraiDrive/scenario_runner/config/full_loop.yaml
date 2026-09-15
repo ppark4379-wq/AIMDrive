@@ -138,11 +138,24 @@ scenarios:
       set_sibling: true
 
     roundabout_npc:
-      count: 6
+      count: 3
       speed_mps: 4.0
       route_laps: 100
       # Restrict roundabout traffic to a passenger-car-sized model.
       model: DEFAULT_SEDAN
+
+    # Scenario-owned actor creation/removal policy. The data collector records
+    # lifecycle events but does not override these scenario decisions.
+    actor_lifecycle:
+      version: nearby_actors_v3
+      roundabout_lead_m: 100.0
+      roundabout_retire_after_m: 30.0
+      roundabout_stall_window_s: 45.0
+      roundabout_stall_min_progress_m: 5.0
+      roundabout_min_active_scenario_s: 20.0
+      roundabout_mutation_quarantine_s: 1.0
+      highway_stop_after_entry_m: 220.0
+      highway_spawn_distance_m: 220.0
 
     highway_npc:
       # Fixed to a model already verified to spawn on this map via 26.R1 gRPC.
@@ -170,13 +183,14 @@ scenarios:
       # Create SpawnPoints at setup but enable them only as Ego approaches.
       # This avoids accumulating irrelevant traffic for several minutes before
       # the full-loop Ego reaches the highway.
-      background_warmup_distance_m: 300.0
+      background_warmup_distance_m: 100.0
       spawn_point_activation_retry_period_sec: 1.0
+      collection_maximum_total_vehicles: 12
 
       # Highway-only native SpawnPoints copied from the competition sample.
       # competition_spawn_4 starts beside/through the roundabout, so it is
       # intentionally excluded: roundabout traffic is owned exclusively by
-      # roundabout_npc and must remain exactly six equally spaced vehicles.
+      # roundabout_npc and remains exactly three equally spaced vehicles.
       # Enum values follow scenario_enum.proto:
       #   vehicle length 2=MIDDLE_SIZE, parameter 2=VARIABLE,
       #   velocity type 2=CUSTOM, lateral bias 1=FIX.
@@ -185,8 +199,8 @@ scenarios:
         is_close_loop: false
         is_lane_change: false
         parameter_type: 2
-        maximum_spawn_vehicle: 50
-        pause: false
+        maximum_spawn_vehicle: 4
+        pause: true
         spawn_velocity_type: 2
         min_spawn_velocity_custom_kmh: 0.0
         max_spawn_velocity_custom_kmh: 0.0
@@ -207,8 +221,8 @@ scenarios:
           position: {x: 73.00800323486328, y: 265.6050109863281, z: 28.34600067138672}
           model_name: ''
           reference_vehicle_type_id: -1
-          min_spawn_period_sec: 10.0
-          max_spawn_period_sec: 10.0
+          min_spawn_period_sec: 5.0
+          max_spawn_period_sec: 5.0
           min_desired_velocity_custom_kmh: 60.0
           max_desired_velocity_custom_kmh: 60.0
           start_link: {id: A2256W000029, point_idx: 167}
@@ -221,8 +235,8 @@ scenarios:
           position: {x: 65.76899719238281, y: 309.2770080566406, z: 28.28800010681152}
           model_name: ''
           reference_vehicle_type_id: -1
-          min_spawn_period_sec: 10.0
-          max_spawn_period_sec: 10.0
+          min_spawn_period_sec: 5.0
+          max_spawn_period_sec: 5.0
           min_desired_velocity_custom_kmh: 40.0
           max_desired_velocity_custom_kmh: 40.0
           start_link: {id: A2256W000406, point_idx: 78}
@@ -235,8 +249,8 @@ scenarios:
           position: {x: 69.322998046875, y: 309.6799926757812, z: 28.32099914550781}
           model_name: ''
           reference_vehicle_type_id: -1
-          min_spawn_period_sec: 10.0
-          max_spawn_period_sec: 10.0
+          min_spawn_period_sec: 5.0
+          max_spawn_period_sec: 5.0
           min_desired_velocity_custom_kmh: 50.0
           max_desired_velocity_custom_kmh: 50.0
           start_link: {id: A2256W000175, point_idx: 78}
@@ -283,7 +297,7 @@ scenarios:
     expert_max_cross_track_error_m: 10.0
 
 
-    route_setup_attempts: 5
+    route_setup_attempts: 1
     route_debug_enabled: true
     route_debug_dir: .runtime/debug_routes
     max_loop_closure_error_m: 0.5
@@ -292,14 +306,14 @@ scenarios:
     goal_tolerance_m: 2.0
     timeout_sec: 0.0
     check_period_sec: 0.05
-    # Route-bound red signals are released after 10 host seconds above. Abort
-    # any unrelated no-progress condition instead of hanging a batch run.
+    # Sensor collection owns a separate wall-time bound. Scenario-time
+    # progress and off-route aborts remain disabled for that proven workflow.
     progress_watchdog:
-      enabled: true
+      enabled: false
       timeout_sec: 120.0
       startup_grace_sec: 30.0
       minimum_progress_m: 2.0
-    off_route_timeout_sec: 3.0
+    off_route_timeout_sec: 1000000000000.0
     off_route_grace_sec: 3.0
     max_laps: 1
     auto_repeat: true

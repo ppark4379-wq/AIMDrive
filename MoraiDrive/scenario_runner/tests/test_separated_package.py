@@ -36,12 +36,15 @@ class SeparatedPackageTest(unittest.TestCase):
         )
         self.assertTrue(args.highway_object_audit)
 
-    def test_progress_watchdog_is_enabled_for_batch_runs(self):
+    def test_collection_scenario_abort_guards_are_disabled(self):
         _, _, scenario_cfg = load_configuration()
         watchdog = scenario_cfg["progress_watchdog"]
-        self.assertTrue(watchdog["enabled"])
-        self.assertGreaterEqual(watchdog["timeout_sec"], 90.0)
-        self.assertGreater(watchdog["minimum_progress_m"], 0.0)
+        self.assertFalse(watchdog["enabled"])
+        self.assertEqual(scenario_cfg["timeout_sec"], 0.0)
+        self.assertEqual(
+            scenario_cfg["off_route_timeout_sec"], 1000000000000.0
+        )
+        self.assertEqual(scenario_cfg["route_setup_attempts"], 1)
 
     def test_supported_scenarios_are_exact(self):
         self.assertEqual(
@@ -119,8 +122,9 @@ class SeparatedPackageTest(unittest.TestCase):
             any(str(key).startswith('lead_') for key in highway_cfg),
             'Scripted highway lead settings must stay removed',
         )
-        self.assertGreater(highway_cfg["background_warmup_distance_m"], 0.0)
-        self.assertEqual(roundabout_cfg["count"], 6)
+        self.assertEqual(highway_cfg["background_warmup_distance_m"], 100.0)
+        self.assertEqual(highway_cfg["collection_maximum_total_vehicles"], 12)
+        self.assertEqual(roundabout_cfg["count"], 3)
         self.assertEqual(roundabout_cfg["speed_mps"], 4.0)
         self.assertEqual(roundabout_cfg["route_laps"], 100)
         self.assertEqual(highway_cfg['reference_safety_distance_m'], 5.0)
@@ -128,9 +132,9 @@ class SeparatedPackageTest(unittest.TestCase):
         self.assertEqual(scenario_cfg['highway_tunnel_test_start_path_index'], 2275)
 
         expected = {
-            10: (10.0, 60.0, 'A2256W000029', 167, 'A2256W000432', 246),
-            6: (10.0, 40.0, 'A2256W000406', 78, 'A2256W001105', 83),
-            8: (10.0, 50.0, 'A2256W000175', 78, 'A2256W000422', 59),
+            10: (5.0, 60.0, 'A2256W000029', 167, 'A2256W000432', 246),
+            6: (5.0, 40.0, 'A2256W000406', 78, 'A2256W001105', 83),
+            8: (5.0, 50.0, 'A2256W000175', 78, 'A2256W000422', 59),
         }
         for spec in specs:
             values = expected[int(spec['id'])]
@@ -142,7 +146,8 @@ class SeparatedPackageTest(unittest.TestCase):
             self.assertEqual(spec['start_link']['point_idx'], values[3])
             self.assertEqual(spec['end_link']['id'], values[4])
             self.assertEqual(spec['end_link']['point_idx'], values[5])
-            self.assertEqual(spec['maximum_spawn_vehicle'], 50)
+            self.assertEqual(spec['maximum_spawn_vehicle'], 4)
+            self.assertTrue(spec['pause'])
             self.assertFalse(spec['is_lane_change'])
             self.assertFalse(spec['is_close_loop'])
 
@@ -172,7 +177,7 @@ class SeparatedPackageTest(unittest.TestCase):
         self.assertEqual(param.config.end_link_info.id.value, 'A2256W000432')
         self.assertEqual(param.config.end_link_info.waypoint_idx, 246)
         self.assertFalse(param.config.is_lane_change)
-        self.assertEqual(param.config.maximum_spawn_vehicle, 50)
+        self.assertEqual(param.config.maximum_spawn_vehicle, 4)
 
     def test_vehicle_ai_enable_retries_transient_failure(self):
         global_cfg, _, _ = load_configuration()
