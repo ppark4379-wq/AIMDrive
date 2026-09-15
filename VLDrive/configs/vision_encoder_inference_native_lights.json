@@ -1,0 +1,43 @@
+{
+  "schema": "morai-vision-encoder-inference-v1",
+  "checkpoint": "outputs/morai_visual_encoder.pth.tar",
+  "dataset": {
+    "format": "morai_native_capture",
+    "root": "data/native_capture/194237_lights",
+    "split_file": null,
+    "split": null,
+    "route_csv": "data/native_capture/194237_lights/route.csv",
+    "lidar_axis_policy": "morai_flu_to_lmdrive_fru"
+  },
+  "frames": {
+    "ids": [
+      1,
+      3,
+      5,
+      7,
+      9,
+      11,
+      13,
+      15
+    ],
+    "stride": 1,
+    "limit": 8
+  },
+  "output": {
+    "dir": "outputs/logs/vision_encoder_inference/native_lights",
+    "formats": [
+      "pdf",
+      "png"
+    ],
+    "dpi": 200
+  },
+  "runtime": {
+    "device": "cuda",
+    "amp": false
+  },
+  "visualization": {
+    "bev_source": "detection",
+    "detection_threshold": 0.4,
+    "show_camera": true
+  }
+}
