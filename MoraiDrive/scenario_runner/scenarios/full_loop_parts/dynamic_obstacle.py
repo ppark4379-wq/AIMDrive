@@ -105,7 +105,8 @@ def _spawn_active_dynamic_obstacle(self, yaw_offset_deg=0.0):
     self.dynamic_obstacle = actor
     self.dynamic_obstacle_model = selected_model
     self.scenario_actors.append(actor)
-    self.dynamic_obstacle_started_at = time.time()
+    self.dynamic_obstacle_started_scenario_time = self._scenario_now()
+    self.dynamic_obstacle_started_at = self.dynamic_obstacle_started_scenario_time
     self.dynamic_obstacle_phase = "crossing"
     self.dynamic_obstacle_spawn_yaw_offset_deg = float(yaw_offset_deg)
     print(
@@ -136,7 +137,13 @@ def _finish_dynamic_obstacle(self, reason):
         except Exception as e:
             print(f"[FullLoop] dynamic obstacle final stop warning: {e}")
     self.dynamic_obstacle_phase = "cleared"
-    elapsed = time.time() - float(self.dynamic_obstacle_started_at or time.time())
+    now = self._scenario_now()
+    started = getattr(
+        self,
+        "dynamic_obstacle_started_scenario_time",
+        getattr(self, "dynamic_obstacle_started_at", None),
+    )
+    elapsed = now - float(started if started is not None else now)
     min_ego = self.dynamic_obstacle_min_ego_distance_m
     min_ego_text = "unknown" if not math.isfinite(min_ego) else f"{min_ego:.2f}m"
     print(
@@ -192,7 +199,13 @@ def update_dynamic_obstacle(self, ego_state, current_s):
     self.dynamic_obstacle_min_ego_distance_m = min(
         self.dynamic_obstacle_min_ego_distance_m, ego_distance
     )
-    elapsed = time.time() - float(self.dynamic_obstacle_started_at)
+    now = self._scenario_now()
+    started = getattr(
+        self,
+        "dynamic_obstacle_started_scenario_time",
+        getattr(self, "dynamic_obstacle_started_at", None),
+    )
+    elapsed = now - float(started if started is not None else now)
 
     print_second = int(elapsed)
     if print_second != self.dynamic_obstacle_last_print_sec:

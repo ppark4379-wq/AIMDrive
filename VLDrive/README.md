@@ -157,6 +157,33 @@ config 는 빠진 키, 모르는 키, 잘못된 타입, 범위를 벗어난 값�
 `run_provenance.json`, `feature_contract.json`. `run_provenance.json` 과 체크포인트에는
 사용한 config 의 경로·SHA-256·내용이 그대로 기록됩니다.
 
+### 두 visual encoder 경로의 구분
+
+`vision-encoder`는 논문 학습 recipe를 목표로 유지하는 비교 경로입니다. 가공된
+MORAI dataset에서 ImageNet RGB 초기화와 새 LiDAR·fusion·head를 학습하며,
+현재 검증된 loss는 waypoint와 신호등입니다.
+
+`vision-encoder-morai`는 실제 Sensor Record publication을 사용하는 MORAI 맞춤
+후보 경로입니다. 원본 LMDrive visual checkpoint 전체에서 시작해 GPS 속도와
+객체·객체 속도·waypoint·신호등을 함께 학습합니다. 두 경로는 같은
+`models/vision_encoder.py`를 사용하지만 dataset, 초기화, loss, 실행 기록을
+서로 섞지 않습니다.
+
+### MORAI 맞춤 전이학습 실행
+
+Sensor Record의 검증 완료된 여러 campaign을 합쳐, 원본 LMDrive 전체 가중치에서
+ResNet·PointPillars와 네 가지 예측 과제를 학습하는 경로입니다. 위의 논문 기반
+학습 경로를 유지하며, PC별 manifest와 가중치 경로는 Git에서 제외된
+`configs/morai_transfer.local.json`에 지정합니다.
+
+```bash
+bash tools/train_visual_morai.sh --epochs 1
+```
+
+`--preflight`는 실제 데이터의 forward/backward만 검사하고 가중치는 갱신하지 않습니다.
+입력·loss·데이터 결합과 기존 실험과의 차이는
+[전용 안내](docs/MORAI_TRANSFER_TRAINING_KO.md)를 참고하세요.
+
 ### 1.5단계 — 시각 토큰 캐시
 
 ```bash

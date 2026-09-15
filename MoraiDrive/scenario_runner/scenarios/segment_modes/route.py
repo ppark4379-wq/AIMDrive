@@ -6,6 +6,12 @@ from ...utils.transform_utils import polyline_length
 from ..full_loop_parts import route_profile
 
 
+# The proven collection expert can request up to 30 m of forward lookahead.
+# Keep a margin beyond that so a bounded mission reaches its unchanged END
+# before the expert exhausts its private steering path.
+EXPERT_LOOKAHEAD_TAIL_M = 35.0
+
+
 @dataclass(frozen=True)
 class RouteWindow:
     full_points: Tuple
@@ -76,6 +82,31 @@ def apply_route_window(context, mode):
     context.route_waypoint_indices = context.build_route_waypoint_indices()
     remap_event_distances(context, prefix)
     context.cfg["expert_is_closed_path"] = False
+
+
+def build_expert_route_points(context):
+    """Append an expert-only tail while preserving the mission START/END path."""
+    window = getattr(context, "mission_route", None)
+    if window is None:
+        return context.route_points
+
+    route_points = list(context.route_points)
+    previous = window.full_points[window.last_index]
+    tail_length_m = 0.0
+    for point in window.full_points[window.last_index + 1:]:
+        route_points.append(point)
+        tail_length_m += polyline_length((previous, point))
+        previous = point
+        if tail_length_m >= EXPERT_LOOKAHEAD_TAIL_M:
+            break
+
+    if tail_length_m < EXPERT_LOOKAHEAD_TAIL_M:
+        raise ValueError(
+            "Mission END lacks enough source-route points for expert lookahead: "
+            f"available={tail_length_m:.3f}m, "
+            f"required={EXPERT_LOOKAHEAD_TAIL_M:.3f}m"
+        )
+    return route_points
 
 
 def prepare_full_loop_route(context):

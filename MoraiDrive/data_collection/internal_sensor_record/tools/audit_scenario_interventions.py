@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit the current team full-loop scenario and disclosed interventions.
+"""Audit the selected main scenario and disclosed interventions.
 
 Weather, time, obstacles and traffic belong to the team scenario runner.  The
 collector observes them and records provenance.  A route-light release after a
@@ -7,17 +7,23 @@ prolonged stop is valid only when the command has exact-ID readback evidence;
 it remains explicitly separate from naturally changing signal samples.
 """
 import argparse
+from dataclasses import asdict
 import json
 from pathlib import Path
 import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
+PROJECT_ROOT = ROOT.parents[1]
+sys.path[:0] = [str(ROOT), str(PROJECT_ROOT)]
 
 from async_capture.journal import digest, write_json
 from async_capture.sensor_record_admission import verify_sealed_directory
 from ssd_storage import require_ssd
+from scenario_runner.scenarios.segment_modes.modes import (
+    PRIMARY_SCENARIOS,
+    get_scenario_zones,
+)
 
 
 def load(path):
@@ -130,6 +136,69 @@ def summarize_roundabout_observation(events, configured):
     }
 
 
+def scenario_zone_contract(scenario_name):
+    """Read the enabled-zone contract from the main Scenario Runner."""
+    if scenario_name not in PRIMARY_SCENARIOS:
+        raise ValueError("Unsupported scenario: " + str(scenario_name))
+    return asdict(get_scenario_zones(scenario_name))
+
+
+def zone_observation_checks(
+    scenario_name, zones, *,
+    selected_static, selected_dynamic,
+    static_models, dynamic_models,
+    dynamic_phases, roundabout_observation,
+    highway_samples, tunnel_phases,
+):
+    """Evaluate only the events enabled by the selected main scenario mode."""
+    dynamic_set = set(dynamic_phases)
+    tunnel_set = set(tunnel_phases)
+    if zones["static"]:
+        static_ok = selected_static in static_models
+    else:
+        static_ok = selected_static == "OFF"
+
+    if zones["dynamic"]:
+        dynamic_profile_ok = selected_dynamic in dynamic_models
+        dynamic_observed = bool(dynamic_set.intersection({"crossing", "cleared"}))
+    else:
+        dynamic_profile_ok = selected_dynamic == "OFF"
+        dynamic_observed = bool(dynamic_set) and dynamic_set <= {"disabled"}
+
+    if zones["roundabout"]:
+        roundabout_observed = (
+            roundabout_observation["spawn_matches_config"]
+            and roundabout_observation["lifecycle_complete"]
+        )
+    else:
+        roundabout_observed = (
+            roundabout_observation["spawn_events"] == 0
+            and roundabout_observation["spawn_lifecycle_successes"] == 0
+            and roundabout_observation["retire_lifecycle_successes"] == 0
+        )
+
+    highway_observed = highway_samples > 0 if zones["highway"] else highway_samples == 0
+    if zones["tunnel"]:
+        tunnel_observed = bool(tunnel_set - {"disabled"})
+    else:
+        tunnel_observed = bool(tunnel_set) and tunnel_set <= {"disabled"}
+
+    checks = {
+        "selected_static_from_pool": static_ok,
+        "selected_dynamic_from_pool": dynamic_profile_ok,
+        "roundabout_observed": roundabout_observed,
+    }
+    # Preserve the pre-feature full_loop admission contract exactly. Segment
+    # modes additionally prove that enabled events ran and disabled events did not.
+    if scenario_name != "full_loop":
+        checks.update(
+            dynamic_observed=dynamic_observed,
+            highway_observed=highway_observed,
+            tunnel_observed=tunnel_observed,
+        )
+    return checks
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--episode", type=Path, required=True)
@@ -186,14 +255,44 @@ def main():
     traffic_interventions = summarize_traffic_interventions(events)
     traffic_override = dict(config.get("traffic_light_wait_override", {}))
 
+    scenario_name = (
+        episode.get("scenario_name")
+        or config.get("mission_mode")
+        or "full_loop"
+    )
+    scenario_known = scenario_name in PRIMARY_SCENARIOS
+    zones = (
+        scenario_zone_contract(scenario_name)
+        if scenario_known
+        else {name: False for name in ("static", "dynamic", "roundabout", "highway", "tunnel")}
+    )
+    zone_checks = zone_observation_checks(
+        scenario_name,
+        zones,
+        selected_static=selected_static,
+        selected_dynamic=selected_dynamic,
+        static_models=static_models,
+        dynamic_models=dynamic_models,
+        dynamic_phases=dynamic_phases,
+        roundabout_observation=roundabout_observation,
+        highway_samples=highway_samples,
+        tunnel_phases=tunnel_phases,
+    )
+    expected_mission_mode = None if scenario_name == "full_loop" else scenario_name
+
     checks = {
         "full_mission_completed": outcome.get("full_mission_completed") is True,
+        "scenario_supported": scenario_known,
         "scenario_enabled": (
-            config.get("clean_road_mode") is False
-            or (
-                "clean_road_mode" not in config
-                and selected_static in static_models
-                and selected_dynamic in dynamic_models
+            config.get("mission_mode") == expected_mission_mode
+            if expected_mission_mode is not None
+            else (
+                config.get("clean_road_mode") is False
+                or (
+                    "clean_road_mode" not in config
+                    and selected_static in static_models
+                    and selected_dynamic in dynamic_models
+                )
             )
         ),
         "weather_contract": [
@@ -208,9 +307,7 @@ def main():
         "tree_obstacles_excluded": not any(
             str(model).lower().startswith("tree") for model in static_models
         ),
-        "selected_static_from_pool": selected_static in static_models,
         "dynamic_pool": bool(dynamic_models),
-        "selected_dynamic_from_pool": selected_dynamic in dynamic_models,
         "traffic_override_contract": (
             traffic_override.get("enabled") is True
             and float(traffic_override.get("wait_wall_sec", -1.0)) == 10.0
@@ -225,15 +322,14 @@ def main():
             and float(roundabout.get("speed_mps", 0.0)) == 4.0
             and roundabout.get("model") == "DEFAULT_SEDAN"
         ),
-        "roundabout_observed": (
-            roundabout_observation["spawn_matches_config"]
-            and roundabout_observation["lifecycle_complete"]
-        ),
         "native_files": native.get("files_valid") is True,
         "actor_transport": actor.get("structural_valid") is True,
+        **zone_checks,
     }
     report = {
         "schema": "morai_team_scenario_fidelity_audit_v3",
+        "scenario_name": scenario_name,
+        "enabled_zones": zones,
         "checks": checks,
         "selected_profile": {
             "weather": profile.get("weather"),

@@ -105,10 +105,13 @@ class MissionExpertTest(unittest.TestCase):
                 expected = copy.deepcopy(before)
                 expected["planning"]["velocity_profile"]["speed_limit_zones"] = []
                 self.assertEqual(after, expected)
-                self.assertEqual(Path(controller.runtime_path_csv).read_bytes(), route)
+                extended_route = Path(controller.runtime_path_csv).read_bytes()
+                self.assertTrue(extended_route.startswith(route))
+                self.assertGreater(len(extended_route), len(route))
                 success = self.initialize_expert(controller)
                 self.assertEqual(success.returncode, 0, success.stdout + success.stderr)
-                self.assertIn(f"REAL_EXPERT_INIT_OK points={last_index + 1}", success.stdout)
+                expected_points = extended_route.count(bytes([10])) - 1
+                self.assertIn(f"REAL_EXPERT_INIT_OK points={expected_points}", success.stdout)
 
     def test_normal_and_highway_exports_remain_byte_identical(self):
         for name in ("full_loop_normal", "full_loop_highway"):

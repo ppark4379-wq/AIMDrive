@@ -423,6 +423,16 @@ class MGeoRouteTracker:
                            self.points[0][1] - self.points[-1][1]) <= 1e-3
         )
 
+    @property
+    def closed_route(self) -> bool:
+        """Whether the audited route geometry explicitly closes at START."""
+        return self._closed_route
+
+    @property
+    def route_point_count(self) -> int:
+        """Number of indexed points, including a duplicated closing point."""
+        return len(self.points)
+
     def _point_heading(self, index: int) -> float:
         before = self.points[max(0, index - 1)]
         after = self.points[min(len(self.points) - 1, index + 1)]

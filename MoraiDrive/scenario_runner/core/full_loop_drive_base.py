@@ -28,6 +28,11 @@ class FullLoopDriveBase(BaseScenario):
             self.cleanup()
 
     def get_ego_motion_state(self):
+        bridge = getattr(self, "runtime_bridge", None)
+        if bridge is None:
+            # Collection adapters own their runtime and historically consumed
+            # the gRPC result (and its failure) directly.
+            return self.grpc.get_ego_motion_state()
         try:
             state = self.grpc.get_ego_motion_state()
             if state:
@@ -36,10 +41,11 @@ class FullLoopDriveBase(BaseScenario):
             grpc_error = error
         else:
             grpc_error = RuntimeError("gRPC returned no Ego state")
-        bridge = getattr(self, "runtime_bridge", None)
-        state = bridge.latest_state() if bridge is not None else None
+        state = bridge.latest_state()
         if state is None:
-            raise RuntimeError("No Ego state: gRPC failed and fresh ROS state is unavailable") from grpc_error
+            raise RuntimeError(
+                "No Ego state: gRPC failed and fresh ROS state is unavailable"
+            ) from grpc_error
         return state
 
     def dump_route_debug(self):
@@ -117,21 +123,36 @@ class FullLoopDriveBase(BaseScenario):
 
     def configure_drive_from_start(self):
         """Place Ego at START and run the external AIMDrive expert."""
+        if self.clock.domain == "native_frame":
+            raise RuntimeError(
+                "Native collector owns Ego placement, gear and control lifecycle"
+            )
         self.route_configured = False
         self.route_setup_mode = None
 
-        self.stop_expert_controller()
-        if hasattr(self.grpc, "stop_ego_cruise"):
-            self.grpc.stop_ego_cruise()
+        runtime_bridge = getattr(self, "runtime_bridge", None)
+        if runtime_bridge is not None:
+            self.stop_expert_controller()
+            if hasattr(self.grpc, "stop_ego_cruise"):
+                self.grpc.stop_ego_cruise()
+
         self.grpc.set_ego_transform(self.start_tf)
         if (
-            self.cfg.get("reset_ego_motion_on_start", False)
+            runtime_bridge is not None
+            and self.cfg.get("reset_ego_motion_on_start", False)
             and hasattr(self.grpc, "reset_ego_motion")
         ):
             self.grpc.reset_ego_motion()
             time.sleep(float(self.cfg.get("reset_ego_motion_wait_sec", 0.5)))
         else:
             time.sleep(0.2)
+
+        if runtime_bridge is None:
+            # Preserve the proven collection call order while the adapter owns
+            # Sync Runtime and Sensor Record coordination.
+            self.stop_expert_controller()
+            if hasattr(self.grpc, "stop_ego_cruise"):
+                self.grpc.stop_ego_cruise()
 
         drive_control_mode = str(
             self.cfg.get("drive_control_mode", "aimdrive_expert")
@@ -283,6 +304,10 @@ class FullLoopDriveBase(BaseScenario):
         self.run_expert_timeline()
 
     def run_expert_timeline(self):
+        if self.clock.domain == "native_frame":
+            raise RuntimeError(
+                "Native scenarios must be advanced by the capture tick owner"
+            )
         timeout_sec = self.cfg.get("timeout_sec", 0.0)
         use_timeout = timeout_sec is not None and float(timeout_sec) > 0.0
         goal_tolerance_m = float(self.cfg.get("goal_tolerance_m", 4.0))
@@ -329,7 +354,7 @@ class FullLoopDriveBase(BaseScenario):
         )
 
         lap = 0
-        lap_start_time = time.time()
+        lap_start_time = self.clock.now()
         last_print_time = 0.0
         off_route_enter_time = None
         self.expert_last_s = 0.0
@@ -337,7 +362,7 @@ class FullLoopDriveBase(BaseScenario):
         last_progress_time = lap_start_time
 
         while True:
-            elapsed = time.time() - lap_start_time
+            elapsed = self.clock.now() - lap_start_time
             controller = getattr(self, "expert_controller", None)
             if controller is None or not controller.is_running():
                 raise RuntimeError("AIMDrive expert process stopped unexpectedly")
@@ -366,13 +391,13 @@ class FullLoopDriveBase(BaseScenario):
 
             if progress_anchor_s is None:
                 progress_anchor_s = current_s
-                last_progress_time = time.time()
+                last_progress_time = self.clock.now()
             elif (
                 current_s - progress_anchor_s
                 >= progress_watchdog_min_progress_m
             ):
                 progress_anchor_s = current_s
-                last_progress_time = time.time()
+                last_progress_time = self.clock.now()
 
             tick_hook = getattr(self, "on_expert_timeline_tick", None)
             if tick_hook is not None:
@@ -402,7 +427,7 @@ class FullLoopDriveBase(BaseScenario):
                 and cross_track_error > maximum_cross_track_error_m
             ):
                 if off_route_enter_time is None:
-                    off_route_enter_time = time.time()
+                    off_route_enter_time = self.clock.now()
             else:
                 off_route_enter_time = None
 
@@ -422,7 +447,7 @@ class FullLoopDriveBase(BaseScenario):
 
             if (
                 off_route_enter_time is not None
-                and time.time() - off_route_enter_time
+                and self.clock.now() - off_route_enter_time
                 >= off_route_timeout_sec
             ):
                 self.stop_drive_control()
@@ -433,7 +458,7 @@ class FullLoopDriveBase(BaseScenario):
                     f"elapsed={elapsed:.1f}s"
                 )
 
-            stalled_sec = time.time() - last_progress_time
+            stalled_sec = self.clock.now() - last_progress_time
             if (
                 progress_watchdog_enabled
                 and elapsed >= progress_watchdog_grace_sec
@@ -483,7 +508,7 @@ class FullLoopDriveBase(BaseScenario):
                     break
                 self.notify_lap_end(lap)
                 self.restart_to_start_and_drive()
-                lap_start_time = time.time()
+                lap_start_time = self.clock.now()
                 last_print_time = 0.0
                 off_route_enter_time = None
                 self.expert_last_s = 0.0

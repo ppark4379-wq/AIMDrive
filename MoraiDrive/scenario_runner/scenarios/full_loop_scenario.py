@@ -8,12 +8,12 @@ from ..adapters.object_ghost_audit import ObjectGhostAudit
 from ..core.full_loop_drive_base import FullLoopDriveBase
 from ..utils.transform_utils import polyline_length
 from .full_loop_parts import (
+    actor_lifecycle,
     dynamic_obstacle,
     highway,
     roundabout,
     route_profile,
     static_obstacle,
-    static_obstacle_watch,
     traffic_light_override,
     tunnel,
     vehicle_common,
@@ -22,6 +22,14 @@ from .full_loop_parts import (
 
 class FullLoopScenario(FullLoopDriveBase):
     """One official MOLIT lap with run-scoped environment and fixed NPCs."""
+
+    def _clock_domain(self):
+        return getattr(getattr(self, "clock", None), "domain", None)
+
+    def _scenario_now(self):
+        """Use the injected scenario clock, with a host-monotonic fallback."""
+        clock = getattr(self, "clock", None)
+        return float(clock.now()) if clock is not None else time.monotonic()
 
     zone_name = "full_loop"
     scenario_name = "full_loop"
@@ -51,8 +59,15 @@ class FullLoopScenario(FullLoopDriveBase):
         self.dynamic_obstacle = None
         self.dynamic_obstacle_phase = "uninitialized"
         self.dynamic_obstacle_started_at = None
+        self.dynamic_obstacle_started_scenario_time = None
         self.dynamic_obstacle_min_ego_distance_m = float("inf")
+        self.static_obstacle = None
+        self.static_obstacle_expected = None
+        self.static_obstacle_route_s = None
+        self.static_obstacle_last_verify_elapsed = float("-inf")
+        self.static_obstacle_pass_verified = False
         traffic_light_override.initialize(self)
+        actor_lifecycle.initialize(self)
 
         configured_seed = self.cfg.get("random_seed")
         self.run_seed = (
@@ -130,7 +145,9 @@ class FullLoopScenario(FullLoopDriveBase):
     apply_time = route_profile.apply_time
 
     make_actor_scale = static_obstacle.make_actor_scale
+    _read_static_obstacle_state = static_obstacle.read_static_obstacle_state
     spawn_static_obstacle = static_obstacle.spawn_static_obstacle
+    verify_static_obstacle = static_obstacle.verify_static_obstacle
 
     spawn_dynamic_obstacle = dynamic_obstacle.spawn_dynamic_obstacle
     _spawn_active_dynamic_obstacle = (
@@ -147,6 +164,9 @@ class FullLoopScenario(FullLoopDriveBase):
 
     rotate_loop_route = roundabout.rotate_loop_route
     spawn_roundabout_npcs = roundabout.spawn_roundabout_npcs
+    _spawn_roundabout_npcs_now = roundabout.spawn_roundabout_npcs_now
+    _retire_roundabout_npcs = roundabout.retire_roundabout_npcs
+    update_roundabout_npcs = roundabout.update_roundabout_npcs
 
     spawn_highway_npcs = highway.spawn_highway_npcs
     _route_geometry = highway._route_geometry
@@ -158,6 +178,7 @@ class FullLoopScenario(FullLoopDriveBase):
         highway._set_highway_spawn_points_enabled
     )
     deactivate_highway_npcs = highway.deactivate_highway_npcs
+    update_highway_actor_lifecycle = highway.update_highway_actor_lifecycle
 
     arm_tunnel_sudden_brake = tunnel.arm_tunnel_sudden_brake
     _actor_speed = staticmethod(tunnel._actor_speed)
@@ -170,7 +191,12 @@ class FullLoopScenario(FullLoopDriveBase):
     update_tunnel_sudden_brake = tunnel.update_tunnel_sudden_brake
 
     def on_expert_timeline_tick(self, elapsed, ego_state, current_s, remaining_s):
-        static_obstacle_watch.update(self, current_s)
+        if (
+            not self.clean_road_mode
+            and actor_lifecycle.ready_for_update(self, elapsed)
+        ):
+            self.update_roundabout_npcs(elapsed, ego_state, current_s)
+            self.update_highway_actor_lifecycle(elapsed, ego_state, current_s)
         verify_period = float(
             self.cfg.get("scenario_time_verify_period_sec", 30.0)
         )
@@ -186,10 +212,12 @@ class FullLoopScenario(FullLoopDriveBase):
                 )
                 self.apply_time()
             self.scenario_time_last_verify_elapsed = float(elapsed)
-        traffic_light_override.update(self, elapsed, ego_state, current_s)
         if self.clean_road_mode:
+            traffic_light_override.update(self, elapsed, ego_state, current_s)
             return
-        self.update_dynamic_obstacle(ego_state,current_s)
+        self.verify_static_obstacle(elapsed, current_s)
+        self.update_dynamic_obstacle(ego_state, current_s)
+        traffic_light_override.update(self, elapsed, ego_state, current_s)
         self.activate_highway_spawn_points(elapsed, current_s)
         if (
             self.highway_spawn_point_activation_started
@@ -212,7 +240,7 @@ class FullLoopScenario(FullLoopDriveBase):
             "saved_at_unix": time.time(),
         }
         previous = self.previous_profile_state
-        for key in ("weather",):
+        for key in ("weather", "time_hour"):
             if previous.get(key) == state[key]:
                 raise RuntimeError(
                     f"Run-scoped profile did not change for {key}: {state[key]}"
@@ -234,7 +262,6 @@ class FullLoopScenario(FullLoopDriveBase):
         )
 
     def cleanup_spawned_actors(self):
-        static_obstacle_watch.finish(self, "scenario_cleanup")
         try:
             self._set_highway_spawn_points_enabled(False)
         except Exception as e:

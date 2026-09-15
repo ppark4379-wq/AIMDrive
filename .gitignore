@@ -1,12 +1,14 @@
 __pycache__/
 *.pyc
 *.pyo
+.vscode/
 
 # Data collection outputs (not code)
 MoraiDrive/dataset
 MoraiDrive/dataset/
 MoraiDrive/dataset_local/
 MoraiDrive/.runtime/data_collection/
+MoraiDrive/data_collection/internal_sensor_record/.runtime/
 MoraiDrive/data_collection/routes/generated/
 MoraiDrive/data_collection/output/
 
@@ -23,3 +25,6 @@ VLDrive/.runtime/
 # Per-frame capture logs from data collection. Older runs are already tracked;
 # new runs stay local because a single manifest can exceed 70 MB.
 MoraiDrive/.runtime/sync_runtime/
+
+# Preserved reports from the removed data-collection scenario copy
+MoraiDrive/data_collection/internal_sensor_record/proven_three_lap_runtime/scenario_runner/.runtime/
