@@ -39,6 +39,9 @@ from scenario_runner.tools.verify_separation import verify_package
 from async_capture.scenario_simulation import SimulationObservationClock, start_simulation_time_world, publish_final_brake, RosClockGuard
 from async_capture.rosbag_recording import ScenarioRosbag
 from async_capture.route_signal_contract import build_route_signal_contract
+from python_environment import (
+    build_analysis_environment, probe_analysis_environment,
+)
 
 
 class SimulationTimeClient(MoraiGrpcClient):
@@ -96,6 +99,13 @@ def audit_episode(episode, python, policy_study=None,
     if policy_study is not None or clock_trace is not None or clock_trace_owner is not None:
         raise ValueError('Experimental pairing/clock-trace inputs are not part of the production backend')
     episode = Path(episode)
+    analysis_python = Path(python).expanduser().resolve()
+    analysis_env = build_analysis_environment(
+        analysis_python, os.environ,
+        OPENBLAS_NUM_THREADS='2', OMP_NUM_THREADS='2',
+    )
+    analysis_environment = probe_analysis_environment(
+        analysis_python, analysis_env)
     steps = [('quality', 'audit_local_alignment.py', ['--raw-run', str(episode/'raw'),
               '--output', str(episode/'quality')])]
     if require_ros_clock:
@@ -104,13 +114,19 @@ def audit_episode(episode, python, policy_study=None,
     results = []
     for stage, tool, args in steps:
         with (episode/(stage+'_audit.log')).open('x') as log:
-            proc = subprocess.run([python, str(ROOT/'tools'/tool)] + args, cwd=ROOT,
-                                  stdout=log, stderr=subprocess.STDOUT, timeout=1200)
+            proc = subprocess.run(
+                [str(analysis_python), '-X', 'faulthandler',
+                 str(ROOT/'tools'/tool)] + args,
+                cwd=ROOT, env=analysis_env,
+                stdout=log, stderr=subprocess.STDOUT, timeout=1200,
+            )
         results.append(dict(stage=stage, exit_code=proc.returncode))
         if proc.returncode:
-            return dict(status='failed', stages=results)
+            return dict(status='failed', stages=results,
+                        analysis_environment=analysis_environment)
     write_json(episode/'comparison_summary.json', summarize_episode(episode))
-    return dict(status='diagnostic_complete', stages=results)
+    return dict(status='diagnostic_complete', stages=results,
+                analysis_environment=analysis_environment)
 
 
 class RawScenario(FullLoopScenario):
