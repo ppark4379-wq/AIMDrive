@@ -17,7 +17,8 @@ from nas_storage import powershell
 from native_capture.ground_truth import GrpcGroundTruth, default_grpc_target
 from ssd_storage import SSD_ROOT, WINDOWS_ROOT, require_ssd, windows_path
 from network_config import runtime_environment
-from runtime_paths import CATKIN_ROOT, ROS_ROOT, WINDOWS_SENSOR_DATA_ROOT
+from runtime_paths import WINDOWS_SENSOR_DATA_ROOT
+from python_environment import build_capture_environment
 
 
 def verify_native_targets():
@@ -54,10 +55,8 @@ def main():
     gt = GrpcGroundTruth(default_grpc_target(), timeout=3)
     proc = None
     error = None
-    env = dict(os.environ, **runtime_environment())
-    env['PYTHONPATH'] = ':'.join([str(ROOT/'.runtime/async_deps'),
-        str(CATKIN_ROOT/'devel/lib/python3/dist-packages'),
-        str(ROS_ROOT/'lib/python3/dist-packages')])
+    env = build_capture_environment(
+        dict(os.environ, **runtime_environment()))
     try:
         mode = gt.call(gt.simulation.GetSynchronousMode, gt.Empty())
         require_free_running_mode(mode, 'simulation_free_run')

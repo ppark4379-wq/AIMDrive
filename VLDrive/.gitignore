@@ -29,3 +29,6 @@ __pycache__/
 *.pth
 *.pth.tar
 *.log
+
+# Machine-specific Sensor Record transfer paths.
+/configs/morai_transfer.local.json

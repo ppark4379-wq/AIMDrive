@@ -22,7 +22,7 @@ Runner는 `setup()`과 Expert 프로세스 실행 확인 후 `/morai_drive/scena
 
 종료 시 READY를 해제하고 ROS 구독을 해제한 뒤 Expert를 종료합니다. Runtime은 READY 해제를 확인하여 SyncMode를 종료합니다. 매 회차 Runtime을 먼저 다시 실행하고 Runner를 `--once`로 실행하는 것을 권장합니다.
 
-주행의 기존 15분 제한은 제거했습니다(`timeout_sec: 0.0`). 진행 정지 120초 감시는 비활성화했습니다(`progress_watchdog.enabled: false`). 경로 이탈 감시는 유지합니다. 출발 시 기존 Expert·cruise 제어를 중지하고 Ego를 배치한 뒤 잔여 운동을 초기화합니다.
+시나리오 내부 전체 제한은 0으로 비활성화했고, 진행 watchdog도 비활성화했습니다. 경로 이탈 타임아웃은 1e12초로 사실상 비활성입니다. 데이터 수집 명령의 별도 wall-time 제한은 그대로 적용됩니다.
 
 ## 전체 폐루프 실행
 
@@ -48,8 +48,8 @@ python3 -m scenario_runner.main_runner \
 | `full_loop_normal` | 기존 전체 START → END | 러너 생성 장애물·NPC 없음 |
 | `full_loop_static` | 인덱스 483 → 753 (132.4m) | 정적 장애물만 랜덤 생성 |
 | `full_loop_dynamic` | 인덱스 753 → 1081 (160.0m) | 동적 장애물만 기존 방식으로 횡단 |
-| `full_loop_roundabout` | 인덱스 1668 → 1975 (150.0m) | 기존 설정의 회전교차로 NPC 6대 |
-| `full_loop_highway` | 인덱스 1975 → 3638 (825.0m) | 기존 고속도로 SpawnPoint 교통 |
+| `full_loop_roundabout` | 인덱스 1668 → 1975 (150.0m) | NPC 3대, 진입 100m 전 생성, 출구 30m 후 제거 |
+| `full_loop_highway` | 인덱스 1975 → 3638 (825.0m) | SpawnPoint 3개, 각 4대, 총 12대, 5초 주기 |
 
 예: 장애물·NPC 없는 전체 주행을 3회 실행:
 
@@ -64,9 +64,9 @@ python3 -m scenario_runner.main_runner --zone full_loop --scenario full_loop_sta
 ```
 
 여섯 모드는 정상 도착 후 객체 정리 → 같은 모드 시작점으로 재배치 → 다음 회차를 반복합니다.
-날씨는 SUNNY/FOGGY 교대, 시간은 11/13/15시 중 랜덤이며 같은 시간·장애물 모델이 다시 선택될 수 있습니다.
+날씨는 SUNNY/FOGGY 교대, 시간은 11/13/15시 중 선택하며 시간과 정적·동적 장애물 모델은 직전 회차와 다르게 재선택합니다.
 새 모드는 각자 날씨 이력을 저장하므로 기존 full_loop 날씨 이력을 변경하지 않습니다.
-`--once`는 1회, `--max-runs 10`은 10회입니다. 복구되지 않은 오류나 기존 watchdog/timeout은 전체 실행을 중단합니다.
+`--once`는 1회, `--max-runs 10`은 10회입니다. 복구되지 않은 실행 오류는 전체 반복 명령을 중단합니다.
 
 새 구간 모드는 해당 이벤트만 켜며 터널 이벤트는 모두 끕니다. 신호등은 유지하고 기존 expert가 신호에 대응합니다.
 전체 normal 모드는 러너 소유 객체를 정리하고 새 객체를 생성하지 않습니다. 수동 배치/다른 client 소유 객체까지 삭제하지 않으므로 깨끗한 맵에서 사용하세요.

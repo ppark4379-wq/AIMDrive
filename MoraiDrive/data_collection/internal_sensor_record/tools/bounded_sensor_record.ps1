@@ -8,6 +8,14 @@ if ($WallSeconds -lt 2 -or $WallSeconds -gt 3540) {throw 'Use 2..3540 wall secon
 $allowedPrefix=(Join-Path $AllowedRoot 'sensor_record_auto_v1')+'\'
 if (-not $OutputDirectory.StartsWith($allowedPrefix,[StringComparison]::OrdinalIgnoreCase)) {throw 'Unexpected output root'}
 if (Test-Path -LiteralPath $OutputDirectory) {throw 'Output already exists'}
+if ($CoordinationDirectory) {
+ if (-not $CoordinationDirectory.StartsWith($allowedPrefix,[StringComparison]::OrdinalIgnoreCase)) {
+  throw 'Unexpected coordination root'
+ }
+ if (-not (Test-Path -LiteralPath $CoordinationDirectory -PathType Container)) {
+  throw 'Coordination directory must be prepared before Sensor Record starts'
+ }
+}
 New-Item -ItemType Directory -Path $OutputDirectory | Out-Null
 $env:TEMP=$OutputDirectory; $env:TMP=$OutputDirectory
 Add-Type -AssemblyName System.Drawing
@@ -39,6 +47,31 @@ if ($RestoreWindow) {
  Start-Sleep -Milliseconds 700
 }
 $events=New-Object System.Collections.Generic.List[object]
+function Join-Error([string]$primary,[string]$secondary) {
+ if ([String]::IsNullOrWhiteSpace($primary)) {return $secondary}
+ return ($primary+'; '+$secondary)
+}
+function Write-CoordinationMarker([string]$name,[hashtable]$payload) {
+ if (-not $CoordinationDirectory) {return}
+ if (-not $CoordinationDirectory.StartsWith($allowedPrefix,[StringComparison]::OrdinalIgnoreCase)) {
+  throw 'Unexpected coordination root'
+ }
+ # The Python owner creates this before UI ownership. Recreate it defensively
+ # if an external cleanup raced with shutdown, then publish the JSON atomically.
+ if (-not (Test-Path -LiteralPath $CoordinationDirectory -PathType Container)) {
+  New-Item -ItemType Directory -Path $CoordinationDirectory -Force | Out-Null
+ }
+ $target=Join-Path $CoordinationDirectory $name
+ $temporary=Join-Path $CoordinationDirectory ($name+'.'+$PID+'.tmp')
+ try {
+  $payload|ConvertTo-Json -Compress|Set-Content -LiteralPath $temporary -Encoding UTF8
+  Move-Item -LiteralPath $temporary -Destination $target -Force
+ } finally {
+  if (Test-Path -LiteralPath $temporary) {
+   Remove-Item -LiteralPath $temporary -Force
+  }
+ }
+}
 function Observe([string]$name) {
  $r=New-Object SensorRecordWindow+Rect
  if (-not [SensorRecordWindow]::GetWindowRect($sim.MainWindowHandle,[ref]$r)) {throw 'No simulator window'}
@@ -116,12 +149,9 @@ try {
  $events.Add(@{event='before';observation=$before})
  $attempted=$true
  $on=Set-Record $true 'record_on'
- if ($CoordinationDirectory) {
-  if (-not $CoordinationDirectory.StartsWith($allowedPrefix,[StringComparison]::OrdinalIgnoreCase)) {throw 'Unexpected coordination root'}
-  New-Item -ItemType Directory -Path $CoordinationDirectory -Force | Out-Null
-  @{utc=[DateTime]::UtcNow.ToString('o');stopwatch_ticks=[Diagnostics.Stopwatch]::GetTimestamp()} |
-    ConvertTo-Json -Compress | Set-Content -LiteralPath (Join-Path $CoordinationDirectory 'recording_armed.json') -Encoding UTF8
- }
+ Write-CoordinationMarker 'recording_armed.json' @{
+  status='armed';utc=[DateTime]::UtcNow.ToString('o')
+  stopwatch_ticks=[Diagnostics.Stopwatch]::GetTimestamp();record_on=$on.record_on}
  $timer=[Diagnostics.Stopwatch]::StartNew()
  while($timer.Elapsed.TotalSeconds -lt $WallSeconds) {
   if (Test-Path -LiteralPath (Join-Path $OutputDirectory 'stop.request')) {break}
@@ -130,11 +160,20 @@ try {
  }
 } catch {$errorText=$_.Exception.Message} finally {
  if ($attempted) {
-  try {$off=Set-Record $false 'record_off'} catch {$errorText=([string]$errorText+'; OFF failed: '+$_.Exception.Message)}
+  try {$off=Set-Record $false 'record_off'}
+  catch {$errorText=Join-Error $errorText ('OFF failed: '+$_.Exception.Message)}
  }
  if ($CoordinationDirectory -and $attempted) {
-  @{utc=[DateTime]::UtcNow.ToString('o');stopwatch_ticks=[Diagnostics.Stopwatch]::GetTimestamp();error=$errorText} |
-    ConvertTo-Json -Compress | Set-Content -LiteralPath (Join-Path $CoordinationDirectory 'recording_stopped.json') -Encoding UTF8
+  try {
+   Write-CoordinationMarker 'recording_stopped.json' @{
+    status='stopped';utc=[DateTime]::UtcNow.ToString('o')
+    stopwatch_ticks=[Diagnostics.Stopwatch]::GetTimestamp()
+    record_on=if ($null -eq $off) {$null} else {$off.record_on}
+    error=$errorText}
+  } catch {
+   $errorText=Join-Error $errorText (
+    'recording_stopped acknowledgement failed: '+$_.Exception.Message)
+  }
  }
  $report=@{events=@($events.ToArray());error=$errorText;wall_limit_seconds=$WallSeconds;
    stopwatch_frequency=[Diagnostics.Stopwatch]::Frequency;training_visible=$false}

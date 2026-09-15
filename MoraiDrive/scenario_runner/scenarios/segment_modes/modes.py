@@ -71,6 +71,9 @@ MISSION_MODES = {
     ),
 }
 PRIMARY_SCENARIOS = ("full_loop",) + tuple(MISSION_MODES)
+FULL_LOOP_ZONES = ZoneSelection(
+    static=True, dynamic=True, roundabout=True, highway=True, tunnel=True,
+)
 
 
 def get_mission_mode(name):
@@ -78,6 +81,13 @@ def get_mission_mode(name):
         return MISSION_MODES[name]
     except KeyError:
         raise ValueError("Unknown mission mode: " + str(name)) from None
+
+
+def get_scenario_zones(name):
+    """Return the canonical enabled zones for every public collection mode."""
+    if name == "full_loop":
+        return FULL_LOOP_ZONES
+    return get_mission_mode(name).zones
 
 
 def automatic_repeat_enabled(name, configuration, once=False, highway_audit=False):

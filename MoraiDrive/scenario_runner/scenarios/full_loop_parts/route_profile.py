@@ -206,7 +206,18 @@ def select_profile(self):
     self.validate_profiles(profiles)
     previous_state = self.read_profile_state()
     previous_index = int(previous_state.get("profile_index", -1))
-    profile_index = (previous_index + 1) % len(profiles)
+    if previous_index < 0:
+        profile_index = self.random.randrange(len(profiles))
+    else:
+        previous_weather = str(previous_state.get("weather", "")).upper()
+        candidates = [
+            index
+            for index, profile in enumerate(profiles)
+            if str(profile.get("weather", "")).upper() != previous_weather
+        ]
+        if not candidates:
+            raise RuntimeError("No weather profile differs from the previous run")
+        profile_index = self.random.choice(candidates)
     profile = dict(profiles[profile_index])
     print(
         f"[FullLoop] profile selected index={profile_index}, "
@@ -248,6 +259,16 @@ def resolve_profile_models(self):
     self.random.shuffle(self.static_obstacle_models)
     self.random.shuffle(self.dynamic_obstacle_models)
 
+    # Preserve every candidate as a fallback while preventing a silent repeat
+    # of the previous successful model when alternatives are available.
+    for models, key in (
+        (self.static_obstacle_models, "static_obstacle_model"),
+        (self.dynamic_obstacle_models, "dynamic_obstacle_model"),
+    ):
+        previous = self.previous_profile_state.get(key)
+        if previous in models and len(models) > 1:
+            models.append(models.pop(models.index(previous)))
+
     self.static_obstacle_model = self.static_obstacle_models[0]
     self.dynamic_obstacle_model = self.dynamic_obstacle_models[0]
 
@@ -273,7 +294,11 @@ def select_scenario_hour(self):
     invalid = [hour for hour in hours if hour < 0 or hour > 23]
     if invalid:
         raise RuntimeError(f"Invalid scenario_times hours: {invalid}")
-    selected = self.random.choice(hours)
+    previous_hour = self.previous_profile_state.get("time_hour")
+    candidates = [hour for hour in hours if hour != previous_hour]
+    if not candidates:
+        raise RuntimeError("No scenario time differs from the previous run")
+    selected = self.random.choice(candidates)
     print(f"[FullLoop] scenario time selected={selected:02d}:00 from {hours}")
     return selected
 

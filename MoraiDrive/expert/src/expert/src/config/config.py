@@ -4,6 +4,7 @@ import json
 import os
 import io
 import csv
+import math
 from ..localization.point import Point
 from ..path.mapping import NodeTrafficLightStoplineMapper
 
@@ -115,6 +116,11 @@ class Config(object):
             }
 
         for zone in zones:
+            if "start_point" in zone and "end_point" in zone and "start_link_id" not in zone:
+                for key in ("start_point", "end_point"):
+                    if len(zone[key]) < 2 or not all(math.isfinite(float(v)) for v in zone[key][:2]):
+                        raise ValueError("Invalid ENU speed-zone coordinate: " + key)
+                continue
             start_id = str(zone["start_link_id"])
             end_id = str(zone["end_link_id"])
             if start_id not in link_by_id or end_id not in link_by_id:

@@ -46,6 +46,10 @@ def verify_feature_contract(package_root, scenario_cfg):
         "Compact static-obstacle families were not fully separated",
     )
     require(
+        "RedBarrel" not in static_models,
+        "RedBarrel must remain excluded from static-obstacle selection",
+    )
+    require(
         bool(scenario_cfg.get("dynamic_obstacle_models")),
         "Dynamic-obstacle model pool is missing",
     )
@@ -60,6 +64,12 @@ def verify_feature_contract(package_root, scenario_cfg):
         "Traffic-light override must wait 10 host-monotonic seconds",
     )
     require(
+        float(traffic_override.get("stopped_speed_mps", -1.0)) == 0.5
+        and float(traffic_override.get("minimum_stopline_distance_m", -1.0)) == 0.0
+        and float(traffic_override.get("maximum_stopline_distance_m", -1.0)) == 25.0,
+        "Traffic-light stop and distance thresholds changed",
+    )
+    require(
         int(traffic_override.get("target_color", -1)) == 16
         and bool(traffic_override.get("impulse"))
         and bool(traffic_override.get("set_sibling")),
@@ -68,16 +78,37 @@ def verify_feature_contract(package_root, scenario_cfg):
 
     roundabout = scenario_cfg.get("roundabout_npc", {})
     require(
-        int(roundabout.get("count", 0)) == 6,
-        "Roundabout NPC count must remain fixed at 6",
+        int(roundabout.get("count", 0)) == 3,
+        "Roundabout NPC count must remain fixed at 3",
     )
     require(
         float(roundabout.get("speed_mps", 0.0)) == 4.0,
         "Roundabout NPC speed must remain fixed at 4.0m/s",
     )
     require(
+        int(roundabout.get("route_laps", 0)) == 100,
+        "Roundabout NPC route must remain fixed at 100 laps",
+    )
+    require(
         roundabout.get("model") == "DEFAULT_SEDAN",
         "Roundabout NPCs must remain passenger-car sized",
+    )
+
+    actor_lifecycle = scenario_cfg.get("actor_lifecycle", {})
+    expected_actor_lifecycle = {
+        "version": "nearby_actors_v3",
+        "roundabout_lead_m": 100.0,
+        "roundabout_retire_after_m": 30.0,
+        "roundabout_stall_window_s": 45.0,
+        "roundabout_stall_min_progress_m": 5.0,
+        "roundabout_min_active_scenario_s": 20.0,
+        "roundabout_mutation_quarantine_s": 1.0,
+        "highway_stop_after_entry_m": 220.0,
+        "highway_spawn_distance_m": 220.0,
+    }
+    require(
+        actor_lifecycle == expected_actor_lifecycle,
+        f"Actor lifecycle policy changed: {actor_lifecycle}",
     )
 
     highway = scenario_cfg.get("highway_npc", {})
@@ -87,12 +118,32 @@ def verify_feature_contract(package_root, scenario_cfg):
         "Highway SpawnPoints must exclude the roundabout-area sample point",
     )
     require(
+        float(highway.get("background_warmup_distance_m", -1.0)) == 100.0,
+        "Highway SpawnPoints must activate 100m before their activation point",
+    )
+    require(
+        int(highway.get("collection_maximum_total_vehicles", -1)) == 12,
+        "Highway total vehicle cap must remain 12",
+    )
+    require(
         all(not bool(spec.get("is_lane_change", True)) for spec in spawn_points),
         "Highway native SpawnPoints must keep lane changes disabled",
     )
     require(
-        all(int(spec.get("maximum_spawn_vehicle", 0)) == 50 for spec in spawn_points),
-        "Highway native SpawnPoint maximum vehicle count changed",
+        all(int(spec.get("maximum_spawn_vehicle", 0)) == 4 for spec in spawn_points),
+        "Each highway SpawnPoint maximum vehicle count must remain 4",
+    )
+    require(
+        all(bool(spec.get("pause")) for spec in spawn_points),
+        "Highway SpawnPoints must be created paused",
+    )
+    require(
+        all(
+            float(spec.get("min_spawn_period_sec", -1.0)) == 5.0
+            and float(spec.get("max_spawn_period_sec", -1.0)) == 5.0
+            for spec in spawn_points
+        ),
+        "Highway SpawnPoint periods must remain fixed at 5 seconds",
     )
     require(
         float(highway.get("reference_safety_distance_m", 0.0)) == 5.0
@@ -106,6 +157,22 @@ def verify_feature_contract(package_root, scenario_cfg):
     require(
         bool(scenario_cfg.get("tunnel_sudden_brake", {}).get("enabled")),
         "Tunnel sudden-brake event must be enabled",
+    )
+    require(
+        int(scenario_cfg.get("route_setup_attempts", -1)) == 1,
+        "Route setup must remain a single attempt during collection",
+    )
+    require(
+        float(scenario_cfg.get("timeout_sec", -1.0)) == 0.0,
+        "Scenario-internal overall timeout must remain disabled",
+    )
+    require(
+        not bool(scenario_cfg.get("progress_watchdog", {}).get("enabled", True)),
+        "Scenario progress watchdog must remain disabled",
+    )
+    require(
+        float(scenario_cfg.get("off_route_timeout_sec", 0.0)) == 1000000000000.0,
+        "Off-route timeout must remain effectively disabled",
     )
     require(
         int(scenario_cfg.get("after_static_start_path_index", -1)) >= 0,

@@ -7,6 +7,7 @@ input.
 """
 from bisect import bisect_left
 from collections import Counter
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -134,6 +135,57 @@ def _verify_seal(folder, seal_name="COMPLETE.json"):
     return verify_sealed_directory(folder, seal_name)
 
 
+def effective_admission_directory(episode):
+    """Select an additive corrected admission while preserving admission_v1."""
+    from async_capture.journal import digest
+    episode = Path(episode).resolve()
+    run = episode.parent
+    original_dir = episode / "admission_v1"
+    _verify_seal(original_dir)
+    recovery_path = run / "ADMISSION_RECOVERY.json"
+    if not recovery_path.is_file():
+        return original_dir, {}
+
+    load = lambda path: json.loads(Path(path).read_text(encoding="utf-8"))
+    recovery = load(recovery_path)
+    original_path = original_dir / "report.json"
+    if not (
+        recovery.get("schema") == "morai_sensor_record_admission_recovery_v1"
+        and recovery.get("status") == "completed"
+        and recovery.get("recovery_is_additive") is True
+        and recovery.get("source_timestamps_modified") is False
+        and recovery.get("training_visible") is False
+        and recovery.get("original_admission", {}).get("sha256") == digest(original_path)
+    ):
+        raise ValueError("Invalid additive admission recovery record")
+    corrected_relative = recovery.get("corrected_admission", {}).get("path")
+    corrected_path = (run / str(corrected_relative)).resolve()
+    if (run.resolve() not in corrected_path.parents
+            or corrected_path.name != "report.json"):
+        raise ValueError("Admission recovery path escapes its run")
+    corrected_dir = corrected_path.parent
+    _verify_seal(corrected_dir)
+    corrected = load(corrected_path)
+    original = load(original_path)
+    if not (
+        recovery["corrected_admission"].get("sha256") == digest(corrected_path)
+        and recovery["corrected_admission"].get("seal_sha256")
+            == digest(corrected_dir / "COMPLETE.json")
+        and corrected.get("raw_manifest_sha256") == original.get("raw_manifest_sha256")
+        and corrected.get("capture_contract_valid") is True
+        and corrected.get("runtime_streams_valid") is True
+        and corrected.get("sensor_capture_status") == "admitted"
+        and corrected.get("teacher_transport_status") == "admitted"
+        and corrected.get("source_timestamps_modified") is False
+        and corrected.get("training_visible") is False
+    ):
+        raise ValueError("Corrected admission evidence mismatch")
+    return corrected_dir, {
+        "admission_recovery": digest(recovery_path),
+        "effective_admission": digest(corrected_dir / "COMPLETE.json"),
+    }
+
+
 def verify_episode_evidence(episode, expected):
     episode = Path(episode).resolve()
     stage_dirs = {
@@ -151,6 +203,67 @@ def verify_episode_evidence(episode, expected):
         _verify_seal(folder, seal_name)
         if expected.get(key) != digest(folder / seal_name):
             raise ValueError("Sensor Record evidence seal changed: " + key)
+    recovery_expected = (
+        "admission_recovery" in expected or "effective_admission" in expected
+    )
+    if recovery_expected:
+        _, recovery_seals = effective_admission_directory(episode)
+        for key in ("admission_recovery", "effective_admission"):
+            if expected.get(key) != recovery_seals.get(key):
+                raise ValueError("Sensor Record recovery seal changed: " + key)
+
+
+def resolve_audited_map_root(map_root, scenario_root, expected_global, source_hashes):
+    """Select the exact audited copy, accepting only proven LF/CRLF relocation.
+
+    Never normalize the expected hash. The selected global path must match it
+    byte-for-byte, and all map files must equal the capture copy apart from
+    CRLF. This handles preserved runtimes alongside a Windows checkout.
+    """
+    from async_capture.journal import digest
+    original = Path(map_root)
+    name = "2026_molit_comp_global_path.txt"
+    if (original / name).is_file() and digest(original / name) == expected_global:
+        return original, False, "recorded_path"
+    candidate = Path(scenario_root) / "data" / original.name
+    if not (candidate / name).is_file() or digest(candidate / name) != expected_global:
+        raise ValueError("Official global path differs from the sealed route audit")
+    capture_files_available = True
+    for filename, key in ((name, None), ("link_set.json", "link_set"),
+                          ("node_set.json", "node_set")):
+        before, after = original / filename, candidate / filename
+        if not after.is_file():
+            raise ValueError("Audited map copy is unavailable: " + filename)
+        if not before.is_file():
+            capture_files_available = False
+            if key:
+                normalized = after.read_bytes().replace(b"\r\n", b"\n")
+                if hashlib.sha256(normalized).hexdigest() != source_hashes.get(key):
+                    raise ValueError("Audited map differs from recorded LF hash: " + filename)
+            continue
+        if (key and source_hashes.get(key) != digest(before)):
+            raise ValueError("Capture map differs from its recorded hash: " + filename)
+        if (before.read_bytes().replace(b"\r\n", b"\n")
+                != after.read_bytes().replace(b"\r\n", b"\n")):
+            raise ValueError("Capture/audited map content differs: " + filename)
+    capture_route = original.parents[1] / "config/full_loop_links.yaml"
+    audited_route = Path(scenario_root) / "config/full_loop_links.yaml"
+    if not audited_route.is_file():
+        raise ValueError("Audited route definition is unavailable")
+    if capture_route.is_file():
+        if (digest(capture_route) != source_hashes.get("route_definition")
+                or capture_route.read_bytes().replace(b"\r\n", b"\n")
+                    != audited_route.read_bytes().replace(b"\r\n", b"\n")):
+            raise ValueError("Capture/audited route definition content differs")
+    else:
+        capture_files_available = False
+        normalized = audited_route.read_bytes().replace(b"\r\n", b"\n")
+        if (hashlib.sha256(normalized).hexdigest()
+                != source_hashes.get("route_definition")):
+            raise ValueError("Audited route definition differs from recorded LF hash")
+    resolution = ("capture_copy_lf_crlf_equivalent" if capture_files_available
+                  else "recorded_lf_sha256_equivalent_checkout")
+    return candidate, True, resolution
 
 
 def official_route_tracker(contract, route_report):
@@ -168,6 +281,9 @@ def official_route_tracker(contract, route_report):
     traffic = contract.get("capture", {}).get("traffic_light_ground_truth", {})
     map_root = Path(traffic.get("map_root", "")).resolve()
     route_definition = scenario_root / "config/full_loop_links.yaml"
+    map_root, relocated_line_endings, map_resolution = resolve_audited_map_root(
+        map_root, scenario_root, route_report.get("global_path_sha256"),
+        traffic.get("source_sha256", {}))
     global_path = map_root / "2026_molit_comp_global_path.txt"
     if not map_root.is_dir() or not route_definition.is_file() or not global_path.is_file():
         raise ValueError("Audited official route inputs are unavailable")
@@ -186,13 +302,19 @@ def official_route_tracker(contract, route_report):
         "source": "sealed_official_global_path_lookahead_v1",
         "route_key": route_key,
         "target_distance_m": float(tracker.target_distance_m),
+        "route_topology": "closed_loop" if tracker.closed_route else "open",
+        "route_point_count": int(tracker.route_point_count),
+        "audited_map_root": str(map_root),
+        "capture_copy_lf_crlf_equivalence_verified": relocated_line_endings,
+        "audited_map_resolution": map_resolution,
         "route_definition_sha256": route_report["route_definition_sha256"],
         "global_path_sha256": route_report["global_path_sha256"],
     }
     return tracker, provenance
 
 
-def build_episode_manifest(episode, *, campaign_validation_sha256, split):
+def build_episode_manifest(episode, *, campaign_validation_sha256, split,
+                           expected_evidence=None):
     """Build one lightweight manifest from an already admitted episode."""
     from async_capture.journal import digest
     episode = Path(episode).resolve()
@@ -211,8 +333,13 @@ def build_episode_manifest(episode, *, campaign_validation_sha256, split):
         _verify_seal(folder, seal_name)
         evidence[key] = digest(folder / seal_name)
 
+    if expected_evidence is not None:
+        verify_episode_evidence(episode, expected_evidence)
+    admission_dir, recovery_seals = effective_admission_directory(episode)
+    evidence.update(recovery_seals)
+
     load = lambda path: json.loads(Path(path).read_text(encoding="utf-8"))
-    admission = load(episode / "admission_v1/frames.json")
+    admission = load(admission_dir / "frames.json")
     gt_frames = load(episode / "gt_timeline_v1/frames.json")
     geometry = load(episode / "object_geometry_audit_v1/frames.json")
     signals = load(episode / "route_signal_audit_v1/frames.json")
@@ -283,7 +410,9 @@ def build_episode_manifest(episode, *, campaign_validation_sha256, split):
             # Re-statting 7 files for every frame across WSL/9p takes minutes
             # and adds no independent evidence here.  The loader checks size
             # and SHA256 on the first actual read of each selected asset.
-            _safe_child(source_root, relative)
+            relative_path = Path(relative)
+            if relative_path.is_absolute() or ".." in relative_path.parts or not relative_path.parts:
+                raise ValueError("Unsafe Sensor Record asset path: " + relative)
             roles[role] = relative
             assets[relative] = str(meta["sha256"])
             sizes[relative] = int(meta["size_bytes"])

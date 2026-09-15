@@ -4,6 +4,7 @@ import math
 import time
 
 from ...utils.transform_utils import polyline_length
+from . import actor_lifecycle
 
 
 def spawn_highway_npcs(self):
@@ -18,6 +19,18 @@ def spawn_highway_npcs(self):
     if not specs:
         raise RuntimeError("No native highway SpawnPoint definitions configured")
 
+    total_spawn_capacity = sum(
+        int(spec.get("maximum_spawn_vehicle", 0)) for spec in specs
+    )
+    maximum_total = int(
+        cfg.get("collection_maximum_total_vehicles", len(specs))
+    )
+    if total_spawn_capacity <= 0 or total_spawn_capacity > maximum_total:
+        raise RuntimeError(
+            "Highway SpawnPoint population exceeds the scenario cap: "
+            f"capacity={total_spawn_capacity}, cap={maximum_total}"
+        )
+
     lifecycle = dict(cfg.get("spawn_point_lifecycle", {}))
     create_attempts = max(1, int(lifecycle.get("create_attempts", 3)))
     create_settle_sec = max(
@@ -30,6 +43,9 @@ def spawn_highway_npcs(self):
     )
 
     for spec in specs:
+        # MORAI may begin spawning immediately when pause is false. Create in
+        # a paused state and require an explicit disabled acknowledgement.
+        spec = dict(spec, pause=True)
         spawn_name = spec.get("name", spec.get("id"))
         created_point = None
         for create_attempt in range(1, create_attempts + 1):
@@ -47,6 +63,18 @@ def spawn_highway_npcs(self):
                     "spec": dict(spec),
                 }
                 self.highway_spawn_points.append(created_point)
+                if not self.grpc.enable_vehicle_spawn_point(
+                    spawn_point_id,
+                    False,
+                    attempts=int(lifecycle.get("disable_attempts", 3)),
+                    retry_delay_sec=float(
+                        lifecycle.get("disable_retry_delay_sec", 0.5)
+                    ),
+                ):
+                    raise RuntimeError(
+                        "Cannot confirm initial SpawnPoint disable: "
+                        + str(spawn_point_id)
+                    )
                 break
 
             print(
@@ -68,7 +96,8 @@ def spawn_highway_npcs(self):
     reference_ttc = float(cfg.get("reference_ttc_sec", 1.0))
     print(
         f"[FullLoop] native highway SpawnPoints created inactive: "
-        f"count={self.highway_npc_planned_count}, lane_change=False, "
+        f"count={self.highway_npc_planned_count}, "
+        f"total_vehicle_cap={total_spawn_capacity}, lane_change=False, "
         f"reference_safety={reference_safety:.1f}m, "
         f"reference_ttc={reference_ttc:.1f}s; "
         f"activation is delayed until Ego approaches the highway"
@@ -102,6 +131,8 @@ def _nearest_official_link(self, x, y):
             best = (dist, index, waypoint)
     return best
 def activate_highway_spawn_points(self, elapsed, current_s):
+    if getattr(self, "nearby_highway_stopped", False):
+        return False
     active_points = [
         point
         for point in self.highway_spawn_points
@@ -279,6 +310,53 @@ def _set_highway_spawn_points_enabled(self, enabled):
         point.get("enabled", False) for point in active_points
     )
     return changed
+
+def update_highway_actor_lifecycle(self, elapsed, ego_state, current_s):
+    if (
+        getattr(self, "nearby_highway_stopped", False)
+        or self.highway_traffic_cleared
+        or not self.highway_spawn_points_active
+    ):
+        return
+
+    lifecycle = actor_lifecycle.policy(self)
+    highway_zone = self.route_definition["zones"]["highway"]
+    entry_s = actor_lifecycle.checkpoint_s(
+        self, highway_zone["ego_entry_checkpoint"]
+    )
+    stop_s = entry_s + float(lifecycle["highway_stop_after_entry_m"])
+    if float(current_s) <= stop_s:
+        return
+
+    points = [
+        point
+        for point in self.highway_spawn_points
+        if not point.get("retired", False)
+    ]
+    distances = [
+        math.hypot(
+            float(point["spec"]["position"]["x"]) - float(ego_state["x"]),
+            float(point["spec"]["position"]["y"]) - float(ego_state["y"]),
+        )
+        for point in points
+    ]
+    minimum_distance = float(lifecycle["highway_spawn_distance_m"])
+    if not distances or min(distances) <= minimum_distance:
+        return
+
+    def stop_spawning():
+        self._set_highway_spawn_points_enabled(False)
+        if any(point["enabled"] for point in points):
+            raise RuntimeError("Cannot confirm distant highway spawner disable")
+
+    actor_lifecycle.mutate(
+        self,
+        "highway_stop_new_spawns",
+        current_s,
+        stop_spawning,
+    )
+    self.nearby_highway_stopped = True
+
 
 def deactivate_highway_npcs(self, current_s):
     disabled = self._set_highway_spawn_points_enabled(False)

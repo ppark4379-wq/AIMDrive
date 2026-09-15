@@ -174,7 +174,6 @@ def update(context, elapsed, ego_state, current_s):
             mission_distribution_changed=True,
         )
         reset_wait(context)
-        return
 
     minimum_distance = max(
         0.0, float(cfg.get("minimum_stopline_distance_m", 0.0))

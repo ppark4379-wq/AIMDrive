@@ -54,6 +54,16 @@
           "start_link_id": "A2256W000411",
           "end_link_id": "A2256W000153",
           "max_velocity": 100.0
+        },
+        {
+          "name": "north_crosswalk_pair",
+          "start_point": [-60.02, -35.85],
+          "end_point": [-60.27, -8.98],
+          "entry_buffer_m": 4.635,
+          "exit_buffer_m": 4.635,
+          "max_velocity": 20.0,
+          "acc_time_gap": 2.0,
+          "acc_lateral_threshold": 10.0
         }
       ],
       "terminal_deceleration": 2.0
@@ -70,8 +80,8 @@
     "traffic_light_stop": {
       "stop_statuses": [1],
       "route_lateral_threshold": 2.0,
-      "max_lookahead": 120.0,
-      "stop_margin": 11.0,
+      "max_lookahead": 150.0,
+      "stop_margin": 13.0,
       "comfortable_deceleration": 2.5,
       "signal_timeout": 2.0,
       "hold_on_stale": true

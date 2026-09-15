@@ -12,7 +12,8 @@ sys.path.insert(0, str(ROOT))
 
 from async_capture.alignment import PayloadReader
 from async_capture.journal import digest, verify_run, write_json
-from ssd_storage import require_ssd
+from async_capture.portable_paths import recorded_episode_directory
+from ssd_storage import require_ssd, SSD_ROOT
 
 
 def distribution(values):
@@ -62,7 +63,7 @@ def main():
         if digest(quality / name) != expected:
             raise ValueError("Changed quality evidence: " + name)
     index = json.loads((quality / "INDEX_COMPLETE.json").read_text())
-    raw = Path(index["raw_path"])
+    raw = recorded_episode_directory(index["raw_path"], args.episode, "raw", SSD_ROOT)
     manifest, _ = verify_run(raw, payloads=False)
     if digest(raw / "raw_manifest.json") != index["raw_manifest_sha256"]:
         raise ValueError("Quality index refers to another raw run")
