@@ -126,6 +126,62 @@ def run_import_check(python, modules, environment):
     return result.returncode == 0, result.stderr[-1000:]
 
 
+def interpreter_site_paths(python):
+    result = subprocess.run(
+        [str(python), "-I", "-c", (
+            "import json,sysconfig;"
+            "print(json.dumps([sysconfig.get_path('purelib'),"
+            "sysconfig.get_path('platlib')]))"
+        )],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=20,
+    )
+    if result.returncode:
+        raise RuntimeError(result.stderr[-1000:])
+    paths = []
+    for value in json.loads(result.stdout.strip()):
+        if not value:
+            continue
+        resolved = str(Path(value).expanduser().resolve())
+        if resolved not in paths:
+            paths.append(resolved)
+    return paths
+
+
+def run_analysis_check(python, environment):
+    result = subprocess.run(
+        [str(python), "-c", (
+            "import json,re,sys,cv2,numpy,pyproj,scipy,PIL,rospkg,rospy;"
+            "print(json.dumps({'prefix':sys.prefix,'stdlib_re':re.__file__,"
+            "'numpy':numpy.__file__}))"
+        )],
+        env=environment,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=30,
+    )
+    if result.returncode:
+        return False, result.stderr[-1000:]
+    try:
+        report = json.loads(result.stdout.strip().splitlines()[-1])
+        prefix = Path(report["prefix"]).resolve()
+        stdlib_re = Path(report["stdlib_re"]).resolve()
+        numpy_path = Path(report["numpy"]).resolve()
+    except (IndexError, KeyError, TypeError, ValueError) as error:
+        return False, "invalid analysis probe: " + repr(error)
+    if prefix != stdlib_re and prefix not in stdlib_re.parents:
+        return False, "standard library came from another Python: " + str(stdlib_re)
+    system_dist = Path("/usr/lib/python3/dist-packages").resolve()
+    if Path(python).resolve() != Path("/usr/bin/python3").resolve() and (
+        numpy_path == system_dist or system_dist in numpy_path.parents
+    ):
+        return False, "Conda loaded system numpy: " + str(numpy_path)
+    return True, ""
+
+
 def update_sensor_bridge(data, bridge_ip):
     expected = {
         "cameraList": (4, "cc"),
@@ -301,8 +357,10 @@ def main():
     dependencies.mkdir(parents=True, exist_ok=True)
 
     environment = dict(os.environ)
+    environment.pop("PYTHONHOME", None)
     environment.update(
         PYTHONNOUSERSITE="1",
+        PYTHONDONTWRITEBYTECODE="1",
         PYTHONPATH=":".join([
             str(dependencies),
             str(ROOT),
@@ -324,7 +382,6 @@ def main():
         Path.home() / "miniconda3/envs/lmdrive/bin/python3.8",
         Path("/usr/bin/python3"),
     ])
-    analysis_modules = ("cv2", "numpy", "pyproj", "scipy", "PIL")
 
     def choose_analysis():
         failures = []
@@ -332,7 +389,18 @@ def main():
             candidate = Path(candidate).expanduser().resolve()
             if not candidate.is_file():
                 continue
-            ok, error = run_import_check(candidate, analysis_modules, environment)
+            try:
+                own_paths = interpreter_site_paths(candidate)
+            except (OSError, RuntimeError, ValueError) as error:
+                failures.append(str(candidate) + ": " + repr(error))
+                continue
+            analysis_environment = dict(environment)
+            analysis_environment["PYTHONPATH"] = ":".join(
+                own_paths
+                + environment["PYTHONPATH"].split(":")
+                + ["/usr/lib/python3/dist-packages"]
+            )
+            ok, error = run_analysis_check(candidate, analysis_environment)
             if ok:
                 return candidate, failures
             failures.append(str(candidate) + ": " + error)

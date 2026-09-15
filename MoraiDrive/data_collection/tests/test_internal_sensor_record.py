@@ -28,6 +28,16 @@ from async_capture.internal_sensor_record_contract import (
 )
 from network_config import bridge_ip
 from native_capture.ground_truth import default_grpc_target
+from python_environment import (
+    SYSTEM_DIST_PACKAGES,
+    build_analysis_environment,
+    build_capture_environment,
+)
+from sensor_record_barrier import (
+    prepare_coordination_directory,
+    require_stop_acknowledgement,
+    wait_for_native_quiescence,
+)
 from sources.morai_sync_file_source import REQUIRED_SENSOR_DIRS
 
 
@@ -186,6 +196,7 @@ class InternalSensorRecordTest(unittest.TestCase):
         )
         self.assertIn("run_proven_three_lap_scenario.py", supervisor)
         self.assertIn("'--nearby-actors'", supervisor)
+        self.assertIn("'--audit-python',str(analysis_python)", supervisor)
         self.assertIn("SUPPORTED_SCENARIOS", runner)
         self.assertIn("PRIMARY_SCENARIOS", runner)
         self.assertIn("class RawScenario(FullLoopScenario):", runner)
@@ -198,6 +209,10 @@ class InternalSensorRecordTest(unittest.TestCase):
         for adapter in (runner, review_runner):
             self.assertNotIn("route_setup_attempts=1", adapter)
             self.assertNotIn("max_laps=1", adapter)
+            self.assertIn("build_analysis_environment", adapter)
+            self.assertIn("probe_analysis_environment", adapter)
+            self.assertIn("env=analysis_env", adapter)
+            self.assertIn("'faulthandler'", adapter)
         self.assertFalse((runtime / "scenario_runner/__init__.py").exists())
         self.assertFalse((INTERNAL / "async_capture/nearby_actors.py").exists())
         self.assertEqual(manifest["reference_run"], "large_scale_3laps_02_lap_001")
@@ -480,6 +495,128 @@ class InternalSensorRecordTest(unittest.TestCase):
         bag_audit = required[2].read_text()
         self.assertIn("require_ssd(directory", bag_audit)
         self.assertNotIn("ROOT not in directory.parents", bag_audit)
+
+    def test_capture_environment_replaces_inherited_python_configuration(self):
+        environment = build_capture_environment({
+            "PYTHONPATH": "/tmp/poison",
+            "PYTHONHOME": "/tmp/wrong-python",
+            "KEEP_ME": "yes",
+        })
+        self.assertEqual(environment["KEEP_ME"], "yes")
+        self.assertNotIn("/tmp/poison", environment["PYTHONPATH"])
+        self.assertNotIn("PYTHONHOME", environment)
+        self.assertEqual(environment["PYTHONNOUSERSITE"], "1")
+        self.assertEqual(environment["PYTHONDONTWRITEBYTECODE"], "1")
+
+    def test_analysis_environment_prioritizes_selected_interpreter(self):
+        selected = Path("/opt/conda/bin/python")
+        with patch(
+            "python_environment.interpreter_package_paths",
+            return_value=["/opt/conda/lib/python3.8/site-packages"],
+        ):
+            environment = build_analysis_environment(
+                selected,
+                {"PYTHONPATH": "/tmp/poison", "PYTHONHOME": "/tmp/wrong"},
+            )
+        paths = environment["PYTHONPATH"].split(os.pathsep)
+        self.assertEqual(paths[0], "/opt/conda/lib/python3.8/site-packages")
+        self.assertEqual(paths[-1], str(SYSTEM_DIST_PACKAGES))
+        self.assertNotIn("/tmp/poison", paths)
+        self.assertNotIn("PYTHONHOME", environment)
+
+    def test_coordination_directory_is_fresh_and_episode_scoped(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            episode = Path(temporary) / "episode_000"
+            episode.mkdir()
+            coordination = episode / "sensor_record_coordination"
+            self.assertEqual(
+                prepare_coordination_directory(coordination, episode),
+                coordination.resolve(),
+            )
+            self.assertTrue(coordination.is_dir())
+            with self.assertRaises(FileExistsError):
+                prepare_coordination_directory(coordination, episode)
+            with self.assertRaises(ValueError):
+                prepare_coordination_directory(
+                    Path(temporary) / "outside", episode)
+
+    def test_stop_acknowledgement_requires_successful_ui_off_evidence(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            coordination = Path(temporary)
+            marker = coordination / "recording_stopped.json"
+            payload = {
+                "status": "stopped",
+                "record_on": False,
+                "stopwatch_ticks": 123,
+                "error": None,
+            }
+            marker.write_text(
+                json.dumps(payload), encoding="utf-8-sig")
+            self.assertEqual(
+                require_stop_acknowledgement(coordination), payload)
+
+            payload["record_on"] = True
+            marker.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaises(RuntimeError):
+                require_stop_acknowledgement(coordination)
+
+            payload["record_on"] = False
+            payload["error"] = "primary failure"
+            marker.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaises(RuntimeError):
+                require_stop_acknowledgement(coordination)
+
+    def test_native_quiescence_requires_nonempty_stable_storage(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "sensor.bin").write_bytes(b"data")
+            report = wait_for_native_quiescence(
+                root, stable_seconds=0, timeout_seconds=1,
+                poll_seconds=0.001,
+            )
+            self.assertTrue(report["passed"])
+            self.assertEqual(report["file_count"], 1)
+            self.assertEqual(report["total_bytes"], 4)
+
+        with tempfile.TemporaryDirectory() as temporary:
+            with self.assertRaises(TimeoutError):
+                wait_for_native_quiescence(
+                    temporary, stable_seconds=0, timeout_seconds=0.005,
+                    poll_seconds=0.001,
+                )
+
+    def test_lap_transition_wires_ack_and_quiescence_before_completion(self):
+        runner = (
+            INTERNAL / "tools/run_sensor_record_scenario.py"
+        ).read_text()
+        prepare_call = "prepare_coordination_directory(coordination,ep)"
+        stop_call = "require_stop_acknowledgement(coordination)"
+        settle_call = "native_storage_quiescence=wait_for_native_quiescence(native)"
+        quick_call = "quick_summary=quick_native_capture_summary("
+        self.assertLess(runner.index(prepare_call),
+                        runner.index("powershell_with_heartbeat(",
+                                     runner.index(prepare_call)))
+        self.assertLess(runner.index(stop_call), runner.index(settle_call))
+        self.assertLess(runner.index(settle_call), runner.index(quick_call))
+
+        owner = (
+            INTERNAL / "tools/bounded_sensor_record.ps1"
+        ).read_text()
+        self.assertLess(
+            owner.index("Coordination directory must be prepared"),
+            owner.index("$attempted=$true"),
+        )
+        self.assertIn("Move-Item -LiteralPath $temporary", owner)
+        self.assertIn("Join-Error $errorText", owner)
+        self.assertIn("recording_stopped acknowledgement failed", owner)
+
+    def test_shared_shell_uses_isolated_analysis_probe(self):
+        source = (
+            DATA_COLLECTION / "tools/internal_sensor_record_env.sh"
+        ).read_text()
+        self.assertIn("unset PYTHONHOME", source)
+        self.assertIn("build_analysis_environment", source)
+        self.assertIn("probe_analysis_environment", source)
 
 
 if __name__ == "__main__":

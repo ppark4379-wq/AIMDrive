@@ -24,6 +24,10 @@ from async_capture.journal import digest, verify_run, write_json
 from async_capture.sensor_record_admission import verify_sealed_directory
 from ssd_storage import SSD_ROOT, require_ssd
 from scenario_runner.scenarios.segment_modes.modes import PRIMARY_SCENARIOS
+from python_environment import (
+    build_analysis_environment,
+    probe_analysis_environment,
+)
 
 
 BASE = SSD_ROOT / "sensor_record_auto_v1"
@@ -322,21 +326,12 @@ def main():
         (path.resolve() for path in candidates if path is not None and path.is_file()),
         Path(sys.executable).resolve(),
     )
-    dependency_check = subprocess.run(
-        [str(analysis_python), "-c", "import cv2,numpy,pyproj"],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    if dependency_check.returncode:
-        raise RuntimeError("Offline analysis dependencies missing: " + dependency_check.stderr[-500:])
-    review_env = dict(os.environ, OPENBLAS_NUM_THREADS="2", OMP_NUM_THREADS="2")
-    from runtime_paths import CATKIN_ROOT, ROS_ROOT
-    review_env["PYTHONPATH"] = ":".join([
-        os.environ.get("MORAI_ASYNC_DEPS", ""),
-        str(INTEGRATION),
-        str(PROJECT_ROOT),
-        str(CATKIN_ROOT / "devel/lib/python3/dist-packages"),
-        str(ROS_ROOT / "lib/python3/dist-packages"),
-        review_env.get("PYTHONPATH", ""),
-    ])
+    review_env = build_analysis_environment(
+        analysis_python, os.environ,
+        OPENBLAS_NUM_THREADS="2", OMP_NUM_THREADS="2",
+    )
+    analysis_environment_report = probe_analysis_environment(
+        analysis_python, review_env)
     plan = load(campaign / "campaign_plan.json")
     rows = completed_rows(campaign / "runs.tsv")
     requested = int(plan["requested_laps"])
@@ -402,6 +397,8 @@ def main():
         "schema": "morai_sensor_record_campaign_validation_v1",
         "campaign": str(campaign),
         "scenario_name": scenario_name,
+        "analysis_python": str(analysis_python),
+        "analysis_environment": analysis_environment_report,
         "scenario_supported": scenario_supported,
         "campaign_plan_sha256": digest(campaign / "campaign_plan.json"),
         "runs_ledger_sha256": digest(campaign / "runs.tsv"),

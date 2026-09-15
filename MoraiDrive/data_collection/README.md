@@ -33,6 +33,12 @@ Data Collection은 선택 이름 전달, Sensor Record 시작·종료·저장, �
 사후 검증을 담당한다. 한 회차가 실패하면 원본을 보존하고 다음 회차로 넘어가지 않는
 기존 정책을 유지한다.
 
+회차 전환은 Sensor Record UI의 OFF 확인을 원자적 coordination 기록으로 받은 뒤,
+native 파일의 크기와 수정 시각이 안정되고 7개 센서 bundle 검사가 통과한 경우에만
+진행한다. 따라서 앞 회차 저장 중 다음 회차가 시작되지 않는다. ROS 캡처 프로세스는
+고정된 system Python 환경을 사용하고, 오프라인 분석은 선택한 Conda 패키지를 먼저
+사용하되 system `rospkg`와 ROS 경로만 뒤에 명시적으로 추가한다.
+
 
 01·02·03은 실행할 때마다 공통 자동 준비를 먼저 수행한다. ROS/catkin, MORAI Launcher,
 Windows 저장 드라이브와 분석 Python을 검사하고, 빠진 SensorData 폴더를 만들며, 필요한

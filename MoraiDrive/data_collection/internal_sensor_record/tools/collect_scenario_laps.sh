@@ -22,7 +22,7 @@ CATKIN_SETUP="$CATKIN_ROOT/devel/setup.bash"
 CATKIN_PYTHON="$CATKIN_ROOT/devel/lib/python3/dist-packages"
 ASYNC_DEPS="$MORAI_ASYNC_DEPS"
 SSD_ROOT="$(MORAI_PROJECT_ROOT="$PROJECT_ROOT" \
-    PYTHONPATH="$INTEGRATION${PYTHONPATH:+:$PYTHONPATH}" \
+    PYTHONPATH="$INTEGRATION" \
     /usr/bin/python3 -c 'from ssd_storage import SSD_ROOT; print(SSD_ROOT)')"
 BASE="$SSD_ROOT/sensor_record_auto_v1"
 usage() {

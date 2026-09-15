@@ -25,6 +25,7 @@ os.environ['MORAI_EXPERT_ROOT'] = str(PROVEN_RUNTIME / 'expert')
 from async_capture.journal import write_json, digest
 from async_capture.sim_mode import require_free_running_mode
 from process_guard import process_lock
+from python_environment import build_analysis_environment, probe_analysis_environment
 from ssd_storage import SSD_ROOT, require_ssd
 from scenario_runner.main_runner import (
     PACKAGE_ROOT as SCENARIO_PACKAGE_ROOT,
@@ -162,6 +163,12 @@ def summarize_episode(episode):
 def audit_episode(episode, python, policy_study=None, time_mode='realtime', require_ros_clock=False,
                   clock_trace=None, clock_trace_owner=None, scope='full'):
     episode = Path(episode)
+    analysis_env = build_analysis_environment(
+        python, os.environ,
+        OPENBLAS_NUM_THREADS='2', OMP_NUM_THREADS='2',
+        PYTHONFAULTHANDLER='1',
+    )
+    analysis_environment = probe_analysis_environment(python, analysis_env)
     steps = [('quality', 'audit_local_alignment.py', ['--raw-run', str(episode/'raw'),
               '--output', str(episode/'quality')])]
     if require_ros_clock:
@@ -199,13 +206,17 @@ def audit_episode(episode, python, policy_study=None, time_mode='realtime', requ
     results = []
     for stage, tool, args in steps:
         with (episode/(stage+'_audit.log')).open('x') as log:
-            proc = subprocess.run([python, str(ROOT/'tools'/tool)] + args, cwd=ROOT,
-                                  stdout=log, stderr=subprocess.STDOUT, timeout=1200)
+            proc = subprocess.run(
+                [python, '-X', 'faulthandler', str(ROOT/'tools'/tool)] + args,
+                cwd=ROOT, env=analysis_env,
+                stdout=log, stderr=subprocess.STDOUT, timeout=1200)
         results.append(dict(stage=stage, exit_code=proc.returncode))
         if proc.returncode:
-            return dict(status='failed', stages=results)
+            return dict(status='failed', stages=results,
+                        analysis_environment=analysis_environment)
     write_json(episode/'comparison_summary.json', summarize_episode(episode))
-    return dict(status='diagnostic_complete', stages=results)
+    return dict(status='diagnostic_complete', stages=results,
+                analysis_environment=analysis_environment)
 
 
 class RawScenario(FullLoopScenario):
