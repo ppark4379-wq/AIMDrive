@@ -8,12 +8,20 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "vision_encoder"))
+PROJECT_ROOT = ROOT.parents[1]
+sys.path[:0] = [
+    str(ROOT),
+    str(ROOT / "vision_encoder"),
+    str(PROJECT_ROOT),
+]
 
 from async_capture.journal import digest, write_json
 from ssd_storage import require_ssd
 from morai_pretraining.sensor_record_manifest import build_episode_manifest
+from scenario_runner.scenarios.segment_modes.modes import (
+    PRIMARY_SCENARIOS,
+    get_scenario_zones,
+)
 
 
 def load(path):
@@ -24,6 +32,25 @@ def add_counts(target, source):
     for key, value in source.items():
         if isinstance(value, int):
             target[key] += value
+
+
+def required_training_coverage(scenario_name):
+    """Return coverage required by the selected main scenario."""
+    if scenario_name not in PRIMARY_SCENARIOS:
+        raise ValueError("Unsupported scenario: " + str(scenario_name))
+    zones = get_scenario_zones(scenario_name)
+    required = ["waypoint_frames"]
+    if any((
+        zones.static,
+        zones.dynamic,
+        zones.roundabout,
+        zones.highway,
+        zones.tunnel,
+    )):
+        required.append("object_positive_frames")
+    if scenario_name in ("full_loop", "full_loop_normal"):
+        required.extend(("traffic_light_0", "traffic_light_1"))
+    return tuple(required)
 
 
 def main():
@@ -44,6 +71,8 @@ def main():
             and seal.get("status") == "passed"
             and seal.get("files", {}).get("report.json") == digest(report_path)):
         raise ValueError("A passed, sealed campaign validation is required")
+    scenario_name = report.get("scenario_name", "full_loop")
+    required = required_training_coverage(scenario_name)
     laps = report.get("laps", [])
     if len(laps) < 2 or not all(lap.get("valid") for lap in laps):
         raise ValueError("At least two valid complete laps are required for episode-level train/val split")
@@ -72,11 +101,11 @@ def main():
         add_counts(coverage[split], manifest["report"]["counts"])
         manifest_rows[split].append({
             "lap": number,
+            "scenario_name": scenario_name,
             "path": str(path),
             "sha256": digest(path),
             "frames": len(manifest["entries"]),
         })
-    required = ("waypoint_frames", "object_positive_frames", "traffic_light_0", "traffic_light_1")
     coverage_json = {split: dict(counts) for split, counts in coverage.items()}
     ready = bool(len(contracts) == 1 and all(
         all(counts.get(key, 0) > 0 for key in required)
@@ -87,6 +116,8 @@ def main():
         "source_schema": "morai_sensor_record_campaign_validation_v1",
         "source_validation": str(report_path),
         "source_validation_sha256": validation_sha,
+        "scenario_name": scenario_name,
+        "required_coverage": list(required),
         "split_policy": "complete_lap_holdout_v1",
         "train_laps": sorted(available - val_laps),
         "val_laps": sorted(val_laps),
@@ -99,7 +130,10 @@ def main():
         "physical_simultaneity_verified": False,
         "official_camera_exposure_timestamp_available": False,
         "training_publication_basis": "sealed Sensor Record internal-sync bundle plus empirical temporal audits",
-        "validation_scope": "held-out full lap on the same map/route; not independent-map generalization",
+        "validation_scope": (
+            "held-out selected-scenario run on the same map/route; "
+            "not independent-map generalization"
+        ),
     }
     write_json(output / "manifest_index.json", index)
     write_json(output / "COMPLETE.json", {
@@ -112,6 +146,7 @@ def main():
     })
     print(json.dumps({
         "training_ready": ready,
+        "scenario_name": scenario_name,
         "manifest_index": str(output / "manifest_index.json"),
         "train_laps": index["train_laps"],
         "val_laps": index["val_laps"],

@@ -16,6 +16,24 @@ LMDrive 호환 데이터셋으로 변환합니다. 기본 `sync_native_files` �
 ./data_collection/tools/03_validate_internal_sensor_record.sh campaign_name
 ```
 
+02번은 메인 `scenario_runner`의 6개 시나리오를 직접 선택할 수 있다. 첫 번째 인자는
+회차 수이며, `--scenario`를 생략하면 기존과 동일하게 `full_loop`를 실행한다.
+
+```bash
+./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_full --scenario full_loop
+./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_normal --scenario full_loop_normal
+./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_static --scenario full_loop_static
+./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_dynamic --scenario full_loop_dynamic
+./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_roundabout --scenario full_loop_roundabout
+./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_highway --scenario full_loop_highway
+```
+
+START/END, 잘린 경로, 활성 장애물·NPC, 완료 판정은 메인 `scenario_runner`가 담당한다.
+Data Collection은 선택 이름 전달, Sensor Record 시작·종료·저장, 선택 모드에 맞는
+사후 검증을 담당한다. 한 회차가 실패하면 원본을 보존하고 다음 회차로 넘어가지 않는
+기존 정책을 유지한다.
+
+
 01·02·03은 실행할 때마다 공통 자동 준비를 먼저 수행한다. ROS/catkin, MORAI Launcher,
 Windows 저장 드라이브와 분석 Python을 검사하고, 빠진 SensorData 폴더를 만들며, 필요한
 일반 Python 패키지만 Git에서 제외된 `.runtime/data_collection/internal_sensor_record_deps`에

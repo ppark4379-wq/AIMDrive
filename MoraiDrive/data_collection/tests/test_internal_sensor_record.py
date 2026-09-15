@@ -186,11 +186,12 @@ class InternalSensorRecordTest(unittest.TestCase):
         )
         self.assertIn("run_proven_three_lap_scenario.py", supervisor)
         self.assertIn("'--nearby-actors'", supervisor)
-        self.assertIn(
-            "from scenario_runner.main_runner import PACKAGE_ROOT as SCENARIO_PACKAGE_ROOT",
-            runner,
-        )
+        self.assertIn("SUPPORTED_SCENARIOS", runner)
+        self.assertIn("PRIMARY_SCENARIOS", runner)
         self.assertIn("class RawScenario(FullLoopScenario):", runner)
+        self.assertIn("class RawMissionScenario(RawScenario, MissionScenario):", runner)
+        self.assertIn("scenario_type = collection_scenario_class(a.scenario)", runner)
+        self.assertIn("'--scenario',a.scenario", supervisor)
         self.assertIn("software_inventory()", runner)
         self.assertNotIn("NearbyActorsMixin", runner)
         self.assertNotIn("cfg['nearby_actor_policy']", runner)
@@ -220,6 +221,44 @@ class InternalSensorRecordTest(unittest.TestCase):
                 relative,
             )
 
+
+    def test_production_adapter_maps_all_six_main_scenarios(self):
+        environment = dict(os.environ)
+        environment["MORAI_PROJECT_ROOT"] = str(DATA_COLLECTION.parent)
+        script = (
+            "import sys;"
+            "sys.path.insert(0,'data_collection/internal_sensor_record/tools');"
+            "from run_proven_three_lap_scenario import "
+            "PRIMARY_SCENARIOS,RawScenario,RawMissionScenario,"
+            "collection_scenario_class;"
+            "assert len(PRIMARY_SCENARIOS)==6;"
+            "assert collection_scenario_class('full_loop') is RawScenario;"
+            "assert all(collection_scenario_class(name) is RawMissionScenario "
+            "for name in PRIMARY_SCENARIOS[1:]);"
+            "print('ok')"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=DATA_COLLECTION.parent,
+            env=environment,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=20,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "ok")
+
+    def test_collection_shell_exposes_six_modes_and_preserves_default(self):
+        source = (INTERNAL / "tools/collect_scenario_laps.sh").read_text()
+        self.assertIn('SCENARIO="full_loop"', source)
+        self.assertIn('--scenario "$SCENARIO"', source)
+        self.assertIn(
+            "full_loop|full_loop_normal|full_loop_static|full_loop_dynamic|"
+            "full_loop_roundabout|full_loop_highway",
+            source,
+        )
+        self.assertIn('"scenario_name": scenario_name', source)
 
     def test_failed_lap_still_preserves_raw_data_and_stops_campaign(self):
         source = (INTERNAL / "tools/collect_scenario_laps.sh").read_text()

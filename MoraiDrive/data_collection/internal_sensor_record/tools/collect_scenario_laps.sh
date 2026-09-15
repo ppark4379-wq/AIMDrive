@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Run N independent full laps.  Each lap resets to the official start, selects
-# a deterministic fresh weather/time/static/dynamic profile, drives with the
-# current team scenario/expert, and records an isolated local Sensor Record session.
+# Run N independent passes of one selected main Scenario Runner mode. Each
+# pass resets to that mode's START, applies its deterministic profile, and
+# records an isolated local Sensor Record session.
 
 TOOLS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INTEGRATION="$(cd "$TOOLS/.." && pwd)"
@@ -25,20 +25,68 @@ SSD_ROOT="$(MORAI_PROJECT_ROOT="$PROJECT_ROOT" \
     PYTHONPATH="$INTEGRATION${PYTHONPATH:+:$PYTHONPATH}" \
     /usr/bin/python3 -c 'from ssd_storage import SSD_ROOT; print(SSD_ROOT)')"
 BASE="$SSD_ROOT/sensor_record_auto_v1"
+usage() {
+    echo "사용법: $0 <회차 수> [campaign_id] [--scenario <name>]"
+    echo "예:   $0 3"
+    echo "      $0 3 campaign_static --scenario full_loop_static"
+    echo "시나리오: full_loop, full_loop_normal, full_loop_static, full_loop_dynamic,"
+    echo "          full_loop_roundabout, full_loop_highway"
+    echo "선택 환경변수: MORAI_STORAGE_ROOT, MORAI_BASE_SEED, MORAI_LAP_WALL_SECONDS, MORAI_SIMULATOR_PID"
+}
+
 LAPS="${1:-}"
-CAMPAIGN_ID="${2:-scenario_campaign_$(date +%Y%m%d_%H%M%S)}"
+if (( $# > 0 )); then
+    shift
+fi
+CAMPAIGN_ID=""
+SCENARIO="full_loop"
+while (( $# > 0 )); do
+    case "$1" in
+        --scenario)
+            if (( $# < 2 )); then
+                echo "[FAIL] --scenario 뒤에 시나리오 이름이 필요합니다." >&2
+                usage >&2
+                exit 2
+            fi
+            SCENARIO="$2"
+            shift 2
+            ;;
+        --scenario=*)
+            SCENARIO="${1#--scenario=}"
+            shift
+            ;;
+        --*)
+            echo "[FAIL] 알 수 없는 옵션입니다: $1" >&2
+            usage >&2
+            exit 2
+            ;;
+        *)
+            if [[ -n "$CAMPAIGN_ID" ]]; then
+                echo "[FAIL] campaign_id는 하나만 지정할 수 있습니다." >&2
+                usage >&2
+                exit 2
+            fi
+            CAMPAIGN_ID="$1"
+            shift
+            ;;
+    esac
+done
+CAMPAIGN_ID="${CAMPAIGN_ID:-scenario_campaign_$(date +%Y%m%d_%H%M%S)}"
+case "$SCENARIO" in
+    full_loop|full_loop_normal|full_loop_static|full_loop_dynamic|full_loop_roundabout|full_loop_highway)
+        ;;
+    *)
+        echo "[FAIL] 지원하지 않는 시나리오입니다: $SCENARIO" >&2
+        usage >&2
+        exit 2
+        ;;
+esac
 BASE_SEED="${MORAI_BASE_SEED:-26091200}"
 LAP_WALL_SECONDS="${MORAI_LAP_WALL_SECONDS:-3000}"
 ANALYSIS_PYTHON="$MORAI_ANALYSIS_PYTHON"
 CURRENT_LAP=""
 CURRENT_RUN=""
 COLLECTOR_PID=""
-
-usage() {
-    echo "사용법: $0 <바퀴 수> [campaign_id]"
-    echo "예:   $0 3"
-    echo "선택 환경변수: MORAI_STORAGE_ROOT, MORAI_BASE_SEED, MORAI_LAP_WALL_SECONDS, MORAI_SIMULATOR_PID"
-}
 
 if [[ -z "$LAPS" ]] || [[ ! "$LAPS" =~ ^[0-9]+$ ]] || (( LAPS < 1 || LAPS > 100 )); then
     usage >&2
@@ -65,7 +113,8 @@ export MORAI_STORAGE_ROOT="$SSD_ROOT"
 integration_log="$MORAI_PROJECT_ROOT/.runtime/data_collection/scenario_contract_check.log"
 mkdir -p "$(dirname "$integration_log")"
 if ! /usr/bin/python3 "$INTEGRATION/tools/run_async_scenario_review.py" \
-        --check --raw-camera-transport bridge_dropped --max-speed-kmh 60 \
+        --check --scenario "$SCENARIO" \
+        --raw-camera-transport bridge_dropped --max-speed-kmh 60 \
         >"$integration_log" 2>&1; then
     echo "[FAIL] 최신 Scenario Runner·Expert·수집기 인터페이스가 호환되지 않습니다." >&2
     tail -n 40 "$integration_log" >&2 || true
@@ -319,16 +368,21 @@ if [[ -e "$BASE/campaigns/$CAMPAIGN_ID" ]]; then
 fi
 
 CAMPAIGN_DIR="$BASE/campaigns/$CAMPAIGN_ID"
-PROFILE_STATE="$CAMPAIGN_DIR/profile_state.json"
+if [[ "$SCENARIO" == "full_loop" ]]; then
+    PROFILE_STATE="$CAMPAIGN_DIR/profile_state.json"
+else
+    PROFILE_STATE="$CAMPAIGN_DIR/${SCENARIO}_profile.json"
+fi
 RUNS_FILE="$CAMPAIGN_DIR/runs.tsv"
 mkdir -p "$CAMPAIGN_DIR"
 printf 'lap\tseed\trun_name\tstatus\tweather\ttime_hour\tstatic_obstacle\tdynamic_obstacle\tstarted_utc\tfinished_utc\n' > "$RUNS_FILE"
-/usr/bin/python3 - "$CAMPAIGN_DIR/campaign_plan.json" "$CAMPAIGN_ID" "$LAPS" "$BASE_SEED" "$LAP_WALL_SECONDS" "$SIMULATOR_PID" <<'PY'
+/usr/bin/python3 - "$CAMPAIGN_DIR/campaign_plan.json" "$CAMPAIGN_ID" "$LAPS" "$BASE_SEED" "$LAP_WALL_SECONDS" "$SIMULATOR_PID" "$SCENARIO" <<'PY'
 import json, pathlib, sys, time
-path, campaign_id, laps, seed, seconds, pid = sys.argv[1:]
+path, campaign_id, laps, seed, seconds, pid, scenario_name = sys.argv[1:]
 payload = {
     "schema": "morai_sensor_record_campaign_v1",
     "campaign_id": campaign_id,
+    "scenario_name": scenario_name,
     "requested_laps": int(laps),
     "base_seed": int(seed),
     "lap_wall_limit_seconds": int(seconds),
@@ -336,7 +390,7 @@ payload = {
     "mode": "Simulation Time / internal sensor sync 10Hz / External Sync OFF",
     "weather_candidates": ["SUNNY", "FOGGY"],
     "time_candidates": [11, 13, 15],
-    "static_and_dynamic_obstacles": "fresh deterministic random selection per lap",
+    "static_and_dynamic_obstacles": "main scenario mode selection; deterministic fresh choice for enabled zones per lap",
     "highway_native_vehicle_cap": "team scenario configuration",
     "competition_reference_spawnpoint_cap_per_point": 50,
     "mission_distribution_changes": [
@@ -390,8 +444,8 @@ on_signal() {
 }
 trap on_signal INT TERM
 
-echo "[START] campaign=$CAMPAIGN_ID, laps=$LAPS, local raw only, storage=$SSD_ROOT, Simulator PID=$SIMULATOR_PID"
-echo "        매 바퀴 시작점 reset, Sunny/Foggy, 11/13/15시, 정적·동적 장애물 재선택"
+echo "[START] campaign=$CAMPAIGN_ID, scenario=$SCENARIO, laps=$LAPS, local raw only, storage=$SSD_ROOT, Simulator PID=$SIMULATOR_PID"
+echo "        매 회차 선택 시나리오 START reset, Sunny/Foggy, 11/13/15시, 활성 장애물 재선택"
 echo "        주행 중에는 30초마다 진행 상태를 출력하며 상세 로그는 run별 supervisor.log에 저장합니다."
 
 for ((lap=1; lap<=LAPS; lap++)); do
@@ -406,6 +460,7 @@ for ((lap=1; lap<=LAPS; lap++)); do
     echo "[LAP $lap/$LAPS] seed=$seed run=$CURRENT_RUN"
     /usr/bin/python3 "$INTEGRATION/tools/run_sensor_record_scenario.py" \
             --name "$CURRENT_RUN" --pid "$SIMULATOR_PID" \
+            --scenario "$SCENARIO" \
             --seconds "$LAP_WALL_SECONDS" --full-lap \
             --seed "$seed" --profile-state "$PROFILE_STATE" \
             --raw-camera-transport bridge_dropped --defer-offline-review &
@@ -490,12 +545,13 @@ PY
 done
 
 CURRENT_LAP=""
-/usr/bin/python3 - "$CAMPAIGN_DIR/COLLECTION_COMPLETE.json" "$CAMPAIGN_ID" "$LAPS" <<'PY'
+/usr/bin/python3 - "$CAMPAIGN_DIR/COLLECTION_COMPLETE.json" "$CAMPAIGN_ID" "$LAPS" "$SCENARIO" <<'PY'
 import json, pathlib, sys, time
-path, campaign_id, laps = sys.argv[1:]
+path, campaign_id, laps, scenario_name = sys.argv[1:]
 pathlib.Path(path).write_text(json.dumps({
     "schema": "morai_sensor_record_campaign_completion_v1",
     "campaign_id": campaign_id,
+    "scenario_name": scenario_name,
     "captured_laps": int(laps),
     "offline_review_complete": False,
     "completed_wall_ns": time.time_ns(),
@@ -505,7 +561,7 @@ pathlib.Path(path).write_text(json.dumps({
 PY
 
 echo
-echo "[DONE] $LAPS바퀴 원본 수집이 끝났습니다. 원본은 아직 학습에 공개되지 않습니다."
+echo "[DONE] scenario=$SCENARIO, $LAPS회 원본 수집이 끝났습니다. 원본은 아직 학습에 공개되지 않습니다."
 echo "검증 실행:"
 echo "  cd $MORAI_PROJECT_ROOT"
 echo "  ./data_collection/tools/03_validate_internal_sensor_record.sh $CAMPAIGN_ID"

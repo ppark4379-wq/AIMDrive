@@ -31,8 +31,10 @@ from async_capture.journal import write_json, digest
 from async_capture.sim_mode import require_free_running_mode
 from process_guard import process_lock
 from ssd_storage import SSD_ROOT, require_ssd
-from scenario_runner.main_runner import load_configuration
+from scenario_runner.main_runner import SUPPORTED_SCENARIOS, load_configuration
 from scenario_runner.scenarios.full_loop_scenario import FullLoopScenario
+from scenario_runner.scenarios.segment_modes.modes import MISSION_MODES, PRIMARY_SCENARIOS
+from scenario_runner.scenarios.segment_modes.scenario import MissionScenario
 from scenario_runner.adapters.morai_grpc import MoraiGrpcClient
 from scenario_runner.utils.map_loader import MGeoMapLoader
 from scenario_runner.tools.verify_separation import verify_package
@@ -195,7 +197,8 @@ class RawScenario(FullLoopScenario):
             raise RuntimeError('No reset/retry inside an existing raw episode')
         super().setup_expert_controller()
         runtime_path = Path(self.expert_controller.runtime_config_path)
-        setup = dict(seed=self.run_seed, profile=self.profile, time_hour=self.scenario_hour,
+        setup = dict(scenario_name=self.scenario_name,
+                     seed=self.run_seed, profile=self.profile, time_hour=self.scenario_hour,
                      global_config=self.global_cfg, scenario_config=self.cfg,
                      route_length_m=self.route_length_m, scenario_clock=self.clock.domain,
                      global_path_sha256=digest(Path(self.cfg['global_path'])),
@@ -374,9 +377,25 @@ class RawScenario(FullLoopScenario):
         write_json(self.output / 'outcome.json', self.outcome)
 
 
+class RawMissionScenario(RawScenario, MissionScenario):
+    """Collection lifecycle layered on the main segment scenario."""
+
+
+def collection_scenario_class(name):
+    """Select only a main Scenario Runner class; keep collection as an adapter."""
+    base = SUPPORTED_SCENARIOS.get(name)
+    if base is FullLoopScenario:
+        return RawScenario
+    if base is MissionScenario:
+        return RawMissionScenario
+    raise ValueError("Unsupported collection scenario: " + str(name))
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--check', action='store_true')
+    p.add_argument('--scenario', choices=PRIMARY_SCENARIOS, default='full_loop',
+                   help='Main Scenario Runner mode to execute (default: full_loop)')
     p.add_argument('--rosbag', action='store_true', help=argparse.SUPPRESS)
     p.add_argument('--audit-scope', choices=('timing',), default='timing')
     p.add_argument('--time-mode',choices=('simulation_free_run',),default='simulation_free_run')
@@ -385,7 +404,7 @@ def main():
     p.add_argument('--output', type=Path)
     p.add_argument('--episodes', type=int, default=1)
     p.add_argument('--seconds', type=float, default=90, help='Maximum driving wall seconds; stop earlier at route completion')
-    p.add_argument('--full-lap', action='store_true', help='Require route completion; permit a bounded wall budget up to 3540 seconds')
+    p.add_argument('--full-lap', action='store_true', help='Require selected-scenario route completion; permit a bounded wall budget up to 3540 seconds')
     p.add_argument('--max-speed-kmh', type=float, default=20)
     p.add_argument('--seed', type=int, default=260910)
     p.add_argument('--profile-state',type=Path,
@@ -440,10 +459,13 @@ def main():
                expert_max_velocity_kmh=a.max_speed_kmh,
                expert_python_executable='/usr/bin/python3',
                expert_ros_remaps=['/ctrl_cmd:=' + a.control_topic])
+    if a.scenario in MISSION_MODES:
+        cfg['mission_mode'] = a.scenario
+    scenario_type = collection_scenario_class(a.scenario)
     # The collection adapter never rewrites route/progress safety policy. A
     # collision can be retained as evidence, while the current team scenario
     # still owns off-route, stall and completion decisions.
-    verify_package(PROJECT_ROOT / 'scenario_runner', global_cfg, cfg, 'full_loop')
+    verify_package(PROJECT_ROOT / 'scenario_runner', global_cfg, cfg, a.scenario)
     if a.check:
         # Exercise the real adapter constructor against the currently pulled
         # team FullLoopScenario. This caught a prior cross-commit ``clock``
@@ -452,8 +474,8 @@ def main():
             domain = 'constructor_check'
 
         with tempfile.TemporaryDirectory(prefix='morai-constructor-check-') as temporary:
-            scenario = RawScenario(
-                object(), object(), {}, {},
+            scenario = scenario_type(
+                object(), object(), {}, cfg,
                 output=Path(temporary) / 'episode',
                 contract_path=Path(temporary) / 'contract.json',
                 seconds=20, clock=CheckClock(),
@@ -547,7 +569,7 @@ def main():
                 scenario = None
                 try:
                     client.connect()
-                    scenario = RawScenario(client, MGeoMapLoader(gc['paths']['mgeo_root']), gc, sc,
+                    scenario = scenario_type(client, MGeoMapLoader(gc['paths']['mgeo_root']), gc, sc,
                         output=episode, contract_path=contract_path, seconds=a.seconds,
                         collision_policy=a.collision_policy,time_mode=a.time_mode,expert_clock=expert_clock,full_lap=a.full_lap,
                         record_rosbag=a.rosbag,sensor_record_coordination=a.sensor_record_coordination,

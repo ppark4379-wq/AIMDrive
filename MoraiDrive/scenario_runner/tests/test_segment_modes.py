@@ -16,6 +16,7 @@ from ..scenarios.full_loop_scenario import FullLoopScenario
 from ..scenarios.segment_modes.scenario import MissionScenario
 from ..scenarios.segment_modes.modes import (
     MISSION_MODES, PRIMARY_SCENARIOS, automatic_repeat_enabled,
+    get_scenario_zones,
 )
 from ..scenarios.full_loop_parts import (
     dynamic_obstacle, highway, roundabout, static_obstacle, tunnel,
@@ -128,6 +129,20 @@ class MissionModesTest(unittest.TestCase):
         ))
         self.assertIs(main_runner.SUPPORTED_SCENARIOS["full_loop"], FullLoopScenario)
 
+    def test_collection_zone_contract_comes_from_primary_modes(self):
+        self.assertEqual(
+            asdict(get_scenario_zones("full_loop")),
+            {
+                "static": True,
+                "dynamic": True,
+                "roundabout": True,
+                "highway": True,
+                "tunnel": True,
+            },
+        )
+        for name, mode in MISSION_MODES.items():
+            self.assertEqual(get_scenario_zones(name), mode.zones)
+
     def test_mode_descriptions_are_immutable_and_single_zone(self):
         for name, mode in MISSION_MODES.items():
             count = sum(asdict(mode.zones).values())
@@ -186,6 +201,32 @@ class MissionModesTest(unittest.TestCase):
             self.assertEqual(scenario.end_link, mode.end.link_id)
             self.assertAlmostEqual(scenario.path_s_at_index(mode.start.index), 0.0)
             self.assertAlmostEqual(scenario.path_s_at_index(mode.end.index), scenario.route_length_m)
+
+    def test_bounded_missions_export_expert_only_lookahead_tail(self):
+        for name, mode in MISSION_MODES.items():
+            scenario = self.make_scenario(name)
+            mission_events.prepare_mission(scenario)
+            with redirect_stdout(io.StringIO()):
+                scenario.route_definition = scenario.load_route_definition()
+                scenario.prepare_full_loop_route()
+
+            mission_points = list(scenario.route_points)
+            expert_points = mission_route.build_expert_route_points(scenario)
+            self.assertEqual(scenario.route_points, mission_points)
+            if mode.start is None:
+                self.assertIs(expert_points, scenario.route_points)
+                continue
+
+            self.assertEqual(expert_points[:len(mission_points)], mission_points)
+            self.assertGreater(len(expert_points), len(mission_points))
+            self.assertGreaterEqual(
+                polyline_length(expert_points[len(mission_points) - 1:]),
+                mission_route.EXPERT_LOOKAHEAD_TAIL_M,
+            )
+            self.assertEqual(
+                expert_points[len(mission_points)],
+                self.points[mode.end.index + 1],
+            )
 
     def test_route_change_fails_before_any_world_mutation(self):
         scenario = self.make_scenario("full_loop_static")

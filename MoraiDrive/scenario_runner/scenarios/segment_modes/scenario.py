@@ -13,7 +13,12 @@ class MissionScenario(FullLoopScenario):
         super().setup()
 
     def setup_expert_controller(self):
-        super().setup_expert_controller()
+        mission_points = self.route_points
+        self.route_points = route.build_expert_route_points(self)
+        try:
+            super().setup_expert_controller()
+        finally:
+            self.route_points = mission_points
         expert.prepare_speed_zones(self)
 
     prepare_full_loop_route = route.prepare_full_loop_route

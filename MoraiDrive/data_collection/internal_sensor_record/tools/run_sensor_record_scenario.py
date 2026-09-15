@@ -35,6 +35,7 @@ from runtime_paths import (
     ensure_runtime_directory,
 )
 from run_sensor_record_probe import verify_native_targets
+from scenario_runner.scenarios.segment_modes.modes import PRIMARY_SCENARIOS
 
 
 def quick_native_capture_summary(native, *, progress=None):
@@ -126,9 +127,11 @@ def powershell_with_heartbeat(script, *, timeout, label, heartbeat_seconds=30):
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--name',required=True)
+    p.add_argument('--scenario', choices=PRIMARY_SCENARIOS, default='full_loop',
+                   help='Main Scenario Runner mode to execute (default: full_loop)')
     p.add_argument('--pid',type=int,required=True)
     p.add_argument('--seconds',type=int,default=180)
-    p.add_argument('--full-lap',action='store_true',help='Stop Sensor Record at verified route completion or the wall bound')
+    p.add_argument('--full-lap',action='store_true',help='Stop Sensor Record at selected-scenario route completion or the wall bound')
     p.add_argument('--seed',type=int,default=260910,
                    help='Deterministic per-lap seed for weather/time/obstacle selection')
     p.add_argument('--profile-state',type=Path,
@@ -227,6 +230,7 @@ def main():
     finally:gt.close()
     coordination=ep/'sensor_record_coordination'
     command=['/usr/bin/python3',str(ROOT/'tools/run_proven_three_lap_scenario.py'),
+        '--scenario',a.scenario,
         '--time-mode','simulation_free_run','--nearby-actors','--collision-policy','record',
         '--max-speed-kmh','60','--seconds',str(a.seconds),'--audit-scope','timing','--output',str(run),
         '--sensor-record-coordination',str(coordination),
@@ -471,6 +475,7 @@ def main():
                 admission_path=ep/'admission_v1/report.json'
                 admission=json.loads(admission_path.read_text()) if admission_path.exists() else None
                 write_json(run/'NATIVE_CAPTURE_RESULT.json',dict(error=error,
+                    scenario_name=a.scenario,
                     scenario_exit_code=(proc.poll() if proc is not None else None),
                     scenario_warning=scenario_warning,
                     analysis_python=str(analysis_python),
@@ -482,7 +487,7 @@ def main():
                     capture_contract_sha256=(digest(run/'capture_contract.json')
                         if (run/'capture_contract.json').exists() else None),admission=admission,
                     training_visible=False,physical_simultaneity_verified=False))
-    print(json.dumps(dict(output=str(run),error=error)),flush=True)
+    print(json.dumps(dict(output=str(run),scenario_name=a.scenario,error=error)),flush=True)
     if error:raise SystemExit(2)
 
 

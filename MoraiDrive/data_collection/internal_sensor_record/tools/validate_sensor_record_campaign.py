@@ -18,11 +18,12 @@ INTEGRATION = ROOT
 PROJECT_ROOT = Path(
     os.environ.get("MORAI_PROJECT_ROOT", str(ROOT.parents[1]))
 ).expanduser().resolve()
-sys.path.insert(0, str(INTEGRATION))
+sys.path[:0] = [str(INTEGRATION), str(PROJECT_ROOT)]
 
 from async_capture.journal import digest, verify_run, write_json
 from async_capture.sensor_record_admission import verify_sealed_directory
 from ssd_storage import SSD_ROOT, require_ssd
+from scenario_runner.scenarios.segment_modes.modes import PRIMARY_SCENARIOS
 
 
 BASE = SSD_ROOT / "sensor_record_auto_v1"
@@ -173,7 +174,7 @@ def completed_rows(path):
     return latest
 
 
-def validate_lap(row):
+def validate_lap(row, expected_scenario="full_loop"):
     run = BASE / row["run_name"]
     episode = run / "episode_000"
     errors = []
@@ -214,8 +215,15 @@ def validate_lap(row):
     frames = int(admission.get("frames", 0) or 0)
     counts = admission.get("counts", {})
     native_counts = native.get("counts", {})
+    observed_scenario = setup.get("scenario_name", "full_loop")
+    intervention_scenario = intervention.get("scenario_name", "full_loop")
     checks = {
         "supervisor_completed": result.get("error") is None,
+        "scenario_name": (
+            expected_scenario in PRIMARY_SCENARIOS
+            and observed_scenario == expected_scenario
+            and intervention_scenario == expected_scenario
+        ),
         "campaign_seed": (
             int(setup.get("seed", -1)) == int(row["seed"])
             and int(profile_state.get("run_seed", -2)) == int(row["seed"])
@@ -273,6 +281,7 @@ def validate_lap(row):
         "seed": int(row["seed"]),
         "run_name": row["run_name"],
         "run": str(run),
+        "scenario_name": observed_scenario,
         "weather": setup.get("profile", {}).get("weather"),
         "time_hour": setup.get("time_hour"),
         "static_obstacle": row.get("static_obstacle"),
@@ -331,6 +340,8 @@ def main():
     plan = load(campaign / "campaign_plan.json")
     rows = completed_rows(campaign / "runs.tsv")
     requested = int(plan["requested_laps"])
+    scenario_name = plan.get("scenario_name", "full_loop")
+    scenario_supported = scenario_name in PRIMARY_SCENARIOS
     laps = []
     for index in range(1, requested + 1):
         row = rows.get(index)
@@ -348,7 +359,7 @@ def main():
                 with log_path.open("a", encoding="utf-8") as log:
                     complete_offline_review(run, analysis_python=analysis_python,
                                             env=review_env, log=log)
-                laps.append(validate_lap(row))
+                laps.append(validate_lap(row, scenario_name))
             except Exception as exc:
                 laps.append({
                     "lap": index,
@@ -385,12 +396,17 @@ def main():
                                     if row.get("dynamic_obstacle")}),
     }
     completion = campaign / "COLLECTION_COMPLETE.json"
+    completion_payload = load(completion) if completion.is_file() else {}
+    completion_scenario = completion_payload.get("scenario_name", "full_loop")
     report = {
         "schema": "morai_sensor_record_campaign_validation_v1",
         "campaign": str(campaign),
+        "scenario_name": scenario_name,
+        "scenario_supported": scenario_supported,
         "campaign_plan_sha256": digest(campaign / "campaign_plan.json"),
         "runs_ledger_sha256": digest(campaign / "runs.tsv"),
         "collection_completion_present": completion.is_file(),
+        "collection_completion_scenario_matches": completion_scenario == scenario_name,
         "collection_completion_sha256": digest(completion) if completion.is_file() else None,
         "requested_laps": requested,
         "completed_valid_laps": sum(bool(row.get("valid")) for row in laps),
@@ -404,7 +420,9 @@ def main():
         "variation_contract": "weather alternates; time and obstacle choices may repeat",
         "variation_coverage": variation_coverage,
         "variation_valid": variation_valid,
-        "valid": bool(completion.is_file() and len(laps) == requested
+        "valid": bool(completion.is_file() and scenario_supported
+                      and completion_scenario == scenario_name
+                      and len(laps) == requested
                       and all(row.get("valid") for row in laps)
                       and variation_valid),
         "source_timestamps_modified": False,
@@ -412,7 +430,7 @@ def main():
         "training_visible": False,
         "interpretation": (
             "PASS proves sealed native inputs, 10Hz cadence, ROS/native LiDAR identity, "
-            "teacher continuity, actor/light transport, full-lap completion, and per-lap "
+            "teacher continuity, actor/light transport, selected-scenario completion, and per-lap "
             "team-scenario weather alternation. It does not create MORAI's missing official "
             "millisecond physical-exposure guarantee."
         ),
@@ -446,6 +464,7 @@ def main():
         }
     print(json.dumps({
         "valid": report["valid"],
+        "scenario_name": scenario_name,
         "requested_laps": requested,
         "completed_valid_laps": report["completed_valid_laps"],
         "total_frames": report["total_frames"],
