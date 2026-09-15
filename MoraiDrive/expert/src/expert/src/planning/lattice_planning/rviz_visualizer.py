@@ -146,11 +146,12 @@ class LatticeRvizVisualizer:
 
         if result.mode == "roundabout_entry":
             details = result.debug_details.get("roundabout_entry", {})
-            marker.text = "ROUNDABOUT: {}  {:.1f}km/h\nsource={} front={} conflict={} TTC={:.1f}s".format(
+            marker.text = "ROUNDABOUT: {}  {:.1f}km/h\nsource={} front={} conflict={} TTC={:.1f}s\nhold={:.2f}m merged={}".format(
                 details.get("phase", "check").upper(),
                 details.get("final_target_velocity", result.acc_target_velocity) * 3.6,
                 details.get("speed_source", "roundabout"), details.get("front_id"),
                 details.get("blocker_unique_id"), result.ttc,
+                details.get("hold_gap", 0.0), details.get("committed", False),
             )
             if result.acc_target_velocity <= 0.05:
                 self._set_color(marker, 1.0, 0.15, 0.05, 1.0)
@@ -554,8 +555,8 @@ class LatticeRvizVisualizer:
             marker_id=0,
             marker_type=Marker.TEXT_VIEW_FACING,
         )
-        label.pose.position.x = parameters.ROUNDABOUT_ENTRY_STOP_POINT[0]
-        label.pose.position.y = parameters.ROUNDABOUT_ENTRY_STOP_POINT[1]
+        label.pose.position.x = parameters.ROUNDABOUT_ENTRY_HOLD_POINT[0]
+        label.pose.position.y = parameters.ROUNDABOUT_ENTRY_HOLD_POINT[1]
         label.pose.position.z = 2.3
         label.scale.z = 0.55
         label.text = (
@@ -575,7 +576,7 @@ class LatticeRvizVisualizer:
     def _roundabout_decision_points():
         start = parameters.ROUNDABOUT_ENTRY_APPROACH_START
         end = parameters.ROUNDABOUT_ENTRY_APPROACH_END
-        stop_point = parameters.ROUNDABOUT_ENTRY_STOP_POINT
+        stop_point = parameters.ROUNDABOUT_ENTRY_HOLD_POINT
         dx = end[0] - start[0]
         dy = end[1] - start[1]
         length = math.hypot(dx, dy)
@@ -583,21 +584,11 @@ class LatticeRvizVisualizer:
             return stop_point, stop_point
         ux = dx / length
         uy = dy / length
-        stop_along = (
-            (stop_point[0] - start[0]) * ux
-            + (stop_point[1] - start[1]) * uy
-        )
-        start_along = max(
-            0.0,
-            stop_along - parameters.ROUNDABOUT_ENTRY_STOP_BACK_DISTANCE,
-        )
-        end_along = min(
-            length,
-            stop_along + parameters.ROUNDABOUT_ENTRY_STOP_FORWARD_DISTANCE,
-        )
+        back = parameters.ROUNDABOUT_ENTRY_STOP_BACK_DISTANCE
+        forward = parameters.ROUNDABOUT_ENTRY_STOP_FORWARD_DISTANCE
         return (
-            (start[0] + ux * start_along, start[1] + uy * start_along),
-            (start[0] + ux * end_along, start[1] + uy * end_along),
+            (stop_point[0] - ux * back, stop_point[1] - uy * back),
+            (stop_point[0] + ux * forward, stop_point[1] + uy * forward),
         )
 
     @staticmethod

@@ -79,12 +79,32 @@ class PathManager:
         )
         speed_limits = np.full(path_size, default_max_velocity, dtype=float)
         self.speed_zone_indices = []
+        path_s = np.r_[0., np.cumsum(np.hypot(np.diff(x), np.diff(y)))]
+        loop_length = path_s[-1] + np.hypot(x[0]-x[-1], y[0]-y[-1])
         for zone in speed_limit_zones or []:
             start_index = self._nearest_path_index(zone["start_point"])
             end_index = self._nearest_path_index(zone["end_point"])
             zone_limit = float(zone["max_velocity"]) / 3.6
 
-            if start_index <= end_index:
+            entry_buffer = max(0., float(zone.get("entry_buffer_m", 0.)))
+            exit_buffer = max(0., float(zone.get("exit_buffer_m", 0.)))
+            if entry_buffer or exit_buffer:
+                if start_index > end_index and not self.is_closed_path:
+                    raise ValueError("Open-path speed zone ends before it starts")
+                start_s, end_s = path_s[start_index], path_s[end_index]
+                if start_index > end_index:
+                    end_s += loop_length
+                shifts = (-loop_length, 0., loop_length) if self.is_closed_path else (0.,)
+                mask = np.zeros(path_size, dtype=bool)
+                # Include the sample before/after a boundary so interpolation cannot
+                # release the cap while part of the vehicle is still in the zone.
+                for shift in shifts:
+                    lower = np.searchsorted(path_s, start_s-entry_buffer-shift, side="right")-1
+                    upper = np.searchsorted(path_s, end_s+exit_buffer-shift, side="left")
+                    if upper >= 0 and lower < path_size and end_s+exit_buffer-shift >= 0 and start_s-entry_buffer-shift <= path_s[-1]:
+                        mask[max(0, lower):min(path_size, upper+1)] = True
+                speed_limits[mask] = zone_limit
+            elif start_index <= end_index:
                 speed_limits[start_index:end_index + 1] = zone_limit
             elif self.is_closed_path:
                 speed_limits[start_index:] = zone_limit

@@ -44,7 +44,9 @@ class AutonomousDriving:
         self.forward_object_detector = ForwardObjectDetector(config["map"]["traffic_light_list"])
 
         self.adaptive_cruise_control = AdaptiveCruiseControl(
-            vehicle_length=config['common']['vehicle_length'], **config['planning']['adaptive_cruise_control']
+            vehicle_length=config['common']['vehicle_length'],
+            time_gap_zones=config['planning']['velocity_profile'].get('speed_limit_zones', []),
+            **config['planning']['adaptive_cruise_control']
         )
         # Uses the measured static-obstacle and highway section centerlines.
         self.lattice_planning_process = LatticePlanningProcess(
@@ -115,6 +117,9 @@ class AutonomousDriving:
         recorded = getattr(self.lattice_planning_process, "recorded_static", None)
         static_preview = static_preview or (recorded is not None and (recorded.active or recorded.contains(vehicle_state)))
         preview_count = lattice_parameters.STATIC_PREVIEW_POINTS if static_preview else 120
+        roundabout = self.lattice_planning_process.roundabout_planner
+        if roundabout.active or self.lattice_planning_process._roundabout_entry_state(vehicle_state)["in_approach"]:
+            preview_count = max(preview_count, lattice_parameters.ROUNDABOUT_PREVIEW_POINTS)
         prediction_path = self.path[preview_start:preview_start + preview_count]
         if self.path_manager.is_closed_path and len(prediction_path) < preview_count:
             prediction_path = prediction_path + self.path[:preview_count - len(prediction_path)]
@@ -206,7 +211,10 @@ class AutonomousDriving:
         if fast_roundabout_release:
             self.pid.reset()
         # 속도 제어를 위한 PID control
-        acc_cmd = self.pid.get_output(target_velocity, vehicle_state.velocity)
+        acc_cmd = self.pid.get_output(
+            target_velocity, vehicle_state.velocity,
+            derivative_on_measurement=lattice_result.mode == "roundabout_entry",
+        )
         # 합류 양보/충돌 예측이 정지를 요구하면 현재 속도와 무관하게 즉시 제동합니다.
         if target_velocity <= 0.05:
             self.pid.reset()

@@ -132,6 +132,22 @@ class LongitudinalControlTest(unittest.TestCase):
         self.assertEqual(0.0, pid.integral_error)
         self.assertEqual(0.0, pid.previous_error)
 
+    def test_roundabout_target_drop_does_not_brake_below_target_speed(self):
+        pid = Pid(.075, .0001, .025, 1. / 30)
+        pid.get_output(7.23, 1.4, derivative_on_measurement=True)
+        self.assertGreater(pid.get_output(5.42, 1.4, derivative_on_measurement=True), 0.)
+
+    def test_roundabout_pid_still_brakes_for_overspeed_and_zero_target(self):
+        pid = Pid(.075, .0001, .025, 1. / 30)
+        pid.get_output(7.23, 6., derivative_on_measurement=True)
+        self.assertLess(pid.get_output(4., 6., derivative_on_measurement=True), 0.)
+        self.assertLess(pid.get_output(0., 6., derivative_on_measurement=True), 0.)
+
+    def test_pid_default_mode_is_unchanged(self):
+        pid = Pid(.075, .0001, .025, 1. / 30)
+        pid.get_output(7.23, 1.4)
+        self.assertLess(pid.get_output(5.42, 1.4), 0.)
+
     def test_pid_sampling_time_can_follow_simulation_tick(self):
         pid = Pid(0.075, 0.0001, 0.025, 1.0 / 30.0)
 

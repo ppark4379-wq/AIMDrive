@@ -71,6 +71,7 @@ class RoundaboutEntryPlanner:
     def __init__(self, map_data_dir=None):
         self.lane_map = RoundaboutLaneMap(map_data_dir)
         self.committed = False
+        self.entering = False
         self.previous_position = None
         self.active = False
 
@@ -82,14 +83,47 @@ class RoundaboutEntryPlanner:
         )
 
     @staticmethod
-    def _distance(speed, target, time_value, acceleration_scale=1.0):
+    def _distance(speed, target, time_value, acceleration_scale=1.0, launch_delay=0.0):
+        delay = min(time_value, launch_delay) if target > speed else 0.0
+        time_value -= delay
         acceleration = (
             p.ROUNDABOUT_PREDICTION_ACCELERATION * acceleration_scale if target >= speed
             else -p.ROUNDABOUT_COMFORT_BRAKING
         )
         ramp = min(time_value, abs((target - speed) / acceleration))
-        return max(0.0, speed * ramp + 0.5 * acceleration * ramp * ramp
+        return max(0.0, speed * delay + speed * ramp + 0.5 * acceleration * ramp * ramp
                    + target * (time_value - ramp))
+
+    def _signed_route_gap(self, point, route, ego_match):
+        match = self.lane_map.project(point, route)
+        if match is None:
+            return None
+        progress = match.s
+        # A sliding preview no longer contains a passed hold/merge point.
+        if match.s <= 1e-6 or match.s >= route.length - 1e-6:
+            progress += ((point.x - match.x) * math.cos(match.yaw)
+                         + (point.y - match.y) * math.sin(match.yaw))
+        return progress - ego_match.s
+
+    @staticmethod
+    def _following_distances(speed, ceiling, count, lead, acceleration_scale, launch_delay):
+        distance = 0.0
+        distances = [distance]
+        step = p.ROUNDABOUT_PREDICTION_STEP
+        for index in range(1, count):
+            elapsed = (index - 1) * step
+            gap = lead["gap"] + lead["speed"] * elapsed - distance
+            desired_gap = p.ROUNDABOUT_FOLLOW_MIN_GAP + p.ROUNDABOUT_FOLLOW_TIME_GAP * speed
+            target = min(ceiling, max(0.0, lead["speed"] + 0.5 * (gap - desired_gap)))
+            accel = p.ROUNDABOUT_PREDICTION_ACCELERATION * acceleration_scale
+            if elapsed < launch_delay and target > speed:
+                accel = 0.0
+            next_speed = max(0.0, speed + max(-p.ROUNDABOUT_COMFORT_BRAKING * step,
+                                             min(accel * step, target - speed)))
+            distance += 0.5 * (speed + next_speed) * step
+            distances.append(distance)
+            speed = next_speed
+        return distances
 
     def _object_poses(self, obj, match, time_value):
         yaw = math.radians(obj.heading_deg)
@@ -136,18 +170,31 @@ class RoundaboutEntryPlanner:
                         "id": obj.unique_id, "object": obj}
         return lead
 
-    def _collision(self, ego, route, ego_s, tracks, target, predictions, acceleration_scale=1.0):
+    def _collision(self, ego, route, ego_s, tracks, target, predictions,
+                   acceleration_scale=1.0, launch_delay=0.0, lead=None):
         speed = max(0.0, ego.velocity)
         rear_collision = None
         rear_impacts = set()
+        route_origin, route_yaw, _ = self.lane_map.point_at_s(route, ego_s)
+        yaw_error = self.lane_map._angle_difference(ego.yaw, route_yaw)
+        # Follow a moving lead throughout the prediction, not a frozen launch limit.
+        distances = (self._following_distances(speed, target, len(predictions), lead,
+                                              acceleration_scale, launch_delay)
+                     if lead is not None else None)
         for index, poses in enumerate(predictions):
             time_value = index * p.ROUNDABOUT_PREDICTION_STEP
-            distance = self._distance(speed, target, time_value, acceleration_scale)
+            distance = (distances[index] if distances is not None else
+                        self._distance(speed, target, time_value, acceleration_scale, launch_delay))
             if ego_s + distance > route.length:
-                break
+                return {"collision_time": time_value, "collision_distance": distance,
+                        "blocker_unique_id": None, "blocker": "prediction_path_end",
+                        "rear_conflict": False, "prediction_incomplete": True}
             point, yaw, _ = self.lane_map.point_at_s(route, ego_s + distance)
-            if index == 0:
-                point, yaw = ego.position, ego.yaw
+            # Preserve the measured pose at rest; a stopped car cannot snap to path yaw.
+            tracking_weight = math.exp(-distance / p.VEHICLE_LENGTH)
+            point = Point(point.x + (ego.position.x - route_origin.x) * tracking_weight,
+                          point.y + (ego.position.y - route_origin.y) * tracking_weight)
+            yaw += yaw_error * tracking_weight
             for track_index, ((obj, _), alternatives) in enumerate(zip(tracks, poses)):
                 if track_index in rear_impacts:
                     continue
@@ -167,58 +214,112 @@ class RoundaboutEntryPlanner:
                             rear_collision = collision
         return rear_collision
 
+    def _checked_collision(self, ego, route, ego_s, tracks, target, predictions, lead=None):
+        checks = [(1.0, 0.0)]
+        if not self.committed:
+            checks.append((p.ROUNDABOUT_SLOW_ACCELERATION_SCALE, 0.0))
+            if ego.velocity <= 0.1:
+                checks.append((p.ROUNDABOUT_SLOW_ACCELERATION_SCALE, p.ROUNDABOUT_LAUNCH_DELAY))
+        conflicts = []
+        for scale, delay in checks:
+            collision = self._collision(ego, route, ego_s, tracks, target, predictions, scale, delay,
+                                        lead=lead)
+            if collision is not None:
+                collision["acceleration_scale"] = scale
+                collision["launch_delay"] = delay
+                conflicts.append(collision)
+                if collision["collision_time"] <= 0.0:
+                    break
+        return min(conflicts, key=lambda c: (c["rear_conflict"], c["collision_time"])) if conflicts else None
+
+    def _entry_follow_speed(self, ego, route, ego_s, tracks, ceiling, predictions, lead):
+        ceilings = [ceiling * factor for factor in (0.85, 0.7, 0.55)]
+        if lead is not None:
+            ceilings.append(min(ceiling, lead["speed"]))
+        for candidate in sorted(set(ceilings), reverse=True):
+            target = min(candidate, lead["limit"]) if lead else candidate
+            if target <= 0.1:
+                continue
+            if self._checked_collision(ego, route, ego_s, tracks, candidate, predictions, lead) is None:
+                return candidate, target
+        return None
+
     def plan(self, ego, path, entries, state, desired_velocity=None):
         stop = Point(*p.ROUNDABOUT_ENTRY_STOP_POINT)
         if self.previous_position is not None and ego.position.distance(self.previous_position) > 12.0:
             self.committed = False
+            self.entering = False
         self.previous_position = Point(ego.position.x, ego.position.y)
         self.active = state["in_approach"] or (
-            self.committed and ego.position.distance(stop) < p.ROUNDABOUT_COMMITTED_DISTANCE
+            (self.committed or self.entering)
+            and ego.position.distance(stop) < p.ROUNDABOUT_COMMITTED_DISTANCE
         )
         if not self.active:
             self.committed = False
+            self.entering = False
             return None
         if len(path) < 2:
             return self._result(path, 0.0, "invalid_path", {})
         route = self._route(path)
         ego_match = self.lane_map.project(ego.position, route)
-        stop_match = self.lane_map.project(stop, route)
-        if ego_match is None or stop_match is None or ego_match.distance > 5.0:
+        if ego_match is None or ego_match.distance > 5.0:
             return self._result(path, 0.0, "invalid_path", {})
-        # Vehicle position follows the existing rear-to-front OBB convention.
-        stop_gap = stop_match.s - ego_match.s - p.VEHICLE_LENGTH - p.ROUNDABOUT_STOP_BUFFER
-        if state["past_go_line"]:
+        # HOLD_POINT already specifies the Ego reference pose shown in MORAI.
+        stop_gap = self._signed_route_gap(Point(*p.ROUNDABOUT_ENTRY_HOLD_POINT), route, ego_match)
+        merge_gap = self._signed_route_gap(Point(*p.ROUNDABOUT_ENTRY_MERGE_POINT), route, ego_match)
+        if stop_gap is None or merge_gap is None:
+            return self._result(path, 0.0, "invalid_path", {})
+        if stop_gap < -p.ROUNDABOUT_HOLD_TOLERANCE:
+            self.entering = True
+        heading_error = abs(self.lane_map._angle_difference(ego.yaw, ego_match.yaw))
+        if self.entering and merge_gap <= 0.0 and heading_error <= math.pi / 6.0:
             self.committed = True
         cruise = min(p.ROUNDABOUT_ENTRY_CRUISE_VELOCITY,
                      p.ROUNDABOUT_ENTRY_CRUISE_VELOCITY if desired_velocity is None
                      else max(0.0, desired_velocity))
         tracks = self._tracks(ego, entries)
         front = self._front(ego, route, ego_match.s, tracks)
-        target = min(cruise, front["limit"]) if front else cruise
+        ceiling = cruise
+        before_hold = not self.entering and not self.committed
+        if before_hold and stop_gap > p.ROUNDABOUT_HOLD_TOLERANCE:
+            ceiling = min(ceiling, p.ROUNDABOUT_APPROACH_VELOCITY)
+        target = min(ceiling, front["limit"]) if front else ceiling
         count = int(round(p.ROUNDABOUT_PREDICTION_HORIZON / p.ROUNDABOUT_PREDICTION_STEP)) + 1
         predictions = [
             [self._object_poses(obj, match, i * p.ROUNDABOUT_PREDICTION_STEP)
              for obj, match in tracks]
             for i in range(count)
         ]
-        collision = self._collision(ego, route, ego_match.s, tracks, target, predictions)
-        if collision is None and not self.committed:
-            # A launch must remain clear with slower-than-requested acceleration too.
-            collision = self._collision(
-                ego, route, ego_match.s, tracks, target, predictions, acceleration_scale=0.65
-            )
+        collision = self._checked_collision(ego, route, ego_match.s, tracks, ceiling, predictions, front)
+        original_collision = collision
+        adjusted = False
+        if (collision is not None and before_hold and stop_gap <= 1.5
+                and collision["collision_time"] > p.ROUNDABOUT_EMERGENCY_TTC):
+            selected = self._entry_follow_speed(
+                ego, route, ego_match.s, tracks, ceiling, predictions, front)
+            if selected is not None:
+                ceiling, target = selected
+                collision = None
+                adjusted = True
         details = dict(state, committed=self.committed, stop_gap=stop_gap,
+                       hold_gap=stop_gap,
+                       hold_point=list(p.ROUNDABOUT_ENTRY_HOLD_POINT),
+                       entering=self.entering, merge_gap=merge_gap,
+                       prediction_horizon=p.ROUNDABOUT_PREDICTION_HORIZON,
+                       speed_ceiling=ceiling, following_speed_adjusted=adjusted,
                        front_id=front["id"] if front else None,
                        front_gap=front["gap"] if front else None)
         phase = "follow" if front else "cruise"
+        if adjusted:
+            details["avoided_conflict_id"] = original_collision.get("blocker_unique_id")
         if collision is not None:
             details.update(collision)
-            if not self.committed:
+            if before_hold:
                 phase = "yield"
                 target = min(target, math.sqrt(2.0 * p.ROUNDABOUT_COMFORT_BRAKING * max(0.0, stop_gap)))
-                if stop_gap <= 0.25 or collision["collision_time"] <= p.ROUNDABOUT_EMERGENCY_TTC:
+                if stop_gap <= p.ROUNDABOUT_HOLD_TOLERANCE or collision["collision_time"] <= p.ROUNDABOUT_EMERGENCY_TTC:
                     target = 0.0
-            elif collision["rear_conflict"]:
+            elif self.committed and collision["rear_conflict"]:
                 # Braking for a following car makes its closing speed worse.
                 phase = "rear_pressure"
             else:
@@ -226,17 +327,20 @@ class RoundaboutEntryPlanner:
                 phase = "collision_slowdown"
                 safe_target = None
                 for factor in (0.75, 0.5, 0.25, 0.0):
-                    candidate = target * factor
-                    if self._collision(ego, route, ego_match.s, tracks, candidate, predictions) is None:
-                        safe_target = candidate
+                    candidate = ceiling * factor
+                    if self._checked_collision(ego, route, ego_match.s, tracks, candidate, predictions, front) is None:
+                        safe_target = min(candidate, front["limit"]) if front else candidate
                         break
-                target = 0.0 if safe_target is None else safe_target
-                if collision["collision_time"] <= p.ROUNDABOUT_EMERGENCY_TTC:
+                if safe_target is None and collision["rear_conflict"]:
+                    # Do not turn an unavoidable closing-rear conflict into hard braking.
+                    # Entry admission must prevent this; keep the front-safe speed ceiling.
+                    phase = "rear_pressure"
+                    details["no_safe_velocity"] = True
+                else:
+                    target = 0.0 if safe_target is None else safe_target
+                if not collision["rear_conflict"] and collision["collision_time"] <= p.ROUNDABOUT_EMERGENCY_TTC:
                     target = 0.0
                     phase = "emergency"
-        elif not self.committed and stop_gap <= 1.5 and cruise > 0.05:
-            self.committed = True
-            details["committed"] = True
         details["target_velocity"] = target
         result = self._result(path, target, phase, details)
         result.predicted_object_paths = [
