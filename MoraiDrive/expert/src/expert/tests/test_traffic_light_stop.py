@@ -82,19 +82,30 @@ class TrafficLightStopTest(unittest.TestCase):
             0,
         )
         path_manager = autonomous_driving.path_manager
-        self.assertEqual(1, len(path_manager.speed_zone_indices))
-        zone = path_manager.speed_zone_indices[0]
-        self.assertEqual(2251, zone["start_index"])
-        self.assertEqual(3500, zone["end_index"])
-        self.assertAlmostEqual(100.0 / 3.6, path_manager.speed_limit_profile[2251])
-        self.assertAlmostEqual(100.0 / 3.6, path_manager.speed_limit_profile[3500])
-        self.assertAlmostEqual(60.0 / 3.6, path_manager.speed_limit_profile[2250])
-        self.assertAlmostEqual(60.0 / 3.6, path_manager.speed_limit_profile[3501])
+        zones = {zone['name']: zone for zone in path_manager.speed_zone_indices}
+        self.assertEqual({'high_speed_to_tollgate', 'north_crosswalk_pair'}, set(zones))
+        zone = zones['high_speed_to_tollgate']
+        start, end = zone['start_index'], zone['end_index']
+        self.assertLess(start, end)
+        self.assertAlmostEqual(100.0 / 3.6, path_manager.speed_limit_profile[start])
+        self.assertAlmostEqual(100.0 / 3.6, path_manager.speed_limit_profile[end])
+        self.assertAlmostEqual(60.0 / 3.6, path_manager.speed_limit_profile[start-1])
+        self.assertAlmostEqual(60.0 / 3.6, path_manager.speed_limit_profile[end+1])
         self.assertAlmostEqual(
             100.0 / 3.6,
-            max(path_manager.velocity_profile[2251:3501]),
+            max(path_manager.velocity_profile[start:end+1]),
             places=6,
         )
+        crossing = zones['north_crosswalk_pair']
+        for i in range(crossing['start_index'], crossing['end_index']+1):
+            self.assertLessEqual(path_manager.velocity_profile[i], 20./3.6)
+        for y in (-40.5, -35.85, -20., -8.98, -4.5):
+            i = path_manager._nearest_path_index((-60., y))
+            self.assertLessEqual(path_manager.velocity_profile[i], 20./3.6)
+        from expert.src.obstacle.object_info import ObjectInfo
+        self.assertEqual(autonomous_driving.adaptive_cruise_control._time_gap_for_object(
+            ObjectInfo(-60., -20., 0., 0)), 2.)
+        autonomous_driving.lattice_planning_process.recorded_static.executor.shutdown(wait=True)
 
 
 if __name__ == "__main__":

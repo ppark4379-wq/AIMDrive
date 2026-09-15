@@ -277,12 +277,15 @@ class LatticePlanningProcess:
         stop_along, _, _ = self._segment_coordinates(
             stop_point, approach_start, approach_end
         )
+        hold_along, _, _ = self._segment_coordinates(
+            parameters.ROUNDABOUT_ENTRY_HOLD_POINT, approach_start, approach_end
+        )
         in_approach = (
             0.0 <= along <= segment_length
             and lateral <= parameters.ROUNDABOUT_ENTRY_APPROACH_HALF_WIDTH
         )
-        decision_start = stop_along - parameters.ROUNDABOUT_ENTRY_STOP_BACK_DISTANCE
-        decision_end = stop_along + parameters.ROUNDABOUT_ENTRY_STOP_FORWARD_DISTANCE
+        decision_start = hold_along - parameters.ROUNDABOUT_ENTRY_STOP_BACK_DISTANCE
+        decision_end = hold_along + parameters.ROUNDABOUT_ENTRY_STOP_FORWARD_DISTANCE
         in_decision_zone = in_approach and decision_start <= along <= decision_end
         past_go_line = in_approach and along > decision_end
         return {
@@ -291,13 +294,14 @@ class LatticePlanningProcess:
             "ego_lateral": lateral,
             "approach_length": segment_length,
             "stop_along": stop_along,
+            "hold_along": hold_along,
             "decision_start": decision_start,
             "decision_end": decision_end,
             "in_approach": in_approach,
             "in_decision_zone": in_decision_zone,
             "past_go_line": past_go_line,
             "committed": self._roundabout_entry_committed,
-            "ego_distance": abs(stop_along - along),
+            "ego_distance": abs(hold_along - along),
         }
 
     @classmethod
@@ -483,6 +487,10 @@ class LatticePlanningProcess:
             result.long_obstacle_detected,
             round(result.selected_offset, 2),
         )
+        if result.mode == "roundabout_entry":
+            details = result.debug_details.get("roundabout_entry", {})
+            state += (details.get("front_id"), details.get("blocker_unique_id"),
+                      details.get("following_speed_adjusted", False))
         if state == self._last_log_state:
             return
         self._last_log_state = state
@@ -491,11 +499,15 @@ class LatticePlanningProcess:
             details = result.debug_details.get("roundabout_entry", {})
             print(
                 "[ROUNDABOUT] {} target={:.1f}km/h conflict_id={} ttc={:.2f}s "
-                "front_id={} gap={} stop_gap={:.2f}m".format(
+                "front_id={} gap={} hold_gap={:.2f}m entering={} merged={} "
+                "ceiling={:.1f}km/h adjusted={}".format(
                     details.get("phase"), result.acc_target_velocity * 3.6,
                     details.get("blocker_unique_id"), result.ttc,
                     details.get("front_id"), details.get("front_gap"),
                     details.get("stop_gap", 0.0),
+                    details.get("entering", False), details.get("committed", False),
+                    details.get("speed_ceiling", result.acc_target_velocity) * 3.6,
+                    details.get("following_speed_adjusted", False),
                 )
             )
         elif result.mode == "static_obstacle":

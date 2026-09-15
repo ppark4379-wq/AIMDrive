@@ -13,6 +13,7 @@ class AdaptiveCruiseControl:
         vehicle_lateral_threshold=2.5,
         traffic_light_lateral_threshold=4.0,
         pedestrian_longitudinal_max=35.0,
+        time_gap_zones=None,
     ):
         self.velocity_gain = velocity_gain
         self.distance_gain = distance_gain
@@ -22,6 +23,18 @@ class AdaptiveCruiseControl:
         self.vehicle_lateral_threshold = vehicle_lateral_threshold
         self.traffic_light_lateral_threshold = traffic_light_lateral_threshold
         self.pedestrian_longitudinal_max = pedestrian_longitudinal_max
+        self.time_gap_zones = []
+        for zone in time_gap_zones or []:
+            if "acc_time_gap" not in zone:
+                continue
+            sx, sy = zone["start_point"][:2]
+            ex, ey = zone["end_point"][:2]
+            length = ((ex-sx)**2+(ey-sy)**2)**.5
+            if length <= 0 or zone["acc_time_gap"] <= 0 or zone.get("acc_lateral_threshold", 10.) <= 0:
+                raise ValueError("Invalid ACC time-gap zone")
+            self.time_gap_zones.append((sx, sy, (ex-sx)/length, (ey-sy)/length,
+                                       length, zone.get("acc_lateral_threshold", 10.), zone["acc_time_gap"]))
+        self.object_time_gap = self.time_gap
 
         self.object_type = None
         self.object_distance = 0
@@ -56,6 +69,7 @@ class AdaptiveCruiseControl:
 
     def check_object(self, local_path, object_info_dic_list, current_traffic_light):
         self.object_type = None
+        self.object_time_gap = self.time_gap
         min_relative_distance = float('inf')
         for object_info_dic in object_info_dic_list:
             object_info = object_info_dic['object_info']
@@ -84,13 +98,26 @@ class AdaptiveCruiseControl:
                     self.object_type = object_type
                     self.object_distance = relative_distance - self.vehicle_length
                     self.object_velocity = object_info.velocity
+                    self.object_time_gap = self._time_gap_for_object(object_info)
+
+    def _time_gap_for_object(self, obj):
+        gap = self.time_gap
+        if obj.type not in (0, 1, 2):
+            return gap
+        for sx, sy, ux, uy, length, lateral, zone_gap in self.time_gap_zones:
+            dx, dy = obj.position.x-sx, obj.position.y-sy
+            along = dx*ux+dy*uy
+            across = -dx*uy+dy*ux
+            if -1e-6 <= along <= length+1e-6 and abs(across) <= lateral:
+                gap = max(gap, zone_gap)
+        return gap
 
     def get_target_velocity(self, ego_vel, target_vel):
         out_vel = target_vel
 
         if self.object_type == 0:
             print("ACC ON_Person")
-            default_space = 8
+            default_space = 4
         elif self.object_type in [1, 2]:
             print("ACC ON_Vehicle")
             default_space = 5
@@ -102,7 +129,7 @@ class AdaptiveCruiseControl:
 
         velocity_error = ego_vel - self.object_velocity
 
-        safe_distance = ego_vel * self.time_gap + default_space
+        safe_distance = ego_vel * self.object_time_gap + default_space
         distance_error = safe_distance - self.object_distance
 
         acceleration = -(self.velocity_gain * velocity_error + self.distance_gain * distance_error)
