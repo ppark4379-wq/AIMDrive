@@ -253,15 +253,16 @@ START와 END 좌표가 일치하는 폐루프는 END 이후 START 구간으로 �
 
 ## Sensor Record 검증 후 NAS 복사
 
-Sensor Record의 03 검증 명령은 성공한 campaign의 모든 lap을 로컬에서 NAS로 순차 복사합니다.
-목적지는 local_machine.json의 nas_root 아래
-full loop_<수집 시작 HHMMSS>/<campaign>_lap_NNN입니다.
-수집 파일과 센서 원본을 lap 폴더 하나로 구성하며 원본은 보존합니다.
+Sensor Record의 03 검증 명령은 성공한 campaign을 먼저 로컬
+`<storage_root>/dataset/<scenario>/<campaign>/<run>` 구조로 정리합니다. 센서 원본과
+토픽/GT를 run 폴더 하나로 구성하며, 같은 Windows 드라이브의 NTFS 하드링크를 사용해
+원본 바이트를 중복 저장하지 않습니다. `nas_auto_publish=true`인 PC만 이 구조를
+`nas_root/<scenario>/<campaign>/<run>`으로 순차 복사합니다.
 호스트 환경에 따른 감속·일시정지와 파일 수·크기·SHA-256 확인을 적용합니다.
 
 설정, 재개 명령, 제한 없는 복사 방식과 검증 범위는
 [NAS 복사 운영 규칙](internal_sensor_record/NAS_PUBLICATION.md)을 참고하세요.
-로컬 검증까지만 실행하려면 03 명령에 --no-nas-copy를 붙입니다.
+NAS 전송 없이 로컬 통합 dataset까지만 만들려면 03 명령에 --no-nas-copy를 붙입니다.
 위 collect.py의 수동 archive 실행과는 별도 경로입니다.
 
 

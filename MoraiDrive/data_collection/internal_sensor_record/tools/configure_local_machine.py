@@ -5,7 +5,7 @@ import argparse
 import datetime
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import re
 import shutil
 import subprocess
@@ -262,6 +262,15 @@ def main():
     parser.add_argument("--analysis-python", type=Path)
     parser.add_argument("--sensor-set", type=Path)
     parser.add_argument(
+        "--nas-root",
+        help="Windows NAS dataset root, for example Z:\\DCM\\dataset",
+    )
+    nas_mode = parser.add_mutually_exclusive_group()
+    nas_mode.add_argument("--nas-auto-publish", action="store_true",
+                          help="Copy each passed canonical campaign to NAS after 03")
+    nas_mode.add_argument("--no-nas-auto-publish", action="store_true",
+                          help="Keep passed canonical campaigns on local storage only")
+    parser.add_argument(
         "--bridge-ip",
         help=(
             "Windows MORAI가 사용할 rosbridge IPv4. 기본 127.0.0.1은 "
@@ -318,6 +327,23 @@ def main():
         )),
         "async_dependencies": str(dependencies.resolve()),
     }
+    if args.nas_root is not None:
+        nas_root = PureWindowsPath(args.nas_root)
+        if (not nas_root.is_absolute() or str(nas_root) == nas_root.anchor
+                or "'" in str(nas_root)
+                or any(character in str(nas_root) for character in "\r\n")):
+            raise ValueError("--nas-root must be an absolute Windows subfolder")
+        config["nas_root"] = str(nas_root)
+    if args.nas_auto_publish:
+        config["nas_auto_publish"] = True
+    elif args.no_nas_auto_publish:
+        config["nas_auto_publish"] = False
+    else:
+        config["nas_auto_publish"] = existing.get("nas_auto_publish", False)
+    if not isinstance(config["nas_auto_publish"], bool):
+        raise ValueError("nas_auto_publish must be true or false")
+    if config["nas_auto_publish"] and not config.get("nas_root"):
+        raise ValueError("--nas-auto-publish requires --nas-root once on this PC")
     configured_sensor_set = args.sensor_set or existing.get("sensor_set")
     if configured_sensor_set:
         config["sensor_set"] = str(
@@ -525,6 +551,9 @@ def main():
         print("       저장 경로 : " + config["storage_root"])
         print("       catkin    : " + config["catkin_workspace"])
         print("       분석 Python: " + str(analysis_python))
+        print("       로컬 dataset: " + str(Path(config["storage_root"]) / "dataset"))
+        print("       NAS 자동전송: " + (
+            str(config.get("nas_root")) if config["nas_auto_publish"] else "사용 안 함"))
         if created_sensor_directories:
             print("       SensorData : 누락 폴더 %d개 생성" % len(created_sensor_directories))
         if deferred_sensor_links:

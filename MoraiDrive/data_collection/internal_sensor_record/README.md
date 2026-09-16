@@ -84,6 +84,13 @@ WSL `/home`에 있으면 01번 preflight가 이 경로를 Windows 저장소로 �
 Git에서 제외되는 `<repo>/MoraiDrive/.runtime/data_collection/local_machine.json`에 둔다.
 환경변수 `MORAI_STORAGE_ROOT`가 로컬 설정보다 우선한다.
 
+02가 사용하는 `sensor_record_auto_v1`은 수집·검증용 내부 spool이다. 03을 통과하면
+최종 사용 경로는 실제 Windows 저장소의
+`dataset/<scenario>/<campaign>/<run>`이며, 각 run 아래에 Camera/LiDAR/GPS/IMU 원본과
+`episode_000` 토픽·GT가 함께 놓인다. 동일 디스크의 원본은 하드링크하므로 추가 원본
+용량을 사용하지 않는다. PC별 NAS 자동 전송 여부는 ignored `local_machine.json`의
+`nas_auto_publish`로 결정한다.
+
 ```bash
 # 일회성 override 예시
 export MORAI_STORAGE_ROOT=/mnt/c/MoraiDriveData

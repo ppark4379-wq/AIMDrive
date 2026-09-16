@@ -1,32 +1,41 @@
 # 검증 후 NAS 복사
 
-## 다음 수집부터 적용되는 구조
+## 로컬과 NAS의 공통 구조
 
-03 검증 명령이 성공하고 요청된 학습 manifest 준비까지 끝나면 별도 Windows 전송 프로세스 하나를 실행한다.
-모든 lap을 순서대로 복사한다. 기존 데이터를 자동 탐색하거나 지금 일괄 이동하는 작업은 없다.
+02 수집 중에는 기존의 검증된 로컬 spool을 사용한다. 03 검증과 학습 manifest 준비가
+성공하면 같은 로컬 Windows 드라이브의 `dataset` 아래에 센서 원본과 토픽/GT를 합친
+정규 구조를 만든다. 대용량 원본은 NTFS 하드링크로 연결하므로 바이트를 중복 저장하지
+않는다. 원래 spool과 source timestamp는 변경하지 않는다.
 
-예: 다음 campaign이 scenario_campaign_20261001_123456이면:
+    <local storage>\dataset\
+      dynamic_obstacle\
+        scenario_campaign_20261001_123456\
+          scenario_campaign_20261001_123456_lap_001\
+            CAMERA_1 ... CAMERA_4, LIDAR_5, GPS_6, IMU_7, SESSION.json
+            episode_000, ros_logs, software_snapshot, native_setup.json, ...
+            scenario_campaign_..._native_session_apply.json
+            scenario_campaign_..._native_session_plan.json
+            .LOCAL_DATASET_COMPLETE.json
+          scenario_campaign_20261001_123456_lap_002\
+            ...
+          _campaign\
+            metadata\campaign_plan.json, runs.tsv, COLLECTION_COMPLETE.json
+            validations\validation_<시각>\report.json, training_dataset_v1, ...
 
-    Z:\DCM\dataset\
-      full loop_123456\
-        scenario_campaign_20261001_123456_lap_001\
-          CAMERA_1 ... CAMERA_4, LIDAR_5, GPS_6, IMU_7, SESSION.json
-          episode_000, ros_logs, software_snapshot, native_setup.json, ...
-          scenario_campaign_20261001_123456_lap_001_native_session_apply.json
-          scenario_campaign_20261001_123456_lap_001_native_session_plan.json
-        scenario_campaign_20261001_123456_lap_002\
-          ...
+시나리오 폴더는 다음처럼 고정한다.
 
-full loop 접미사는 campaign 이름의 수집 시작 시각 HHMMSS이다.
-lap 이름에 날짜와 campaign 이름을 보존하므로 다른 날짜의 동일 시각 수집도 구분된다.
-로컬 run 폴더와 native_sessions/<lap> 폴더에 더해, 수집 루트에 있는 해당 lap의
-<lap>_native_session_apply.json 및 <lap>_native_session_plan.json 두 파일을 NAS lap 폴더
-최상위에 합친다. 파일 내용과 로컬 저장 위치는 변경하지 않는다.
-두 파일도 복사·재개·크기·SHA-256·전체 파일 수 검증에 포함되며, 없거나 링크이면 전송 계획을 실패시킨다.
-다른 lap의 세션 파일이나 수집 루트 전체를 복사하지 않는다.
-추가 파일로 전송 목록과 snapshot identity가 달라지므로, 예전 목록으로 이미 시작/완료한 NAS 폴더는
-새 실행에서 자동 덮어쓰거나 보충하지 않는다. 기존 전송의 목록도 실행 도중 변경하지 않는다.
-JSON에 남은 로컬 절대 경로는 수집 이력이다. 복사본에서 곧바로 학습 가능한 경로로 바꿔주는 기능은 아니다.
+- `full_loop` → `full_route`
+- `full_loop_normal` → `basic_driving`
+- `full_loop_dynamic` → `dynamic_obstacle`
+- `full_loop_static` → `static_obstacle`
+- `full_loop_roundabout` → `roundabout`
+- `full_loop_highway` → `highway`
+- 전용 신호등 모드가 추가되면 `traffic_light`
+
+NAS 자동 전송 PC에서는 위 정규 구조를 그대로
+`<NAS root>\<scenario>\<campaign>\<run>`에 복사한다. 로컬과 NAS의 상대경로가 같으며,
+NAS에서 파일을 다시 합치지 않는다. 각 run 및 campaign evidence를 별도 재개 단위로
+복사하고 크기·SHA-256·전체 파일 수를 검증한다.
 
 ## 실행과 설정
 
@@ -39,13 +48,22 @@ NAS 루트 우선순위:
 2. MORAI_NAS_ROOT 환경 변수
 3. .runtime/data_collection/local_machine.json의 nas_root
 
-현재 로컬 설정 및 local_machine.example.json에 nas_root를 Z:\DCM\dataset으로 설정했다.
+`nas_auto_publish=true`인 PC에서만 03 성공 후 자동 전송한다. 다른 PC에서는 NAS 설정이
+없어도 로컬 정규 dataset을 만든 뒤 정상 종료한다. 팀원 수집 PC의 일회성 설정 예시는:
+
+    ./data_collection/tools/00_prepare_internal_sensor_record.sh \
+      --nas-root 'Z:\DCM\dataset' --nas-auto-publish
+
+내 PC처럼 로컬에만 보존할 PC의 설정은:
+
+    ./data_collection/tools/00_prepare_internal_sensor_record.sh \
+      --no-nas-auto-publish
+
 다른 PC에서는 실제 연결된 Windows 드라이브 또는 UNC 하위 폴더를 지정한다.
 Z 드라이브는 Windows 작업자를 실행하는 사용자에게 연결되어 있어야 한다.
 드라이브 연결·자격 증명·드라이버 설정은 코드가 변경하지 않는다.
-NAS 설정이 없으면 로컬 검증 이후 전송 오류로 종료한다.
 
-    # 로컬 검증까지만
+    # 로컬 검증과 정규 dataset 생성까지만
     ./data_collection/tools/03_validate_internal_sensor_record.py campaign_01 --no-nas-copy
 
     # 로컬 검증 후 파일 목록과 목적지만 준비; NAS 접근 없음

@@ -7,5 +7,5 @@
   "powershell_exe": "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
   "analysis_python": "~/miniconda3/envs/lmdrive/bin/python",
   "sensor_set": "/mnt/c/MoraiLauncher_Win/MoraiLauncher_Win_Data/SaveFile/Sensor/26.R1.H3/aim_sensorset.json",
-  "nas_root": "Z:\\DCM\\dataset"
+  "nas_auto_publish": false
 }

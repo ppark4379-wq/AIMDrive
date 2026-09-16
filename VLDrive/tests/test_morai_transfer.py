@@ -8,12 +8,41 @@ import torch
 from datasets.morai_gps_speed import causal_gps_speed, parse_native_gps
 from datasets.morai_sensor_record_dataset import (
     child, digest, PathResolver, load_publications, validate_navigation_target,
-    verify_admission_recovery,
+    verify_admission_recovery, verify_publication_source,
 )
 from utils.morai_transfer_objective import multitask_loss
 from utils.morai_transfer_training import object_selection_score, selected_training_indices
 
 class TransferTests(unittest.TestCase):
+    def test_publication_accepts_strict_and_fail_closed_subset_schemas(self):
+        strict = 'morai_sensor_record_campaign_validation_v1'
+        subset = 'morai_sensor_record_campaign_validation_subset_v1'
+        verify_publication_source(
+            {'source_schema': strict},
+            {'schema': strict, 'valid': True},
+            {'schema': strict, 'status': 'passed'},
+        )
+        subset_report = {
+            'schema': subset,
+            'valid': True,
+            'selected_laps': 2,
+            'laps': [{}, {}],
+            'excluded_laps': [{}],
+            'subset_coverage_preserved': True,
+            'subset_policy': (
+                'whole_lap_fail_closed_exclusion_with_full_variation_preservation_v1'),
+        }
+        verify_publication_source(
+            {'source_schema': subset}, subset_report,
+            {'schema': subset, 'status': 'passed'},
+        )
+        subset_report['subset_coverage_preserved'] = False
+        with self.assertRaisesRegex(ValueError, 'fail-closed'):
+            verify_publication_source(
+                {'source_schema': subset}, subset_report,
+                {'schema': subset, 'status': 'passed'},
+            )
+
     def test_object_checkpoint_selection_prefers_ap_then_f1(self):
         lower_ap = {'detection_cell_average_precision': .20,
                     'detection_cell_best_f1': .90}

@@ -66,6 +66,8 @@ def add_vldrive_arguments(parser):
     parser.add_argument('--checkpoint', type=Path, help='resume from checkpoint.pt, or score model-best.pt')
     parser.add_argument('--instructions', type=Path, help='verified global-path navigation instruction JSONL')
     parser.add_argument('--feature-cache', type=Path, help='completed frozen [106,256] token cache')
+    parser.add_argument('--clip-index', type=Path,
+                        help='completed Sensor Record semantic clip index')
     parser.add_argument('--split-file', type=Path, help='chronological MORAI train/purge/validation split')
     parser.add_argument('--updates', type=int,
                         help='stop after this many total updates; keeps the configured cosine schedule')
@@ -75,11 +77,14 @@ def add_vldrive_arguments(parser):
 
 def run_vldrive(args):
     settings = resolve_settings(json.loads(args.config.read_text()), args)
-    for key in ('instructions', 'feature_cache', 'split_file'):
+    for key in ('instructions', 'feature_cache', 'split_file', 'clip_index'):
         override = getattr(args, key)
         if override:
             settings[key] = str(override.expanduser().resolve())
-    if not settings.get('instructions') or not Path(settings['instructions']).is_file():
+    dataset_format = settings.get('dataset_format', 'morai_expert_cache_v1')
+    if (dataset_format == 'morai_expert_cache_v1'
+            and (not settings.get('instructions')
+                 or not Path(settings['instructions']).is_file())):
         raise ValueError('VLDrive requires verified navigation instructions generated from the recorded global path.')
     if settings['sequence_length'] < settings['model'].get('memory_size', 10) + 1:
         raise ValueError('Paper preflight requires at least memory_size+1 real frames to exercise Z=10')
@@ -105,22 +110,33 @@ def run_vldrive(args):
     config.validate()
     root = Path(settings['dataset'])
     print('Validating actual artifacts, teacher labels, independent splits and instruction availability...', flush=True)
-    dataset_format = settings.get('dataset_format', 'morai_expert_cache_v1')
-    if dataset_format != 'morai_expert_cache_v1':
+    if dataset_format not in ('morai_expert_cache_v1', 'morai_sensor_record_clip_v1'):
         raise ValueError('Unknown VLDrive dataset_format: ' + str(dataset_format))
     if config.input_mode != 'cached':
         raise ValueError('MORAI expert cache path requires model.input_mode=cached')
-    from datasets.morai_expert_dataset import MoraiExpertVLDriveDataset
-    split_path = Path(settings['split_file'])
-    if not split_path.is_absolute():
-        split_path = (ROOT / split_path).resolve()
     cache = Path(settings.get('feature_cache', ''))
     if not cache.is_dir():
         raise ValueError('Completed MORAI feature cache is missing: ' + str(cache))
-    datasets = {split: MoraiExpertVLDriveDataset(
-        root, cache_root=cache, split_file=split_path, split=split,
-        sequence_length=settings['sequence_length'], instructions=settings['instructions'],
-    ) for split in ('train', 'val')}
+    if dataset_format == 'morai_expert_cache_v1':
+        from datasets.morai_expert_dataset import MoraiExpertVLDriveDataset
+        split_path = Path(settings['split_file'])
+        if not split_path.is_absolute():
+            split_path = (ROOT / split_path).resolve()
+        datasets = {split: MoraiExpertVLDriveDataset(
+            root, cache_root=cache, split_file=split_path, split=split,
+            sequence_length=settings['sequence_length'], instructions=settings['instructions'],
+        ) for split in ('train', 'val')}
+    else:
+        from datasets.morai_sensor_record_clip_dataset import SensorRecordVLDriveDataset
+        clip_index = Path(settings.get('clip_index', ''))
+        if not clip_index.is_absolute():
+            clip_index = (ROOT / clip_index).resolve()
+        if not clip_index.is_dir():
+            raise ValueError('Completed Sensor Record semantic clip index is missing: '
+                             + str(clip_index))
+        datasets = {split: SensorRecordVLDriveDataset(
+            cache_root=cache, clip_index=clip_index, split=split,
+            sequence_length=settings['sequence_length']) for split in ('train', 'val')}
 
     digest = datasets['train'].checkpoint_sha256
     visual_asset = Path(config.visual_checkpoint)

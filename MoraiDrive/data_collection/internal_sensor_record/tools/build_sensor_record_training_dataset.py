@@ -80,7 +80,11 @@ def main():
     report = load(report_path)
     seal_path = report_path.parent / "COMPLETE.json"
     seal = load(seal_path)
-    if not (report.get("schema") == "morai_sensor_record_campaign_validation_v1"
+    accepted_validation_schemas = {
+        "morai_sensor_record_campaign_validation_v1",
+        "morai_sensor_record_campaign_validation_subset_v1",
+    }
+    if not (report.get("schema") in accepted_validation_schemas
             and report.get("valid") is True
             and seal.get("status") == "passed"
             and seal.get("files", {}).get("report.json") == digest(report_path)):
@@ -126,7 +130,7 @@ def main():
     ))
     index = {
         "schema": "morai_visual_manifest_index_v1",
-        "source_schema": "morai_sensor_record_campaign_validation_v1",
+        "source_schema": report["schema"],
         "source_validation": str(report_path),
         "source_validation_sha256": validation_sha,
         "scenario_name": scenario_name,

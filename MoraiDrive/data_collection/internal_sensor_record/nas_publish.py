@@ -14,6 +14,17 @@ ROOT = Path(__file__).resolve().parent
 SENSORS = ("CAMERA_1", "CAMERA_2", "CAMERA_3", "CAMERA_4",
            "LIDAR_5", "GPS_6", "IMU_7")
 RESERVED = {".NAS_TRANSFER_ID.json", ".NAS_TRANSFER_COMPLETE.json"}
+LOCAL_MARKER = ".LOCAL_DATASET_COMPLETE.json"
+SCENARIO_FOLDERS = {
+    "full_loop": "full_route",
+    "full_loop_normal": "basic_driving",
+    "full_loop_dynamic": "dynamic_obstacle",
+    "full_loop_static": "static_obstacle",
+    "full_loop_roundabout": "roundabout",
+    "full_loop_highway": "highway",
+    # Reserved for the dedicated mode when the Scenario Runner adds it.
+    "full_loop_traffic_light": "traffic_light",
+}
 
 
 def component(value):
@@ -36,6 +47,14 @@ def campaign_folder(plan):
         stamp = datetime.datetime.fromtimestamp(
             int(plan["created_wall_ns"]) / 1e9).strftime("%H%M%S")
     return "full loop_" + stamp
+
+
+def scenario_folder(plan):
+    """Return the stable local/NAS category for one Scenario Runner mode."""
+    scenario = plan.get("scenario_name", "full_loop")
+    if scenario not in SCENARIO_FOLDERS:
+        raise ValueError("Unsupported dataset scenario: " + repr(scenario))
+    return component(SCENARIO_FOLDERS[scenario])
 
 
 def validate_target(value):
@@ -74,10 +93,11 @@ def roots_for_run(base, name):
     return (run, native) + session_files
 
 
-def inventory(roots, path, translate):
+def inventory_mapped(specs, path, translate, excluded_names=()):
     """Stream directory entries; disk-backed sorting keeps RAM independent of file count."""
     path = Path(path)
     count = total = 0
+    excluded_names = set(excluded_names)
 
     def walk(root):
         with os.scandir(root) as entries:
@@ -92,8 +112,12 @@ def inventory(roots, path, translate):
         db.execute("DROP TABLE IF EXISTS names")
         db.execute("CREATE TABLE names (name TEXT PRIMARY KEY, payload TEXT)")
         db.execute("PRAGMA temp_store=FILE")
-        for root in roots:
+        for root, prefix in specs:
             root = Path(root)
+            prefix = str(prefix).strip("/")
+            if prefix:
+                for part in prefix.split("/"):
+                    component(part)
             if any(p.is_symlink() for p in (root, *root.parents)):
                 raise ValueError("Linked source ancestor")
             single_file = root.is_file()
@@ -102,7 +126,10 @@ def inventory(roots, path, translate):
             entries = ((root, False),) if single_file else walk(root)
             for source, is_dir in entries:
                 component(source.name)
-                relative = source.name if single_file else source.relative_to(root).as_posix()
+                if source.name in excluded_names:
+                    continue
+                local_relative = source.name if single_file else source.relative_to(root).as_posix()
+                relative = "/".join(part for part in (prefix, local_relative) if part)
                 first = relative.split("/")[0].upper()
                 if first.startswith((".NAS-", ".NAS_TRANSFER_")) or first in {x.upper() for x in RESERVED}:
                     raise ValueError("Source uses reserved publication metadata")
@@ -126,12 +153,183 @@ def inventory(roots, path, translate):
     return count, total
 
 
+def inventory(roots, path, translate):
+    return inventory_mapped(((root, "") for root in roots), path, translate)
+
+
 def sha256(path):
     h = hashlib.sha256()
     with Path(path).open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             h.update(block)
     return h.hexdigest()
+
+
+def _verified_report(report_path):
+    """Verify the immutable campaign identity used by local and NAS publication."""
+    report_path = Path(report_path).resolve()
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    seal_path = report_path.parent / "COMPLETE.json"
+    seal = json.loads(seal_path.read_text(encoding="utf-8"))
+    if (report.get("valid") is not True or seal.get("status") != "passed"
+            or seal.get("files", {}).get("report.json") != sha256(report_path)):
+        raise ValueError("Dataset publication requires a passed, sealed campaign report")
+    campaign = Path(report["campaign"]).resolve()
+    plan_path = campaign / "campaign_plan.json"
+    ledger_path = campaign / "runs.tsv"
+    completion_path = campaign / "COLLECTION_COMPLETE.json"
+    if report.get("campaign_plan_sha256") != sha256(plan_path):
+        raise ValueError("Campaign plan changed after validation")
+    if report.get("runs_ledger_sha256") != sha256(ledger_path):
+        raise ValueError("Run ledger changed after validation")
+    if report.get("collection_completion_sha256") != sha256(completion_path):
+        raise ValueError("Collection completion changed after validation")
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    declared_folder = plan.get("dataset_scenario_folder")
+    if declared_folder is not None and declared_folder != scenario_folder(plan):
+        raise ValueError("Campaign dataset scenario folder differs from scenario_name")
+    schema = report.get("schema")
+    if schema == "morai_sensor_record_campaign_validation_v1":
+        complete_selection = len(report["laps"]) == int(plan["requested_laps"])
+    elif schema == "morai_sensor_record_campaign_validation_subset_v1":
+        complete_selection = (
+            len(report["laps"]) == int(report.get("selected_laps", -1))
+            and len(report["laps"]) >= 2
+            and bool(report.get("excluded_laps"))
+            and report.get("subset_coverage_preserved") is True
+            and report.get("subset_policy")
+                == "whole_lap_fail_closed_exclusion_with_full_variation_preservation_v1"
+        )
+    else:
+        complete_selection = False
+    if not report.get("laps") or not complete_selection:
+        raise ValueError(
+            "Validation does not cover the complete campaign or a valid sealed subset")
+    if component(plan["campaign_id"]) != campaign.name:
+        raise ValueError("Campaign directory and campaign_id differ")
+    return report_path, report, campaign, plan
+
+
+def _materialize_inventory(manifest, destination, identity, metadata):
+    """Create/update one same-volume, no-duplicate hardlink view.
+
+    Existing files must be the exact same inode as their sealed source. An
+    interrupted first attempt can therefore resume, while unrelated or stale
+    files are never overwritten.
+    """
+    destination = Path(destination)
+    if destination.is_symlink():
+        raise ValueError("Canonical dataset destination cannot be a link")
+    destination.mkdir(parents=True, exist_ok=True)
+    expected = {LOCAL_MARKER}
+    with Path(manifest).open(encoding="utf-8") as rows:
+        for line in rows:
+            row = json.loads(line)
+            relative = row["relative"]
+            expected.add(relative)
+            target = destination.joinpath(*relative.split("/"))
+            if row["kind"] == "directory":
+                if target.exists() and (target.is_symlink() or not target.is_dir()):
+                    raise ValueError("Canonical directory collision: " + str(target))
+                target.mkdir(parents=True, exist_ok=True)
+                continue
+            source = Path(row["source"])
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if target.exists():
+                if target.is_symlink() or not target.is_file() or not os.path.samefile(source, target):
+                    raise ValueError("Canonical file collision: " + str(target))
+            else:
+                try:
+                    os.link(str(source), str(target), follow_symlinks=False)
+                except OSError as error:
+                    raise OSError(
+                        "Local dataset hardlink failed; source and dataset must be on "
+                        "the same Windows local volume: %s -> %s: %s" %
+                        (source, target, error)) from error
+    for current, directories, files in os.walk(destination):
+        current = Path(current)
+        for name in directories + files:
+            relative = (current / name).relative_to(destination).as_posix()
+            if relative not in expected and not any(
+                    item.startswith(relative + "/") for item in expected):
+                raise ValueError("Unexpected file in canonical dataset: " + relative)
+    marker = destination / LOCAL_MARKER
+    payload = dict(schema="morai_local_dataset_materialization_v1",
+                   identity=identity, hardlinked=True,
+                   source_timestamps_modified=False, **metadata)
+    temporary = marker.with_name(marker.name + ".tmp." + str(os.getpid()))
+    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(str(temporary), str(marker))
+    return destination
+
+
+def _materialize_specs(specs, destination, state, metadata, excluded_names=()):
+    state = Path(state)
+    state.mkdir(parents=True, exist_ok=True)
+    draft = state / "inventory.new.jsonl"
+    count, size = inventory_mapped(specs, draft, str, excluded_names=excluded_names)
+    fingerprint = sha256(draft)
+    manifest = state / ("inventory-" + fingerprint + ".jsonl")
+    os.replace(str(draft), str(manifest))
+    identity = hashlib.sha256(
+        (str(Path(destination).resolve()).casefold() + "\n" + fingerprint).encode()
+    ).hexdigest()
+    _materialize_inventory(manifest, destination, identity, dict(
+        inventory_sha256=fingerprint, files=count, bytes=size, **metadata))
+    return dict(path=str(Path(destination).resolve()), identity=identity,
+                inventory=str(manifest), files=count, bytes=size)
+
+
+def materialize_validated(report_path):
+    """Build the canonical scenario/campaign/run tree on the local drive."""
+    from ssd_storage import SSD_ROOT
+    report_path, report, campaign, plan = _verified_report(report_path)
+    legacy_base = Path(SSD_ROOT) / "sensor_record_auto_v1"
+    category = scenario_folder(plan)
+    canonical_campaign = (Path(SSD_ROOT) / "dataset" / category
+                          / component(plan["campaign_id"]))
+    state_root = (legacy_base / ".local_publications" / category
+                  / component(plan["campaign_id"]))
+    runs = []
+    for lap in report["laps"]:
+        # A completed campaign may retain failed attempts in its sealed report.
+        # Their payload has already been removed by the fail-closed cleanup, so
+        # only explicitly valid laps belong in the canonical training tree.
+        if lap.get("valid") is not True:
+            continue
+        name = component(lap["run_name"])
+        result = _materialize_specs(
+            ((root, "") for root in roots_for_run(legacy_base, name)),
+            canonical_campaign / name, state_root / name,
+            dict(kind="run", scenario=plan.get("scenario_name", "full_loop"),
+                 scenario_folder=category, campaign_id=plan["campaign_id"],
+                 run_name=name, validation_report=str(report_path)),
+        )
+        result["run_name"] = name
+        result["relative"] = name
+        runs.append(result)
+    metadata = _materialize_specs(
+        ((campaign / name, "") for name in
+         ("campaign_plan.json", "runs.tsv", "COLLECTION_COMPLETE.json")),
+        canonical_campaign / "_campaign" / "metadata",
+        state_root / "_campaign_metadata",
+        dict(kind="campaign_metadata", scenario_folder=category,
+             campaign_id=plan["campaign_id"]),
+    )
+    validation = _materialize_specs(
+        ((report_path.parent, ""),),
+        canonical_campaign / "_campaign" / "validations" / report_path.parent.name,
+        state_root / ("validation_" + report_path.parent.name),
+        dict(kind="campaign_validation", scenario_folder=category,
+             campaign_id=plan["campaign_id"], validation=report_path.parent.name),
+        excluded_names={"nas_publication.json", "local_dataset_publication.json"},
+    )
+    metadata["relative"] = "_campaign/metadata"
+    validation["relative"] = "_campaign/validations/" + report_path.parent.name
+    return dict(schema="morai_local_dataset_campaign_v1", scenario_folder=category,
+                campaign_id=plan["campaign_id"], campaign=str(canonical_campaign),
+                runs=runs, evidence=[metadata, validation], hardlinked=True,
+                source_timestamps_modified=False)
 
 
 def make_job(base, run_name, plan, target_root, state_root, translate):
@@ -156,26 +354,47 @@ def make_job(base, run_name, plan, target_root, state_root, translate):
     return job_path
 
 
-def publish_validated(report_path, target_root=None, dry_run=False):
+def make_tree_job(source, relative_destination, plan, target_root, state_root, translate):
+    """Publish one already canonical local tree without changing its layout."""
+    source = Path(source).resolve()
+    if source.is_symlink() or not source.is_dir():
+        raise ValueError("Missing/linked canonical dataset source: " + str(source))
+    parts = tuple(component(part) for part in str(relative_destination).split("/") if part)
+    if not parts:
+        raise ValueError("Canonical destination must have at least one component")
+    state_name = "__".join(parts)
+    state = Path(state_root) / state_name
+    state.mkdir(parents=True, exist_ok=True)
+    draft = state / "inventory.new.jsonl"
+    count, size = inventory((source,), draft, translate)
+    fingerprint = sha256(draft)
+    manifest = state / ("inventory-" + fingerprint + ".jsonl")
+    os.replace(str(draft), str(manifest))
+    destination = str(PureWindowsPath(
+        validate_target(target_root), scenario_folder(plan),
+        component(plan["campaign_id"]), *parts))
+    identity = hashlib.sha256(
+        (destination.casefold() + "\n" + fingerprint).encode()).hexdigest()
+    job = dict(schema="morai_nas_transfer_v1", identity=identity,
+               destination=destination, sources=[translate(source)],
+               inventory=translate(manifest), inventory_sha256=fingerprint,
+               state=translate(state / identity), files=count, bytes=size,
+               campaign_id=plan["campaign_id"], publication_relative="/".join(parts))
+    job_path = state / ("job-" + identity + ".json")
+    job_path.write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8")
+    return job_path
+
+
+def publish_validated(report_path, target_root=None, dry_run=False,
+                      local_publication=None):
     from runtime_paths import LOCAL_MACHINE, POWERSHELL_EXE, windows_path_from_wsl
     from ssd_storage import SSD_ROOT
-    report_path = Path(report_path)
-    report = json.loads(report_path.read_text(encoding="utf-8"))
-    seal = json.loads((report_path.parent / "COMPLETE.json").read_text(encoding="utf-8"))
-    if (report.get("valid") is not True or seal.get("status") != "passed"
-            or seal.get("files", {}).get("report.json") != sha256(report_path)):
-        raise ValueError("NAS publication requires a passed, sealed campaign report")
-    campaign = Path(report["campaign"]).resolve()
-    plan_path = campaign / "campaign_plan.json"
-    if report.get("campaign_plan_sha256") != sha256(plan_path):
-        raise ValueError("Campaign plan changed after validation")
-    plan = json.loads(plan_path.read_text(encoding="utf-8"))
-    if report.get("runs_ledger_sha256") != sha256(campaign / "runs.tsv"):
-        raise ValueError("Run ledger changed after validation")
-    if report.get("collection_completion_sha256") != sha256(campaign / "COLLECTION_COMPLETE.json"):
-        raise ValueError("Collection completion changed after validation")
-    if len(report["laps"]) != int(plan["requested_laps"]) or not report["laps"]:
-        raise ValueError("Validation does not cover the complete campaign")
+    report_path, report, campaign, plan = _verified_report(report_path)
+    local = local_publication or materialize_validated(report_path)
+    if (local.get("schema") != "morai_local_dataset_campaign_v1"
+            or local.get("campaign_id") != plan["campaign_id"]
+            or local.get("scenario_folder") != scenario_folder(plan)):
+        raise ValueError("Canonical local dataset identity differs from validation")
     target_root = (target_root or os.environ.get("MORAI_NAS_ROOT")
                    or LOCAL_MACHINE.get("nas_root"))
     if not target_root:
@@ -189,18 +408,20 @@ def publish_validated(report_path, target_root=None, dry_run=False):
     if not worker.exists():
         shutil.copyfile(worker_source, worker)
     results = []
-    for lap in report["laps"]:
-        if lap.get("valid") is not True:
-            raise ValueError("Invalid lap cannot be published")
-        job_path = make_job(SSD_ROOT / "sensor_record_auto_v1", lap["run_name"],
-                            plan, target_root, state_root, windows_path_from_wsl)
+    publications = local["runs"] + local["evidence"]
+    for publication in publications:
+        label = publication.get("run_name", publication["relative"])
+        job_path = make_tree_job(
+            publication["path"], publication["relative"], plan,
+            target_root, state_root, windows_path_from_wsl)
         job = json.loads(job_path.read_text(encoding="utf-8"))
         print("[NAS] %s: %d files, %.2f GiB -> %s%s" % (
-            lap["run_name"], job["files"], job["bytes"] / 2**30,
+            label, job["files"], job["bytes"] / 2**30,
             job["destination"], " (plan only; destination untouched)" if dry_run else ""),
             flush=True)
         if dry_run:
-            results.append(dict(run_name=lap["run_name"], planned=True, job=str(job_path)))
+            results.append(dict(publication=label, planned=True, job=str(job_path),
+                                destination=job["destination"]))
             continue
         state = job_path.parent / job["identity"]
         state.mkdir(exist_ok=True)
@@ -260,6 +481,6 @@ def publish_validated(report_path, target_root=None, dry_run=False):
             raise RuntimeError("NAS transfer stopped (exit %d): %s;%s local data retained. "
                                "Details: %s. Rerun 03 or use --nas-only with this sealed report."
                                % (code, reason, detail, exit_path))
-        results.append(dict(run_name=lap["run_name"], verified_readback=True,
+        results.append(dict(publication=label, verified_readback=True,
                             destination=job["destination"], remote_durability_verified=False))
     return results

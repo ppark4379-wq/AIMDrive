@@ -111,6 +111,11 @@ def objects_for_entry(gt, geometry):
             raise ValueError("Incomplete object geometry in sealed GT timeline")
         key = str(obj.get("instance_key"))
         audit = geometry_rows.get(key, {})
+        # V2 retains the complete MORAI inventory as evidence, but actors whose
+        # conservative full box is proven disjoint from the supervised BEV do
+        # not have a target cell and must not invalidate or enter the renderer.
+        if audit.get("training_bev_relevant") is False:
+            continue
         result.append({
             "id": str(obj.get("id")),
             "instance_key": key,
@@ -181,10 +186,52 @@ def effective_admission_directory(episode):
         and corrected.get("training_visible") is False
     ):
         raise ValueError("Corrected admission evidence mismatch")
-    return corrected_dir, {
+    seals = {
         "admission_recovery": digest(recovery_path),
         "effective_admission": digest(corrected_dir / "COMPLETE.json"),
     }
+    geometry_record = recovery.get("corrected_object_geometry")
+    if geometry_record is not None:
+        geometry_relative = geometry_record.get("path")
+        geometry_path = (run / str(geometry_relative)).resolve()
+        if (run.resolve() not in geometry_path.parents
+                or geometry_path.name != "report.json"):
+            raise ValueError("Object geometry recovery path escapes its run")
+        geometry_dir = geometry_path.parent
+        _verify_seal(geometry_dir)
+        geometry = load(geometry_path)
+        if not (
+            geometry_record.get("sha256") == digest(geometry_path)
+            and geometry_record.get("seal_sha256")
+                == digest(geometry_dir / "COMPLETE.json")
+            and geometry.get("schema") == "morai_sensor_record_object_geometry_audit_v2"
+            and geometry.get("raw_manifest_sha256") == original.get("raw_manifest_sha256")
+            and geometry.get("structural_valid") is True
+            and corrected.get("input_seals", {}).get("object_geometry_audit")
+                == digest(geometry_dir / "COMPLETE.json")
+        ):
+            raise ValueError("Corrected object geometry evidence mismatch")
+        seals["effective_object_geometry"] = digest(geometry_dir / "COMPLETE.json")
+    return corrected_dir, seals
+
+
+def effective_object_geometry_directory(episode):
+    """Select the geometry ledger linked by the additive admission recovery."""
+    episode = Path(episode).resolve()
+    recovery_path = episode.parent / "ADMISSION_RECOVERY.json"
+    if not recovery_path.is_file():
+        directory = episode / "object_geometry_audit_v1"
+        _verify_seal(directory)
+        return directory
+    # This validates the full recovery chain before returning its geometry.
+    effective_admission_directory(episode)
+    recovery = json.loads(recovery_path.read_text(encoding="utf-8"))
+    if recovery.get("corrected_object_geometry") is None:
+        directory = episode / "object_geometry_audit_v1"
+        _verify_seal(directory)
+        return directory
+    path = (episode.parent / recovery["corrected_object_geometry"]["path"]).resolve()
+    return path.parent
 
 
 def verify_episode_evidence(episode, expected):
@@ -209,7 +256,10 @@ def verify_episode_evidence(episode, expected):
     )
     if recovery_expected:
         _, recovery_seals = effective_admission_directory(episode)
-        for key in ("admission_recovery", "effective_admission"):
+        keys = ["admission_recovery", "effective_admission"]
+        if "effective_object_geometry" in expected:
+            keys.append("effective_object_geometry")
+        for key in keys:
             if expected.get(key) != recovery_seals.get(key):
                 raise ValueError("Sensor Record recovery seal changed: " + key)
 
@@ -275,12 +325,13 @@ def build_episode_manifest(episode, *, campaign_validation_sha256, split,
     if expected_evidence is not None:
         verify_episode_evidence(episode, expected_evidence)
     admission_dir, recovery_seals = effective_admission_directory(episode)
+    geometry_dir = effective_object_geometry_directory(episode)
     evidence.update(recovery_seals)
 
     load = lambda path: json.loads(Path(path).read_text(encoding="utf-8"))
     admission = load(admission_dir / "frames.json")
     gt_frames = load(episode / "gt_timeline_v1/frames.json")
-    geometry = load(episode / "object_geometry_audit_v1/frames.json")
+    geometry = load(geometry_dir / "frames.json")
     signals = load(episode / "route_signal_audit_v1/frames.json")
     route_report = load(episode / "route_signal_audit_v1/report.json")
     active = load(episode / "quality/active_signals.json")

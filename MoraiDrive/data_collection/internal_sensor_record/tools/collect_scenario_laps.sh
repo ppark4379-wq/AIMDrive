@@ -88,6 +88,14 @@ case "$SCENARIO" in
         exit 2
         ;;
 esac
+case "$SCENARIO" in
+    full_loop) SCENARIO_FOLDER="full_route" ;;
+    full_loop_normal) SCENARIO_FOLDER="normal_driving" ;;
+    full_loop_static) SCENARIO_FOLDER="static_obstacle" ;;
+    full_loop_dynamic) SCENARIO_FOLDER="dynamic_obstacle" ;;
+    full_loop_roundabout) SCENARIO_FOLDER="roundabout" ;;
+    full_loop_highway) SCENARIO_FOLDER="highway" ;;
+esac
 BASE_SEED="${MORAI_BASE_SEED:-26091200}"
 LAP_WALL_SECONDS="${MORAI_LAP_WALL_SECONDS:-3000}"
 ANALYSIS_PYTHON="$MORAI_ANALYSIS_PYTHON"
@@ -216,14 +224,15 @@ fi
 RUNS_FILE="$CAMPAIGN_DIR/runs.tsv"
 mkdir -p "$CAMPAIGN_DIR"
 printf 'lap\tseed\trun_name\tstatus\tweather\ttime_hour\tstatic_obstacle\tdynamic_obstacle\tstarted_utc\tfinished_utc\n' > "$RUNS_FILE"
-/usr/bin/python3 - "$CAMPAIGN_DIR/campaign_plan.json" "$CAMPAIGN_ID" "$LAPS" "$BASE_SEED" "$LAP_WALL_SECONDS" "$SIMULATOR_PID" "$SCENARIO" "$SCENARIO_RUNTIME" <<'PY'
+/usr/bin/python3 - "$CAMPAIGN_DIR/campaign_plan.json" "$CAMPAIGN_ID" "$LAPS" "$BASE_SEED" "$LAP_WALL_SECONDS" "$SIMULATOR_PID" "$SCENARIO" "$SCENARIO_RUNTIME" "$SCENARIO_FOLDER" <<'PY'
 import json, pathlib, sys, time
-path, campaign_id, laps, seed, seconds, pid, scenario_name, scenario_runtime = sys.argv[1:]
+path, campaign_id, laps, seed, seconds, pid, scenario_name, scenario_runtime, scenario_folder = sys.argv[1:]
 payload = {
     "schema": "morai_sensor_record_campaign_v1",
     "campaign_id": campaign_id,
     "scenario_name": scenario_name,
     "scenario_runtime": scenario_runtime,
+    "dataset_scenario_folder": scenario_folder,
     "scenario_runtime_policy": "current team checkout; requires live validation",
     "requested_laps": int(laps),
     "base_seed": int(seed),

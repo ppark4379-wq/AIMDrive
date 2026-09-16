@@ -20,16 +20,36 @@ def _transferred_native_mirror(run, recorded_root, ssd_root):
     run=Path(run)
     run_root=run.parent if re.fullmatch(r'episode_[0-9]+',run.name) else run
     base=Path(ssd_root)/'sensor_record_auto_v1'
+    canonical=Path(ssd_root)/'dataset'
+    is_canonical=False
     try:
         run_root.relative_to(base)
     except ValueError:
-        return None
+        try:
+            relative=run_root.relative_to(canonical)
+        except ValueError:
+            return None
+        if (len(relative.parts)!=3
+                or not all(re.fullmatch(r'[A-Za-z0-9_]{1,80}',part)
+                           for part in relative.parts)):
+            return None
+        is_canonical=True
     if Path(recorded_root).name != run_root.name:
         return None
     session_path=run_root/'SESSION.json'
     result_path=run_root/'NATIVE_CAPTURE_RESULT.json'
     if not session_path.is_file() or not result_path.is_file():
         return None
+    if is_canonical:
+        marker_path=run_root/'.LOCAL_DATASET_COMPLETE.json'
+        if not marker_path.is_file():
+            return None
+        marker=json.loads(marker_path.read_text())
+        if (marker.get('schema')!='morai_local_dataset_materialization_v1'
+                or marker.get('kind')!='run'
+                or marker.get('run_name')!=run_root.name
+                or marker.get('hardlinked') is not True):
+            return None
     session=json.loads(session_path.read_text())
     result=json.loads(result_path.read_text())
     if session.get('plan',{}).get('session') != run_root.name:

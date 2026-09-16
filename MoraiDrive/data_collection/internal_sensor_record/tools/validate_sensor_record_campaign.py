@@ -123,6 +123,37 @@ def complete_offline_review(run, *, analysis_python, env, log):
     return results
 
 
+def complete_bev_geometry_recovery(run, *, analysis_python, env, log):
+    """Add V2 BEV-scoped geometry evidence without rewriting V1 seals."""
+    recovery = run / "ADMISSION_RECOVERY.json"
+    if recovery.is_file():
+        existing = load(recovery)
+        if existing.get("corrected_object_geometry") is None:
+            print("[SKIP] existing legacy admission recovery keeps V1 geometry", flush=True)
+            return
+    print("[REVIEW] checking BEV-aware object geometry recovery", flush=True)
+    started = time.monotonic()
+    process = subprocess.Popen([
+        str(analysis_python),
+        str(INTEGRATION / "tools" / "recover_sensor_record_bev_geometry.py"),
+        "--run", str(run),
+    ], env=env, stdout=log, stderr=subprocess.STDOUT)
+    next_heartbeat = started + 30
+    while process.poll() is None:
+        time.sleep(1)
+        now = time.monotonic()
+        if now >= next_heartbeat:
+            print("[REVIEW] BEV geometry recovery running: %.0fs elapsed" %
+                  (now - started), flush=True)
+            next_heartbeat = now + 30
+    if process.returncode:
+        raise RuntimeError("BEV geometry recovery failed; see " + log.name)
+    if not recovery.is_file():
+        raise RuntimeError("BEV geometry recovery did not produce a record")
+    print("[PASS] BEV geometry recovery: %.1fs" %
+          (time.monotonic() - started), flush=True)
+
+
 def load(path):
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
@@ -381,6 +412,8 @@ def _main():
                         help="Only validate capture; do not build the direct-reference training manifests")
     parser.add_argument("--rebuild-route-review", action="store_true",
                         help="Archive route audit, review and admission, then rebuild from captured route inputs")
+    parser.add_argument("--allow-valid-subset", action="store_true",
+                        help="Publish only valid complete laps when failed laps are sealed and excluded")
     nas = parser.add_mutually_exclusive_group()
     nas.add_argument("--no-nas-copy", action="store_true", help="Finish with local validation only")
     nas.add_argument("--nas-plan-only", action="store_true", help="Plan export without accessing NAS")
@@ -493,6 +526,13 @@ def _main():
                 with log_path.open("a", encoding="utf-8") as log:
                     complete_offline_review(run, analysis_python=analysis_python,
                                             env=review_env, log=log)
+                    admission_report = (
+                        run / "episode_000" / "admission_v1" / "report.json"
+                    )
+                    if admission_report.is_file():
+                        complete_bev_geometry_recovery(
+                            run, analysis_python=analysis_python,
+                            env=review_env, log=log)
                 lap = validate_lap(row, scenario_name)
                 lap.update({
                     "capture_status": "succeeded",
@@ -600,7 +640,9 @@ def _main():
         and int(completion_payload.get("captured_laps", -1)) == len(captured_laps)
         and int(completion_payload.get("failed_laps", 0)) == len(capture_failures)
     )
-    campaign_valid = bool(
+    invalid_laps = [row for row in laps if row.get("valid") is not True]
+    minimum_valid_laps = 1 if requested == 1 else 2
+    standard_valid = bool(
         completion.is_file()
         and scenario_supported
         and completion_scenario == scenario_name
@@ -609,11 +651,32 @@ def _main():
         and completion_counts_match
         and cleanup_evidence_ok
         and not validation_infrastructure_errors
-        and len(valid_laps) >= 2
+        and len(valid_laps) >= minimum_valid_laps
         and variation_valid
     )
+    full_variation_coverage = {
+        "weather": sorted({row.get("weather") for row in laps if row.get("weather")}),
+        "time_hour": sorted({row.get("time_hour") for row in laps
+                             if row.get("time_hour") is not None}),
+        "static_obstacle": sorted({row.get("static_obstacle") for row in laps
+                                   if row.get("static_obstacle")}),
+        "dynamic_obstacle": sorted({row.get("dynamic_obstacle") for row in laps
+                                    if row.get("dynamic_obstacle")}),
+    }
+    subset_coverage_preserved = all(
+        variation_coverage[key] == full_variation_coverage[key]
+        for key in variation_coverage
+    )
+    subset_mode = bool(args.allow_valid_subset and invalid_laps)
+    subset_valid = bool(
+        standard_valid and subset_mode and len(valid_laps) >= 2
+        and subset_coverage_preserved
+    )
+    published_laps = valid_laps if subset_mode else laps
+    report_schema = ("morai_sensor_record_campaign_validation_subset_v1"
+                     if subset_mode else "morai_sensor_record_campaign_validation_v1")
     report = {
-        "schema": "morai_sensor_record_campaign_validation_v1",
+        "schema": report_schema,
         "campaign": str(campaign),
         "scenario_name": scenario_name,
         "analysis_python": str(analysis_python),
@@ -636,20 +699,32 @@ def _main():
         "validation_failed": len(validation_failures),
         "validation_failed_laps": [int(row["lap"]) for row in validation_failures],
         "completed_valid_laps": len(valid_laps),
+        "selected_laps": len(valid_laps),
         "all_captured_laps_valid": not validation_failures,
         "cleanup_evidence_valid": cleanup_evidence_ok,
         "validation_infrastructure_errors": validation_infrastructure_errors,
-        "total_frames": sum(int(row.get("frames", 0)) for row in laps),
-        "total_dataset_build_candidates": sum(int(row.get("dataset_build_candidates", 0)) for row in laps),
-        "total_excluded_frames": sum(int(row.get("excluded_frames", 0)) for row in laps),
-        "total_native_files": sum(int(row.get("native_files", 0)) for row in laps),
-        "total_native_bytes": sum(int(row.get("native_bytes", 0)) for row in laps),
-        "laps": laps,
+        "total_frames": sum(int(row.get("frames", 0)) for row in valid_laps),
+        "total_dataset_build_candidates": sum(
+            int(row.get("dataset_build_candidates", 0)) for row in valid_laps),
+        "total_excluded_frames": sum(
+            int(row.get("excluded_frames", 0)) for row in valid_laps),
+        "total_native_files": sum(int(row.get("native_files", 0)) for row in valid_laps),
+        "total_native_bytes": sum(int(row.get("native_bytes", 0)) for row in valid_laps),
+        "captured_total_frames": sum(int(row.get("frames", 0)) for row in laps),
+        "captured_total_native_bytes": sum(int(row.get("native_bytes", 0)) for row in laps),
+        "laps": published_laps,
+        "excluded_laps": invalid_laps if subset_mode else [],
+        "subset_policy": (
+            "whole_lap_fail_closed_exclusion_with_full_variation_preservation_v1"
+            if subset_mode else "terminal_failed_attempts_retained_as_evidence_v1"
+        ),
+        "subset_coverage_preserved": subset_coverage_preserved,
         "adjacent_environment_and_obstacle_variation": adjacent_variation,
         "variation_contract": "weather alternates; time and obstacle choices may repeat",
         "variation_coverage": variation_coverage,
+        "full_attempt_variation_coverage": full_variation_coverage,
         "variation_valid": variation_valid,
-        "valid": campaign_valid,
+        "valid": subset_valid if subset_mode else standard_valid,
         "source_timestamps_modified": False,
         "physical_simultaneity_verified": False,
         "training_visible": False,
@@ -665,7 +740,7 @@ def _main():
     output.mkdir(exist_ok=False)
     write_json(output / "report.json", report)
     write_json(output / "COMPLETE.json", {
-        "schema": "morai_sensor_record_campaign_validation_v1",
+        "schema": report_schema,
         "status": "passed" if report["valid"] else "failed",
         "files": {"report.json": digest(output / "report.json")},
         "source_timestamps_modified": False,
@@ -723,15 +798,50 @@ def _main():
         raise SystemExit(2)
     if training is not None and not training["training_ready"]:
         raise SystemExit(3)
-    if not args.no_nas_copy:
+    local_publication = None
+    if plan.get("campaign_id"):
+        from nas_publish import materialize_validated
+        try:
+            local_publication = materialize_validated(output / "report.json")
+            write_json(output / "local_dataset_publication.json", local_publication)
+            print("[LOCAL] canonical dataset ready: " + local_publication["campaign"],
+                  flush=True)
+        except Exception as exc:
+            print("[LOCAL] Validation passed but canonical dataset materialization failed: "
+                  + str(exc), file=sys.stderr)
+            raise SystemExit(4)
+    else:
+        print("[LOCAL] legacy campaign plan has no campaign_id; canonical materialization skipped",
+              flush=True)
+
+    from runtime_paths import LOCAL_MACHINE
+    auto_nas = LOCAL_MACHINE.get("nas_auto_publish", False)
+    if not isinstance(auto_nas, bool):
+        print("[NAS] local_machine.json nas_auto_publish must be true or false",
+              file=sys.stderr)
+        raise SystemExit(4)
+    nas_requested = bool(
+        args.nas_plan_only or args.nas_root
+        or os.environ.get("MORAI_NAS_ROOT", "").strip()
+        or auto_nas
+    )
+    if not args.no_nas_copy and nas_requested:
+        if local_publication is None:
+            print("[NAS] canonical local dataset was not materialized", file=sys.stderr)
+            raise SystemExit(4)
         from nas_publish import publish_validated
         try:
-            exports = publish_validated(output / "report.json", args.nas_root, args.nas_plan_only)
+            exports = publish_validated(
+                output / "report.json", args.nas_root, args.nas_plan_only,
+                local_publication=local_publication)
             write_json(output / "nas_publication.json", {"exports": exports})
         except Exception as exc:
             print("[NAS] Local validation PASSED; export incomplete, local data retained: "
                   + str(exc), file=sys.stderr)
             raise SystemExit(4)
+    elif not args.no_nas_copy:
+        print("[NAS] automatic publication is disabled on this PC; local dataset retained",
+              flush=True)
 
 
 def main():
