@@ -23,6 +23,8 @@ sys.path[:0] = [str(INTEGRATION), str(PROJECT_ROOT)]
 from async_capture.journal import digest, verify_run, write_json
 from async_capture.sensor_record_admission import verify_sealed_directory
 from ssd_storage import SSD_ROOT, require_ssd
+from async_capture.route_sources import resolve_route_sources, verify_route_report
+from async_capture.route_review_rebuild import archive_route_review
 from scenario_runner.scenarios.segment_modes.modes import PRIMARY_SCENARIOS
 from python_environment import (
     build_analysis_environment,
@@ -89,6 +91,10 @@ def complete_offline_review(run, *, analysis_python, env, log):
     for tool, output, arguments in offline_stages(run, episode):
         seal = output / "COMPLETE.json"
         if seal.is_file():
+            if tool == "audit_sensor_record_route_signals.py":
+                verify_sealed_directory(output, "COMPLETE.json")
+                sources = resolve_route_sources(episode, load(run / "sensor_contract.json"))
+                verify_route_report(sources, load(output / "report.json"))
             print("[SKIP] %s is already sealed" % tool, flush=True)
             results.append({"tool": tool, "return_code": 0, "already_sealed": True})
             continue
@@ -203,6 +209,13 @@ def validate_lap(row, expected_scenario="full_loop"):
             errors.append(relative + ":" + str(exc))
             return {} if default is None else default
 
+    sources = None
+    try:
+        sources = resolve_route_sources(episode, load(run / "sensor_contract.json"))
+        verify_route_report(sources, load(episode / "route_signal_audit_v1/report.json"))
+    except Exception as exc:
+        errors.append("route_source:" + str(exc))
+
     result = safe("NATIVE_CAPTURE_RESULT.json")
     setup = safe("episode_000/episode.json")
     profile_state = safe("episode_000/campaign_profile_state.json")
@@ -284,6 +297,7 @@ def validate_lap(row, expected_scenario="full_loop"):
         "lap": int(row["lap"]),
         "seed": int(row["seed"]),
         "run_name": row["run_name"],
+        "route_source_resolution": sources["provenance"] if sources else None,
         "run": str(run),
         "scenario_name": observed_scenario,
         "weather": setup.get("profile", {}).get("weather"),
@@ -307,13 +321,31 @@ def validate_lap(row, expected_scenario="full_loop"):
     }
 
 
-def main():
+def _main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("campaign", help="campaign_id or local campaign directory")
     parser.add_argument("--no-prepare-training", action="store_true",
                         help="Only validate capture; do not build the direct-reference training manifests")
+    parser.add_argument("--rebuild-route-review", action="store_true",
+                        help="Archive route audit, review and admission, then rebuild from captured route inputs")
+    nas = parser.add_mutually_exclusive_group()
+    nas.add_argument("--no-nas-copy", action="store_true", help="Finish with local validation only")
+    nas.add_argument("--nas-plan-only", action="store_true", help="Plan export without accessing NAS")
+    nas.add_argument("--nas-only", metavar="REPORT", help="Resume export from a passed sealed report")
+    parser.add_argument("--nas-root", help="Windows NAS root; overrides MORAI_NAS_ROOT/local config")
     args = parser.parse_args()
     campaign = resolve_campaign(args.campaign)
+    if args.nas_only:
+        report_path = Path(args.nas_only).resolve()
+        if report_path.parent.parent != campaign.resolve():
+            parser.error("--nas-only report must belong to the requested campaign")
+        from nas_publish import publish_validated
+        try:
+            print(json.dumps(publish_validated(report_path, args.nas_root), indent=2))
+        except Exception as exc:
+            print("[NAS] Local data retained: " + str(exc), file=sys.stderr)
+            raise SystemExit(4)
+        return
     configured_python = os.environ.get("MORAI_ANALYSIS_PYTHON", "").strip()
     candidates = [
         Path(configured_python).expanduser() if configured_python else None,
@@ -351,6 +383,9 @@ def main():
             run = BASE / row["run_name"]
             log_path = campaign / (row["run_name"] + "_offline_review.log")
             try:
+                if args.rebuild_route_review:
+                    archived = archive_route_review(run)
+                    print("[REBUILD] Previous route-derived evidence retained at %s" % archived, flush=True)
                 with log_path.open("a", encoding="utf-8") as log:
                     complete_offline_review(run, analysis_python=analysis_python,
                                             env=review_env, log=log)
@@ -478,6 +513,21 @@ def main():
         raise SystemExit(2)
     if training is not None and not training["training_ready"]:
         raise SystemExit(3)
+    if not args.no_nas_copy:
+        from nas_publish import publish_validated
+        try:
+            exports = publish_validated(output / "report.json", args.nas_root, args.nas_plan_only)
+            write_json(output / "nas_publication.json", {"exports": exports})
+        except Exception as exc:
+            print("[NAS] Local validation PASSED; export incomplete, local data retained: "
+                  + str(exc), file=sys.stderr)
+            raise SystemExit(4)
+
+
+def main():
+    from process_guard import process_lock
+    with process_lock("campaign"), process_lock("capture"), process_lock("training"):
+        _main()
 
 
 if __name__ == "__main__":

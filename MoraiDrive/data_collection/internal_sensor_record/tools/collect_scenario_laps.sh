@@ -203,186 +203,8 @@ fi
 # A Ctrl-C from an older launcher may have left its scenario child holding the
 # advisory capture lock.  Recover only when both the exact executable path and
 # a terminal interrupted/failed campaign ledger prove that it is stale.
-/usr/bin/python3 - "$INTEGRATION" "$BASE" "$SIMULATOR_PID" <<'PY'
-import csv
-import fcntl
-import hashlib
-import json
-import os
-from pathlib import Path
-import signal
-import subprocess
-import sys
-import time
-
-integration = Path(sys.argv[1]).resolve()
-base = Path(sys.argv[2]).resolve()
-simulator_pid = int(sys.argv[3])
-lock_path = base / ".locks" / "collector_capture.lock"
-campaign_lock_path = base / ".locks" / "collector_campaign.lock"
-runner_path = (integration / "tools" / "run_async_scenario_review.py").resolve()
-collector_path = (integration / "tools" / "collect_async_raw.py").resolve()
-
-def lock_is_free(path):
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a") as stream:
-            try:
-                fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                return False
-            return True
-    except OSError as error:
-        print("[FAIL] capture lock 저장소를 사용할 수 없습니다: %s: %s" %
-              (path, error), file=sys.stderr)
-        raise SystemExit(2)
-
-def locks_are_free():
-    return lock_is_free(lock_path) and lock_is_free(campaign_lock_path)
-
-if locks_are_free():
-    raise SystemExit(0)
-
-terminal = {}
-for ledger in (base / "campaigns").glob("*/runs.tsv"):
-    try:
-        with ledger.open(newline="", encoding="utf-8") as stream:
-            for row in csv.DictReader(stream, delimiter="\t"):
-                terminal[row["run_name"]] = row["status"]
-    except (OSError, KeyError):
-        continue
-
-lock_identities = {}
-for path in (lock_path, campaign_lock_path):
-    stat = path.stat()
-    lock_identities[(stat.st_dev, stat.st_ino)] = path.name
-
-candidates = []
-for proc in Path("/proc").glob("[0-9]*"):
-    try:
-        args = (proc / "cmdline").read_bytes().split(b"\0")
-        args = [value.decode(errors="surrogateescape") for value in args if value]
-    except (OSError, PermissionError):
-        continue
-    held_locks = []
-    try:
-        for descriptor in (proc / "fd").iterdir():
-            try:
-                stat = descriptor.stat()
-            except (OSError, PermissionError):
-                continue
-            name = lock_identities.get((stat.st_dev, stat.st_ino))
-            if name:
-                held_locks.append(name)
-    except (OSError, PermissionError):
-        continue
-    if not held_locks:
-        continue
-    script_arg = next((value for value in args[1:] if value.endswith(".py")), None)
-    if script_arg is None:
-        candidates.append({"pid": int(proc.name), "kind": "unknown",
-                           "held_locks": sorted(held_locks), "args": args[:8],
-                           "safe_code_identity": False})
-        continue
-    try:
-        executable = Path(script_arg).resolve()
-    except OSError:
-        executable = Path(script_arg)
-    reference = {runner_path.name: runner_path,
-                 collector_path.name: collector_path}.get(executable.name)
-    same_code = False
-    if reference is not None:
-        try:
-            same_code = (hashlib.sha256(executable.read_bytes()).digest()
-                         == hashlib.sha256(reference.read_bytes()).digest())
-        except OSError:
-            pass
-    if reference is None or "--output" not in args:
-        candidates.append({"pid": int(proc.name), "kind": "unknown",
-                           "held_locks": sorted(held_locks), "args": args[:8],
-                           "script": str(executable),
-                           "safe_code_identity": same_code})
-        continue
-    try:
-        output = Path(args[args.index("--output") + 1]).resolve()
-    except (IndexError, OSError):
-        candidates.append({"pid": int(proc.name), "kind": "unknown",
-                           "held_locks": sorted(held_locks), "args": args[:8],
-                           "script": str(executable),
-                           "safe_code_identity": same_code})
-        continue
-    if executable.name == runner_path.name:
-        run = output
-        kind = "scenario_runner"
-    else:
-        # collect_async_raw output is <base>/<run>/episode_000/raw.
-        if output.name != "raw" or output.parent.name != "episode_000":
-            continue
-        run = output.parent.parent
-        kind = "raw_recorder"
-    if run.parent != base:
-        candidates.append({"pid": int(proc.name), "kind": kind,
-                           "held_locks": sorted(held_locks), "args": args[:8],
-                           "script": str(executable), "run": run.name,
-                           "output": str(output), "status": "different_storage_root",
-                           "safe_code_identity": same_code})
-        continue
-    status = terminal.get(run.name)
-    candidates.append({"pid": int(proc.name), "kind": kind,
-                       "run": run.name, "output": str(output), "status": status})
-    candidates[-1].update(held_locks=sorted(held_locks),
-                          script=str(executable), safe_code_identity=same_code)
-
-stale = [row for row in candidates if row.get("safe_code_identity") and
-         (row.get("status") == "interrupted"
-          or str(row.get("status")).startswith("failed_"))]
-active = [row for row in candidates if row not in stale]
-if active or not stale or len({row["run"] for row in stale}) != 1:
-    print("[FAIL] 다른 수집 프로세스가 capture lock을 사용 중입니다.", file=sys.stderr)
-    for row in candidates:
-        print("       PID=%s kind=%s run=%s status=%s script=%s" % (
-            row.get("pid"), row.get("kind"), row.get("run", "?"),
-            row.get("status", "?"), row.get("script", "?")), file=sys.stderr)
-    print("       실행 중인 02번 터미널이 있으면 그 실행을 먼저 정상 종료하세요.",
-          file=sys.stderr)
-    print(json.dumps({"error": "capture_lock_owner_not_safely_recoverable",
-                      "candidates": candidates}, ensure_ascii=False), file=sys.stderr)
-    raise SystemExit(2)
-
-run_name = stale[0]["run"]
-recovery_name = "stale_capture_recovery_" + str(time.time_ns())
-stop = subprocess.run(
-    [sys.executable, str(integration / "tools" / "recover_sensor_record_stop.py"),
-     "--pid", str(simulator_pid), "--name", recovery_name],
-    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=45,
-)
-if stop.returncode:
-    print(stop.stderr, file=sys.stderr)
-    raise SystemExit(2)
-
-for row in stale:
-    try:
-        os.kill(row["pid"], signal.SIGINT)
-    except ProcessLookupError:
-        pass
-deadline = time.monotonic() + 90
-while time.monotonic() < deadline and not locks_are_free():
-    time.sleep(0.2)
-if not locks_are_free():
-    print(json.dumps({"error": "stale_capture_did_not_release_locks",
-                      "candidates": stale}),
-          file=sys.stderr)
-    raise SystemExit(2)
-
-report = {"schema": "morai_stale_capture_recovery_v1", "run": run_name,
-          "processes": stale,
-          "sensor_record_stop": json.loads(stop.stdout),
-          "signal": "SIGINT", "lock_released": True,
-          "recovered_wall_ns": time.time_ns(), "training_visible": False}
-report_path = base / (recovery_name + ".json")
-report_path.write_text(json.dumps(report, ensure_ascii=False, sort_keys=True) + "\n")
-print("[RECOVERED] 이전 중단 run의 capture/campaign lock을 정상 해제했습니다: " + run_name)
-PY
+/usr/bin/python3 "$INTEGRATION/tools/recover_stale_capture.py" \
+    --base "$BASE" --simulator-pid "$SIMULATOR_PID"
 
 requested_campaign="$CAMPAIGN_ID"
 if [[ -e "$BASE/campaigns/$CAMPAIGN_ID" ]]; then
@@ -443,7 +265,7 @@ pathlib.Path(path).write_text(json.dumps(payload, ensure_ascii=False, sort_keys=
 PY
 
 on_signal() {
-    trap - INT TERM
+    trap - INT TERM HUP
     if [[ -n "$CURRENT_LAP" ]]; then
         coordination="$BASE/$CURRENT_RUN/episode_000/sensor_record_coordination"
         if [[ -n "$COLLECTOR_PID" ]] && kill -0 "$COLLECTOR_PID" 2>/dev/null; then
@@ -477,7 +299,7 @@ on_signal() {
     fi
     exit 130
 }
-trap on_signal INT TERM
+trap on_signal INT TERM HUP
 
 echo "[START] campaign=$CAMPAIGN_ID, scenario=$SCENARIO, laps=$LAPS, runtime=$SCENARIO_RUNTIME, local raw only, storage=$SSD_ROOT, Simulator PID=$SIMULATOR_PID"
 echo "        매 회차 선택 시나리오 START reset, Sunny/Foggy, 11/13/15시, 활성 장애물 재선택"

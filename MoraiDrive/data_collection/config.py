@@ -130,7 +130,6 @@ class DatasetConfig:
     # Machine-local and ignored by Git. The internal recorder exposes its
     # Windows-backed acquisition spool through this same repository path.
     dataset_root: str = str(MORAI_DRIVE / "dataset")
-    archive_root: str = ""  # Local collection only; archive requires an explicit opt-in.
     job_name: str = "competition_train"
     route_name: str = "full_loop"
     # 폴더명: <route>_<drive_tag>_<날짜·시간>_<run_note>

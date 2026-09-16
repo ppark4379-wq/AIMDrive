@@ -32,8 +32,10 @@ def state_for(role, row, failures):
                 for item in prefixes
             ))):
         return "대기: 미수신 또는 오래된 메시지"
-    if any(item.endswith(":" + role) and "reversing" in item for item in prefixes):
-        return "오류: source timestamp 역행/정지"
+    if any(item.endswith(":" + role) and "source" in item for item in prefixes):
+        if row.get("source_reversals", 0) or "reversing_source:" + role in prefixes:
+            return "대기: source timestamp 역행 (모드 전환·시간 초기화 확인)"
+        return "대기: 메시지 수신 중, source timestamp 정지"
     messages = int(row.get("messages", 0) or 0)
     age = row.get("receive_age_s")
     if messages:
@@ -47,48 +49,64 @@ def state_for(role, row, failures):
 def next_actions(report, bridge_ip=None):
     failures = [str(item) for item in report.get("failures", [])]
     actions = []
+    bridge_unavailable = (
+        "clock_ingress_unavailable" in failures
+        or any(item.startswith("BRIDGE_") for item in failures)
+    )
+    if any(item.startswith("BRIDGE_HEALTH_") for item in failures):
+        actions.append(
+            "bridge 상태 보고의 수신·시각 검증을 다음 검사에서 다시 확인합니다. "
+            "수집은 준비 완료까지 시작하지 않습니다. 계속 반복되면 표시된 heartbeat 나이와 bridge.log를 확인하세요."
+        )
+    if "use_sim_time_not_true" in failures:
+        actions.append("ROS master에서 rosparam set /use_sim_time true를 실행하세요.")
     clock_ingress_broken = "clock_ingress_not_delivered_to_ros" in failures
     clock_missing = (
-        "use_sim_time_not_true" in failures
-        or "morai_simulator_network_clock_not_sent" in failures
-        or clock_ingress_broken
-        or any(item.endswith(":clock") for item in failures)
+        "morai_simulator_network_clock_not_sent" in failures
+        or "missing_or_stale:clock" in failures
     )
-    if clock_missing and not clock_ingress_broken:
+    if clock_missing and not clock_ingress_broken and not bridge_unavailable:
         endpoint = (bridge_ip + ":9090") if bridge_ip else "01번에 표시된 MORAI 연결 주소:9090"
         actions.append(
-            "MORAI를 Simulation Time Mode로 두고 "
-            "Simulator Network의 ROS 주소를 %s으로 설정한 뒤 /clock 송신을 "
-            "Disconnect → Connect하세요. 설정 창을 닫고 시뮬레이션 일시정지도 "
-            "해제하세요. 차량 정보·센서셋도 같은 주소를 사용해야 합니다."
+            "MORAI를 Simulation Time Mode / External Sync OFF로 두고 "
+            "Simulator Network에서 ROS 주소 %s, /clock 송신 설정과 연결을 확인하세요. "
+            "설정 창을 닫고 일시정지를 해제하세요. 차량 정보·센서셋도 같은 주소를 사용해야 합니다. "
+            "/clock을 받기 위해 External Sync를 켤 필요는 없습니다."
             % endpoint
         )
-    if clock_ingress_broken:
+    if clock_ingress_broken and not bridge_unavailable:
         actions.append(
             "MORAI의 /clock은 bridge까지 도착했지만 ROS로 전달되지 않았습니다. "
             "현재 01번을 종료한 뒤 다시 실행하여 계측 bridge를 재시작하세요."
         )
-    if any(
-        item.endswith(":ego") or item.endswith(":objects")
-        or item.endswith("bridge /Ego_topic") for item in failures
-    ):
+    if any("source:" in item for item in failures):
         actions.append(
-            "MORAI 차량 정보 Network Settings를 표시된 IP:9090으로 "
-            "Disconnect → Connect 하세요."
+            "메시지 시간 정지·역행은 연결 끊김과 구분해야 합니다. "
+            "Simulation Time / External Sync OFF와 일시정지 해제를 확인하세요. "
+            "모드를 전환했다면 시간이 초기화되므로 다음 검사 결과를 확인하세요. "
+            "같은 모드에서도 반복되면 원본 timestamp와 중복 송신원을 확인해야 합니다."
+        )
+    if any(
+        item in ("missing_or_stale:ego", "missing_or_stale:objects",
+                 "SENSOR_MISSING: bridge /Ego_topic") for item in failures
+    ) and not bridge_unavailable:
+        actions.append(
+            "MORAI 차량 정보 Network Settings의 주소와 연결 상태를 확인하세요. "
+            "Simulation Time이 진행 중인데도 미수신이면 표시된 IP:9090으로 다시 연결하세요."
         )
     missing_sensor_labels = []
     for role, label in (("lidar", "LiDAR"), ("gps", "GPS"), ("imu", "IMU")):
         topic = {"lidar": "/lidar3D", "gps": "/gps", "imu": "/imu"}[role]
-        if any(item.endswith(":" + role) or item.endswith("bridge " + topic)
-               for item in failures):
+        if ("missing_or_stale:" + role in failures
+                or "SENSOR_MISSING: bridge " + topic in failures):
             missing_sensor_labels.append(label)
-    if missing_sensor_labels:
+    if missing_sensor_labels and not bridge_unavailable:
         actions.append(
-            "MORAI Sensor Setting에서 %s를 Disconnect → Connect 하세요."
-            % "/".join(missing_sensor_labels)
+            "Simulation Time이 진행 중인데도 미수신이면 MORAI Sensor Setting에서 "
+            "%s 연결을 확인하세요." % "/".join(missing_sensor_labels)
         )
-    if any("bridge_camera_ingress" in item or "bridge Camera-" in item
-           for item in failures):
+    if (any("bridge_camera_ingress" in item or "bridge Camera-" in item
+            for item in failures) and not bridge_unavailable):
         actions.append(
             "Camera 1~4를 표시된 IP:9090으로 다시 연결하세요. "
             "ROS 카메라 토픽은 의도적으로 bridge 진입점에서 폐기됩니다."
@@ -105,9 +123,19 @@ def render(report, bridge_ip=None):
     for role, label in LABELS:
         lines.append("  %-26s %s" % (label, state_for(role, streams.get(role, {}), failures)))
 
+    health = streams.get("bridge_health", {})
+    bridge_failures = [str(item) for item in failures if str(item).startswith("BRIDGE_")]
+    if bridge_failures:
+        lines.append("  bridge 진단: " + "; ".join(bridge_failures))
+    heartbeat_age = health.get("heartbeat_age_s")
+    if isinstance(heartbeat_age, (int, float)):
+        lines.append("  bridge heartbeat 나이: %.3fs" % heartbeat_age)
+
     bridge_clock = streams.get("bridge_clock_ingress", {})
-    clock_missing = any(str(item).endswith(":clock") for item in failures)
-    if ("morai_simulator_network_clock_not_sent" in failures
+    clock_missing = "missing_or_stale:clock" in failures
+    if "clock_ingress_unavailable" in failures or bridge_failures:
+        clock_detail = "bridge 상태 보고 미확인: /clock 송신 경로 판정 대기"
+    elif ("morai_simulator_network_clock_not_sent" in failures
             or (clock_missing and int(bridge_clock.get("samples", 0) or 0) < 2)):
         clock_detail = "MORAI→bridge 패킷 없음 (Simulator Network 재연결 필요)"
     elif "clock_ingress_not_delivered_to_ros" in failures:
