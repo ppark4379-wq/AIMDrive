@@ -197,6 +197,9 @@ class AutonomousDriving:
             details.setdefault("phase", lattice_result.reason)
             details["speed_limits"] = limits
             details["speed_source"] = min(limits, key=limits.get)
+            if (lattice_result.mode == "static_obstacle" and details.get("error")
+                    and limits["static"] <= limits[details["speed_source"]]):
+                details["speed_source"] = "static"
             details["final_target_velocity"] = max(0.0, target_velocity)
         if self.previous_target_velocity is not None:
             if (

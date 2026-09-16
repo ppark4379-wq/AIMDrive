@@ -5,7 +5,6 @@ All connectors and the global-route return undergo the same footprint checks.
 """
 
 import csv
-import heapq
 import json
 import math
 from pathlib import Path
@@ -18,6 +17,7 @@ from scipy.interpolate import CubicHermiteSpline, CubicSpline
 from ...localization.point import Point
 from ..lattice_planning import parameters as p
 from ..lattice_planning.structures import CandidatePath, LatticePlanningResult
+from .corridor_graph import search_corridor
 
 
 ROOT = Path(__file__).resolve().parent
@@ -26,7 +26,15 @@ MAX_CURVATURE = p.STATIC_MAX_CURVATURE
 GLOBAL_REJOIN_POINT = (-59.97, -116.70, 28.37)
 RETURN_WINDOW = 20.0
 RETURN_MAX_CURVATURE = 0.12
-TRACKING_SPEED = 5.0  # m/s, 2; leave steering-actuator settling time in this tight corridor.
+TRACKING_SPEED = 10.0 / 3.6  # m/s; ceiling for gentle, well-aligned avoidance.
+ALIGNMENT_SPEED = 1.0  # m/s; tight-bend/alignment target, not a safety-stop floor.
+ALIGNMENT_HEADING_ERROR = math.radians(1.5)
+ALIGNMENT_FULL_HEADING_ERROR = math.radians(3.0)
+ALIGNMENT_CROSS_TRACK_ERROR = .1
+ALIGNMENT_FULL_CROSS_TRACK_ERROR = .2
+ALIGNMENT_PREVIEW = 3.0
+ALIGNMENT_CURVATURE = .08  # Begin progressive bend slowdown [1/m].
+TIGHT_CURVATURE = .18      # Full alignment speed for tight bends [1/m].
 
 
 def load_routes(root=ROOT):
@@ -75,9 +83,11 @@ def connector(a, b):
     length = y1 - y0
     if length <= 0:
         raise ValueError("Connector must progress forward")
-    c = np.array([x0, d0 * length, dd0 * length * length / 2, 0., 0., 0.])
+    shape = np.broadcast(np.asarray(x0), np.asarray(x1)).shape
+    c = np.zeros((6,) + shape)
+    c[0], c[1], c[2] = x0, d0 * length, dd0 * length * length / 2
     c[3:] = np.linalg.solve(np.array([[1., 1., 1.], [3., 4., 5.], [6., 12., 20.]]),
-        [x1 - c[:3].sum(), d1 * length - c[1] - 2*c[2], dd1*length*length - 2*c[2]])
+        [x1 - c[:3].sum(axis=0), d1 * length - c[1] - 2*c[2], dd1*length*length - 2*c[2]])
     def evaluate(y, derivative=0):
         coefficients = np.polynomial.polynomial.polyder(c, derivative)
         return np.polynomial.polynomial.polyval((np.asarray(y)-y0)/length, coefficients) / length**derivative
@@ -113,6 +123,13 @@ class RecordedStaticPlanner:
         self.search_progress = 0
         self.handoff_y = None
         self.return_start_y = None
+        self.search_details = {}
+        self.recovery_until_y = None
+        self.recovery_count = 0
+        self.heading_error = 0.
+        self.tracking_error = 0.
+        self.cross_track_error = 0.
+        self.alignment_slow = False
 
     @property
     def active(self):
@@ -196,22 +213,22 @@ class RecordedStaticPlanner:
         self.envelope_high = np.interp(self.envelope_y, self.envelope_y[valid], high[valid])
 
     def _envelope_clear(self, xy, yaw, body_margin=0.):
+        return bool(np.all(self._envelope_mask(xy, yaw, body_margin)))
+
+    def _envelope_mask(self, xy, yaw, body_margin=0.):
         centers = np.array([c(xy[:, 1]) for c in self.curves + [self._global_return_corridor]])
-        if np.any(xy[:, 0] < centers.min(axis=0)-.15) or np.any(xy[:, 0] > centers.max(axis=0)+.15):
-            return False
+        valid = (xy[:, 0] >= centers.min(axis=0)-.15) & (xy[:, 0] <= centers.max(axis=0)+.15)
         for along in (-body_margin, self.planner.vehicle_length+body_margin):
             for side in (-self.planner.vehicle_half_width-body_margin, self.planner.vehicle_half_width+body_margin):
                 x = xy[:, 0] + along*np.cos(yaw) - side*np.sin(yaw)
                 y = xy[:, 1] + along*np.sin(yaw) + side*np.cos(yaw)
-                if np.any(x < np.interp(y, self.envelope_y, self.envelope_low)-.15) or np.any(x > np.interp(y, self.envelope_y, self.envelope_high)+.15):
-                    return False
-        return True
+                valid &= ((x >= np.interp(y, self.envelope_y, self.envelope_low)-.15)
+                          & (x <= np.interp(y, self.envelope_y, self.envelope_high)+.15))
+        return valid
 
     def _global_return_corridor(self, y, derivative=0):
-        # Only the final return window may use the existing global-route corridor.
-        y = np.asarray(y)
-        return np.where(y >= self.rejoin_y-RETURN_WINDOW,
-                        self.global_curve(y, derivative), self.curves[0](y, derivative))
+        # The original lane is available between obstacles too, not just at exit.
+        return self.global_curve(y, derivative)
 
     def _smooth_return(self, complete, obstacles):
         """Replace only the recorded tail, before driving, with a validated C2 return."""
@@ -265,18 +282,24 @@ class RecordedStaticPlanner:
                 and self.collision_free(np.array([ego.position]), np.array([ego.yaw]), obstacles or self.known)
                 and self.collision_free(np.array(forward), yaw, obstacles or self.known, .12))
 
-    def collision_free(self, xy, yaw, obstacles, extra=0.0):
-        if not obstacles:
-            return True
+    def collision_free(self, xy, yaw, obstacles, extra=0.0, tracking_reserve=True):
+        return bool(np.all(self._collision_mask(xy, yaw, obstacles, extra, tracking_reserve)))
+
+    def _collision_mask(self, xy, yaw, obstacles, extra=0.0, tracking_reserve=True):
         xy, yaw = np.asarray(xy), np.asarray(yaw)
+        valid = np.isfinite(xy).all(axis=1) & np.isfinite(yaw)
+        if not obstacles:
+            return valid
         forward = np.column_stack((np.cos(yaw), np.sin(yaw)))
         left = np.column_stack((-np.sin(yaw), np.cos(yaw)))
         center = xy + .5*self.planner.vehicle_length*forward
-        margin = self.planner.collision_margin + p.STATIC_TRACKING_MARGIN + extra
+        margin = self.planner.collision_margin + extra
+        if tracking_reserve:
+            margin += p.STATIC_TRACKING_MARGIN
         length, width = .5*self.planner.vehicle_length+margin, self.planner.vehicle_half_width+margin
         for obj in obstacles:
             if not all(math.isfinite(v) for v in (obj.position.x, obj.position.y, obj.heading_deg, obj.size_x, obj.size_y)):
-                return False
+                return np.zeros(len(xy), dtype=bool)
             angle = math.radians(obj.heading_deg)
             of = np.array([math.cos(angle), math.sin(angle)])
             ol = np.array([-of[1], of[0]])
@@ -287,12 +310,12 @@ class RecordedStaticPlanner:
             for axis in (forward, left, np.broadcast_to(of, forward.shape), np.broadcast_to(ol, forward.shape)):
                 radius = length*np.abs(np.sum(forward*axis, axis=1)) + width*np.abs(np.sum(left*axis, axis=1)) + ox*np.abs(axis @ of) + oy*np.abs(axis @ ol)
                 overlap &= np.abs(np.sum(delta*axis, axis=1)) <= radius
-            if np.any(overlap):
-                return False
-        return True
+            valid &= ~overlap
+        return valid
 
-    def _edge(self, curve, y0, y1, obstacles, body_margin=0.):
-        ys = np.linspace(y0, y1, max(2, int(math.ceil((y1-y0)/.1))+1))
+    def _edge(self, curve, y0, y1, obstacles, body_margin=0., tracking_reserve=True):
+        spacing = .1 if tracking_reserve else .025
+        ys = np.linspace(y0, y1, max(2, int(math.ceil((y1-y0)/spacing))+1))
         slope = curve(ys, 1)
         curvature = np.abs(curve(ys, 2)) / (1+slope*slope)**1.5
         if np.max(curvature) > MAX_CURVATURE:
@@ -305,7 +328,8 @@ class RecordedStaticPlanner:
         # Inflate by half the maximum translation/rotation between samples.
         step = float(np.max(np.linalg.norm(np.diff(xy, axis=0), axis=1)))
         sweep = .5*step*(1+self.planner.vehicle_length*float(np.max(curvature)))
-        if not self.collision_free(xy, yaw, obstacles, sweep):
+        extra = max(.12, sweep) if tracking_reserve else sweep
+        if not self.collision_free(xy, yaw, obstacles, extra, tracking_reserve):
             self.rejections['collision'] += 1
             return None
         return xy
@@ -326,77 +350,118 @@ class RecordedStaticPlanner:
             if first is not None and rest is not None:
                 self.selected_names = [self.records[i][0]]
                 return np.vstack((first, rest[1:]))
-        # Every graph path must reach the global route at the handoff itself.
-        # A cross-route connector must not carry a lateral offset beyond it.
-        levels = np.unique(np.r_[np.arange(start, self.goal_y, 3.), self.rejoin_y, self.goal_y])
-        source = (-1, 0)
-        queue, costs, previous = [(0., source)], {source: 0.}, {}
-        end = None
-        edge_cache = {}
-        while queue:
-            cost, node = heapq.heappop(queue)
-            if cost != costs[node]:
+        return search_corridor(self, ego, obstacles, connector, MAX_CURVATURE)
+
+    def _remaining_clear(self, points, yaw, obstacles):
+        xy = np.asarray(points)
+        if self.recovery_until_y is None:
+            return self.collision_free(xy, yaw, obstacles, .12)
+        head = xy[:, 1] <= self.recovery_until_y+1e-6
+        # Recovery edges are sampled every 2.5cm; retain translation/rotation
+        # inflation as well as the full configured 0.5m obstacle clearance.
+        return (self.collision_free(xy[head], yaw[head], obstacles, .03, tracking_reserve=False)
+                and self.collision_free(xy[~head], yaw[~head], obstacles, .12))
+
+    def _reconnect_measured_pose(self, ego, obstacles):
+        """Repair a small tracking discrepancy, never a blocked nominal route."""
+        xy = np.array(self.path)
+        curve = CubicSpline(xy[:, 1], xy[:, 0])
+        start = float(ego.position.y)
+        a = (start, ego.position.x, math.cos(ego.yaw)/max(.5, math.sin(ego.yaw)), 0.)
+        for distance in (3., 4., 5., 6., 8.):
+            index = int(np.searchsorted(xy[:, 1], start+distance))
+            if index >= len(xy)-2:
                 continue
-            route_id, level = node
-            self.search_progress = max(self.search_progress, level)
-            if level == len(levels)-1:
-                end = node
-                break
-            for advance in (1, 2, 3, 4):
-                target_level = level+advance
-                if target_level >= len(levels):
-                    continue
-                if levels[level] < self.rejoin_y < levels[target_level]:
-                    continue
-                for target_id, curve in enumerate(self.curves):
-                    if route_id == target_id and advance != 1:
-                        continue
-                    target = (target_id, target_level)
-                    key = (node, target)
-                    if key not in edge_cache:
-                        if route_id == target_id:
-                            transfer = curve
-                        else:
-                            a = self._state(self.curves[route_id], levels[level]) if route_id >= 0 else (
-                                start, ego.position.x, math.cos(ego.yaw)/max(.5, math.sin(ego.yaw)), 0.)
-                            transfer = connector(a, self._state(curve, levels[target_level]))
-                        edge_cache[key] = self._edge(transfer, levels[level], levels[target_level], obstacles)
-                    edge = edge_cache[key]
-                    if edge is None:
-                        continue
-                    length = float(np.linalg.norm(np.diff(edge, axis=0), axis=1).sum())
-                    new_cost = cost+length+(1.5 if route_id >= 0 and route_id != target_id else 0.)
-                    if new_cost < costs.get(target, float("inf")):
-                        costs[target], previous[target] = new_cost, (node, edge)
-                        heapq.heappush(queue, (new_cost, target))
-        if end is None:
-            return None
-        pieces, names = [], []
-        while end != source:
-            names.append(self.records[end[0]][0])
-            end, edge = previous[end]
-            pieces.append(edge)
-        self.selected_names = list(dict.fromkeys(reversed(names)))
-        pieces.reverse()
-        return np.vstack([pieces[0]]+[piece[1:] for piece in pieces[1:]])
+            end = float(xy[index, 1])
+            edge = self._edge(connector(a, self._state(curve, end)), start, end,
+                              obstacles, tracking_reserve=False)
+            if edge is None:
+                continue
+            combined = [Point(x, y) for x, y in np.vstack((edge, xy[index+1:]))]
+            yaw = np.array([self.planner._path_heading(combined, i) for i in range(len(combined))])
+            split = len(edge)
+            if (self.planner._max_curvature(combined) > MAX_CURVATURE
+                    or not self._envelope_clear(np.array(combined), yaw)
+                    or not self.collision_free(np.array(combined[:split]), yaw[:split], obstacles,
+                                               .03, tracking_reserve=False)
+                    or not self.collision_free(np.array(combined[split:]), yaw[split:], obstacles, .12)):
+                continue
+            self.path, self.progress = combined, 0
+            self.recovery_until_y = end
+            self.recovery_count += 1
+            return True
+        return False
+
+    def _tracking_alignment(self, ego, nearest):
+        xy = np.array(self.path[max(0, nearest-2):nearest+3])
+        if len(xy) < 2:
+            return float(np.linalg.norm(xy[0]-np.asarray(ego.position))), math.pi
+        delta = np.diff(xy, axis=0)
+        length2 = np.sum(delta*delta, axis=1)
+        fraction = np.clip(np.sum((np.asarray(ego.position)-xy[:-1])*delta, axis=1)
+                           / np.maximum(length2, 1e-9), 0., 1.)
+        projected = xy[:-1]+fraction[:, None]*delta
+        distance = np.linalg.norm(projected-np.asarray(ego.position), axis=1)
+        index = int(np.argmin(distance))
+        # Match the tangent at the projection, not the next sampled waypoint.
+        slope = float(np.interp(projected[index, 1], xy[:, 1], np.gradient(xy[:, 0], xy[:, 1])))
+        tangent = math.atan2(1., slope)
+        heading = abs(math.atan2(math.sin(ego.yaw-tangent), math.cos(ego.yaw-tangent)))
+        return float(distance[index]), heading
+
+    def _curve_speed_limit(self, points):
+        if len(points) < 3:
+            return TRACKING_SPEED, 0.
+        xy = np.asarray(points)
+        delta = np.diff(xy, axis=0)
+        lengths = np.linalg.norm(delta, axis=1)
+        chord = np.linalg.norm(xy[2:]-xy[:-2], axis=1)
+        twice_area = np.abs(delta[:-1, 0]*delta[1:, 1]-delta[:-1, 1]*delta[1:, 0])
+        curvature = 2*twice_area / np.maximum(lengths[:-1]*lengths[1:]*chord, 1e-9)
+        distance = np.cumsum(lengths)[:-1]
+        targets = np.interp(curvature, [ALIGNMENT_CURVATURE, TIGHT_CURVATURE],
+                            [TRACKING_SPEED, ALIGNMENT_SPEED])
+        targets = np.minimum(targets, np.sqrt(p.STATIC_LATERAL_ACCEL/np.maximum(curvature, .001)))
+        # Back-propagate upcoming limits so entering the preview does not cause
+        # a step from cruise to crawl. Geometry and collision checks stay unchanged.
+        limits = np.sqrt(targets*targets + 2*p.STATIC_END_DECELERATION
+                         * np.maximum(0., distance-ALIGNMENT_PREVIEW))
+        preview = curvature[distance <= ALIGNMENT_PREVIEW]
+        return min(TRACKING_SPEED, float(np.min(limits))), float(np.max(preview)) if len(preview) else 0.
 
     def _result(self, points, valid, phase, error=None):
         candidate = CandidatePath(layer="recorded")
         candidate.points, candidate.valid = points, valid
-        curvature = self.planner._max_curvature(points) if len(points) >= 3 else 0.
-        speed = min(p.STATIC_MAX_SPEED_KPH/3.6, math.sqrt(p.STATIC_LATERAL_ACCEL/max(curvature, .001))) if valid else 0.
+        curve_limit, preview_curvature = self._curve_speed_limit(points)
+        limits = dict(tracking=min(TRACKING_SPEED, p.STATIC_MAX_SPEED_KPH/3.6), curvature=curve_limit)
         if self.path:
             remaining = sum(a.distance(b) for a,b in zip(points, points[1:]))
-            speed = min(speed, math.sqrt(2*p.STATIC_END_DECELERATION*max(0., remaining-1.)))
-            # Falling path curvature does not mean the actual body has straightened.
-            # Keep a stable tracking speed until the aligned global handoff.
-            speed = min(speed, TRACKING_SPEED)
+            limits['path_end'] = math.sqrt(2*p.STATIC_END_DECELERATION*max(0., remaining-1.))
+            if self.recovery_until_y is not None:
+                limits['recovery'] = ALIGNMENT_SPEED
+            if self.alignment_slow:
+                heading_severity = (self.heading_error-ALIGNMENT_HEADING_ERROR) / (
+                    ALIGNMENT_FULL_HEADING_ERROR-ALIGNMENT_HEADING_ERROR)
+                lateral_severity = (self.cross_track_error-ALIGNMENT_CROSS_TRACK_ERROR) / (
+                    ALIGNMENT_FULL_CROSS_TRACK_ERROR-ALIGNMENT_CROSS_TRACK_ERROR)
+                severity = float(np.clip(max(heading_severity, lateral_severity), 0., 1.))
+                limits['alignment'] = TRACKING_SPEED-(TRACKING_SPEED-ALIGNMENT_SPEED)*severity
+        if not valid:
+            limits['blocked'] = 0.
+        speed_reason = min(limits, key=limits.get)
+        speed = limits[speed_reason]
         return LatticePlanningResult(points, active=bool(self.path), mode="static_obstacle",
             obstacle_detected=True, acc_override=True, acc_target_velocity=speed,
             candidates=[candidate], reason="static_recorded_"+phase,
             debug_details={"static_avoidance": dict(phase=phase, path_validated=valid,
                 planner="recorded_route_graph", boundary_source="recorded_swept_envelope_not_map",
                 selected_routes=self.selected_names, recording_audit=self.audit, error=error,
+                corridor_search=dict(self.search_details),
+                heading_error_deg=math.degrees(self.heading_error), tracking_error_m=self.tracking_error,
+                cross_track_error_m=self.cross_track_error, alignment_slow=self.alignment_slow,
+                preview_curvature=preview_curvature, speed_policy_reason=speed_reason,
+                tracking_speed_limits=dict(limits),
+                recovery_until_y=self.recovery_until_y, recovery_count=self.recovery_count,
                 return_start_y=self.return_start_y, handoff_y=self.handoff_y,
                 preplanned_complete=bool(self.path), plan_count=self.plan_count)})
 
@@ -452,22 +517,43 @@ class RecordedStaticPlanner:
             self.reset()
             return self._result(reference_path, False, "reset_after_teleport")
         self.progress = max(self.progress, nearest)
+        self.cross_track_error, self.heading_error = self._tracking_alignment(ego, nearest)
+        self.tracking_error = error
+        if self.heading_error > ALIGNMENT_HEADING_ERROR or self.cross_track_error > ALIGNMENT_CROSS_TRACK_ERROR:
+            self.alignment_slow = True
+        elif (self.heading_error < .5*ALIGNMENT_HEADING_ERROR
+                and self.cross_track_error < .5*ALIGNMENT_CROSS_TRACK_ERROR):
+            self.alignment_slow = False
         points = self.path[max(0, self.progress-1):]
         if obstacles:
             self.known = list(obstacles)
         yaw = np.array([self.planner._path_heading(points, i) for i in range(len(points))]) if len(points) >= 2 else np.array([])
+        pose, heading = np.array([ego.position]), np.array([ego.yaw])
+        nominal_pose_clear = self.collision_free(pose, heading, self.known)
+        if (self.recovery_until_y is not None and ego.position.y > self.recovery_until_y
+                and nominal_pose_clear):
+            self.recovery_until_y = None
         failure = None
         if len(points) < 3 or error >= .75:
             failure = 'tracking_error'
         elif not self._envelope_clear(np.array([ego.position]), np.array([ego.yaw])):
             failure = 'recorded_envelope'
-        elif not self.collision_free(np.array([ego.position]), np.array([ego.yaw]), self.known):
+        elif not self.collision_free(pose, heading, self.known, tracking_reserve=False):
             failure = 'ego_collision'
-        elif not self.collision_free(np.array(points), yaw, self.known, .12):
+        elif not self._remaining_clear(points, yaw, self.known):
             failure = 'remaining_path_collision'
-        return self._result(points, failure is None, "follow" if failure is None else "blocked", failure)
+        elif not nominal_pose_clear and self.recovery_until_y is None:
+            if (abs(ego.velocity) > ALIGNMENT_SPEED + .2 or error > .25 or self.heading_error > math.radians(12.)
+                    or not self._reconnect_measured_pose(ego, self.known)):
+                failure = 'alignment_recovery_unavailable'
+            else:
+                points = self.path
+        phase = 'recover_alignment' if self.recovery_until_y is not None else 'follow'
+        return self._result(points, failure is None, phase if failure is None else 'blocked', failure)
 
     def _prepare(self, ego, route, obstacles):
+        self.search_details = {}
+        self.search_progress = 0
         self._setup(route, ego)
         self.known = list(obstacles)
         self.plan_count += 1
