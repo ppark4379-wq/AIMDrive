@@ -6,6 +6,7 @@ scenario and expert clock contracts. No expert algorithm is modified here.
 import argparse
 import copy
 import datetime
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -17,11 +18,9 @@ import xmlrpc.client
 
 ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = ROOT.parents[1]
-PROVEN_RUNTIME = ROOT / 'proven_three_lap_runtime'
-sys.path[:0] = [str(ROOT), str(PROJECT_ROOT), str(PROVEN_RUNTIME)]
+sys.path[:0] = [str(ROOT), str(PROJECT_ROOT)]
 os.environ['MORAI_GRPC_SRC'] = str(
     PROJECT_ROOT / 'data_collection/third_party/grpc_inha_univ/src')
-os.environ['MORAI_EXPERT_ROOT'] = str(PROVEN_RUNTIME / 'expert')
 from async_capture.journal import write_json, digest
 from async_capture.sim_mode import require_free_running_mode
 from process_guard import process_lock
@@ -44,7 +43,7 @@ from async_capture.route_signal_contract import build_route_signal_contract
 from native_capture.ground_truth import default_grpc_target
 
 
-def software_inventory():
+def software_inventory(expert_root):
     files = [
         Path(__file__).resolve(),
         ROOT / 'tools/collect_async_raw_proven.py',
@@ -55,7 +54,12 @@ def software_inventory():
     ]
     files += sorted((PROJECT_ROOT / 'scenario_runner').rglob('*.py'))
     files += sorted((PROJECT_ROOT / 'scenario_runner/config').glob('*.yaml'))
-    files += sorted((PROVEN_RUNTIME / 'expert').rglob('*.py'))
+    files += sorted(
+        path for path in Path(expert_root).rglob('*')
+        if path.is_file() and path.suffix.lower() in {
+            '.py', '.json', '.yaml', '.yml',
+        }
+    )
     inventory = {}
     for source in files:
         source = source.resolve()
@@ -65,6 +69,56 @@ def software_inventory():
             name = 'project/' + source.relative_to(PROJECT_ROOT).as_posix()
         inventory[name] = digest(source)
     return inventory
+
+
+def _git_value(*arguments):
+    process = subprocess.run(
+        ['git', '-C', str(PROJECT_ROOT), *arguments],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
+    return process.stdout.strip() if process.returncode == 0 else None
+
+
+def expert_provenance(mode, expert_root):
+    expert_root = Path(expert_root).resolve()
+    files = sorted(
+        path for path in expert_root.rglob('*')
+        if path.is_file() and path.suffix.lower() in {
+            '.py', '.json', '.yaml', '.yml',
+        }
+    )
+    hashes = {
+        path.relative_to(expert_root).as_posix(): digest(path)
+        for path in files
+    }
+    tree_sha256 = hashlib.sha256(
+        json.dumps(
+            hashes, sort_keys=True, separators=(',', ':'),
+        ).encode('utf-8')
+    ).hexdigest()
+    base_config = expert_root / 'src/expert/src/config/config.json'
+    status = _git_value('status', '--porcelain', '--', 'expert')
+    return dict(
+        mode=mode,
+        root=str(expert_root),
+        git_head=_git_value('rev-parse', 'HEAD'),
+        worktree_dirty=bool(status),
+        source_tree_sha256=tree_sha256,
+        source_file_count=len(hashes),
+        base_config_sha256=digest(base_config),
+    )
+
+
+def require_expert_root(mode):
+    if mode != 'current':
+        raise ValueError('Only current is supported; the proven runtime was removed')
+    root = (PROJECT_ROOT / 'expert').resolve()
+    marker = root / 'src/expert/src/config/config.json'
+    if not marker.is_file():
+        raise RuntimeError(
+            'Selected external Expert is incomplete: ' + str(marker)
+        )
+    return root
 
 
 class SimulationTimeClient(MoraiGrpcClient):
@@ -267,7 +321,11 @@ class RawScenario(FullLoopScenario):
         for zone in runtime['planning']['velocity_profile'].get('speed_limit_zones', []):
             zone['max_velocity'] = min(float(zone['max_velocity']), float(self.cfg['expert_max_velocity_kmh']))
         runtime_path.write_text(json.dumps(runtime, indent=2) + '\n')
+        expert = dict(self.global_cfg.get('expert_provenance', {}))
         setup = dict(scenario_name=self.scenario_name,
+                     expert_mode=expert.get('mode'),
+                     expert_root=self.expert_controller.expert_root,
+                     expert=expert,
                      seed=self.run_seed, profile=self.profile, time_hour=self.scenario_hour,
                      global_config=self.global_cfg, scenario_config=self.cfg,
                      route_length_m=self.route_length_m, scenario_clock=self.clock.domain,
@@ -480,6 +538,10 @@ def main():
     p.add_argument('--check', action='store_true')
     p.add_argument('--scenario', choices=PRIMARY_SCENARIOS, default='full_loop',
                    help='Main Scenario Runner mode to execute (default: full_loop)')
+    p.add_argument(
+        '--expert-runtime', choices=('current',), default='current',
+        help='Execute MoraiDrive/expert; the frozen proven mode has been removed',
+    )
     p.add_argument('--nearby-actors', action='store_true', help='Compatibility option; actor lifecycle is owned by the main scenario runner')
     p.add_argument('--rosbag', action='store_true', help='Record original ROS topics including ReplayInfo before expert launch')
     p.add_argument('--audit-scope', choices=('full','timing'), default='full',
@@ -512,6 +574,11 @@ def main():
                    default='required',
                    help='required: write ROS cameras; unrecorded: omit raw writes; bridge_dropped: discard at bridge ingress; absent: diagnostic only')
     a = p.parse_args()
+    expert_root = require_expert_root(a.expert_runtime)
+    os.environ['MORAI_EXPERT_ROOT'] = str(expert_root)
+    os.environ['MORAI_EXPERT_MODE'] = a.expert_runtime
+    print('[Expert] mode=' + a.expert_runtime, flush=True)
+    print('[Expert] root=' + str(expert_root), flush=True)
     if not a.grpc_target:
         a.grpc_target = default_grpc_target()
     # The main adapter supports environment discovery; the collection command
@@ -540,6 +607,12 @@ def main():
     if not 1 <= a.episodes <= 5 or not 20 <= a.seconds <= max_seconds or not 5 <= a.max_speed_kmh <= 60:
         p.error('Require bounded episodes=1..5, seconds=20..%d, speed=5..60' % max_seconds)
     global_cfg, _, cfg = load_configuration()
+    resolved_expert_root = Path(global_cfg['paths']['expert_root']).resolve()
+    if resolved_expert_root != expert_root:
+        raise RuntimeError(
+            'Scenario Runner resolved a different Expert root: '
+            f'expected={expert_root}, actual={resolved_expert_root}'
+        )
     global_cfg['grpc']['host'], port = a.grpc_target.rsplit(':', 1)
     global_cfg['grpc']['port'] = int(port)
     cfg.update(random_seed=a.seed,
@@ -549,23 +622,16 @@ def main():
     if a.scenario in MISSION_MODES:
         cfg['mission_mode'] = a.scenario
     scenario_type = collection_scenario_class(a.scenario)
+    provenance = expert_provenance(a.expert_runtime, expert_root)
+    global_cfg['expert_provenance'] = provenance
     # Scenario policy is loaded only from the main scenario_runner. This
     # collector owns capture, collision recording and the outer wall bound.
-    manifest_path = PROVEN_RUNTIME / 'PROVEN_RUNTIME_MANIFEST.json'
-    manifest = json.loads(manifest_path.read_text())
-    mismatches = []
-    for relative, expected in manifest['files'].items():
-        path = PROVEN_RUNTIME / relative
-        actual = digest(path) if path.is_file() else None
-        if actual != expected:
-            mismatches.append(dict(path=relative, expected=expected, actual=actual))
-    if mismatches:
-        raise RuntimeError(
-            'Proven three-lap runtime differs from recorded reference: '
-            + str(mismatches[:5]))
     verify_package(SCENARIO_PACKAGE_ROOT, global_cfg, cfg, a.scenario)
     if a.check:
-        print('Offline scenario configuration check passed; no simulator calls')
+        print(
+            'Offline scenario configuration check passed; no simulator calls; '
+            f'expert_mode={a.expert_runtime}; expert_root={expert_root}'
+        )
         return
     def interrupted(signum, frame):
         raise KeyboardInterrupt('supervisor signal ' + str(signum))
@@ -609,12 +675,13 @@ def main():
                         raise RuntimeError('Cannot configure explicit wall-clock expert')
             os.environ.update(ROS_LOG_DIR=str(output / 'ros_logs'), ROS_HOME=str(output / 'ros_home'),
                               MORAI_REVIEW_OWNER_PID=str(os.getpid()))
-            write_json(output / 'plan.json', dict(arguments={k:str(v) if isinstance(v,Path) else v for k,v in vars(a).items()},
+            plan = dict(arguments={k:str(v) if isinstance(v,Path) else v for k,v in vars(a).items()},
                 mode=mode, topology=topology, storage=storage, training_visible=False, nas_used=False,
                 original_use_sim_time=original, expert_clock=expert_clock,
                 note='Same seed/profile inputs per episode; explicit speed cap and wall budget; only runner goal confirms a full lap',
-                software=software_inventory(),
-                proven_runtime_manifest=dict(path=str(manifest_path),sha256=digest(manifest_path))))
+                software=software_inventory(expert_root),
+                expert=provenance)
+            write_json(output / 'plan.json', plan)
             contract = json.loads((ROOT/'configs/encoder_mission_candidate_v1.json').read_text())
             contract['capture']['actor_ground_truth']['target'] = a.grpc_target
             contract['capture']['expert_control_topic'] = a.control_topic

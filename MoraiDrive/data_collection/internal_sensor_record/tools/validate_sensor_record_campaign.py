@@ -22,9 +22,10 @@ sys.path[:0] = [str(INTEGRATION), str(PROJECT_ROOT)]
 
 from async_capture.journal import digest, verify_run, write_json
 from async_capture.sensor_record_admission import verify_sealed_directory
-from ssd_storage import SSD_ROOT, require_ssd
 from async_capture.route_sources import resolve_route_sources, verify_route_report
 from async_capture.route_review_rebuild import archive_route_review
+from cleanup_failed_sensor_record_attempt import cleanup_failed_attempt
+from ssd_storage import SSD_ROOT, require_ssd, windows_path
 from scenario_runner.scenarios.segment_modes.modes import PRIMARY_SCENARIOS
 from python_environment import (
     build_analysis_environment,
@@ -182,6 +183,58 @@ def completed_rows(path):
         for row in csv.DictReader(source, delimiter="\t"):
             latest[int(row["lap"])] = row
     return latest
+
+
+def _cleanup_summary(marker):
+    return {
+        "status": marker.get("cleanup_status"),
+        "failure_kind": marker.get("failure_kind"),
+        "deleted_files": int(marker.get("deleted_files", 0) or 0),
+        "deleted_bytes": int(marker.get("deleted_bytes", 0) or 0),
+    }
+
+
+def _failed_attempt_marker(run, expected_kind):
+    marker_path = Path(run) / "FAILED_ATTEMPT.json"
+    if not marker_path.is_file():
+        return None
+    marker = load(marker_path)
+    if not (
+        marker.get("schema") == "morai_sensor_record_failed_attempt_v1"
+        and marker.get("cleanup_status") == "completed"
+        and marker.get("failure_kind") == expected_kind
+        and marker.get("training_visible") is False
+    ):
+        return None
+    return marker
+
+
+def _write_lap_results_csv(campaign, laps):
+    path = Path(campaign) / "lap_results.csv"
+    temporary = path.with_name(path.name + ".tmp.%d" % os.getpid())
+    with temporary.open("w", newline="", encoding="utf-8-sig") as target:
+        writer = csv.DictWriter(target, fieldnames=(
+            "lap", "run_name", "capture_status", "validation_status",
+            "training_usable", "reason",
+        ))
+        writer.writeheader()
+        for lap in laps:
+            writer.writerow({
+                "lap": lap.get("lap"),
+                "run_name": lap.get("run_name", ""),
+                "capture_status": lap.get("capture_status", "missing"),
+                "validation_status": lap.get("validation_status", "not_run"),
+                "training_usable": str(
+                    bool(lap.get("training_usable"))).lower(),
+                "reason": "; ".join(str(value) for value in lap.get("errors", [])),
+            })
+    os.replace(str(temporary), str(path))
+    return path
+
+
+def _lap_numbers(laps):
+    numbers = [int(lap["lap"]) for lap in laps]
+    return ",".join("%03d" % number for number in numbers) if numbers else "-"
 
 
 def validate_lap(row, expected_scenario="full_loop"):
@@ -370,17 +423,68 @@ def _main():
     scenario_name = plan.get("scenario_name", "full_loop")
     scenario_supported = scenario_name in PRIMARY_SCENARIOS
     laps = []
+    all_attempts_terminal = True
+    cleanup_evidence_ok = True
+    validation_infrastructure_errors = False
     for index in range(1, requested + 1):
         row = rows.get(index)
-        if row is None or row.get("status") not in ("captured", "completed"):
+        if row is None:
+            all_attempts_terminal = False
             laps.append({
                 "lap": index,
+                "capture_status": "missing",
+                "validation_status": "not_run",
+                "training_usable": False,
                 "valid": False,
-                "errors": ["lap has no completed terminal record"],
+                "errors": ["lap has no terminal record"],
                 "checks": {},
             })
-        else:
+        elif row.get("status", "").startswith("failed_"):
             run = BASE / row["run_name"]
+            marker = _failed_attempt_marker(run, "capture")
+            if marker is None:
+                cleanup_evidence_ok = False
+            laps.append({
+                "lap": index,
+                "seed": int(row["seed"]),
+                "run_name": row["run_name"],
+                "run": str(run),
+                "capture_status": "failed",
+                "validation_status": "skipped",
+                "training_usable": False,
+                "valid": False,
+                "errors": [row["status"]] + (
+                    [] if marker is not None
+                    else ["capture failure cleanup evidence is missing"]
+                ),
+                "checks": {},
+                "payload_cleanup": (
+                    _cleanup_summary(marker) if marker is not None
+                    else {"status": "missing", "failure_kind": "capture"}
+                ),
+            })
+        elif row.get("status") in ("captured", "completed"):
+            run = BASE / row["run_name"]
+            previous_invalid = _failed_attempt_marker(run, "validation")
+            if previous_invalid is not None:
+                restored = previous_invalid.get("evidence", {})
+                if not isinstance(restored, dict) or restored.get("valid") is not False:
+                    cleanup_evidence_ok = False
+                    restored = {
+                        "lap": index,
+                        "run_name": row["run_name"],
+                        "valid": False,
+                        "errors": ["invalid validation cleanup evidence"],
+                        "checks": {},
+                    }
+                restored.update({
+                    "capture_status": "succeeded",
+                    "validation_status": "failed",
+                    "training_usable": False,
+                    "payload_cleanup": _cleanup_summary(previous_invalid),
+                })
+                laps.append(restored)
+                continue
             log_path = campaign / (row["run_name"] + "_offline_review.log")
             try:
                 if args.rebuild_route_review:
@@ -389,22 +493,74 @@ def _main():
                 with log_path.open("a", encoding="utf-8") as log:
                     complete_offline_review(run, analysis_python=analysis_python,
                                             env=review_env, log=log)
-                laps.append(validate_lap(row, scenario_name))
+                lap = validate_lap(row, scenario_name)
+                lap.update({
+                    "capture_status": "succeeded",
+                    "validation_status": "passed" if lap["valid"] else "failed",
+                    "training_usable": bool(lap["valid"]),
+                })
+                if not lap["valid"]:
+                    try:
+                        marker = cleanup_failed_attempt(
+                            row["run_name"],
+                            base=BASE,
+                            failure_kind="validation",
+                            failure_reason="; ".join(lap.get("errors", []))
+                            or "validation checks failed",
+                            validated_invalid=True,
+                            evidence=lap,
+                        )
+                        lap["payload_cleanup"] = _cleanup_summary(marker)
+                    except Exception as exc:
+                        cleanup_evidence_ok = False
+                        lap.setdefault("errors", []).append(
+                            "failed_payload_cleanup:" + repr(exc))
+                        lap["payload_cleanup"] = {
+                            "status": "failed",
+                            "failure_kind": "validation",
+                            "error": repr(exc),
+                        }
+                laps.append(lap)
             except Exception as exc:
+                validation_infrastructure_errors = True
                 laps.append({
                     "lap": index,
                     "run_name": row["run_name"],
+                    "run": str(run),
+                    "capture_status": "succeeded",
+                    "validation_status": "error",
+                    "training_usable": False,
                     "valid": False,
                     "errors": ["offline_review:" + repr(exc)],
                     "checks": {},
                     "offline_review_log": str(log_path),
+                    "payload_cleanup": {
+                        "status": "not_attempted",
+                        "reason": "validation infrastructure error; payload preserved",
+                    },
                 })
+        else:
+            all_attempts_terminal = False
+            laps.append({
+                "lap": index,
+                "seed": int(row["seed"]),
+                "run_name": row["run_name"],
+                "capture_status": "interrupted",
+                "validation_status": "not_run",
+                "training_usable": False,
+                "valid": False,
+                "errors": ["nonterminal ledger status: " + row.get("status", "")],
+                "checks": {},
+            })
 
+    valid_laps = [row for row in laps if row.get("valid") is True]
     adjacent_variation = []
-    for before, after in zip(laps, laps[1:]):
+    for before, after in zip(valid_laps, valid_laps[1:]):
+        contract_required = int(after["lap"]) == int(before["lap"]) + 1
         adjacent_variation.append({
             "before_lap": before["lap"],
             "after_lap": after["lap"],
+            "contract_required": contract_required,
             "weather_changed": before.get("weather") != after.get("weather"),
             "time_changed": before.get("time_hour") != after.get("time_hour"),
             "static_obstacle_changed": before.get("static_obstacle") != after.get("static_obstacle"),
@@ -414,20 +570,48 @@ def _main():
     # models are seeded random choices, so an adjacent repeat is valid and
     # must not make a sound capture fail.
     variation_valid = all(
-        row["weather_changed"] for row in adjacent_variation
+        not row["contract_required"] or row["weather_changed"]
+        for row in adjacent_variation
     )
     variation_coverage = {
-        "weather": sorted({row.get("weather") for row in laps if row.get("weather")}),
-        "time_hour": sorted({row.get("time_hour") for row in laps
+        "weather": sorted({row.get("weather") for row in valid_laps if row.get("weather")}),
+        "time_hour": sorted({row.get("time_hour") for row in valid_laps
                              if row.get("time_hour") is not None}),
-        "static_obstacle": sorted({row.get("static_obstacle") for row in laps
+        "static_obstacle": sorted({row.get("static_obstacle") for row in valid_laps
                                    if row.get("static_obstacle")}),
-        "dynamic_obstacle": sorted({row.get("dynamic_obstacle") for row in laps
+        "dynamic_obstacle": sorted({row.get("dynamic_obstacle") for row in valid_laps
                                     if row.get("dynamic_obstacle")}),
     }
     completion = campaign / "COLLECTION_COMPLETE.json"
     completion_payload = load(completion) if completion.is_file() else {}
     completion_scenario = completion_payload.get("scenario_name", "full_loop")
+    captured_laps = [
+        row for row in laps if row.get("capture_status") == "succeeded"]
+    capture_failures = [
+        row for row in laps if row.get("capture_status") == "failed"]
+    validation_failures = [
+        row for row in captured_laps if row.get("valid") is not True]
+    completed_attempts = len(captured_laps) + len(capture_failures)
+    completion_counts_match = bool(
+        completion.is_file()
+        and int(completion_payload.get(
+            "attempted_laps",
+            completion_payload.get("captured_laps", -1))) == requested
+        and int(completion_payload.get("captured_laps", -1)) == len(captured_laps)
+        and int(completion_payload.get("failed_laps", 0)) == len(capture_failures)
+    )
+    campaign_valid = bool(
+        completion.is_file()
+        and scenario_supported
+        and completion_scenario == scenario_name
+        and len(laps) == requested
+        and all_attempts_terminal
+        and completion_counts_match
+        and cleanup_evidence_ok
+        and not validation_infrastructure_errors
+        and len(valid_laps) >= 2
+        and variation_valid
+    )
     report = {
         "schema": "morai_sensor_record_campaign_validation_v1",
         "campaign": str(campaign),
@@ -439,9 +623,22 @@ def _main():
         "runs_ledger_sha256": digest(campaign / "runs.tsv"),
         "collection_completion_present": completion.is_file(),
         "collection_completion_scenario_matches": completion_scenario == scenario_name,
+        "collection_completion_counts_match": completion_counts_match,
         "collection_completion_sha256": digest(completion) if completion.is_file() else None,
         "requested_laps": requested,
-        "completed_valid_laps": sum(bool(row.get("valid")) for row in laps),
+        "requested_attempts": requested,
+        "completed_attempts": completed_attempts,
+        "all_attempts_terminal": all_attempts_terminal,
+        "capture_succeeded": len(captured_laps),
+        "capture_failed": len(capture_failures),
+        "capture_failed_laps": [int(row["lap"]) for row in capture_failures],
+        "validation_passed": len(valid_laps),
+        "validation_failed": len(validation_failures),
+        "validation_failed_laps": [int(row["lap"]) for row in validation_failures],
+        "completed_valid_laps": len(valid_laps),
+        "all_captured_laps_valid": not validation_failures,
+        "cleanup_evidence_valid": cleanup_evidence_ok,
+        "validation_infrastructure_errors": validation_infrastructure_errors,
         "total_frames": sum(int(row.get("frames", 0)) for row in laps),
         "total_dataset_build_candidates": sum(int(row.get("dataset_build_candidates", 0)) for row in laps),
         "total_excluded_frames": sum(int(row.get("excluded_frames", 0)) for row in laps),
@@ -452,11 +649,7 @@ def _main():
         "variation_contract": "weather alternates; time and obstacle choices may repeat",
         "variation_coverage": variation_coverage,
         "variation_valid": variation_valid,
-        "valid": bool(completion.is_file() and scenario_supported
-                      and completion_scenario == scenario_name
-                      and len(laps) == requested
-                      and all(row.get("valid") for row in laps)
-                      and variation_valid),
+        "valid": campaign_valid,
         "source_timestamps_modified": False,
         "physical_simultaneity_verified": False,
         "training_visible": False,
@@ -480,7 +673,7 @@ def _main():
         "training_visible": False,
     })
     training = None
-    if report["valid"] and requested >= 2 and not args.no_prepare_training:
+    if report["valid"] and len(valid_laps) >= 2 and not args.no_prepare_training:
         training_output = output / "training_dataset_v1"
         print("[BUILD] preparing direct-reference visual training manifests", flush=True)
         built = subprocess.run([
@@ -494,10 +687,26 @@ def _main():
             "manifest_index": str(training_output / "manifest_index.json"),
             "training_ready": built.returncode == 0,
         }
+    csv_path = _write_lap_results_csv(campaign, laps)
+    print("[VALIDATION SUMMARY]")
+    print("  total attempts      : %d/%d" % (completed_attempts, requested))
+    print("  capture succeeded   : %d" % len(captured_laps))
+    print("  capture failed      : %d [%s]" % (
+        len(capture_failures), _lap_numbers(capture_failures)))
+    print("  validation passed   : %d" % len(valid_laps))
+    print("  validation failed   : %d [%s]" % (
+        len(validation_failures), _lap_numbers(validation_failures)))
+    print("  training usable     : %d" % len(valid_laps))
+    print("[CSV] Windows: " + windows_path(csv_path))
+    print("[CSV] WSL    : " + str(csv_path))
     print(json.dumps({
         "valid": report["valid"],
         "scenario_name": scenario_name,
         "requested_laps": requested,
+        "requested_attempts": requested,
+        "completed_attempts": completed_attempts,
+        "capture_failed_laps": report["capture_failed_laps"],
+        "validation_failed_laps": report["validation_failed_laps"],
         "completed_valid_laps": report["completed_valid_laps"],
         "total_frames": report["total_frames"],
         "total_dataset_build_candidates": report["total_dataset_build_candidates"],
@@ -505,6 +714,7 @@ def _main():
         "total_native_bytes": report["total_native_bytes"],
         "variation_valid": variation_valid,
         "report": str(output / "report.json"),
+        "lap_results_csv": str(csv_path),
         "physical_simultaneity_verified": False,
         "training_visible": bool(training and training["training_ready"]),
         "training": training,

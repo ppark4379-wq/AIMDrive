@@ -548,6 +548,43 @@ class SeparatedPackageTest(unittest.TestCase):
         scenario.scenario_actors = [actor]
         return scenario
 
+    def test_dynamic_obstacle_stops_at_endpoint_without_pause_reset(self):
+        class Actor:
+            def __init__(self):
+                self.pause_calls = []
+
+            def set_pause(self, value):
+                self.pause_calls.append(value)
+                return True
+
+        actor = Actor()
+        scenario = self._make_crossing_scenario(actor)
+        scenario._scenario_now = lambda: 105.5
+
+        class FakeGrpc:
+            def __init__(self):
+                self.control_args = None
+                self.control_kwargs = None
+
+            def control_pedestrian(self, *args, **kwargs):
+                self.control_args = args
+                self.control_kwargs = kwargs
+                return True
+
+        scenario.grpc = FakeGrpc()
+        scenario._finish_dynamic_obstacle("reached_dest")
+
+        controlled_actor, direction_x, direction_y, speed = (
+            scenario.grpc.control_args
+        )
+        self.assertIs(controlled_actor, actor)
+        self.assertLess(direction_x, 0.0)
+        self.assertLess(direction_y, 0.0)
+        self.assertAlmostEqual(speed, 0.0)
+        self.assertEqual(scenario.grpc.control_kwargs, {"verbose": True})
+        self.assertEqual(actor.pause_calls, [])
+        self.assertEqual(scenario.dynamic_obstacle_phase, "cleared")
+
     def test_stationary_dynamic_obstacle_is_removed_from_b(self):
         class Actor:
             def __init__(self):

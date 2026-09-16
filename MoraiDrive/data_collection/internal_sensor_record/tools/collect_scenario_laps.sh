@@ -5,6 +5,12 @@ set -Eeuo pipefail
 # pass resets to that mode's START, applies its deterministic profile, and
 # records an isolated local Sensor Record session.
 
+SCENARIO_RUNTIME="${MORAI_SCENARIO_RUNTIME:-current}"
+if [[ "$SCENARIO_RUNTIME" != "current" ]]; then
+    echo "[FAIL] MORAI_SCENARIO_RUNTIME supports only current; proven mode has been removed." >&2
+    exit 2
+fi
+
 TOOLS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INTEGRATION="$(cd "$TOOLS/.." && pwd)"
 PROJECT_ROOT="${MORAI_PROJECT_ROOT:-$(cd "$INTEGRATION/../.." && pwd)}"
@@ -32,7 +38,7 @@ usage() {
     echo "시나리오: full_loop, full_loop_normal, full_loop_static, full_loop_dynamic,"
     echo "          full_loop_roundabout, full_loop_highway"
     echo "선택 환경변수: MORAI_STORAGE_ROOT, MORAI_BASE_SEED, MORAI_LAP_WALL_SECONDS, MORAI_SIMULATOR_PID"
-    echo "                MORAI_SCENARIO_RUNTIME=proven|current (기본 proven; current는 full_loop만 지원)"
+    echo "                MORAI_SCENARIO_RUNTIME=current (기본 current)"
 }
 
 LAPS="${1:-}"
@@ -85,7 +91,6 @@ esac
 BASE_SEED="${MORAI_BASE_SEED:-26091200}"
 LAP_WALL_SECONDS="${MORAI_LAP_WALL_SECONDS:-3000}"
 ANALYSIS_PYTHON="$MORAI_ANALYSIS_PYTHON"
-SCENARIO_RUNTIME="${MORAI_SCENARIO_RUNTIME:-proven}"
 CURRENT_LAP=""
 CURRENT_RUN=""
 COLLECTOR_PID=""
@@ -106,14 +111,6 @@ if [[ ! "$LAP_WALL_SECONDS" =~ ^[0-9]+$ ]] || (( LAP_WALL_SECONDS < 600 || LAP_W
     echo "[FAIL] MORAI_LAP_WALL_SECONDS는 600..3570초여야 합니다." >&2
     exit 2
 fi
-if [[ "$SCENARIO_RUNTIME" != "proven" && "$SCENARIO_RUNTIME" != "current" ]]; then
-    echo "[FAIL] MORAI_SCENARIO_RUNTIME은 proven 또는 current여야 합니다." >&2
-    exit 2
-fi
-if [[ "$SCENARIO_RUNTIME" == "current" && "$SCENARIO" != "full_loop" ]]; then
-    echo "[FAIL] current runtime은 full_loop만 지원합니다. 구간 수집은 기본 proven runtime을 사용하세요." >&2
-    exit 2
-fi
 export MORAI_ANALYSIS_PYTHON="$ANALYSIS_PYTHON"
 export MORAI_ASYNC_DEPS="$ASYNC_DEPS"
 export MORAI_STORAGE_ROOT="$SSD_ROOT"
@@ -123,22 +120,14 @@ export MORAI_SCENARIO_RUNTIME
 
 integration_log="$MORAI_PROJECT_ROOT/.runtime/data_collection/scenario_contract_check.log"
 mkdir -p "$(dirname "$integration_log")"
-if [[ "$SCENARIO_RUNTIME" == "proven" ]]; then
-    scenario_check=(
-        /usr/bin/python3 "$INTEGRATION/tools/run_proven_three_lap_scenario.py"
-        --check --scenario "$SCENARIO" --nearby-actors
-        --time-mode simulation_free_run --collision-policy record
-        --raw-camera-transport bridge_dropped --max-speed-kmh 60
-    )
-    runtime_label="검증된 고정 수집 runtime"
-else
-    scenario_check=(
-        /usr/bin/python3 "$INTEGRATION/tools/run_async_scenario_review.py"
-        --check --time-mode simulation_free_run --collision-policy record
-        --raw-camera-transport bridge_dropped --max-speed-kmh 60
-    )
-    runtime_label="현재 팀 checkout runtime(실주행 재검증 필요)"
-fi
+scenario_check=(
+    /usr/bin/python3 "$INTEGRATION/tools/run_proven_three_lap_scenario.py"
+    --check --scenario "$SCENARIO" --nearby-actors
+    --expert-runtime "$SCENARIO_RUNTIME"
+    --time-mode simulation_free_run --collision-policy record
+    --raw-camera-transport bridge_dropped --max-speed-kmh 60
+)
+runtime_label="현재 MoraiDrive/expert runtime"
 if ! "${scenario_check[@]}" >"$integration_log" 2>&1; then
     echo "[FAIL] 선택한 Scenario Runner·Expert·수집기 인터페이스가 호환되지 않습니다." >&2
     echo "       runtime=$SCENARIO_RUNTIME ($runtime_label)" >&2
@@ -235,11 +224,7 @@ payload = {
     "campaign_id": campaign_id,
     "scenario_name": scenario_name,
     "scenario_runtime": scenario_runtime,
-    "scenario_runtime_policy": (
-        "pinned collection runtime"
-        if scenario_runtime == "proven"
-        else "current team checkout; requires live validation"
-    ),
+    "scenario_runtime_policy": "current team checkout; requires live validation",
     "requested_laps": int(laps),
     "base_seed": int(seed),
     "lap_wall_limit_seconds": int(seconds),
@@ -349,7 +334,7 @@ PY
         finished="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         printf '%s\t%s\t%s\tfailed_%s\t-\t-\t-\t-\t%s\t%s\n' \
             "$lap" "$seed" "$CURRENT_RUN" "$code" "$started" "$finished" >> "$RUNS_FILE"
-        echo "[FAIL] lap $lap가 실패했습니다. 원본은 보존했고 다음 reset은 진행하지 않습니다." >&2
+        echo "[FAIL] lap $lap가 실패했습니다. 진단 증거를 보존하고 실패 payload를 정리합니다." >&2
         /usr/bin/python3 - "$BASE/$CURRENT_RUN" <<'PY' >&2 || true
 import json
 from pathlib import Path
@@ -396,30 +381,79 @@ if outcome.get("reason") == "bounded_window_elapsed":
         "못한 주행 완료 실패입니다. 이 run은 부분 데이터로 보존됩니다."
     )
 PY
-        echo "       검증: ./data_collection/tools/03_validate_internal_sensor_record.sh $CAMPAIGN_ID" >&2
-        exit "$code"
+        if ! /usr/bin/python3 "$INTEGRATION/tools/cleanup_failed_sensor_record_attempt.py" --run-name "$CURRENT_RUN" --failure-status "failed_$code"; then
+            echo "[FATAL] lap $lap의 Sensor Record OFF 또는 payload 소유권을 안전하게 확인하지 못했습니다." >&2
+            echo "        안전을 위해 다음 reset을 진행하지 않습니다." >&2
+            exit 2
+        fi
+        echo "[CONTINUE] lap $lap는 실패 회차로 기록됐으며 다음 회차를 시도합니다." >&2
+        continue
     fi
 done
 
 CURRENT_LAP=""
-/usr/bin/python3 - "$CAMPAIGN_DIR/COLLECTION_COMPLETE.json" "$CAMPAIGN_ID" "$LAPS" "$SCENARIO" "$SCENARIO_RUNTIME" <<'PY'
-import json, pathlib, sys, time
-path, campaign_id, laps, scenario_name, scenario_runtime = sys.argv[1:]
-pathlib.Path(path).write_text(json.dumps({
+/usr/bin/python3 - "$CAMPAIGN_DIR/COLLECTION_COMPLETE.json" "$CAMPAIGN_ID" "$LAPS" "$SCENARIO" "$SCENARIO_RUNTIME" "$RUNS_FILE" <<'PY'
+import csv
+import json
+import os
+import pathlib
+import sys
+import time
+
+path, campaign_id, attempts, scenario_name, scenario_runtime, runs_path = sys.argv[1:]
+attempts = int(attempts)
+latest = {}
+with open(runs_path, newline="", encoding="utf-8") as source:
+    for row in csv.DictReader(source, delimiter="\t"):
+        latest[int(row["lap"])] = row
+missing = [lap for lap in range(1, attempts + 1) if lap not in latest]
+nonterminal = [
+    lap for lap in range(1, attempts + 1)
+    if lap in latest
+    and latest[lap].get("status") not in ("captured", "completed")
+    and not latest[lap].get("status", "").startswith("failed_")
+]
+if missing or nonterminal:
+    raise RuntimeError(
+        "cannot seal incomplete attempt ledger: missing=%r nonterminal=%r"
+        % (missing, nonterminal)
+    )
+captured = [
+    lap for lap in range(1, attempts + 1)
+    if latest[lap].get("status") in ("captured", "completed")
+]
+failed = [
+    lap for lap in range(1, attempts + 1)
+    if latest[lap].get("status", "").startswith("failed_")
+]
+payload = {
     "schema": "morai_sensor_record_campaign_completion_v1",
     "campaign_id": campaign_id,
     "scenario_name": scenario_name,
     "scenario_runtime": scenario_runtime,
-    "captured_laps": int(laps),
+    "status": "attempts_completed",
+    "requested_attempts": attempts,
+    "attempted_laps": attempts,
+    "captured_laps": len(captured),
+    "failed_laps": len(failed),
+    "failed_lap_numbers": failed,
     "offline_review_complete": False,
     "completed_wall_ns": time.time_ns(),
     "training_visible": False,
     "physical_simultaneity_verified": False,
-}, sort_keys=True) + "\n")
+}
+destination = pathlib.Path(path)
+temporary = destination.with_name(destination.name + ".tmp.%d" % os.getpid())
+temporary.write_text(json.dumps(payload, sort_keys=True) + "\n")
+os.replace(str(temporary), str(destination))
+print("[SUMMARY] attempts=%d captured=%d failed=%d failed_laps=%s" % (
+    attempts, len(captured), len(failed),
+    ",".join(str(value) for value in failed) if failed else "-",
+))
 PY
 
 echo
-echo "[DONE] scenario=$SCENARIO, $LAPS회 원본 수집이 끝났습니다. 원본은 아직 학습에 공개되지 않습니다."
+echo "[DONE] scenario=$SCENARIO, 요청한 $LAPS회 시도가 끝났습니다. 원본은 아직 학습에 공개되지 않습니다."
 echo "검증 실행:"
 echo "  cd $MORAI_PROJECT_ROOT"
 echo "  ./data_collection/tools/03_validate_internal_sensor_record.sh $CAMPAIGN_ID"

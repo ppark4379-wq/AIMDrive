@@ -4,6 +4,21 @@
 팀의 최신 `scenario_runner`와 `expert`를 그대로 import하며, 둘의 source를 복사하거나
 실행 중 수정하지 않는다.
 
+수집 runtime은 `current` 하나이며 항상 최상위 `MoraiDrive/expert`와
+`MoraiDrive/scenario_runner`를 사용한다. `MORAI_SCENARIO_RUNTIME=current`와
+기존 `--scenario-runtime current` / `--expert-runtime current` 지정은 계속 지원한다.
+`proven` 모드, 동결 소스 복사본과 그 전용 기준 해시 검사는 제거했다.
+이전 설정에서 `proven`을 지정하면 명시적으로 오류를 내며 다른 모드로 전환하지 않는다.
+
+`run_proven_three_lap_scenario.py`와 `collect_async_raw_proven.py`라는 내부 파일명은
+기존 호출 경로와 lock 판별의 호환성을 위해 유지한다. 두 파일은 현재 수집 구현이며
+동결 runtime을 선택하지 않는다. 기록기 정책, 시나리오 동작, 저장·중단·사후 검증은
+기존 `current` 수집과 같다. 다른 legacy/probe 구현의 통합은 별도 작업이다.
+
+회차별 `software_snapshot`, 실행 계획과 데이터 해시 검증은 계속 유지한다.
+과거 수집 자료의 `proven` 메타데이터는 역사적 기록으로 보존하며,
+그 기록이나 해시를 최신 값으로 덮어쓰지 않는다.
+
 ## 수집 계약
 
 - MORAI **Simulation Time**, **Sensor Synchronization 10 Hz**, **External Sync OFF**
@@ -44,8 +59,16 @@ MoraiDrive 루트에서 다음 entrypoint를 순서대로 사용한다.
 
 START/END, 잘린 경로, 활성 장애물·NPC, 완료 판정은 메인 `scenario_runner`가 담당한다.
 Data Collection은 선택 이름 전달, Sensor Record 시작·종료·저장, 선택 모드에 맞는
-사후 검증을 담당한다. 한 회차가 실패하면 원본을 보존하고 다음 회차로 넘어가지 않는
-기존 정책을 유지한다.
+사후 검증을 담당한다. 첫 번째 인자는 성공 목표가 아니라 최대 시도 횟수다. 안전한
+Sensor Record OFF와 해당 회차의 저장 경로 소유권이 확인된 실패는 진단 증거만 보존하고
+대용량 payload를 정리한 뒤 다음 번호를 계속 시도한다. OFF 또는 소유권을 확인하지 못한
+실패는 안전을 위해 즉시 중단한다. 03번은 모든 시도가 끝난 캠페인에서 검증을 통과한
+회차만 학습 manifest에 포함하고, 회차별 결과를
+`campaigns/<campaign>/lap_results.csv`에 기록한다.
+
+WSL 종료·커널 장애 뒤 자동 재개는 지원하지 않는다. 같은 campaign 이름으로 02번을 다시
+실행하면 기존 캠페인을 수정하지 않고 기존과 동일하게 `_retry_<timestamp>` 캠페인을
+새로 만든다.
 
 
 01·02·03은 공통 준비 단계를 자동 실행한다. 로컬 경로와 두 Python 실행 환경을 검사하고

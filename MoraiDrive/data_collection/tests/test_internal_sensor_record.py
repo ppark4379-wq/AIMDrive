@@ -160,7 +160,7 @@ class InternalSensorRecordTest(unittest.TestCase):
         self.assertNotIn("/clock", REQUIRED_STREAMS)
         self.assertEqual(metrics.snapshot(11)["streams"]["/clock"]["samples"], 1)
 
-    def test_bridge_preflight_rejects_a_different_implementation_hash(self):
+    def test_bridge_preflight_separates_stale_from_integrity_failures(self):
         now = 10_000_000_000
         health = {
             "implementation": IMPLEMENTATION,
@@ -182,6 +182,15 @@ class InternalSensorRecordTest(unittest.TestCase):
             },
         }
         self.assertEqual(check_bridge(health, now_ns=now), [])
+
+        health["monotonic_ns"] = now - 3_000_000_000
+        failures = check_bridge(health, now_ns=now)
+        self.assertIn("BRIDGE_HEALTH_STALE: stale health heartbeat", failures)
+        self.assertFalse(any(
+            failure.startswith("BRIDGE_NOT_PATCHED:") for failure in failures
+        ))
+
+        health["monotonic_ns"] = now
         health["code_sha256"] = {"stale.py": "bad"}
         self.assertTrue(any(
             "running implementation differs" in failure
@@ -199,41 +208,6 @@ class InternalSensorRecordTest(unittest.TestCase):
             "os.environ", {"MORAI_GRPC_TARGET": "192.0.2.10:7789"}, clear=False
         ):
             self.assertEqual(default_grpc_target(), "192.0.2.10:7789")
-
-    def test_campaign_uses_hash_pinned_proven_three_lap_runtime(self):
-        import hashlib
-
-        supervisor = (
-            INTERNAL / "tools/run_sensor_record_scenario.py"
-        ).read_text()
-        runner = (
-            INTERNAL / "tools/run_proven_three_lap_scenario.py"
-        ).read_text()
-        runtime = INTERNAL / "proven_three_lap_runtime"
-        manifest = json.loads(
-            (runtime / "PROVEN_RUNTIME_MANIFEST.json").read_text()
-        )
-        self.assertIn("run_proven_three_lap_scenario.py", supervisor)
-        self.assertIn("'--nearby-actors'", supervisor)
-        self.assertIn("Proven three-lap runtime differs", runner)
-        self.assertEqual(manifest["reference_run"], "large_scale_3laps_02_lap_001")
-        self.assertEqual(len(manifest["files"]), 108)
-        for relative in (
-            "async_capture/bundle_screen.py",
-            "async_capture/nearby_actors.py",
-            "async_capture/rosbag_recording.py",
-            "async_capture/temporal_groups.py",
-            "tools/collect_async_raw_proven.py",
-            "tools/exec_owned_rosbag.py",
-        ):
-            self.assertTrue((INTERNAL / relative).is_file(), relative)
-        for relative, expected in manifest["files"].items():
-            path = runtime / relative
-            self.assertTrue(path.is_file(), relative)
-            self.assertEqual(
-                hashlib.sha256(path.read_bytes()).hexdigest(), expected,
-                relative,
-            )
 
     def test_collector_keeps_observation_clock_out_of_team_scenario_kwargs(self):
         source = (INTERNAL / "tools/run_async_scenario_review.py").read_text()

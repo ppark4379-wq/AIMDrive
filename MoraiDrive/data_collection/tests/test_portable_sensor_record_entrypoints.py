@@ -118,6 +118,20 @@ class PortableSensorRecordEntrypointTest(unittest.TestCase):
         self.assertIn("preflight_local_storage.py", campaign)
         self.assertIn("preflight_local_storage.py", validator_shell)
 
+    def test_preflight_retries_only_transient_bridge_startup_checks(self):
+        preflight = (
+            DATA_COLLECTION / "tools/01_internal_sensor_record_preflight.sh"
+        ).read_text()
+        self.assertIn("for localhost_attempt in 1 2 3; do", preflight)
+        self.assertIn("if (( localhost_attempt < 3 )); then", preflight)
+        self.assertIn("bridge_stale_attempts=0", preflight)
+        self.assertIn("((bridge_stale_attempts += 1))", preflight)
+        self.assertIn("if (( bridge_stale_attempts >= 3 )); then", preflight)
+        self.assertLess(
+            preflight.index("if grep -q 'BRIDGE_NOT_PATCHED'"),
+            preflight.index("if grep -q 'BRIDGE_HEALTH_STALE'"),
+        )
+
     def test_readiness_renderer_explains_each_missing_operator_action(self):
         report = {
             "ready": False,
@@ -354,12 +368,12 @@ class PortableSensorRecordEntrypointTest(unittest.TestCase):
         supervisor = (
             INTERNAL / "tools/run_sensor_record_scenario.py"
         ).read_text()
-        self.assertIn('SCENARIO_RUNTIME="${MORAI_SCENARIO_RUNTIME:-proven}"', campaign)
+        self.assertIn('SCENARIO_RUNTIME="${MORAI_SCENARIO_RUNTIME:-current}"', campaign)
         self.assertIn('runtime=$SCENARIO_RUNTIME', campaign)
         self.assertIn('--scenario-runtime "$SCENARIO_RUNTIME"', campaign)
         self.assertIn("run_proven_three_lap_scenario.py", campaign)
-        self.assertIn("run_async_scenario_review.py", campaign)
-        self.assertIn("'--scenario-runtime', choices=('proven', 'current')", supervisor)
+        self.assertNotIn("run_async_scenario_review.py", campaign)
+        self.assertIn("'--scenario-runtime', choices=('current',)", supervisor)
         self.assertIn("scenario_runtime=a.scenario_runtime", supervisor)
 
     def test_current_runtime_resolves_grpc_only_when_not_explicit(self):

@@ -107,12 +107,22 @@ rosparam set /use_sim_time true
 echo "[PASS] ROS master 준비 및 /use_sim_time=true"
 
 if [[ "$MORAI_ENDPOINT_IP" == 127.* ]]; then
-    set +e
-    "$MORAI_POWERSHELL_EXE" -NoProfile -NonInteractive -Command \
-        '$client = New-Object System.Net.Sockets.TcpClient; try { $result = $client.BeginConnect("127.0.0.1", 9090, $null, $null); if (-not $result.AsyncWaitHandle.WaitOne(3000)) { exit 2 }; $client.EndConnect($result); exit 0 } catch { exit 2 } finally { $client.Dispose() }' \
-        >/dev/null 2>&1
-    localhost_code=$?
-    set -e
+    localhost_code=2
+    for localhost_attempt in 1 2 3; do
+        set +e
+        "$MORAI_POWERSHELL_EXE" -NoProfile -NonInteractive -Command \
+            '$client = New-Object System.Net.Sockets.TcpClient; try { $result = $client.BeginConnect("127.0.0.1", 9090, $null, $null); if (-not $result.AsyncWaitHandle.WaitOne(3000)) { exit 2 }; $client.EndConnect($result); exit 0 } catch { exit 2 } finally { $client.Dispose() }' \
+            >/dev/null 2>&1
+        localhost_code=$?
+        set -e
+        if (( localhost_code == 0 )); then
+            break
+        fi
+        if (( localhost_attempt < 3 )); then
+            echo "[WAIT] Windows→WSL localhost 연결을 재확인합니다. (${localhost_attempt}/3 실패)"
+            sleep 2
+        fi
+    done
     if (( localhost_code != 0 )); then
         echo "[FAIL] 이 PC의 Windows→WSL localhost 전달로 127.0.0.1:9090에 접속할 수 없습니다." >&2
         echo "       다음 명령으로 이 PC만 WSL NAT 주소를 사용하도록 전환한 뒤 01번을 다시 실행하세요." >&2
@@ -133,6 +143,7 @@ echo "      차량 정보와 Simulator Network도 센서셋과 같은 주소를 
 echo "      센서셋 IP가 이번 실행에서 바뀌었다면 MORAI에서 센서셋을 다시 불러온 뒤 연결하세요."
 
 deadline=$((SECONDS + CONNECT_TIMEOUT))
+bridge_stale_attempts=0
 while (( SECONDS < deadline )); do
     if [[ "$STARTED_BRIDGE" == "1" ]] && ! kill -0 "$BRIDGE_PID" 2>/dev/null; then
         wait "$BRIDGE_PID" || true
@@ -173,6 +184,17 @@ while (( SECONDS < deadline )); do
         echo "[FAIL] bridge 호환성 또는 실행 상태 검사에 실패했습니다." >&2
         echo "       위 bridge 진단의 구체적인 원인을 확인하세요." >&2
         exit 2
+    fi
+    if grep -q 'BRIDGE_HEALTH_STALE' "$STATUS_FILE"; then
+        ((bridge_stale_attempts += 1))
+        if (( bridge_stale_attempts >= 3 )); then
+            echo "[FAIL] bridge health heartbeat가 3회 연속 stale 상태입니다." >&2
+            echo "       bridge 프로세스와 ROS 연결 상태를 확인한 뒤 01번을 다시 실행하세요." >&2
+            exit 2
+        fi
+        echo "[WAIT] bridge health heartbeat를 재확인합니다. (${bridge_stale_attempts}/3 stale)"
+    else
+        bridge_stale_attempts=0
     fi
     sleep 2
 done

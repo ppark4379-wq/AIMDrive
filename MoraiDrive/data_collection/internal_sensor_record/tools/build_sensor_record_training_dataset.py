@@ -53,6 +53,20 @@ def required_training_coverage(scenario_name):
     return tuple(required)
 
 
+def select_training_laps(report):
+    """Return only validator-approved laps while keeping old reports compatible."""
+    laps = [
+        lap for lap in report.get("laps", [])
+        if lap.get("valid") is True and lap.get("training_usable", True) is not False
+    ]
+    if len(laps) < 2:
+        raise ValueError(
+            "At least two valid complete laps are required for episode-level "
+            "train/val split"
+        )
+    return laps
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--validation-report", type=Path, required=True)
@@ -73,9 +87,7 @@ def main():
         raise ValueError("A passed, sealed campaign validation is required")
     scenario_name = report.get("scenario_name", "full_loop")
     required = required_training_coverage(scenario_name)
-    laps = report.get("laps", [])
-    if len(laps) < 2 or not all(lap.get("valid") for lap in laps):
-        raise ValueError("At least two valid complete laps are required for episode-level train/val split")
+    laps = select_training_laps(report)
     available = {int(lap["lap"]) for lap in laps}
     val_laps = set(args.val_lap or [max(available)])
     if not val_laps or not val_laps < available:

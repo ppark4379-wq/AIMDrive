@@ -117,10 +117,14 @@ def resolve_audited_map_root(map_root, scenario_root, expected_global, source_ha
         if not path.is_file():
             raise ValueError("Audited map copy is unavailable: " + name)
         if name != "global_path" and source_hashes.get(name) not in _representations(path):
-            raise ValueError("Capture/audited map content differs: " + name)
+            raise ValueError(
+                "Capture/audited map content differs from recorded LF hash: " + name
+            )
         if old[name].is_file() and (old[name].read_bytes().replace(b"\r\n",b"\n")
                                   != path.read_bytes().replace(b"\r\n",b"\n")):
-            raise ValueError("Capture/audited map content differs: " + name)
+            raise ValueError(
+                "Capture/audited map content differs from recorded LF hash: " + name
+            )
     resolution = ("capture_copy_lf_crlf_equivalent" if all(p.is_file() for p in old.values())
                   else "recorded_lf_sha256_equivalent_checkout")
     return candidate, True, resolution

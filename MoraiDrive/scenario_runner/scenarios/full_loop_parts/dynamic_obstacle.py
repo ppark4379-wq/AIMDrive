@@ -126,16 +126,29 @@ def _destroy_dynamic_obstacle_actor(self):
         self.dynamic_obstacle = None
 
 def _finish_dynamic_obstacle(self, reason):
-    end = self.dynamic_obstacle_end
     actor = self.dynamic_obstacle
     if actor is not None:
-        try:
-            # MORAI 26.R1 SetTransform adds the map elevation again for a
-            # spawned pedestrian.  Pause at the naturally reached endpoint
-            # instead of teleporting the actor upward.
-            actor.set_pause(True)
-        except Exception as e:
-            print(f"[FullLoop] dynamic obstacle final stop warning: {e}")
+        start = self.dynamic_obstacle_start
+        end = self.dynamic_obstacle_end
+        dx = float(end["x"]) - float(start["x"])
+        dy = float(end["y"]) - float(start["y"])
+        length = math.hypot(dx, dy)
+        if length < 1e-3:
+            raise RuntimeError("Dynamic obstacle stop direction is undefined")
+        # MORAI 26.R1 SetPause can restore a completed pedestrian to its
+        # original spawn transform. Keep the actor at the naturally reached
+        # endpoint by issuing a zero-speed control in its crossing direction.
+        stopped = self.grpc.control_pedestrian(
+            actor,
+            dx / length,
+            dy / length,
+            0.0,
+            verbose=True,
+        )
+        if not stopped:
+            raise RuntimeError(
+                "Failed to stop dynamic obstacle at the reached endpoint"
+            )
     self.dynamic_obstacle_phase = "cleared"
     now = self._scenario_now()
     started = getattr(

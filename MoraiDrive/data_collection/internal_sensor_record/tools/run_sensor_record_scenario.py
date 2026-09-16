@@ -138,10 +138,10 @@ def main():
     p.add_argument('--scenario', choices=PRIMARY_SCENARIOS, default='full_loop',
                    help='Main Scenario Runner mode to execute (default: full_loop)')
     p.add_argument(
-        '--scenario-runtime', choices=('proven', 'current'), default='proven',
+        '--scenario-runtime', choices=('current',), default='current',
         help=(
-            'proven: execute the pinned collection runtime; current: execute '
-            'the current team runtime (full_loop only)'
+            'Execute MoraiDrive/expert (current); the frozen proven mode '
+            'has been removed'
         ),
     )
     p.add_argument('--pid',type=int,required=True)
@@ -165,8 +165,6 @@ def main():
                          'performed by validate_sensor_record_campaign.py.'))
     p.add_argument('--check',action='store_true',help='Read-only storage/configuration preflight; no driving or UI action')
     a=p.parse_args()
-    if a.scenario_runtime == 'current' and a.scenario != 'full_loop':
-        p.error('--scenario-runtime current supports only --scenario full_loop')
     analysis_python=Path(os.environ.get(
         'MORAI_ANALYSIS_PYTHON',
         str(ANALYSIS_PYTHON),
@@ -251,14 +249,12 @@ def main():
         observed_mode=require_free_running_mode(mode_observation,'simulation_free_run')
     finally:gt.close()
     coordination=ep/'sensor_record_coordination'
-    runner = (
-        ROOT/'tools/run_proven_three_lap_scenario.py'
-        if a.scenario_runtime == 'proven'
-        else ROOT/'tools/run_async_scenario_review.py'
-    )
-    command=['/usr/bin/python3',str(runner)]
-    if a.scenario_runtime == 'proven':
-        command += ['--scenario',a.scenario,'--nearby-actors']
+    # Keep the established production runner path for process-lock identity
+    # and recorded software provenance; it now uses only MoraiDrive/expert.
+    runner = ROOT/'tools/run_proven_three_lap_scenario.py'
+    command=['/usr/bin/python3',str(runner),
+             '--scenario',a.scenario,'--nearby-actors',
+             '--expert-runtime',a.scenario_runtime]
     command += [
         '--time-mode','simulation_free_run','--collision-policy','record',
         '--max-speed-kmh','60','--seconds',str(a.seconds),'--audit-scope','timing','--output',str(run),
