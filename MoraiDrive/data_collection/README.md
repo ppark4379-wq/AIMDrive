@@ -120,15 +120,15 @@ python3 data_collection/collect.py --duration 120
 
 기본 dataset 경로는 `<repo>/MoraiDrive/dataset`입니다.
 이미지, LiDAR 및 메타데이터는 이 경로 아래에 저장됩니다.
-`archive_root` 기본값은 빈 문자열이므로 종료 후 Z:로 복사하지 않습니다.
+수집 종료 후 별도 저장소로 자동 복사하지 않습니다.
 최신 Runtime manifest는 자동 선택합니다.
 
 ```bash
 python3 data_collection/collect.py --duration 1800
 ```
 
-`--dataset-root`로 저장 루트를 변경할 수 있습니다. 별도 복사가 필요한 경우에만
-`--archive-root <복사할_경로>`를 명시하세요. 기존 수집 파일은 자동 이동하지 않습니다.
+`--dataset-root`로 저장 루트를 변경할 수 있습니다.
+별도 복사가 필요하면 수집 후 `writer/archive.py`를 수동으로 실행하세요.
 
 gRPC object·신호등 라벨은 dataset writer와 별개로 로컬 SQLite 파일에 먼저
 보관됩니다. 기본 위치는 `MoraiDrive/dataset/.label_spool`이며,
@@ -160,7 +160,6 @@ SyncMode에서 `/Object_topic`과 `/GetTrafficLightStatus`가 발행되지 않�
 |---|---|
 | `MAP_DIR`, `MORAI_LAUNCHER` | MGeo 맵 폴더와 PC별 MORAI Launcher 설치 폴더 |
 | `DATASET.dataset_root` | 수집 중 결과 저장: `<repo>/MoraiDrive/dataset` |
-| `DATASET.archive_root` | 기본 `""`: 수집 후 복사 안 함 |
 | `DATASET.job_name`, `route_name` | `competition_train`, `full_loop` |
 | `DATASET.map_id`, `map_source_dir` | 맵 식별자와 MGeo JSON 폴더 |
 | `COLLECTOR.route_definition` | 공식 경로 링크를 정의한 YAML |
@@ -250,3 +249,30 @@ START와 END 좌표가 일치하는 폐루프는 END 이후 START 구간으로 �
 폐루프에서는 near/target 목표점과 future_waypoints도 START로 이어집니다. 이는 컬렉터의 라벨 처리이며 Expert의 주행이나 수집 시간을 변경하지 않습니다. 적용하려면 컬렉터를 재시작해야 하며, 이미 저장된 프레임은 자동으로 수정하지 않습니다.
 
 2026-09-11 19:48 수집본 3,442프레임 오프라인 재생: frame 2282에서 route_index 4427→1로 전환, route_valid=false가 1,200→42프레임으로 감소했습니다. 마지막 경로 오차는 약 389.69m→0.24m이며 미래 waypoint는 50개입니다. 남은 42프레임(1706~1747)은 회차 전환과 별개의 경로 편차입니다.
+
+
+## Sensor Record 검증 후 NAS 복사
+
+Sensor Record의 03 검증 명령은 성공한 campaign의 모든 lap을 로컬에서 NAS로 순차 복사합니다.
+목적지는 local_machine.json의 nas_root 아래
+full loop_<수집 시작 HHMMSS>/<campaign>_lap_NNN입니다.
+수집 파일과 센서 원본을 lap 폴더 하나로 구성하며 원본은 보존합니다.
+호스트 환경에 따른 감속·일시정지와 파일 수·크기·SHA-256 확인을 적용합니다.
+
+설정, 재개 명령, 제한 없는 복사 방식과 검증 범위는
+[NAS 복사 운영 규칙](internal_sensor_record/NAS_PUBLICATION.md)을 참고하세요.
+로컬 검증까지만 실행하려면 03 명령에 --no-nas-copy를 붙입니다.
+위 collect.py의 수동 archive 실행과는 별도 경로입니다.
+
+
+## ?? ?? ??? ??? ?? ??
+
+???? ?? ??? ?? manifest ??? `async_capture/route_sources.py`?
+??? ?? ??? ?????. ?? ?? ?????? ??? SHA-256? ??
+????, ?? ??? ?? ??? ????? ?? ?? ??? ??? ?????.
+?? ??? ??? ?? scenario_runner? ?? ?? ?? ?? ??? ?????.
+??? ??? ??? ????? LF/CRLF ????? ???? ??? ??? ?????.
+?? ??, ?? ??, ?? ?? ?? ? ??? ?? ???
+`route_source_resolution`? ?????. ??? ?? ?? ???? ???? ????.
+??? ?? ???? ?? ?? ??? ???? ??? ????,
+`--rebuild-route-review`? ?? ?? ???? ??? ? ?? ?????.

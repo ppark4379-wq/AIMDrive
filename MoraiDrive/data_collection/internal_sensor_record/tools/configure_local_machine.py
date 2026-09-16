@@ -224,6 +224,34 @@ def probe_windows_interop(powershell_exe, environment=None):
     return True, "ok"
 
 
+
+def prepare_sensor_directories(sensor_data_root):
+    """Leave session links intact; the Windows session step validates/rotates them.
+
+    DrvFS exposes a Windows junction as a symlink. exists() follows its target,
+    so a removed old session returns False even though the junction still exists.
+    Never recreate that old session or replace a link while MORAI may be open.
+    """
+    sensor_data_root = Path(sensor_data_root)
+    sensor_data_root.mkdir(parents=True, exist_ok=True)
+    created, deferred = [], []
+    for name in (
+        "CAMERA_1", "CAMERA_2", "CAMERA_3", "CAMERA_4",
+        "LIDAR_5", "GPS_6", "IMU_7",
+    ):
+        path = sensor_data_root / name
+        if path.is_symlink() and not path.exists():
+            deferred.append(str(path))
+            continue
+        if path.exists():
+            if not path.is_dir():
+                raise RuntimeError("SensorData entry is not a directory: " + str(path))
+            continue
+        path.mkdir()
+        created.append(str(path))
+    return created, deferred
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--storage-root", type=Path)
@@ -276,6 +304,8 @@ def main():
         or "127.0.0.1"
     )
     config = {
+        # Keep settings owned by other stages, including NAS publication.
+        **existing,
         "bridge_ip": selected_bridge_ip,
         "storage_root": str(selected(args.storage_root, "storage_root", storage_default)),
         "launcher_root": str(launcher),
@@ -322,19 +352,9 @@ def main():
     sensor_data_root = (
         launcher / "MoraiLauncher_Win_Data/SaveFile/SensorData"
     )
-    sensor_data_root.mkdir(parents=True, exist_ok=True)
-    created_sensor_directories = []
-    for name in (
-        "CAMERA_1", "CAMERA_2", "CAMERA_3", "CAMERA_4",
-        "LIDAR_5", "GPS_6", "IMU_7",
-    ):
-        path = sensor_data_root / name
-        if path.exists():
-            if not path.is_dir():
-                raise RuntimeError("SensorData entry is not a directory: " + str(path))
-            continue
-        path.mkdir()
-        created_sensor_directories.append(str(path))
+    created_sensor_directories, deferred_sensor_links = prepare_sensor_directories(
+        sensor_data_root
+    )
 
     catkin_workspace = Path(config["catkin_workspace"])
     catkin_setup = catkin_workspace / "devel/setup.bash"
@@ -495,6 +515,7 @@ def main():
         "analysis_python": str(analysis_python),
         "sensor_set": sensor_report,
         "created_sensor_directories": created_sensor_directories,
+        "deferred_sensor_links": deferred_sensor_links,
     }
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
@@ -506,6 +527,9 @@ def main():
         print("       분석 Python: " + str(analysis_python))
         if created_sensor_directories:
             print("       SensorData : 누락 폴더 %d개 생성" % len(created_sensor_directories))
+        if deferred_sensor_links:
+            print("       SensorData : 이전 세션 연결 %d개 보존; 다음 수집 준비에서 검증 후 새 세션으로 연결"
+                  % len(deferred_sensor_links))
         if args.patch_sensor_set:
             action = (
                 "%d개 주소 필드 갱신" % sensor_report["changed_fields"]

@@ -170,8 +170,8 @@ while (( SECONDS < deadline )); do
         exit 0
     fi
     if grep -q 'BRIDGE_NOT_PATCHED' "$STATUS_FILE"; then
-        echo "[FAIL] 9090 listener가 이 레포의 계측 bridge가 아닙니다." >&2
-        echo "       위에 표시된 9090 프로세스를 종료하고 01번을 다시 실행하세요." >&2
+        echo "[FAIL] bridge 호환성 또는 실행 상태 검사에 실패했습니다." >&2
+        echo "       위 bridge 진단의 구체적인 원인을 확인하세요." >&2
         exit 2
     fi
     sleep 2

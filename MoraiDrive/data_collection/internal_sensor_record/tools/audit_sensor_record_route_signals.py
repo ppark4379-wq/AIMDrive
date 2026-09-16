@@ -12,6 +12,7 @@ ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 from async_capture.journal import digest,write_json
 from async_capture.route_signal_binding import bind_route_progress
+from async_capture.route_sources import resolve_route_sources
 from data_collection.mgeo_navigation import MGeoMap,MGeoRouteTracker,load_official_route
 from ssd_storage import require_ssd
 
@@ -38,10 +39,9 @@ def verify(folder,seal_name):
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--episode',type=Path,required=True);p.add_argument('--output',type=Path,required=True)
-    scenario=ROOT.parents[1]/'scenario_runner'
-    p.add_argument('--map-root',type=Path,default=scenario/'data/R_KR_PR_K-city_2025')
-    p.add_argument('--route-definition',type=Path,default=scenario/'config/full_loop_links.yaml')
-    p.add_argument('--route-key',default='full_loop')
+    p.add_argument('--map-root',type=Path)
+    p.add_argument('--route-definition',type=Path)
+    p.add_argument('--route-key')
     p.add_argument('--actor-audit-dir',default='actor_inventory_audit_v1')
     a=p.parse_args()
     for path in (a.episode,a.output):require_ssd(path,reserve_bytes=0)
@@ -54,6 +54,9 @@ def main():
     if traffic['raw_manifest_sha256']!=index['raw_manifest_sha256'] or not traffic['structural_valid']:
         raise ValueError('Invalid or mixed direct traffic evidence')
     contract=json.loads((a.episode.parent/'sensor_contract.json').read_text())
+    sources=resolve_route_sources(a.episode,contract,map_root=a.map_root,
+                                  route_definition=a.route_definition,route_key=a.route_key)
+    a.map_root=sources['map_root'];a.route_definition=sources['route_definition'];a.route_key=sources['route_key']
     lights=contract['capture']['traffic_light_ground_truth']['light_ids']
     world=MGeoMap(str(a.map_root/'link_set.json'),node_set_path=str(a.map_root/'node_set.json'))
     route=load_official_route(str(a.route_definition),str(a.map_root/'2026_molit_comp_global_path.txt'),a.route_key)
@@ -90,6 +93,8 @@ def main():
     target=[row for row in output if row.get('light_id') and row.get('distance_to_stopline_m') is not None
             and row['distance_to_stopline_m']<=45]
     report=dict(schema='morai_sensor_record_route_signal_binding_audit_v1',frames=len(output),
+        route_source_sha256=sources['hashes'],route_key=sources['route_key'],
+        route_source_resolution=sources['provenance'],
         exact_route_source=route['route_source'],route_definition_sha256=digest(a.route_definition),
         global_path_sha256=digest(a.map_root/'2026_molit_comp_global_path.txt'),
         route_light_ids=lights,status_counts=dict(statuses),stopline_lookahead_frames=len(target),

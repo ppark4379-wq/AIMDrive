@@ -5,6 +5,7 @@ bytes by their audited relative path and SHA256; it does not duplicate them.
 Teacher state is serialized only as a target and never returned as an encoder
 input.
 """
+from async_capture.route_sources import resolve_audited_map_root
 from bisect import bisect_left
 from collections import Counter
 import hashlib
@@ -213,60 +214,8 @@ def verify_episode_evidence(episode, expected):
                 raise ValueError("Sensor Record recovery seal changed: " + key)
 
 
-def resolve_audited_map_root(map_root, scenario_root, expected_global, source_hashes):
-    """Select the exact audited copy, accepting only proven LF/CRLF relocation.
 
-    Never normalize the expected hash. The selected global path must match it
-    byte-for-byte, and all map files must equal the capture copy apart from
-    CRLF. This handles preserved runtimes alongside a Windows checkout.
-    """
-    from async_capture.journal import digest
-    original = Path(map_root)
-    name = "2026_molit_comp_global_path.txt"
-    if (original / name).is_file() and digest(original / name) == expected_global:
-        return original, False, "recorded_path"
-    candidate = Path(scenario_root) / "data" / original.name
-    if not (candidate / name).is_file() or digest(candidate / name) != expected_global:
-        raise ValueError("Official global path differs from the sealed route audit")
-    capture_files_available = True
-    for filename, key in ((name, None), ("link_set.json", "link_set"),
-                          ("node_set.json", "node_set")):
-        before, after = original / filename, candidate / filename
-        if not after.is_file():
-            raise ValueError("Audited map copy is unavailable: " + filename)
-        if not before.is_file():
-            capture_files_available = False
-            if key:
-                normalized = after.read_bytes().replace(b"\r\n", b"\n")
-                if hashlib.sha256(normalized).hexdigest() != source_hashes.get(key):
-                    raise ValueError("Audited map differs from recorded LF hash: " + filename)
-            continue
-        if (key and source_hashes.get(key) != digest(before)):
-            raise ValueError("Capture map differs from its recorded hash: " + filename)
-        if (before.read_bytes().replace(b"\r\n", b"\n")
-                != after.read_bytes().replace(b"\r\n", b"\n")):
-            raise ValueError("Capture/audited map content differs: " + filename)
-    capture_route = original.parents[1] / "config/full_loop_links.yaml"
-    audited_route = Path(scenario_root) / "config/full_loop_links.yaml"
-    if not audited_route.is_file():
-        raise ValueError("Audited route definition is unavailable")
-    if capture_route.is_file():
-        if (digest(capture_route) != source_hashes.get("route_definition")
-                or capture_route.read_bytes().replace(b"\r\n", b"\n")
-                    != audited_route.read_bytes().replace(b"\r\n", b"\n")):
-            raise ValueError("Capture/audited route definition content differs")
-    else:
-        capture_files_available = False
-        normalized = audited_route.read_bytes().replace(b"\r\n", b"\n")
-        if (hashlib.sha256(normalized).hexdigest()
-                != source_hashes.get("route_definition")):
-            raise ValueError("Audited route definition differs from recorded LF hash")
-    resolution = ("capture_copy_lf_crlf_equivalent" if capture_files_available
-                  else "recorded_lf_sha256_equivalent_checkout")
-    return candidate, True, resolution
-
-
-def official_route_tracker(contract, route_report):
+def official_route_tracker(contract, route_report, episode):
     """Rebuild the exact audited competition route used for navigation input.
 
     The target is a point on the official global path 25 m ahead.  It is not
@@ -276,24 +225,13 @@ def official_route_tracker(contract, route_report):
     from async_capture.journal import digest
     from data_collection.mgeo_navigation import MGeoMap, MGeoRouteTracker, load_official_route
 
-    data_collection_root = Path(__file__).resolve().parents[2]
-    scenario_root = data_collection_root.parent / "scenario_runner"
-    traffic = contract.get("capture", {}).get("traffic_light_ground_truth", {})
-    map_root = Path(traffic.get("map_root", "")).resolve()
-    route_definition = scenario_root / "config/full_loop_links.yaml"
-    map_root, relocated_line_endings, map_resolution = resolve_audited_map_root(
-        map_root, scenario_root, route_report.get("global_path_sha256"),
-        traffic.get("source_sha256", {}))
-    global_path = map_root / "2026_molit_comp_global_path.txt"
-    if not map_root.is_dir() or not route_definition.is_file() or not global_path.is_file():
-        raise ValueError("Audited official route inputs are unavailable")
-    if digest(route_definition) != route_report.get("route_definition_sha256"):
-        raise ValueError("Official route definition differs from the sealed route audit")
-    if digest(global_path) != route_report.get("global_path_sha256"):
-        raise ValueError("Official global path differs from the sealed route audit")
-    route_key = str(traffic.get("route_key") or "")
-    if not route_key:
-        raise ValueError("Sensor contract has no official route key")
+    from async_capture.route_sources import resolve_route_sources, verify_route_report
+    sources = resolve_route_sources(episode, contract)
+    verify_route_report(sources, route_report)
+    map_root = sources["map_root"]
+    route_definition = sources["route_definition"]
+    global_path = sources["global_path"]
+    route_key = sources["route_key"]
     world = MGeoMap(str(map_root / "link_set.json"),
                     node_set_path=str(map_root / "node_set.json"))
     route = load_official_route(str(route_definition), str(global_path), route_key)
@@ -305,8 +243,9 @@ def official_route_tracker(contract, route_report):
         "route_topology": "closed_loop" if tracker.closed_route else "open",
         "route_point_count": int(tracker.route_point_count),
         "audited_map_root": str(map_root),
-        "capture_copy_lf_crlf_equivalence_verified": relocated_line_endings,
-        "audited_map_resolution": map_resolution,
+        "capture_copy_lf_crlf_equivalence_verified": sources["line_endings_equivalence_verified"],
+        "audited_map_resolution": sources["resolution"],
+        "route_source_resolution": sources["provenance"],
         "route_definition_sha256": route_report["route_definition_sha256"],
         "global_path_sha256": route_report["global_path_sha256"],
     }
@@ -351,7 +290,7 @@ def build_episode_manifest(episode, *, campaign_validation_sha256, split,
     if not (len(admission) == len(gt_frames) == len(geometry) == len(signals)):
         raise ValueError("Sensor Record target timelines have different lengths")
     times, ego_values = dense_ego_timeline(active)
-    route_tracker, navigation_contract = official_route_tracker(contract, route_report)
+    route_tracker, navigation_contract = official_route_tracker(contract, route_report, episode)
     source_root = Path(native["source_root"]).resolve()
     if not source_root.is_dir():
         raise ValueError("Native Sensor Record source root is unavailable")

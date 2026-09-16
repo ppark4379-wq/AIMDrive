@@ -27,7 +27,6 @@ from writer.dataset_writer import DatasetWriter
 from writer.image_writer import ImageWriter
 from writer.lidar_writer import LidarWriter
 from writer.async_frame_writer import AsyncFrameWriter
-from writer.archive import archive_route
 from schema import EgoState, ActorData, build_measurement_dict
 from sources.native_file_collector import run_sync_native_files
 from sources.sync_capture_manifest import resolve_capture_manifest
@@ -250,8 +249,6 @@ def _parse_args(argv=None):
     ap.add_argument("--job", default=DATASET.job_name)
     ap.add_argument("--dataset-root", default=DATASET.dataset_root,
                     help="dataset output root (default: config.py DATASET.dataset_root)")
-    ap.add_argument("--archive-root", default=DATASET.archive_root,
-                    help="copy completed local run here; empty string disables copying")
     ap.add_argument("--map-id", default=DATASET.map_id)
     ap.add_argument("--map-dir", default=DATASET.map_source_dir,
                     help="directory containing MORAI MGeo JSON files")
@@ -324,12 +321,10 @@ def main():
     if args.mode == "sync_native_files":
         args.control_max_steer_deg = ROS.control_max_steer_deg
         args.morai_to_lmdrive_steer_sign = ROS.morai_to_lmdrive_steer_sign
-        output_dir, frame_count = run_sync_native_files(
+        run_sync_native_files(
             args, dataset_root, DATASET, ROS,
             grpc_config=asdict(GRPC) if GRPC.state_labels_enabled else None,
         )
-        if frame_count and args.archive_root:
-            archive_route(dataset_root, output_dir, args.archive_root)
         return
 
     # Native-file mode returns before importing any ROS subscriber, SyncMode
@@ -969,8 +964,6 @@ def main():
         if writer_error is not None:
             raise writer_error
 
-    if collection_completed and ds_writer is not None and ds_writer.frame_count and args.archive_root:
-        archive_route(dataset_root, ds_writer.output_dir, args.archive_root)
 
 
 if __name__ == "__main__":

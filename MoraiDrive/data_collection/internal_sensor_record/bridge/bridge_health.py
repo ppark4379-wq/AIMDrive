@@ -99,15 +99,19 @@ def check_bridge(health, *, now_ns=None, expected_boot=None, expected_hashes=Non
                  require_streams=True, max_queue_ms=250):
     now = time.monotonic_ns() if now_ns is None else now_ns
     failures = []
-    if not health or health.get("implementation") != IMPLEMENTATION or not health.get("binary_json_patch"):
-        return ["BRIDGE_NOT_PATCHED: production health heartbeat absent or incompatible"]
+    if not health:
+        return ["BRIDGE_HEALTH_PENDING: production health heartbeat not received"]
+    if health.get("implementation") != IMPLEMENTATION or not health.get("binary_json_patch"):
+        return ["BRIDGE_NOT_PATCHED: incompatible production health implementation"]
     if health.get("boot_id") != (boot_id() if expected_boot is None else expected_boot):
         failures.append("BRIDGE_NOT_PATCHED: different host/boot; receive clocks cannot be compared")
     if health.get("code_sha256") != (implementation_hashes() if expected_hashes is None else expected_hashes):
         failures.append("BRIDGE_NOT_PATCHED: running implementation differs from recorder code")
     age = (now-health.get("monotonic_ns", 0))/1e9
-    if age < 0 or age > 2.5:
-        failures.append("BRIDGE_NOT_PATCHED: stale health heartbeat")
+    if age < 0:
+        failures.append("BRIDGE_HEALTH_CLOCK_INVALID: heartbeat is newer than evaluation time")
+    elif age > 2.5:
+        failures.append("BRIDGE_HEALTH_STALE: stale health heartbeat")
     if not health.get("listening"):
         failures.append("BRIDGE_NOT_PATCHED: bridge port is not listening")
     if health_callerid is not None and health_callerid != health.get("node"):
