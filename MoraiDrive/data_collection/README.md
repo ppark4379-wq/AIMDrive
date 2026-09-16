@@ -68,6 +68,41 @@ export MORAI_STORAGE_ROOT=/mnt/c/MoraiDriveData
 남는다. 원본 데이터와 `.runtime` 의존성은 Git에 포함되지 않는다. 다른 PC에서는
 00번이 해당 PC 전용 의존성을 준비한다.
 
+## Expert 이벤트 보고서 (04번)
+
+수집 로그에서 충돌·신호 개입·경로 이탈·미완주 이벤트를 모아 센서 bundle 후보와
+함께 기록합니다. 학습 사용 여부를 판정하거나 원본을 삭제하지 않습니다.
+
+```bash
+python3 data_collection/tools/04_evaluate_expert_driving.py campaign_name \
+  --base /mnt/c/MoraiDriveData/sensor_record_auto_v1
+```
+
+E: 드라이브에 수집한 데이터는 `--base /mnt/e/MoraiDriveData/sensor_record_auto_v1`로
+지정합니다. 04번은 수집 저장 위치를 변경하지 않으며, `MORAI_STORAGE_ROOT`를 직접
+읽지 않습니다. `--base` 생략 시 저장소의 `dataset/sensor_record_auto_v1`을 사용합니다.
+
+프레임 매칭에는 03번에서 생성한 `native_associations/associations.json`과
+`gt_timeline_v1/frames.json`을 사용합니다. 이 파일이 없으면 로그의 이벤트는
+기록하되 해당 매칭을 미확인으로 표시합니다. 04번 자체는 Python 표준 라이브러리로 실행합니다.
+
+결과는 `campaigns/<campaign>/expert_driving_evaluation_v1/report.json`에 저장합니다.
+보고서 맨 위의 `_comments`에 한국어 필드 설명이 있습니다.
+`sensor_bundle_index`는 **0-based**이고 `sensor_bundle_number`는 index+1입니다.
+
+| match_status | 의미 |
+| --- | --- |
+| `CANDIDATES_AGREE` | 시간·위치 후보 일치, HIGH. 물리적 충돌 시각의 확정은 아님 |
+| `BETWEEN_FRAMES` | 인접 후보가 다름, LOW. 두 bundle 사이 충돌 가능성, 선택 index는 null |
+| `TIME_ONLY` | Ego 위치 없이 수신 시간 후보만 선택. 위치 검증은 하지 못함 |
+
+종료 코드 0은 충돌·완주 입력 처리가 정상임을 뜻합니다. 모든 이벤트의 매칭 완료를
+뜻하지 않으므로 `match_status`와 `event_report_warnings`도 확인하세요.
+입력 오류를 담은 보고서는 1, campaign/TSV/저장 오류는 2를 반환합니다.
+
+[상세 사용법과 필드 의미](docs/expert-driving-evaluation.md) ·
+[2026-09-16 최종 점검 기록](docs/expert-event-report-checklist-20260916.md)
+
 ## 실행
 
 Expert와 Sync Runtime을 실행하고 센서 캡처 기록이 생성된 뒤, 새 터미널에서
