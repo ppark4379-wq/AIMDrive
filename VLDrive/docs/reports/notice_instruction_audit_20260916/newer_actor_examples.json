@@ -1,0 +1,157 @@
+{
+  "actor_observation_counts": {
+    "OBJECT_TYPE_OBSTACLE": 6173,
+    "OBJECT_TYPE_PEDESTRIAN": 4242,
+    "OBJECT_TYPE_VEHICLE": 7289
+  },
+  "near_front_examples": {
+    "OBJECT_TYPE_OBSTACLE": {
+      "record_id": 40799,
+      "timestamp_raw": "89620004",
+      "tick_count": "4481",
+      "actor_id": "1",
+      "ego_xyz": {
+        "x": -60.09066390991211,
+        "y": -167.03953552246094,
+        "z": 28.745759963989258
+      },
+      "ego_yaw_deg": 86.76913452148438,
+      "actor_xyz": {
+        "x": -60.60994338989258,
+        "y": -142.1780242919922,
+        "z": 28.37445068359375
+      },
+      "forward_m": 24.792728792678222,
+      "lateral_m": 1.9196329997572001,
+      "instance": {
+        "capture_generation": 0,
+        "incarnation": 0,
+        "instance_key": "0|OBJECT_TYPE_OBSTACLE|1|0",
+        "model_identity_valid": true,
+        "model_name": "CargoBox",
+        "object_type": "OBJECT_TYPE_OBSTACLE"
+      },
+      "source_index": {
+        "available_monotonic_ns": 50773735326135,
+        "chunk_path": "chunks/000002.raw",
+        "encoding": "json",
+        "enqueue_monotonic_ns": 50773735427635,
+        "journal_observation_clocks": {
+          "monotonic_ns": 50773735352935,
+          "monotonic_raw_ns": 50843290630407,
+          "raw_bracket_ns": 300,
+          "wall_ns": 1789369303512664873
+        },
+        "payload_bytes": 3000,
+        "payload_offset": 23654943,
+        "receive_monotonic_ns": 50773735140535,
+        "receive_wall_ns": 1789369303512453273,
+        "record_id": 40799,
+        "role": "actor_inventory",
+        "seq": 1416,
+        "source_timestamp_raw": "89620004",
+        "stream": "actor_inventory",
+        "writer_queue_wait_ns": 139500
+      }
+    },
+    "OBJECT_TYPE_PEDESTRIAN": {
+      "record_id": 56292,
+      "timestamp_raw": "107680005",
+      "tick_count": "5384",
+      "actor_id": "5",
+      "ego_xyz": {
+        "x": -60.09284973144531,
+        "y": -33.77554702758789,
+        "z": 28.743541717529297
+      },
+      "ego_yaw_deg": 91.211181640625,
+      "actor_xyz": {
+        "x": -57.641265869140625,
+        "y": -11.634444236755371,
+        "z": 28.586618423461914
+      },
+      "forward_m": 22.0843355327075,
+      "lateral_m": -2.9190444167428264,
+      "instance": {
+        "capture_generation": 0,
+        "incarnation": 0,
+        "instance_key": "0|OBJECT_TYPE_PEDESTRIAN|5|0",
+        "model_identity_valid": true,
+        "model_name": "Man5",
+        "object_type": "OBJECT_TYPE_PEDESTRIAN"
+      },
+      "source_index": {
+        "available_monotonic_ns": 50826188123823,
+        "chunk_path": "chunks/000002.raw",
+        "encoding": "json",
+        "enqueue_monotonic_ns": 50826188249423,
+        "journal_observation_clocks": {
+          "monotonic_ns": 50826188155323,
+          "monotonic_raw_ns": 50895743431857,
+          "raw_bracket_ns": 600,
+          "wall_ns": 1789369355965467361
+        },
+        "payload_bytes": 4070,
+        "payload_offset": 130184704,
+        "receive_monotonic_ns": 50826187840323,
+        "receive_wall_ns": 1789369355965152861,
+        "record_id": 56292,
+        "role": "actor_inventory",
+        "seq": 1940,
+        "source_timestamp_raw": "107680005",
+        "stream": "actor_inventory",
+        "writer_queue_wait_ns": 104600
+      }
+    },
+    "OBJECT_TYPE_VEHICLE": {
+      "record_id": 113338,
+      "timestamp_raw": "179300008",
+      "tick_count": "8965",
+      "actor_id": "13",
+      "ego_xyz": {
+        "x": -97.699951171875,
+        "y": 322.49432373046875,
+        "z": 28.70989227294922
+      },
+      "ego_yaw_deg": 55.81219482421875,
+      "actor_xyz": {
+        "x": -98.92984008789062,
+        "y": 326.0215148925781,
+        "z": 28.716760635375977
+      },
+      "forward_m": 2.2266096006053555,
+      "lateral_m": 2.9993189104015983,
+      "instance": {
+        "capture_generation": 0,
+        "incarnation": 0,
+        "instance_key": "0|OBJECT_TYPE_VEHICLE|13|0",
+        "model_identity_valid": true,
+        "model_name": "DEFAULT_SEDAN",
+        "object_type": "OBJECT_TYPE_VEHICLE"
+      },
+      "source_index": {
+        "available_monotonic_ns": 51032993142188,
+        "chunk_path": "chunks/000006.raw",
+        "encoding": "json",
+        "enqueue_monotonic_ns": 51032993335288,
+        "journal_observation_clocks": {
+          "monotonic_ns": 51032993189088,
+          "monotonic_raw_ns": 51102548464557,
+          "raw_bracket_ns": 400,
+          "wall_ns": 1789369562770501126
+        },
+        "payload_bytes": 8861,
+        "payload_offset": 18775287,
+        "receive_monotonic_ns": 51032992709488,
+        "receive_wall_ns": 1789369562770021926,
+        "record_id": 113338,
+        "role": "actor_inventory",
+        "seq": 4006,
+        "source_timestamp_raw": "179300008",
+        "stream": "actor_inventory",
+        "writer_queue_wait_ns": 121800
+      }
+    }
+  },
+  "scope": "Geometric raw-snapshot candidates only; not camera-aligned training labels."
+}
