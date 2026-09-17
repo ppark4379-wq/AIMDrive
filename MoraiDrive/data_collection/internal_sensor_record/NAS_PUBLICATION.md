@@ -27,6 +27,10 @@
 형식으로 자동 생성한다. 예를 들어 정적 장애물 100회는
 `static_obstacle_lap100_20261001_123456`이 된다. 로컬 dataset과 NAS가 같은 이름을
 사용한다. 필요할 때만 두 번째 위치 인자로 명시적 campaign ID를 줄 수 있다.
+원본 수집 ID를 변경하면 검증 경로와 seal이 깨지는 과거 campaign은
+`dataset_campaign_id`를 사용해 원본 ID를 보존하면서 local dataset과 NAS에만 새 규칙의
+공개 이름을 적용한다.
+
 
 시나리오 폴더는 다음처럼 고정한다.
 

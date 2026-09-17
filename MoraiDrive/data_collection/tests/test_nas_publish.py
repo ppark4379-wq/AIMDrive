@@ -6,8 +6,9 @@ from unittest.mock import patch
 from types import SimpleNamespace
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "internal_sensor_record"))
-from nas_publish import (campaign_folder, component, inventory, make_job,
-    make_tree_job, materialize_validated, scenario_folder, SENSORS,
+from nas_publish import (campaign_folder, component, dataset_campaign_id,
+    dataset_run_name, inventory, make_job, make_tree_job, materialize_validated,
+    scenario_folder, SENSORS,
     validate_target, publish_validated, sha256)
 
 class NasPlanningTests(unittest.TestCase):
@@ -18,6 +19,31 @@ class NasPlanningTests(unittest.TestCase):
         self.assertEqual(scenario_folder({"scenario_name": "full_loop_static"}), "static_obstacle")
         self.assertEqual(scenario_folder({"scenario_name": "full_loop_roundabout"}), "roundabout")
         self.assertEqual(scenario_folder({"scenario_name": "full_loop_highway"}), "highway")
+
+    def test_public_dataset_alias_preserves_raw_identity(self):
+        plan = {
+            "campaign_id": "normal_10runs_retry2_20260917",
+            "dataset_campaign_id": "basic_driving_lap10_20260917_091633",
+        }
+        self.assertEqual(dataset_campaign_id(plan),
+                         "basic_driving_lap10_20260917_091633")
+        self.assertEqual(dataset_run_name(plan, {
+            "lap": 7,
+            "run_name": "normal_10runs_retry2_20260917_lap_007",
+        }), "basic_driving_lap10_20260917_091633_lap_007")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "public_run"
+            source.mkdir()
+            (source / "frame").write_text("data")
+            plan["scenario_name"] = "full_loop_normal"
+            public_run = "basic_driving_lap10_20260917_091633_lap_007"
+            job = make_tree_job(source, public_run, plan, "Z:\\DCM\\dataset",
+                                root / "state", str)
+            payload = json.loads(job.read_text())
+            self.assertEqual(payload["destination"],
+                             "Z:\\DCM\\dataset\\basic_driving\\"
+                             "basic_driving_lap10_20260917_091633\\" + public_run)
 
     def test_local_materialization_merges_run_without_duplicate_bytes(self):
         with tempfile.TemporaryDirectory() as directory:

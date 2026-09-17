@@ -57,6 +57,27 @@ def scenario_folder(plan):
     return component(SCENARIO_FOLDERS[scenario])
 
 
+def dataset_campaign_id(plan):
+    """Public dataset name; raw campaign identity remains immutable evidence."""
+    return component(plan.get("dataset_campaign_id", plan["campaign_id"]))
+
+
+def dataset_run_name(plan, lap):
+    """Stable public run name derived from the public campaign and lap number."""
+    source_name = component(lap["run_name"])
+    number = lap.get("lap")
+    if number is None:
+        match = re.search(r"_lap_(\d+)$", source_name)
+        if match:
+            number = int(match.group(1))
+    if number is None:
+        return source_name
+    number = int(number)
+    if number < 1:
+        raise ValueError("Invalid lap number: " + repr(number))
+    return "%s_lap_%03d" % (dataset_campaign_id(plan), number)
+
+
 def validate_target(value):
     target = PureWindowsPath(value)
     if (not target.is_absolute() or str(target) == target.anchor
@@ -286,10 +307,11 @@ def materialize_validated(report_path):
     report_path, report, campaign, plan = _verified_report(report_path)
     legacy_base = Path(SSD_ROOT) / "sensor_record_auto_v1"
     category = scenario_folder(plan)
+    public_campaign_id = dataset_campaign_id(plan)
     canonical_campaign = (Path(SSD_ROOT) / "dataset" / category
-                          / component(plan["campaign_id"]))
+                          / public_campaign_id)
     state_root = (legacy_base / ".local_publications" / category
-                  / component(plan["campaign_id"]))
+                  / public_campaign_id)
     runs = []
     for lap in report["laps"]:
         # A completed campaign may retain failed attempts in its sealed report.
@@ -297,16 +319,20 @@ def materialize_validated(report_path):
         # only explicitly valid laps belong in the canonical training tree.
         if lap.get("valid") is not True:
             continue
-        name = component(lap["run_name"])
+        source_name = component(lap["run_name"])
+        public_name = dataset_run_name(plan, lap)
         result = _materialize_specs(
-            ((root, "") for root in roots_for_run(legacy_base, name)),
-            canonical_campaign / name, state_root / name,
+            ((root, "") for root in roots_for_run(legacy_base, source_name)),
+            canonical_campaign / public_name, state_root / public_name,
             dict(kind="run", scenario=plan.get("scenario_name", "full_loop"),
                  scenario_folder=category, campaign_id=plan["campaign_id"],
-                 run_name=name, validation_report=str(report_path)),
+                 dataset_campaign_id=public_campaign_id,
+                 source_run_name=source_name, run_name=public_name,
+                 validation_report=str(report_path)),
         )
-        result["run_name"] = name
-        result["relative"] = name
+        result["source_run_name"] = source_name
+        result["run_name"] = public_name
+        result["relative"] = public_name
         runs.append(result)
     metadata = _materialize_specs(
         ((campaign / name, "") for name in
@@ -314,20 +340,25 @@ def materialize_validated(report_path):
         canonical_campaign / "_campaign" / "metadata",
         state_root / "_campaign_metadata",
         dict(kind="campaign_metadata", scenario_folder=category,
-             campaign_id=plan["campaign_id"]),
+             campaign_id=plan["campaign_id"],
+             dataset_campaign_id=public_campaign_id),
     )
     validation = _materialize_specs(
         ((report_path.parent, ""),),
         canonical_campaign / "_campaign" / "validations" / report_path.parent.name,
         state_root / ("validation_" + report_path.parent.name),
         dict(kind="campaign_validation", scenario_folder=category,
-             campaign_id=plan["campaign_id"], validation=report_path.parent.name),
+             campaign_id=plan["campaign_id"],
+             dataset_campaign_id=public_campaign_id,
+             validation=report_path.parent.name),
         excluded_names={"nas_publication.json", "local_dataset_publication.json"},
     )
     metadata["relative"] = "_campaign/metadata"
     validation["relative"] = "_campaign/validations/" + report_path.parent.name
     return dict(schema="morai_local_dataset_campaign_v1", scenario_folder=category,
-                campaign_id=plan["campaign_id"], campaign=str(canonical_campaign),
+                campaign_id=plan["campaign_id"],
+                dataset_campaign_id=public_campaign_id,
+                campaign=str(canonical_campaign),
                 runs=runs, evidence=[metadata, validation], hardlinked=True,
                 source_timestamps_modified=False)
 
@@ -372,14 +403,16 @@ def make_tree_job(source, relative_destination, plan, target_root, state_root, t
     os.replace(str(draft), str(manifest))
     destination = str(PureWindowsPath(
         validate_target(target_root), scenario_folder(plan),
-        component(plan["campaign_id"]), *parts))
+        dataset_campaign_id(plan), *parts))
     identity = hashlib.sha256(
         (destination.casefold() + "\n" + fingerprint).encode()).hexdigest()
     job = dict(schema="morai_nas_transfer_v1", identity=identity,
                destination=destination, sources=[translate(source)],
                inventory=translate(manifest), inventory_sha256=fingerprint,
                state=translate(state / identity), files=count, bytes=size,
-               campaign_id=plan["campaign_id"], publication_relative="/".join(parts))
+               campaign_id=plan["campaign_id"],
+               dataset_campaign_id=dataset_campaign_id(plan),
+               publication_relative="/".join(parts))
     job_path = state / ("job-" + identity + ".json")
     job_path.write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8")
     return job_path
@@ -393,6 +426,8 @@ def publish_validated(report_path, target_root=None, dry_run=False,
     local = local_publication or materialize_validated(report_path)
     if (local.get("schema") != "morai_local_dataset_campaign_v1"
             or local.get("campaign_id") != plan["campaign_id"]
+            or local.get("dataset_campaign_id", local.get("campaign_id"))
+                != dataset_campaign_id(plan)
             or local.get("scenario_folder") != scenario_folder(plan)):
         raise ValueError("Canonical local dataset identity differs from validation")
     target_root = (target_root or os.environ.get("MORAI_NAS_ROOT")
