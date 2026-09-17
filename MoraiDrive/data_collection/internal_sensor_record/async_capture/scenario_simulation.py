@@ -2,6 +2,53 @@
 import time
 
 
+def cleanup_unreachable_expert_publishers(topic, master=None, ping=None, cleanup=None):
+    """Remove dead MORAI expert registrations without touching live controllers."""
+    if master is None or ping is None or cleanup is None:
+        import rosgraph
+        import rosnode
+        master = master or rosgraph.Master('/scenario_runner_stale_expert_cleanup')
+        ping = ping or (lambda node: rosnode.rosnode_ping(
+            node, max_count=1, verbose=False))
+        cleanup = cleanup or rosnode.cleanup_master_blacklist
+    publishers, _, _ = master.getSystemState()
+    candidates = sorted(
+        node for node in dict(publishers).get(topic, [])
+        if node.startswith('/morai_standard_')
+    )
+    stale = []
+    for node in candidates:
+        try:
+            alive = bool(ping(node))
+        except Exception:
+            alive = False
+        if not alive:
+            stale.append(node)
+    if stale:
+        cleanup(master, stale)
+    return stale
+
+
+def wait_for_control_release(read_state, topic, timeout=10.0, poll_seconds=0.05):
+    """Wait for a stopped controller to disappear from ROS Master."""
+    deadline = time.monotonic() + float(timeout)
+    last_publishers = []
+    while True:
+        result = read_state()
+        code, message, state = result
+        if code != 1:
+            raise RuntimeError(message)
+        last_publishers = list(dict(state[0]).get(topic, []))
+        if not last_publishers:
+            return result
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                'Control publisher did not unregister within %.1fs: %s'
+                % (float(timeout), last_publishers)
+            )
+        time.sleep(float(poll_seconds))
+
+
 def publish_final_brake(topic, observer):
     """Stop owned expert first; then verify the actual ROS control handoff."""
     import rospy

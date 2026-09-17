@@ -34,7 +34,9 @@ BASE="$SSD_ROOT/sensor_record_auto_v1"
 usage() {
     echo "사용법: $0 <회차 수> [campaign_id] [--scenario <name>]"
     echo "예:   $0 3"
+    echo "      $0 100 --scenario full_loop_static"
     echo "      $0 3 campaign_static --scenario full_loop_static"
+    echo "campaign_id를 생략하면 <시나리오_폴더>_lap<회차>_<생성일시>로 자동 생성합니다."
     echo "시나리오: full_loop, full_loop_normal, full_loop_static, full_loop_dynamic,"
     echo "          full_loop_roundabout, full_loop_highway"
     echo "선택 환경변수: MORAI_STORAGE_ROOT, MORAI_BASE_SEED, MORAI_LAP_WALL_SECONDS, MORAI_SIMULATOR_PID"
@@ -78,7 +80,6 @@ while (( $# > 0 )); do
             ;;
     esac
 done
-CAMPAIGN_ID="${CAMPAIGN_ID:-scenario_campaign_$(date +%Y%m%d_%H%M%S)}"
 case "$SCENARIO" in
     full_loop|full_loop_normal|full_loop_static|full_loop_dynamic|full_loop_roundabout|full_loop_highway)
         ;;
@@ -90,7 +91,7 @@ case "$SCENARIO" in
 esac
 case "$SCENARIO" in
     full_loop) SCENARIO_FOLDER="full_route" ;;
-    full_loop_normal) SCENARIO_FOLDER="normal_driving" ;;
+    full_loop_normal) SCENARIO_FOLDER="basic_driving" ;;
     full_loop_static) SCENARIO_FOLDER="static_obstacle" ;;
     full_loop_dynamic) SCENARIO_FOLDER="dynamic_obstacle" ;;
     full_loop_roundabout) SCENARIO_FOLDER="roundabout" ;;
@@ -106,6 +107,10 @@ COLLECTOR_PID=""
 if [[ -z "$LAPS" ]] || [[ ! "$LAPS" =~ ^[0-9]+$ ]] || (( LAPS < 1 || LAPS > 100 )); then
     usage >&2
     exit 2
+fi
+if [[ -z "$CAMPAIGN_ID" ]]; then
+    CAMPAIGN_ID="${SCENARIO_FOLDER}_lap${LAPS}_$(date +%Y%m%d_%H%M%S)"
+    echo "[NAME] campaign_id를 자동 생성했습니다: $CAMPAIGN_ID"
 fi
 if [[ ! "$CAMPAIGN_ID" =~ ^[A-Za-z0-9_]+$ ]] || (( ${#CAMPAIGN_ID} > 52 )); then
     echo "[FAIL] campaign_id는 영문/숫자/밑줄만 사용하며 52자 이하여야 합니다." >&2

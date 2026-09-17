@@ -37,7 +37,9 @@ from scenario_runner.scenarios.segment_modes.scenario import MissionScenario
 from scenario_runner.adapters.morai_grpc import MoraiGrpcClient
 from scenario_runner.utils.map_loader import MGeoMapLoader
 from scenario_runner.tools.verify_separation import verify_package
-from async_capture.scenario_simulation import SimulationObservationClock, start_simulation_time_world, publish_final_brake, RosClockGuard
+from async_capture.scenario_simulation import (SimulationObservationClock, RosClockGuard,
+    cleanup_unreachable_expert_publishers, publish_final_brake,
+    start_simulation_time_world, wait_for_control_release)
 from async_capture.rosbag_recording import ScenarioRosbag
 from async_capture.route_signal_contract import build_route_signal_contract
 from native_capture.ground_truth import default_grpc_target
@@ -458,6 +460,7 @@ class RawScenario(FullLoopScenario):
                 last_observed_contact_ids=list(self.contact_ids)),
             teacher_trajectory_approved=False, training_visible=False)
         errors = []
+        warnings = []
         for name, action in [('stop_expert', self.stop_expert_controller),
                              ('brake_ego', self.grpc.stop_ego_control)]:
             try:
@@ -466,7 +469,12 @@ class RawScenario(FullLoopScenario):
                 errors.append(name + ': ' + str(error))
         if hasattr(self,'final_brake'):
             try:self.event('final_brake_observed',**self.final_brake())
-            except Exception as error:errors.append('final_brake: '+str(error))
+            except Exception as error:
+                finding='final_brake: '+str(error)
+                if self.outcome.get('full_mission_completed') is True:
+                    warnings.append(finding)
+                else:
+                    errors.append(finding)
         # When Sensor Record ends early at the route goal, keep the raw ROS/GT
         # recorder alive until the UI owner confirms Record OFF.  This makes
         # the native tail observable instead of producing unmatched files.
@@ -513,6 +521,8 @@ class RawScenario(FullLoopScenario):
             super().cleanup()
         except Exception as error:
             errors.append('scenario_cleanup: ' + str(error))
+        if warnings:
+            self.outcome['cleanup_warnings']=warnings
         if errors:
             self.outcome.update(status='failed', cleanup_errors=errors)
         self.event('episode_finished', **self.outcome)
@@ -651,7 +661,14 @@ def main():
             with process_lock('capture'):
                 mode = mode_check()
                 master = xmlrpc.client.ServerProxy(os.environ.get('ROS_MASTER_URI', 'http://127.0.0.1:11311'))
-                topology = control_topology(master.getSystemState('/scenario_review_preflight'), a.control_topic)
+                removed = cleanup_unreachable_expert_publishers(a.control_topic)
+                if removed:
+                    print('[Control] removed unreachable expert registrations: ' +
+                          ', '.join(removed), flush=True)
+                topology_state = wait_for_control_release(
+                    lambda: master.getSystemState('/scenario_review_preflight'),
+                    a.control_topic, timeout=10.0)
+                topology = control_topology(topology_state, a.control_topic)
                 existed=master.hasParam('/scenario_review_preflight','/use_sim_time')[2]
                 original=master.getParam('/scenario_review_preflight','/use_sim_time')[2] if existed else None
                 if ros_clock_expert and original is not True:
@@ -698,7 +715,13 @@ def main():
             results = []
             for index in range(a.episodes):
                 mode_check()
-                control_topology(master.getSystemState('/scenario_review_preflight'), a.control_topic)
+                removed = cleanup_unreachable_expert_publishers(a.control_topic)
+                if removed:
+                    print('[Control] removed unreachable expert registrations: ' +
+                          ', '.join(removed), flush=True)
+                control_topology(wait_for_control_release(
+                    lambda: master.getSystemState('/scenario_review_preflight'),
+                    a.control_topic, timeout=10.0), a.control_topic)
                 episode = output / ('episode_%03d' % index)
                 gc, sc = copy.deepcopy(global_cfg), copy.deepcopy(cfg)
                 gc['grpc']['client_key'] = output.name + '_' + str(index)

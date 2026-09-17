@@ -68,6 +68,13 @@ export MORAI_STORAGE_ROOT=/mnt/c/MoraiDriveData
 남는다. 원본 데이터와 `.runtime` 의존성은 Git에 포함되지 않는다. 다른 PC에서는
 00번이 해당 PC 전용 의존성을 준비한다.
 
+## 자동 campaign 이름
+
+02번 명령에서 campaign ID를 생략하면 시나리오, 요청 회차, 생성 시각을 사용한다.
+예를 들어 정적 장애물 100회는
+`dataset/static_obstacle/static_obstacle_lap100_YYYYMMDD_HHMMSS`에 정리되며,
+NAS 자동 전송 PC에서도 같은 상대경로를 사용한다.
+
 ## Expert 이벤트 보고서 (04번)
 
 수집 로그에서 충돌·신호 개입·경로 이탈·미완주 이벤트를 모아 센서 bundle 후보와

@@ -506,6 +506,10 @@ def main():
                     proc.terminate()
                     try:proc.wait(timeout=45)
                     except subprocess.TimeoutExpired:error=(error or '')+'; scenario shutdown still pending'
+            if (not run.exists() and error
+                    and 'Scenario ROS capture exited before readiness' in error
+                    and proc is not None and proc.poll() not in (None, 0)):
+                run.mkdir(parents=True, exist_ok=False)
             if run.exists():
                 admission_path=ep/'admission_v1/report.json'
                 admission=json.loads(admission_path.read_text()) if admission_path.exists() else None

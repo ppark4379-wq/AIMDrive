@@ -86,7 +86,13 @@ Git에서 제외되는 `<repo>/MoraiDrive/.runtime/data_collection/local_machine
 
 02가 사용하는 `sensor_record_auto_v1`은 수집·검증용 내부 spool이다. 03을 통과하면
 최종 사용 경로는 실제 Windows 저장소의
-`dataset/<scenario>/<campaign>/<run>`이며, 각 run 아래에 Camera/LiDAR/GPS/IMU 원본과
+`dataset/<scenario>/<campaign>/<run>`이다. campaign 이름을 생략하면 02번이
+`<scenario_folder>_lap<회차>_<YYYYMMDD_HHMMSS>`로 자동 생성한다. 예를 들어
+`--scenario full_loop_static`으로 100회를 요청하면
+`dataset/static_obstacle/static_obstacle_lap100_20260917_153000`에 정리된다.
+명시적 campaign 이름을 준 기존 명령도 그대로 지원한다.
+
+각 run 아래에 각 run 아래에 Camera/LiDAR/GPS/IMU 원본과
 `episode_000` 토픽·GT가 함께 놓인다. 동일 디스크의 원본은 하드링크하므로 추가 원본
 용량을 사용하지 않는다. PC별 NAS 자동 전송 여부는 ignored `local_machine.json`의
 `nas_auto_publish`로 결정한다.

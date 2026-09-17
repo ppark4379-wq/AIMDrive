@@ -56,6 +56,19 @@ class PortableSensorRecordEntrypointTest(unittest.TestCase):
                 self.assertEqual(ros["Topic"], "/unchanged")
                 self.assertEqual(ros["frameID"], "unchanged")
 
+    def test_campaign_default_name_uses_scenario_laps_and_timestamp(self):
+        source = (INTERNAL / "tools/collect_scenario_laps.sh").read_text()
+        self.assertIn(
+            'CAMPAIGN_ID="${SCENARIO_FOLDER}_lap${LAPS}_$(date +%Y%m%d_%H%M%S)"',
+            source,
+        )
+        self.assertIn('full_loop_normal) SCENARIO_FOLDER="basic_driving"', source)
+        self.assertIn('full_loop_static) SCENARIO_FOLDER="static_obstacle"', source)
+        self.assertLess(
+            source.index('full_loop_static) SCENARIO_FOLDER="static_obstacle"'),
+            source.index('CAMPAIGN_ID="${SCENARIO_FOLDER}_lap${LAPS}_'),
+        )
+
     def test_all_shell_entrypoints_have_valid_syntax(self):
         paths = [
             DATA_COLLECTION / "tools/00_prepare_internal_sensor_record.sh",

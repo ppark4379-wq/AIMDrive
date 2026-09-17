@@ -8,19 +8,25 @@
 않는다. 원래 spool과 source timestamp는 변경하지 않는다.
 
     <local storage>\dataset\
-      dynamic_obstacle\
-        scenario_campaign_20261001_123456\
-          scenario_campaign_20261001_123456_lap_001\
+      static_obstacle\
+        static_obstacle_lap100_20261001_123456\
+          static_obstacle_lap100_20261001_123456_lap_001\
             CAMERA_1 ... CAMERA_4, LIDAR_5, GPS_6, IMU_7, SESSION.json
             episode_000, ros_logs, software_snapshot, native_setup.json, ...
-            scenario_campaign_..._native_session_apply.json
-            scenario_campaign_..._native_session_plan.json
+            static_obstacle_lap100_..._native_session_apply.json
+            static_obstacle_lap100_..._native_session_plan.json
             .LOCAL_DATASET_COMPLETE.json
-          scenario_campaign_20261001_123456_lap_002\
+          static_obstacle_lap100_20261001_123456_lap_002\
             ...
           _campaign\
             metadata\campaign_plan.json, runs.tsv, COLLECTION_COMPLETE.json
             validations\validation_<시각>\report.json, training_dataset_v1, ...
+
+
+`campaign_id`를 생략하면 02번이 `<시나리오 폴더>_lap<요청 회차>_<YYYYMMDD_HHMMSS>`
+형식으로 자동 생성한다. 예를 들어 정적 장애물 100회는
+`static_obstacle_lap100_20261001_123456`이 된다. 로컬 dataset과 NAS가 같은 이름을
+사용한다. 필요할 때만 두 번째 위치 인자로 명시적 campaign ID를 줄 수 있다.
 
 시나리오 폴더는 다음처럼 고정한다.
 
