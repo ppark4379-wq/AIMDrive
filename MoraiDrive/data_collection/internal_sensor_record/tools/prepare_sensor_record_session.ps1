@@ -5,6 +5,7 @@
 param([Parameter(Mandatory=$true)][string]$SessionName,
       [Parameter(Mandatory=$true)][string]$StorageRoot,
       [Parameter(Mandatory=$true)][string]$SensorDataRoot,
+      [string]$TargetRoot='',
       [string]$ExpectedVolumeId='', [Int64]$ReserveBytes=53687091200,
       [switch]$Apply, [string]$PlanPath, [int]$SimulatorProcessId)
 $ErrorActionPreference='Stop'
@@ -14,7 +15,22 @@ if ($StorageRoot -notmatch '^[A-Za-z]:\\' -or $StorageRoot.Contains("'")) {throw
 if ($SensorDataRoot -notmatch '^[A-Za-z]:\\' -or $SensorDataRoot.Contains("'")) {throw 'SensorDataRoot must be an absolute Windows drive path'}
 $sourceRoot=$SensorDataRoot.TrimEnd('\\')
 $base=Join-Path $StorageRoot 'sensor_record_auto_v1'
-$targetRoot=Join-Path (Join-Path $base 'native_sessions') $SessionName
+$datasetRoot=Join-Path $StorageRoot 'dataset'
+$collectingRoot=Join-Path $datasetRoot '.collecting'
+if ($TargetRoot) {
+ $targetRoot=[IO.Path]::GetFullPath($TargetRoot).TrimEnd('\\')
+ $collectingPrefix=[IO.Path]::GetFullPath($collectingRoot).TrimEnd('\\')+'\\'
+ if (-not $targetRoot.StartsWith($collectingPrefix,[StringComparison]::OrdinalIgnoreCase) -or
+     (Split-Path $targetRoot -Leaf) -cne $SessionName) {
+  throw 'TargetRoot must be this session below dataset\\.collecting'
+ }
+ $relative=$targetRoot.Substring($collectingPrefix.Length)
+ if (@($relative.Split('\\',[StringSplitOptions]::RemoveEmptyEntries)).Count -ne 3) {
+  throw 'TargetRoot must be dataset\\.collecting\\scenario\\campaign\\run'
+ }
+} else {
+ $targetRoot=Join-Path (Join-Path $base 'native_sessions') $SessionName
+}
 $roles=@('CAMERA_1','CAMERA_2','CAMERA_3','CAMERA_4','LIDAR_5','GPS_6','IMU_7')
 $driveLetter=$StorageRoot.Substring(0,1).ToUpperInvariant()
 $volume=Get-Volume -DriveLetter $driveLetter
@@ -33,8 +49,12 @@ foreach ($role in $roles) {
   $nativeSessions=Join-Path $base 'native_sessions'
   $oldSession=Split-Path $oldRoot -Leaf
   $oldSessionParent=Split-Path $oldRoot -Parent
+  $oldFull=[IO.Path]::GetFullPath($oldRoot).TrimEnd('\\')
+  $collectingPrefix=[IO.Path]::GetFullPath($collectingRoot).TrimEnd('\\')+'\\'
+  $approvedDirect=$oldFull.StartsWith($collectingPrefix,[StringComparison]::OrdinalIgnoreCase)
   $approvedOld=(($oldRoot -eq (Join-Path $base 'native')) -or
-      ($oldSessionParent -eq $nativeSessions -and $oldSession -match '^[A-Za-z0-9_]{1,80}$'))
+      ($oldSessionParent -eq $nativeSessions -and $oldSession -match '^[A-Za-z0-9_]{1,80}$') -or
+      $approvedDirect)
   if ((Split-Path $old -Leaf) -cne $role -or -not $approvedOld) {
    throw 'Unexpected previous target; no redirect'
   }
@@ -56,7 +76,7 @@ $bootstrap=($oldKinds[0] -eq 'Directory')
 if (-not $bootstrap -and @($oldRoots | Select-Object -Unique).Count -ne 1) {throw 'Existing junction set is mixed'}
 $oldRoot=$null
 if (-not $bootstrap) {$oldRoot=$oldRoots[0]}
-$plan=[ordered]@{schema='morai_sensor_record_native_session_v1';session=$SessionName;
+$plan=[ordered]@{schema='morai_sensor_record_native_session_v2';session=$SessionName;
  source_root=$sourceRoot;target_root=$targetRoot;old_root=$oldRoot;bootstrap=$bootstrap;
  entries=$entries;source_directories_preserved=$true;source_files_deleted=$false}
 if (-not $Apply) {$plan | ConvertTo-Json -Depth 8 -Compress;exit 0}

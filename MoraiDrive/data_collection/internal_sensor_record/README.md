@@ -148,3 +148,15 @@ simulation state를 공유한다는 정적·동적 증거는 고정되어 있으
 
 객체 geometry가 검증되지 않았거나 GT association 품질이 부족한 프레임은 해당
 task loss를 mask한다. 입력 센서 누락은 mask로 덮지 않고 frame 전체를 제외한다.
+# 저장 구조
+
+새 수집은 `MORAI_STORAGE_ROOT/dataset/.collecting/<scenario>/<campaign>/<run>`에
+센서 원본과 토픽 증거를 처음부터 함께 기록한다. 검증이 모두 통과하면 캠페인
+디렉터리를 `dataset/<scenario>/<campaign>`으로 같은 볼륨 안에서 rename한다.
+따라서 검증 후 원본 복사나 하드링크 재구성 과정이 없다. `.collecting` 아래의
+미완료 캠페인은 학습 입력으로 사용하면 안 된다.
+
+기존 canonical dataset은
+`tools/migrate_canonical_dataset_to_relative_v2.py <dataset> --apply`로 작은
+manifest와 검증 경로만 상대경로로 바꿀 수 있다. 이 작업은 센서 payload를
+복사하지 않는다.

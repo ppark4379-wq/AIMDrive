@@ -224,7 +224,7 @@ def load_publication(path, resolver):
             or seal.get('schema') != 'morai_sensor_record_training_publication_v1'
             or seal['files'].get(path.name) != digest(path)):
         raise ValueError('Training index is not covered by publication seal')
-    source = resolver(index['source_validation'])
+    source = resolver(index['source_validation'], path.parent)
     if digest(source) != index['source_validation_sha256']:
         raise ValueError('Source validation changed')
     source_seal = verify_seal(source.parent)
@@ -248,8 +248,8 @@ def load_publication(path, resolver):
             result[split].append((p, doc))
         if not result[split]:
             raise ValueError('Empty split: ' + split)
-    train_episodes = {str(resolver(d['episode'])) for _,d in result['train']}
-    val_episodes = {str(resolver(d['episode'])) for _,d in result['val']}
+    train_episodes = {str(resolver(d['episode'], p.parent)) for p,d in result['train']}
+    val_episodes = {str(resolver(d['episode'], p.parent)) for p,d in result['val']}
     if train_episodes & val_episodes:
         raise ValueError('Train/validation episodes overlap')
     def assets(split):
@@ -274,7 +274,7 @@ def load_publications(paths, resolver):
         publications.append({'path': str(resolver(path)), 'sha256': digest(resolver(path))})
         for split in combined:
             for p, doc in rows[split]:
-                episode = str(resolver(doc['episode']))
+                episode = str(resolver(doc['episode'], p.parent))
                 identity = (split, digest(p))
                 if episode in episodes:
                     if episodes[episode] != identity:
@@ -309,7 +309,8 @@ class SensorRecordDataset(Dataset):
                     or doc.get('training_visible') is not True):
                 raise ValueError('Requires visible Sensor Record v2 manifest')
             self.manifest_hashes[str(path)] = digest(path)
-            episode, native = resolver(doc['episode']), resolver(doc['native_root'])
+            episode = resolver(doc['episode'], path.parent)
+            native = resolver(doc['native_root'], path.parent)
             contract = doc['contract']
             contract_path = episode.parent/'sensor_contract.json'
             if digest(contract_path) != doc['contract_sha256'] or read_json(contract_path) != contract:

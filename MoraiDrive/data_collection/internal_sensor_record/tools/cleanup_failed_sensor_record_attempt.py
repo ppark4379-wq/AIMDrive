@@ -101,7 +101,8 @@ def _clear_contents(path):
             child.unlink()
 
 
-def _pre_record_failure_evidence(run, native, base, capture_result):
+def _pre_record_failure_evidence(run, native, base, capture_result,
+                                 session_evidence_root=None):
     """Prove that the Windows Sensor Record owner was never invoked.
 
     The supervisor prepares an isolated native session before launching the
@@ -131,8 +132,13 @@ def _pre_record_failure_evidence(run, native, base, capture_result):
     if any(path.exists() for path in forbidden.values()):
         return None
 
-    plan_path = base / (run.name + "_native_session_plan.json")
-    apply_path = base / (run.name + "_native_session_apply.json")
+    if session_evidence_root is None:
+        plan_path = base / (run.name + "_native_session_plan.json")
+        apply_path = base / (run.name + "_native_session_apply.json")
+    else:
+        evidence_root = Path(session_evidence_root).resolve()
+        plan_path = evidence_root / "native_session_plan.json"
+        apply_path = evidence_root / "native_session_apply.json"
     session_path = native / "SESSION.json"
     documents = (plan_path, apply_path, session_path)
     if any(not path.is_file() or path.is_symlink() for path in documents):
@@ -160,7 +166,10 @@ def _pre_record_failure_evidence(run, native, base, capture_result):
     expected_names = set(NATIVE_ROLES) | {"SESSION.json"}
     if not native.is_dir() or native.is_symlink():
         return None
-    if {path.name for path in native.iterdir()} != expected_names:
+    observed_names = {path.name for path in native.iterdir()}
+    if native != run and observed_names != expected_names:
+        return None
+    if native == run and not expected_names.issubset(observed_names):
         return None
     for role in NATIVE_ROLES:
         directory = native / role
@@ -185,7 +194,8 @@ def _pre_record_failure_evidence(run, native, base, capture_result):
 
 def cleanup_failed_attempt(run_name, *, base=BASE, failure_kind,
                            failure_reason, validated_invalid=False,
-                           evidence=None, require_storage=True):
+                           evidence=None, require_storage=True, run_root=None,
+                           session_evidence_root=None):
     """Clean known bulky payload directories after a proven terminal failure.
 
     The run directory, diagnostics, manifests, native role directories, and
@@ -197,15 +207,18 @@ def cleanup_failed_attempt(run_name, *, base=BASE, failure_kind,
     if not RUN_NAME.fullmatch(str(run_name)):
         raise ValueError("invalid run name: " + repr(run_name))
     base = Path(base).expanduser().resolve()
-    if base.name != "sensor_record_auto_v1":
+    direct = run_root is not None
+    if not direct and base.name != "sensor_record_auto_v1":
         raise ValueError("unexpected Sensor Record base: " + str(base))
     if require_storage:
         require_ssd(base, reserve_bytes=0)
-    run = base / str(run_name)
-    native_parent = base / "native_sessions"
-    native = native_parent / str(run_name)
+    run = (Path(run_root).expanduser().resolve() if direct
+           else base / str(run_name))
+    native_parent = run.parent if direct else base / "native_sessions"
+    native = run if direct else native_parent / str(run_name)
     _assert_direct_child(run, base, "run")
-    _assert_direct_child(native, native_parent, "native session")
+    if not direct:
+        _assert_direct_child(native, native_parent, "native session")
     _assert_real_tree(run, base, "run")
     _assert_real_tree(native, base, "native session")
     if not run.is_dir():
@@ -250,7 +263,7 @@ def cleanup_failed_attempt(run_name, *, base=BASE, failure_kind,
         recording_state = "stopped"
     elif failure_kind == "capture":
         pre_record_evidence = _pre_record_failure_evidence(
-            run, native, base, capture_result)
+            run, native, base, capture_result, session_evidence_root)
         if pre_record_evidence is None:
             raise RuntimeError(
                 "Sensor Record start/stop state is not proven for "
@@ -324,11 +337,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-name", required=True)
     parser.add_argument("--failure-status", required=True)
+    parser.add_argument("--run-root", type=Path)
+    parser.add_argument("--session-evidence-root", type=Path)
     args = parser.parse_args()
     result = cleanup_failed_attempt(
         args.run_name,
         failure_kind="capture",
         failure_reason=args.failure_status,
+        base=(args.run_root.parent if args.run_root else BASE),
+        run_root=args.run_root,
+        session_evidence_root=args.session_evidence_root,
     )
     print(json.dumps({
         "run_name": result["run_name"],

@@ -195,7 +195,9 @@ def _verified_report(report_path):
     if (report.get("valid") is not True or seal.get("status") != "passed"
             or seal.get("files", {}).get("report.json") != sha256(report_path)):
         raise ValueError("Dataset publication requires a passed, sealed campaign report")
-    campaign = Path(report["campaign"]).resolve()
+    raw_campaign = Path(report["campaign"])
+    campaign = ((report_path.parent / raw_campaign)
+                if not raw_campaign.is_absolute() else raw_campaign).resolve()
     plan_path = campaign / "campaign_plan.json"
     ledger_path = campaign / "runs.tsv"
     completion_path = campaign / "COLLECTION_COMPLETE.json"
@@ -226,7 +228,8 @@ def _verified_report(report_path):
     if not report.get("laps") or not complete_selection:
         raise ValueError(
             "Validation does not cover the complete campaign or a valid sealed subset")
-    if component(plan["campaign_id"]) != campaign.name:
+    campaign_identity = campaign.parent.name if campaign.name == "_campaign" else campaign.name
+    if component(plan["campaign_id"]) != campaign_identity:
         raise ValueError("Campaign directory and campaign_id differ")
     return report_path, report, campaign, plan
 
@@ -423,8 +426,15 @@ def publish_validated(report_path, target_root=None, dry_run=False,
     from runtime_paths import LOCAL_MACHINE, POWERSHELL_EXE, windows_path_from_wsl
     from ssd_storage import SSD_ROOT
     report_path, report, campaign, plan = _verified_report(report_path)
-    local = local_publication or materialize_validated(report_path)
-    if (local.get("schema") != "morai_local_dataset_campaign_v1"
+    direct_campaign = campaign.parent if campaign.name == "_campaign" else None
+    local = local_publication or (
+        dict(schema="morai_local_dataset_campaign_v2", scenario_folder=scenario_folder(plan),
+             campaign_id=plan["campaign_id"],
+             dataset_campaign_id=dataset_campaign_id(plan),
+             campaign=str(direct_campaign), direct_storage=True)
+        if direct_campaign is not None else materialize_validated(report_path))
+    if (local.get("schema") not in {"morai_local_dataset_campaign_v1",
+                                    "morai_local_dataset_campaign_v2"}
             or local.get("campaign_id") != plan["campaign_id"]
             or local.get("dataset_campaign_id", local.get("campaign_id"))
                 != dataset_campaign_id(plan)
@@ -436,14 +446,22 @@ def publish_validated(report_path, target_root=None, dry_run=False,
         raise ValueError("Set --nas-root, MORAI_NAS_ROOT or local_machine.json nas_root; "
                          "use --no-nas-copy for local validation only")
     validate_target(target_root)
-    state_root = SSD_ROOT / "sensor_record_auto_v1" / ".nas_transfers"
+    state_root = SSD_ROOT / "dataset" / ".nas_transfers"
     state_root.mkdir(parents=True, exist_ok=True)
     worker_source = ROOT / "tools" / "publish_sensor_record_nas.ps1"
     worker = state_root / ("worker-" + sha256(worker_source)[:16] + ".ps1")
     if not worker.exists():
         shutil.copyfile(worker_source, worker)
     results = []
-    publications = local["runs"] + local["evidence"]
+    if local.get("schema") == "morai_local_dataset_campaign_v2":
+        direct_root = Path(local["campaign"]).resolve()
+        publications = [
+            {"path": str(child), "relative": child.name, "run_name": child.name}
+            for child in sorted(direct_root.iterdir(), key=lambda item: item.name)
+            if child.is_dir() and not child.is_symlink()
+        ]
+    else:
+        publications = local["runs"] + local["evidence"]
     for publication in publications:
         label = publication.get("run_name", publication["relative"])
         job_path = make_tree_job(
