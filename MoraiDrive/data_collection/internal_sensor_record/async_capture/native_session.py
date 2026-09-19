@@ -9,6 +9,37 @@ from ssd_storage import WINDOWS_ROOT
 WINDOWS_BASE = PureWindowsPath(WINDOWS_ROOT) / 'sensor_record_auto_v1'
 
 
+def _direct_relative(root, ssd_root):
+    """Return a validated direct dataset run relative path or ``None``."""
+    try:
+        relative = Path(root).resolve().relative_to(Path(ssd_root).resolve() / 'dataset')
+    except ValueError:
+        return None
+    parts = relative.parts
+    if len(parts) == 3:
+        category, campaign, run = parts
+    elif len(parts) == 4 and parts[0] == '.collecting':
+        _, category, campaign, run = parts
+    else:
+        return None
+    if not all(re.fullmatch(r'[A-Za-z0-9_]{1,80}', item)
+                   for item in (category, campaign, run)):
+        return None
+    return relative
+
+
+def _approved_native_root(root, ssd_root):
+    root = Path(root).resolve()
+    legacy = Path(ssd_root).resolve() / 'sensor_record_auto_v1'
+    try:
+        relative = root.relative_to(legacy)
+    except ValueError:
+        return _direct_relative(root, ssd_root) is not None
+    return relative.parts == ('native',) or (
+        len(relative.parts) == 2 and relative.parts[0] == 'native_sessions'
+        and re.fullmatch(r'[A-Za-z0-9_]{1,80}', relative.parts[1]))
+
+
 def _transferred_native_mirror(run, recorded_root, ssd_root):
     """Resolve a copied run without rewriting capture-time identity evidence.
 
@@ -29,13 +60,11 @@ def _transferred_native_mirror(run, recorded_root, ssd_root):
             relative=run_root.relative_to(canonical)
         except ValueError:
             return None
-        if (len(relative.parts)!=3
-                or not all(re.fullmatch(r'[A-Za-z0-9_]{1,80}',part)
-                           for part in relative.parts)):
+        direct = _direct_relative(run_root, ssd_root)
+        if direct is None:
             return None
         is_canonical=True
-    if Path(recorded_root).name != run_root.name:
-        return None
+    recorded_name=Path(recorded_root).name
     session_path=run_root/'SESSION.json'
     result_path=run_root/'NATIVE_CAPTURE_RESULT.json'
     if not session_path.is_file() or not result_path.is_file():
@@ -45,14 +74,20 @@ def _transferred_native_mirror(run, recorded_root, ssd_root):
         if not marker_path.is_file():
             return None
         marker=json.loads(marker_path.read_text())
-        if (marker.get('schema')!='morai_local_dataset_materialization_v1'
+        if (marker.get('schema') not in {
+                    'morai_local_dataset_materialization_v1',
+                    'morai_local_dataset_materialization_v2'}
                 or marker.get('kind')!='run'
                 or marker.get('run_name')!=run_root.name
-                or marker.get('hardlinked') is not True):
+                or marker.get('source_run_name',run_root.name)!=recorded_name
+                or (marker.get('hardlinked') is not True
+                    and marker.get('self_contained') is not True)):
             return None
+    elif recorded_name != run_root.name:
+        return None
     session=json.loads(session_path.read_text())
     result=json.loads(result_path.read_text())
-    if session.get('plan',{}).get('session') != run_root.name:
+    if session.get('plan',{}).get('session') != recorded_name:
         return None
     quick=result.get('quick_native_capture',{})
     if result.get('error') is not None or quick.get('passed') is not True:
@@ -83,16 +118,18 @@ def native_root_from_links(rows, ssd_root):
         target = PureWindowsPath(targets[0])
         if '..' in target.parts or target.name != row['role']:
             raise ValueError('Invalid native target path')
-        relative = target.parent.relative_to(WINDOWS_BASE)
-        if relative.parts != ('native',) and not (
-            len(relative.parts) == 2 and relative.parts[0] == 'native_sessions'
-            and re.fullmatch(r'[A-Za-z0-9_]{1,80}', relative.parts[1])
-        ):
+        windows_storage = PureWindowsPath(WINDOWS_ROOT)
+        try:
+            relative_storage = target.parent.relative_to(windows_storage)
+        except ValueError:
+            raise ValueError('Native target is outside the configured storage root')
+        local_root = Path(ssd_root).joinpath(*relative_storage.parts)
+        if not _approved_native_root(local_root, ssd_root):
             raise ValueError('Native target is outside an approved source namespace')
-        roots.add(tuple(relative.parts))
+        roots.add(tuple(relative_storage.parts))
     if len(roots) != 1:
         raise ValueError('Partial session switch: sensor targets belong to different sessions')
-    return Path(ssd_root) / 'sensor_record_auto_v1' / Path(*next(iter(roots)))
+    return Path(ssd_root).joinpath(*next(iter(roots)))
 
 
 def recorded_native_root(run, ssd_root):
@@ -123,16 +160,9 @@ def recorded_native_root(run, ssd_root):
             raise ValueError('No unambiguous recorded native source root')
         return found[0]
     root = Path(next(iter(roots)))
-    try:
-        relative = root.relative_to(Path(ssd_root)/'sensor_record_auto_v1')
-    except ValueError:
+    if not _approved_native_root(root, ssd_root) or not root.is_dir():
         mirror=_transferred_native_mirror(run,root,ssd_root)
         if mirror is None:
             raise ValueError('Recorded native root belongs to another storage and no verified local mirror exists')
         return mirror
-    if relative.parts != ('native',) and not (
-        len(relative.parts) == 2 and relative.parts[0] == 'native_sessions'
-        and re.fullmatch(r'[A-Za-z0-9_]{1,80}', relative.parts[1])
-    ):
-        raise ValueError('Recorded native root is outside the approved namespaces')
     return root

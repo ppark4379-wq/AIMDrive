@@ -22,6 +22,7 @@ from scenario_runner.scenarios.segment_modes.modes import (
     PRIMARY_SCENARIOS,
     get_scenario_zones,
 )
+from dataset_layout import relative_path
 
 
 def load(path):
@@ -102,10 +103,13 @@ def main():
     coverage = {"train": Counter(), "val": Counter()}
     contracts = set()
     validation_sha = digest(report_path)
+    portable = not Path(report.get("campaign", "")).is_absolute()
     for lap in laps:
         number = int(lap["lap"])
         split = "val" if number in val_laps else "train"
-        run = Path(lap["run"]).resolve()
+        raw_run = Path(lap["run"])
+        run = ((report_path.parent / raw_run) if not raw_run.is_absolute()
+               else raw_run).resolve()
         require_ssd(run, reserve_bytes=0)
         manifest = build_episode_manifest(run / "episode_000",
                                           campaign_validation_sha256=validation_sha,
@@ -113,13 +117,24 @@ def main():
                                           expected_evidence=lap.get("input_seals", {}))
         name = "lap_%03d_%s_manifest.json" % (number, split)
         path = output / name
+        if portable:
+            manifest["episode"] = relative_path(run / "episode_000", output)
+            manifest["native_root"] = relative_path(run, output)
+            route = Path(str(manifest.get("route", "")))
+            if route.is_absolute():
+                try:
+                    route.relative_to(run)
+                except ValueError:
+                    pass
+                else:
+                    manifest["route"] = relative_path(route, output)
         write_json(path, manifest)
         contracts.add(manifest["contract_sha256"])
         add_counts(coverage[split], manifest["report"]["counts"])
         manifest_rows[split].append({
             "lap": number,
             "scenario_name": scenario_name,
-            "path": str(path),
+            "path": path.name if portable else str(path),
             "sha256": digest(path),
             "frames": len(manifest["entries"]),
         })
@@ -131,7 +146,8 @@ def main():
     index = {
         "schema": "morai_visual_manifest_index_v1",
         "source_schema": report["schema"],
-        "source_validation": str(report_path),
+        "source_validation": (relative_path(report_path, output)
+                              if portable else str(report_path)),
         "source_validation_sha256": validation_sha,
         "scenario_name": scenario_name,
         "required_coverage": list(required),

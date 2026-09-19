@@ -105,19 +105,29 @@ def _require_windows_mount(root):
 
 
 def ensure_storage_layout():
-    """Create the local spool and expose it through ignored repo/dataset.
+    """Create the local spool and expose its canonical dataset directory.
 
     Existing paths are never removed or replaced. This is intentionally a
     one-time, fail-closed machine setup operation used by the preflight.
     """
     _require_windows_mount(SSD_ROOT)
     SSD_ROOT.mkdir(parents=True, exist_ok=True)
+    canonical = SSD_ROOT / "dataset"
+    canonical.mkdir(parents=True, exist_ok=True)
     view = REPOSITORY_DATASET
     if view.is_symlink():
-        if view.resolve() != SSD_ROOT:
+        current = view.resolve()
+        if current == SSD_ROOT:
+            # This is the one legacy link created by earlier collector versions.
+            # Retargeting the ignored link does not move or alter any dataset.
+            view.unlink()
+            view.symlink_to(canonical, target_is_directory=True)
+            kind = "legacy_symlink_retargeted"
+        elif current != canonical:
             raise ValueError("Repository dataset symlink points to another storage root")
-        kind = "symlink"
-    elif view.resolve() == SSD_ROOT:
+        else:
+            kind = "symlink"
+    elif view.resolve() == canonical:
         kind = "direct"
     elif view.exists():
         raise ValueError(
@@ -125,7 +135,7 @@ def ensure_storage_layout():
             + str(view)
         )
     else:
-        view.symlink_to(SSD_ROOT, target_is_directory=True)
+        view.symlink_to(canonical, target_is_directory=True)
         kind = "symlink_created"
     return {"storage_root": str(SSD_ROOT), "dataset_view": str(view),
             "dataset_view_kind": kind,

@@ -30,7 +30,8 @@ ASYNC_DEPS="$MORAI_ASYNC_DEPS"
 SSD_ROOT="$(MORAI_PROJECT_ROOT="$PROJECT_ROOT" \
     PYTHONPATH="$INTEGRATION" \
     /usr/bin/python3 -c 'from ssd_storage import SSD_ROOT; print(SSD_ROOT)')"
-BASE="$SSD_ROOT/sensor_record_auto_v1"
+LEGACY_BASE="$SSD_ROOT/sensor_record_auto_v1"
+DATASET_ROOT="$SSD_ROOT/dataset"
 usage() {
     echo "사용법: $0 <회차 수> [campaign_id] [--scenario <name>]"
     echo "예:   $0 3"
@@ -206,21 +207,24 @@ fi
 # advisory capture lock.  Recover only when both the exact executable path and
 # a terminal interrupted/failed campaign ledger prove that it is stale.
 /usr/bin/python3 "$INTEGRATION/tools/recover_stale_capture.py" \
-    --base "$BASE" --simulator-pid "$SIMULATOR_PID"
+    --base "$LEGACY_BASE" --simulator-pid "$SIMULATOR_PID"
 
 requested_campaign="$CAMPAIGN_ID"
-if [[ -e "$BASE/campaigns/$CAMPAIGN_ID" ]]; then
+STAGING_PARENT="$DATASET_ROOT/.collecting/$SCENARIO_FOLDER"
+FINAL_PARENT="$DATASET_ROOT/$SCENARIO_FOLDER"
+if [[ -e "$STAGING_PARENT/$CAMPAIGN_ID" || -e "$FINAL_PARENT/$CAMPAIGN_ID" ]]; then
     prefix="${CAMPAIGN_ID:0:27}"
     CAMPAIGN_ID="${prefix}_retry_$(date +%Y%m%d_%H%M%S)"
     counter=1
-    while [[ -e "$BASE/campaigns/$CAMPAIGN_ID" ]]; do
+    while [[ -e "$STAGING_PARENT/$CAMPAIGN_ID" || -e "$FINAL_PARENT/$CAMPAIGN_ID" ]]; do
         CAMPAIGN_ID="${prefix}_retry_$(date +%Y%m%d_%H%M%S)_$counter"
         counter=$((counter + 1))
     done
     echo "[RECOVERED] 기존 campaign '$requested_campaign'은 보존하고 새 이름을 사용합니다: $CAMPAIGN_ID"
 fi
 
-CAMPAIGN_DIR="$BASE/campaigns/$CAMPAIGN_ID"
+CAMPAIGN_ROOT="$STAGING_PARENT/$CAMPAIGN_ID"
+CAMPAIGN_DIR="$CAMPAIGN_ROOT/_campaign"
 if [[ "$SCENARIO" == "full_loop" ]]; then
     PROFILE_STATE="$CAMPAIGN_DIR/profile_state.json"
 else
@@ -266,7 +270,7 @@ PY
 on_signal() {
     trap - INT TERM HUP
     if [[ -n "$CURRENT_LAP" ]]; then
-        coordination="$BASE/$CURRENT_RUN/episode_000/sensor_record_coordination"
+        coordination="$CAMPAIGN_ROOT/$CURRENT_RUN/episode_000/sensor_record_coordination"
         if [[ -n "$COLLECTOR_PID" ]] && kill -0 "$COLLECTOR_PID" 2>/dev/null; then
             if [[ -f "$coordination/recording_armed.json" ]]; then
                 echo
@@ -316,6 +320,8 @@ for ((lap=1; lap<=LAPS; lap++)); do
     echo "[LAP $lap/$LAPS] seed=$seed run=$CURRENT_RUN"
     /usr/bin/python3 "$INTEGRATION/tools/run_sensor_record_scenario.py" \
             --name "$CURRENT_RUN" --pid "$SIMULATOR_PID" \
+            --run-root "$CAMPAIGN_ROOT/$CURRENT_RUN" \
+            --session-evidence-root "$CAMPAIGN_DIR/runtime/$CURRENT_RUN" \
             --scenario "$SCENARIO" --scenario-runtime "$SCENARIO_RUNTIME" \
             --seconds "$LAP_WALL_SECONDS" --full-lap \
             --seed "$seed" --profile-state "$PROFILE_STATE" \
@@ -324,7 +330,7 @@ for ((lap=1; lap<=LAPS; lap++)); do
     if wait "$COLLECTOR_PID"; then
         COLLECTOR_PID=""
         finished="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-        profile_copy="$BASE/$CURRENT_RUN/episode_000/campaign_profile_state.json"
+        profile_copy="$CAMPAIGN_ROOT/$CURRENT_RUN/episode_000/campaign_profile_state.json"
         if [[ -e "$profile_copy" ]]; then
             echo "[FAIL] 회차별 profile 증거 경로가 이미 있습니다: $profile_copy" >&2
             exit 2
@@ -349,7 +355,7 @@ PY
         printf '%s\t%s\t%s\tfailed_%s\t-\t-\t-\t-\t%s\t%s\n' \
             "$lap" "$seed" "$CURRENT_RUN" "$code" "$started" "$finished" >> "$RUNS_FILE"
         echo "[FAIL] lap $lap가 실패했습니다. 진단 증거를 보존하고 실패 payload를 정리합니다." >&2
-        /usr/bin/python3 - "$BASE/$CURRENT_RUN" <<'PY' >&2 || true
+        /usr/bin/python3 - "$CAMPAIGN_ROOT/$CURRENT_RUN" <<'PY' >&2 || true
 import json
 from pathlib import Path
 import sys
@@ -395,7 +401,10 @@ if outcome.get("reason") == "bounded_window_elapsed":
         "못한 주행 완료 실패입니다. 이 run은 부분 데이터로 보존됩니다."
     )
 PY
-        if ! /usr/bin/python3 "$INTEGRATION/tools/cleanup_failed_sensor_record_attempt.py" --run-name "$CURRENT_RUN" --failure-status "failed_$code"; then
+        if ! /usr/bin/python3 "$INTEGRATION/tools/cleanup_failed_sensor_record_attempt.py" \
+                --run-name "$CURRENT_RUN" --failure-status "failed_$code" \
+                --run-root "$CAMPAIGN_ROOT/$CURRENT_RUN" \
+                --session-evidence-root "$CAMPAIGN_DIR/runtime/$CURRENT_RUN"; then
             echo "[FATAL] lap $lap의 Sensor Record OFF 또는 payload 소유권을 안전하게 확인하지 못했습니다." >&2
             echo "        안전을 위해 다음 reset을 진행하지 않습니다." >&2
             exit 2

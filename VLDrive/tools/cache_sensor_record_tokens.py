@@ -133,8 +133,9 @@ def cache_split(args, split, manifests, resolver, model, device, completed):
     dataset = SensorRecordDataset(manifests, resolver, velocity_source="gps")
     identity_by_native = {}
     for manifest_path, document in manifests:
-        native = str(resolver(document["native_root"]))
-        episode_id = "{}_{}".format(Path(document["episode"]).parent.name,
+        native = str(resolver(document["native_root"], manifest_path.parent))
+        episode = resolver(document["episode"], manifest_path.parent)
+        episode_id = "{}_{}".format(Path(episode).parent.name,
                                      digest(manifest_path)[:12])
         if native in identity_by_native:
             raise ValueError("Duplicate native root in publication split")

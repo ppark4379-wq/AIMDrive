@@ -31,6 +31,14 @@ from python_environment import (
     build_analysis_environment,
     probe_analysis_environment,
 )
+from dataset_layout import (
+    campaign_root_from_metadata,
+    finalize_collecting_campaign,
+    find_campaign,
+    is_direct_campaign_metadata,
+    relative_path,
+    run_path,
+)
 
 
 BASE = SSD_ROOT / "sensor_record_auto_v1"
@@ -200,12 +208,15 @@ def effective_admission(run, episode, errors, seals):
 
 
 def resolve_campaign(value):
-    path = Path(value).expanduser()
-    if not path.is_absolute() and not path.exists():
-        path = BASE / "campaigns" / path
-    path = path.resolve()
+    path = find_campaign(SSD_ROOT, value)
     require_ssd(path, reserve_bytes=0)
     return path
+
+
+def campaign_run(campaign, run_name):
+    if is_direct_campaign_metadata(campaign, SSD_ROOT):
+        return run_path(campaign, run_name)
+    return BASE / run_name
 
 
 def completed_rows(path):
@@ -268,8 +279,8 @@ def _lap_numbers(laps):
     return ",".join("%03d" % number for number in numbers) if numbers else "-"
 
 
-def validate_lap(row, expected_scenario="full_loop"):
-    run = BASE / row["run_name"]
+def validate_lap(row, expected_scenario="full_loop", campaign=None):
+    run = campaign_run(campaign, row["run_name"]) if campaign else BASE / row["run_name"]
     episode = run / "episode_000"
     errors = []
     seals = {}
@@ -421,6 +432,7 @@ def _main():
     parser.add_argument("--nas-root", help="Windows NAS root; overrides MORAI_NAS_ROOT/local config")
     args = parser.parse_args()
     campaign = resolve_campaign(args.campaign)
+    direct_layout = is_direct_campaign_metadata(campaign, SSD_ROOT)
     if args.nas_only:
         report_path = Path(args.nas_only).resolve()
         if report_path.parent.parent != campaign.resolve():
@@ -473,7 +485,7 @@ def _main():
                 "checks": {},
             })
         elif row.get("status", "").startswith("failed_"):
-            run = BASE / row["run_name"]
+            run = campaign_run(campaign, row["run_name"])
             marker = _failed_attempt_marker(run, "capture")
             if marker is None:
                 cleanup_evidence_ok = False
@@ -497,7 +509,7 @@ def _main():
                 ),
             })
         elif row.get("status") in ("captured", "completed"):
-            run = BASE / row["run_name"]
+            run = campaign_run(campaign, row["run_name"])
             previous_invalid = _failed_attempt_marker(run, "validation")
             if previous_invalid is not None:
                 restored = previous_invalid.get("evidence", {})
@@ -533,7 +545,7 @@ def _main():
                         complete_bev_geometry_recovery(
                             run, analysis_python=analysis_python,
                             env=review_env, log=log)
-                lap = validate_lap(row, scenario_name)
+                lap = validate_lap(row, scenario_name, campaign)
                 lap.update({
                     "capture_status": "succeeded",
                     "validation_status": "passed" if lap["valid"] else "failed",
@@ -543,7 +555,9 @@ def _main():
                     try:
                         marker = cleanup_failed_attempt(
                             row["run_name"],
-                            base=BASE,
+                            base=(campaign_root_from_metadata(campaign)
+                                  if direct_layout else BASE),
+                            run_root=(run if direct_layout else None),
                             failure_kind="validation",
                             failure_reason="; ".join(lap.get("errors", []))
                             or "validation checks failed",
@@ -736,8 +750,20 @@ def _main():
         ),
     }
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    output = campaign / ("validation_" + stamp)
+    output = ((campaign / "validations" / ("validation_" + stamp))
+              if direct_layout else campaign / ("validation_" + stamp))
+    output.parent.mkdir(parents=True, exist_ok=True)
     output.mkdir(exist_ok=False)
+    if direct_layout:
+        report["campaign"] = relative_path(campaign, output)
+        for lap in report["laps"]:
+            if lap.get("run"):
+                lap["run"] = relative_path(
+                    campaign_run(campaign, lap["run_name"]), output)
+        for lap in report.get("excluded_laps", []):
+            if lap.get("run"):
+                lap["run"] = relative_path(
+                    campaign_run(campaign, lap["run_name"]), output)
     write_json(output / "report.json", report)
     write_json(output / "COMPLETE.json", {
         "schema": report_schema,
@@ -799,7 +825,20 @@ def _main():
     if training is not None and not training["training_ready"]:
         raise SystemExit(3)
     local_publication = None
-    if plan.get("campaign_id"):
+    if direct_layout:
+        local_publication = {
+            "schema": "morai_local_dataset_campaign_v2",
+            "scenario_folder": plan["dataset_scenario_folder"],
+            "campaign_id": plan["campaign_id"],
+            "dataset_campaign_id": plan.get("dataset_campaign_id", plan["campaign_id"]),
+            "campaign": str(campaign_root_from_metadata(campaign)),
+            "hardlinked": False,
+            "direct_capture": True,
+        }
+        write_json(output / "local_dataset_publication.json", local_publication)
+        print("[LOCAL] direct dataset validated in staging: "
+              + local_publication["campaign"], flush=True)
+    elif plan.get("campaign_id"):
         from nas_publish import materialize_validated
         try:
             local_publication = materialize_validated(output / "report.json")
@@ -813,6 +852,21 @@ def _main():
     else:
         print("[LOCAL] legacy campaign plan has no campaign_id; canonical materialization skipped",
               flush=True)
+
+    # A direct campaign becomes visible only after every local validation and
+    # publication artifact is sealed.  os.replace is an instant same-volume
+    # directory rename; no sensor payload is copied.
+    if direct_layout:
+        old_root = campaign_root_from_metadata(campaign)
+        relative_output = output.relative_to(old_root)
+        finalized = finalize_collecting_campaign(
+            campaign, SSD_ROOT, scenario_name, plan["campaign_id"],
+            plan.get("dataset_campaign_id", plan["campaign_id"]))
+        campaign = finalized / "_campaign"
+        output = finalized / relative_output
+        local_publication["campaign"] = str(finalized)
+        write_json(output / "local_dataset_publication.json", local_publication)
+        print("[LOCAL] canonical dataset ready: " + str(finalized), flush=True)
 
     from runtime_paths import LOCAL_MACHINE
     auto_nas = LOCAL_MACHINE.get("nas_auto_publish", False)
