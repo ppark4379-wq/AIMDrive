@@ -25,6 +25,8 @@ if str(ROOT) not in sys.path:
 from datasets.morai_sensor_record_dataset import PathResolver, digest, load_publications
 from datasets.morai_sensor_record_clip_dataset import (
     CLIP_META_SCHEMA, CLIP_SCHEMA, publication_set_sha256, sha256_file)
+from utils.notice_policy import RouteNoticePolicy
+from tools.build_notice_instructions import compress_notices
 
 
 COMMAND_TEXT = {
@@ -193,7 +195,7 @@ class OfficialRouteInstructionPolicy:
         return 4, COMMAND_TEXT[4]
 
 
-def build_clips(manifests, policy):
+def build_clips(manifests, policy, notice_policy=None):
     clips, counts = [], {"train_frames": 0, "val_frames": 0,
                          "train_clips": 0, "val_clips": 0,
                          "time_discontinuities": 0, "instruction_boundaries": 0}
@@ -213,6 +215,8 @@ def build_clips(manifests, policy):
                 active_policy = policy.get(route_identity)
                 if active_policy is None:
                     raise ValueError("No verified route assets for publication navigation contract")
+            if notice_policy is not None:
+                notice_policy.check_route_points(active_policy.points)
             episode_id = "{}_{}".format(Path(document["episode"]).parent.name,
                                          manifest_sha[:12])
             entries = document["entries"]
@@ -229,7 +233,9 @@ def build_clips(manifests, policy):
                 # Intentionally inspect only present-time route progress and identities.
                 navigation = entry["navigation"]
                 command, text = active_policy.instruction(navigation["route_index"])
-                annotated.append((entry, command, text))
+                notice = (notice_policy.at_index(navigation["route_index"])
+                          if notice_policy is not None else None)
+                annotated.append((entry, command, text, notice))
             counts[split + "_frames"] += len(annotated)
             begin = 0
             for cursor in range(1, len(annotated) + 1):
@@ -241,7 +247,7 @@ def build_clips(manifests, policy):
                     if (int(after[0]["frame_id"]) != int(before[0]["frame_id"]) + 1
                             or abs(delta - period) > tolerance):
                         boundary, reason = True, "time"
-                    elif after[1:] != before[1:]:
+                    elif after[1:3] != before[1:3]:
                         boundary, reason = True, "instruction"
                 if not boundary:
                     continue
@@ -265,6 +271,10 @@ def build_clips(manifests, policy):
                     "instruction": str(segment[0][2]),
                     "instruction_source": "sealed_official_global_path_plus_current_route_index_v1",
                 })
+                if notice_policy is not None:
+                    clips[-1]["notice_ranges"] = compress_notices(
+                        (int(row[0]["frame_id"]), row[3]) for row in segment)
+                    clips[-1]["notice_zones_sha256"] = notice_policy.sha256
                 counts[split + "_clips"] += 1
                 if reason == "time":
                     counts["time_discontinuities"] += 1
@@ -291,6 +301,8 @@ def main():
     parser.add_argument("--curve-lookahead-m", type=float, default=20.0)
     parser.add_argument("--curve-threshold-deg", type=float, default=20.0)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--notice-zones", type=Path,
+                        help="Snapped route zones; add per-frame notices without discarding entry windows")
     args = parser.parse_args()
     indexes, resolver = resolve_inputs(args)
     publication_info, manifests = load_publications(indexes, resolver)
@@ -325,7 +337,8 @@ def main():
                                     row["route_definition_sha256"], row["route_key"]) == key)
                 if int(point_count) != int(matching["route_point_count"]):
                     raise ValueError("Publication route point count differs from supplied route")
-    clips, counts = build_clips(manifests, policies)
+    notice_policy = RouteNoticePolicy(args.notice_zones) if args.notice_zones else None
+    clips, counts = build_clips(manifests, policies, notice_policy)
     output = args.output.expanduser().resolve()
     if output.exists():
         raise FileExistsError("Use a new semantic clip output directory: {}".format(output))
@@ -348,6 +361,9 @@ def main():
         },
         "counts": counts,
     }
+    if notice_policy is not None:
+        meta["notice_zones_sha256"] = notice_policy.sha256
+        meta["notice_global_path_sha256"] = notice_policy.spec["global_path_sha256"]
     write_json(output / "clip_meta.json", meta)
     print(json.dumps({"output": str(output), **counts}, indent=2))
 

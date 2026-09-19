@@ -15,6 +15,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+from utils.notice_policy import NoticeRanges, current_condition_suffix
 
 
 CACHE_SCHEMA = "morai-vldrive-vision-cache-v1"
@@ -135,7 +136,7 @@ class MoraiExpertVLDriveDataset(Dataset):
 
     def __init__(self, dataset_root, *, cache_root, split_file, split,
                  sequence_length=11, instructions=None, verify_hashes=True,
-                 instruction_boundary_policy="exclude"):
+                 instruction_boundary_policy="exclude", notices=None):
         self.dataset_root = Path(dataset_root).expanduser().resolve()
         self.cache_root = Path(cache_root).expanduser().resolve()
         self.sequence_length = int(sequence_length)
@@ -144,6 +145,10 @@ class MoraiExpertVLDriveDataset(Dataset):
         if self.instruction_boundary_policy not in ("exclude", "current_with_history"):
             raise ValueError("instruction_boundary_policy must be exclude or current_with_history")
         self._verified = set()
+        self.notices = NoticeRanges(notices) if notices else None
+        if self.notices:
+            # Preserve visual history at notice entry, but supervise only the valid suffix.
+            self.instruction_boundary_policy = "current_with_history"
         if self.sequence_length < 1:
             raise ValueError("sequence_length must be positive")
 
@@ -190,12 +195,14 @@ class MoraiExpertVLDriveDataset(Dataset):
         self.instruction_lookahead_m = first_instruction.get("lookahead_m")
         self.instruction_curve_lookahead_m = first_instruction.get("curve_lookahead_m")
         self.instruction_curve_threshold_deg = first_instruction.get("curve_threshold_deg")
+        route_hashes = {}
         for route in split_spec['routes']:
             route_id = route['path']
             route_file = safe_artifact(self.dataset_root / 'data', route_id + '/route.json')
             if not route_file.is_file():
                 raise ValueError('Instruction route file is missing: ' + str(route_file))
             route_hash = sha256_file(route_file)
+            route_hashes[route_id] = route_hash
             if any(row['route_sha256'] != route_hash for row in instruction_ranges.get(route_id, [])):
                 raise ValueError('Instruction route hash mismatch: ' + route_id)
 
@@ -230,6 +237,10 @@ class MoraiExpertVLDriveDataset(Dataset):
             entry = dict(row)
             entry["instruction"] = text
             entry["command"] = command
+            if self.notices:
+                notice = self.notices.for_frame(key[0], key[1], route_hashes[key[0]])
+                entry["notice_text"] = notice["text"]
+                entry["notice_zone_ids"] = notice["zone_ids"]
             entries.append(entry)
         if len(entries) != len(allowed):
             missing = sorted(allowed - seen)[:5]
@@ -291,9 +302,8 @@ class MoraiExpertVLDriveDataset(Dataset):
             # The shared text prefix is the instruction available at the anchor.
             # Keep prior visual history, but never supervise old-frame outputs
             # using an instruction that had not yet been issued at those frames.
-            suffix_begin = len(rows) - 1
-            while suffix_begin > 0 and rows[suffix_begin - 1]["instruction"] == current_instruction:
-                suffix_begin -= 1
+            suffix_begin = current_condition_suffix([
+                (row["instruction"], row.get("notice_text", "")) for row in rows])
             targets["frame_loss_mask"] = torch.arange(len(rows)) >= suffix_begin
         sample = {
             "model_inputs": {
@@ -311,6 +321,9 @@ class MoraiExpertVLDriveDataset(Dataset):
                 "purpose": self.split,
             },
         }
+        if self.notices:
+            sample["model_inputs"]["notice_text"] = rows[-1]["notice_text"]
+            sample["metadata"]["notice_zone_ids"] = "|".join(rows[-1]["notice_zone_ids"])
         if self.instruction_boundary_policy == "current_with_history":
             sample["metadata"]["frame_commands"] = torch.tensor(
                 [int(row["command"]) for row in rows], dtype=torch.int64)
@@ -351,4 +364,8 @@ class MoraiExpertVLDriveDataset(Dataset):
                 waypoint_supervision_policy=("current_instruction_contiguous_suffix"
                     if self.instruction_boundary_policy == "current_with_history" else "all_frames"),
             )
+        if self.notices:
+            description.update(notice_sha256=self.notices.sha256,
+                               waypoint_supervision_policy="current_navigation_notice_contiguous_suffix")
+            description["model_inputs"].append("route notice instruction")
         return description

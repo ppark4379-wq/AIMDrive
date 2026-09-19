@@ -116,6 +116,27 @@ def test_actual_ego_targets_and_global_path_instructions_are_separate(tmp_path):
     assert dataset.describe()["trajectory_source"] == "future synchronized ego positions"
 
 
+def test_notice_entry_and_exit_keep_history_but_mask_old_condition(tmp_path):
+    from utils.notice_policy import NOTICE_SCHEMA
+    root, cache, split, instructions = _build_fixture(tmp_path)
+    notices = tmp_path / "notices.jsonl"
+    common = dict(schema_version=NOTICE_SCHEMA, route_id="route_a", source="current_ego_snapped_global_path",
+                  route_sha256=_sha(root / "data/route_a/route.json"),
+                  zones_sha256="zones", global_path_sha256="global-path")
+    _jsonl(notices, [dict(common, start_frame=0, stop_frame=2, text="", zone_ids=[]),
+                     dict(common, start_frame=3, stop_frame=5, text="Watch obstacles.", zone_ids=["static"]),
+                     dict(common, start_frame=6, stop_frame=65, text="", zone_ids=[])])
+    dataset = MoraiExpertVLDriveDataset(root, cache_root=cache, split_file=split, split="train",
+        sequence_length=3, instructions=instructions, notices=notices)
+    entry = dataset[1]  # [1, 2, 3]
+    assert entry["model_inputs"]["notice_text"] == "Watch obstacles."
+    assert entry["training_targets"]["frame_loss_mask"].tolist() == [False, False, True]
+    assert dataset[2]["training_targets"]["frame_loss_mask"].tolist() == [False, True, True]
+    exit_sample = dataset[4]  # [4, 5, 6]: both a nav transition and notice exit
+    assert exit_sample["model_inputs"]["notice_text"] == ""
+    assert exit_sample["training_targets"]["frame_loss_mask"].tolist() == [False, False, True]
+
+
 def test_validation_never_uses_purged_boundary_frames(tmp_path):
     dataset_root, cache_root, split, instructions = _build_fixture(tmp_path)
     dataset = MoraiExpertVLDriveDataset(

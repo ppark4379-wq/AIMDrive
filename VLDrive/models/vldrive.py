@@ -13,6 +13,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from utils.runtime import sha256, complete_visual_checkpoint_initialization
+from utils.notice_policy import compose_instruction_batch
 from .qformer_mefa import QFormerMEFAConfig, QFormerMEFAConnector
 from .frozen_vision_encoder import MoraiVisualEncoder
 from .language_model import VLDriveModel
@@ -158,9 +159,9 @@ class VLDriveTrainingModel(nn.Module):
 
     def predict(self, inputs, *, compute_auxiliary=None):
         feature_key = 'sensors' if self.config.input_mode == 'raw' else 'visual_feature'
-        if set(inputs) != {feature_key, 'instruction'}:
-            raise ValueError('VLDrive input allowlist permits only visual inputs and instruction')
-        texts = inputs['instruction']
+        if set(inputs) not in ({feature_key, 'instruction'}, {feature_key, 'instruction', 'notice_text'}):
+            raise ValueError('VLDrive input allowlist permits only visual inputs, instruction and notice_text')
+        texts = compose_instruction_batch(inputs['instruction'], inputs.get('notice_text'))
         if (not isinstance(texts, (list, tuple)) or not texts
                 or any(not isinstance(t, str) or not t.strip() for t in texts)):
             raise ValueError('Paper training requires actual nonempty navigation instructions')

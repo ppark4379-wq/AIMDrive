@@ -156,7 +156,7 @@ def resolve_settings(settings, args):
     def resolve(path):
         return str((root / Path(path).expanduser()).resolve())
     value['dataset'] = str(args.dataset_root.expanduser().resolve()) if args.dataset_root else resolve(value['dataset'])
-    for key in ('instructions', 'feature_cache'):
+    for key in ('instructions', 'notices', 'feature_cache'):
         if value.get(key):
             value[key] = resolve(value[key])
     model = value.get('model', value)

@@ -65,6 +65,7 @@ def add_vldrive_arguments(parser):
     parser.add_argument('--mode', choices=('train', 'preflight', 'evaluate'), default='train')
     parser.add_argument('--checkpoint', type=Path, help='resume from checkpoint.pt, or score model-best.pt')
     parser.add_argument('--instructions', type=Path, help='verified global-path navigation instruction JSONL')
+    parser.add_argument('--notices', type=Path, help='route notice JSONL for morai_expert_cache_v1')
     parser.add_argument('--feature-cache', type=Path, help='completed frozen [106,256] token cache')
     parser.add_argument('--clip-index', type=Path,
                         help='completed Sensor Record semantic clip index')
@@ -77,7 +78,7 @@ def add_vldrive_arguments(parser):
 
 def run_vldrive(args):
     settings = resolve_settings(json.loads(args.config.read_text()), args)
-    for key in ('instructions', 'feature_cache', 'split_file', 'clip_index'):
+    for key in ('instructions', 'notices', 'feature_cache', 'split_file', 'clip_index'):
         override = getattr(args, key)
         if override:
             settings[key] = str(override.expanduser().resolve())
@@ -125,8 +126,12 @@ def run_vldrive(args):
         datasets = {split: MoraiExpertVLDriveDataset(
             root, cache_root=cache, split_file=split_path, split=split,
             sequence_length=settings['sequence_length'], instructions=settings['instructions'],
+            notices=settings.get('notices'),
+            instruction_boundary_policy=settings.get('instruction_boundary_policy', 'exclude'),
         ) for split in ('train', 'val')}
     else:
+        if settings.get('notices'):
+            raise ValueError('Sensor Record notices must be built into clips with --notice-zones')
         from datasets.morai_sensor_record_clip_dataset import SensorRecordVLDriveDataset
         clip_index = Path(settings.get('clip_index', ''))
         if not clip_index.is_absolute():

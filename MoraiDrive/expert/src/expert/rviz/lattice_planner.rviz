@@ -71,6 +71,19 @@ Visualization Manager:
         highway_lane_labels: true
       Queue Size: 10
       Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /vldrive/notice_markers
+      Name: VLDrive Notice Zones + Current Instruction
+      Namespaces:
+        notice_route: true
+        notice_zones: true
+        notice_start: true
+        notice_end: true
+        notice_labels: true
+        notice_current: true
+      Queue Size: 1
+      Value: true
     - Angle Tolerance: 0.1
       Class: rviz/Odometry
       Color: 255; 255; 0

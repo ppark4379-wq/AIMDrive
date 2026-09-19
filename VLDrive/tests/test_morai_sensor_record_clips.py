@@ -22,6 +22,33 @@ def write_jsonl(path, rows):
 
 
 class SensorRecordClipDatasetTests(unittest.TestCase):
+    def test_notice_builder_keeps_navigation_clip_and_records_notice_ranges(self):
+        from tools.build_notice_instructions import snap_zones
+        from utils.notice_policy import RouteNoticePolicy
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / "route.txt").write_text("".join("{} 0 0\n".format(i) for i in range(6)))
+            write_json(root / "points.json", dict(map_id="test", global_path="route.txt", zones=[
+                dict(id="static", label="static", type="static", text="Watch obstacles.",
+                     start=[2, 0], end=[3, 0], color=[1, 0, 0])]))
+            snap_zones(root / "points.json", root / "zones.json")
+            notices = RouteNoticePolicy(root / "zones.json")
+            class Navigation:
+                points = [(float(i), 0.) for i in range(6)]
+                def instruction(self, index):
+                    return 4, "Follow the road."
+            manifest = root / "manifest.json"
+            manifest.write_text("sealed")
+            entries = [dict(frame_id=i, sensor_time_ns=1_000_000_000 + i * 100_000_000,
+                            navigation=dict(route_index=i)) for i in range(6)]
+            document = dict(source_clock="sensor_record_simulation_time",
+                            episode="/run/lap/episode_000", entries=entries)
+            clips, _ = build_clips(dict(train=[(manifest, document)], val=[]), Navigation(), notices)
+            self.assertEqual(len(clips), 1)
+            self.assertEqual([(n["start_frame"], n["stop_frame"], n["text"])
+                              for n in clips[0]["notice_ranges"]],
+                             [(0, 1, ""), (2, 3, "Watch obstacles."), (4, 5, "")])
+
     def test_clip_instructions_ignore_teacher_fields(self):
         class Policy:
             @staticmethod
@@ -123,6 +150,25 @@ class SensorRecordClipDatasetTests(unittest.TestCase):
                              (3, 5, 2))
             self.assertEqual(sample["model_inputs"]["instruction"],
                              "Proceed along this route.")
+
+            # Notice transitions must keep the entry window and exclude its old-frame losses.
+            clip_rows[0].update(notice_zones_sha256="notice-zones", notice_ranges=[
+                dict(start_frame=0, stop_frame=3, text="", zone_ids=[]),
+                dict(start_frame=4, stop_frame=5, text="Watch obstacles.", zone_ids=["static"]),
+                dict(start_frame=6, stop_frame=14, text="", zone_ids=[])])
+            write_jsonl(clip_manifest, clip_rows)
+            meta_path = clips / "clip_meta.json"
+            meta = json.loads(meta_path.read_text())
+            meta.update(notice_zones_sha256="notice-zones", clips_sha256=sha256_file(clip_manifest))
+            write_json(meta_path, meta)
+            dataset = SensorRecordVLDriveDataset(
+                cache_root=cache, clip_index=clips, split="train", sequence_length=3)
+            entry = dataset[2]  # [2, 3, 4]
+            self.assertEqual(entry["model_inputs"]["notice_text"], "Watch obstacles.")
+            self.assertEqual(entry["training_targets"]["frame_loss_mask"].tolist(), [False, False, True])
+            exit_sample = dataset[4]  # [4, 5, 6]
+            self.assertEqual(exit_sample["model_inputs"]["notice_text"], "")
+            self.assertEqual(exit_sample["training_targets"]["frame_loss_mask"].tolist(), [False, False, True])
 
     def test_cache_and_clip_publications_must_match(self):
         with tempfile.TemporaryDirectory() as folder:

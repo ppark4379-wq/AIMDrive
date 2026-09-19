@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+from utils.notice_policy import current_condition_suffix
 
 
 CACHE_SCHEMA = "morai-sensor-record-vision-cache-v1"
@@ -92,6 +93,7 @@ class SensorRecordVLDriveDataset(Dataset):
                 raise ValueError("Missing completed Sensor Record clip artifact: {}".format(path))
         self.cache_meta = json.loads(cache_meta_path.read_text(encoding="utf-8"))
         self.clip_meta = json.loads(clip_meta_path.read_text(encoding="utf-8"))
+        self.notice_zones_sha256 = self.clip_meta.get("notice_zones_sha256")
         if self.cache_meta.get("schema_version") != CACHE_SCHEMA:
             raise ValueError("Wrong Sensor Record visual cache schema")
         if self.clip_meta.get("schema_version") != CLIP_META_SCHEMA:
@@ -152,6 +154,22 @@ class SensorRecordVLDriveDataset(Dataset):
                 raise ValueError("Invalid semantic clip time range")
             if not str(row.get("instruction", "")).strip():
                 raise ValueError("Semantic clip has no instruction")
+            if bool("notice_ranges" in row) != bool(self.notice_zones_sha256):
+                raise ValueError("Mixed notice-enabled and navigation-only clips")
+            if self.notice_zones_sha256:
+                if row.get("notice_zones_sha256") != self.notice_zones_sha256:
+                    raise ValueError("Semantic clip notice zone hash mismatch")
+                next_frame = int(row["start_frame_id"])
+                for notice in row["notice_ranges"]:
+                    if (notice["start_frame"] != next_frame
+                            or notice["stop_frame"] < next_frame
+                            or not isinstance(notice["text"], str)
+                            or not isinstance(notice["zone_ids"], list)
+                            or bool(notice["text"]) != bool(notice["zone_ids"])):
+                        raise ValueError("Invalid or discontinuous clip notice ranges")
+                    next_frame = notice["stop_frame"] + 1
+                if next_frame != int(row["stop_frame_id"]) + 1:
+                    raise ValueError("Incomplete clip notice coverage")
             clips.append(row)
         if not clips:
             raise ValueError("No semantic clips for split {}".format(self.split))
@@ -224,7 +242,7 @@ class SensorRecordVLDriveDataset(Dataset):
                                                 "visual feature") for row in rows])
         trajectory = torch.stack([self._array(row["future_trajectory"], TRAJECTORY_SHAPE,
                                                     "future trajectory") for row in rows])
-        return {
+        sample = {
             "model_inputs": {
                 "visual_feature": visual,
                 "instruction": str(clip["instruction"]),
@@ -244,9 +262,19 @@ class SensorRecordVLDriveDataset(Dataset):
                 "purpose": self.split,
             },
         }
+        if self.notice_zones_sha256:
+            def notice_for(frame):
+                return next(n for n in clip["notice_ranges"]
+                            if n["start_frame"] <= frame <= n["stop_frame"])
+            notices = [notice_for(int(row["frame_id"])) for row in rows]
+            sample["model_inputs"]["notice_text"] = notices[-1]["text"]
+            begin = current_condition_suffix([n["text"] for n in notices])
+            sample["training_targets"]["frame_loss_mask"] = torch.arange(len(rows)) >= begin
+            sample["metadata"]["notice_zone_ids"] = "|".join(notices[-1]["zone_ids"])
+        return sample
 
     def describe(self):
-        return {
+        description = {
             "schema_version": "morai-sensor-record-vldrive-dataset-v1",
             "purpose": self.split,
             "input_mode": "cached",
@@ -266,3 +294,8 @@ class SensorRecordVLDriveDataset(Dataset):
             "model_inputs": ["cached visual feature", "navigation instruction"],
             "teacher_input_exclusions": ["objects", "traffic_light", "future waypoints", "Ego_topic"],
         }
+        if self.notice_zones_sha256:
+            description["notice_zones_sha256"] = self.notice_zones_sha256
+            description["model_inputs"].append("route notice instruction")
+            description["waypoint_supervision_policy"] = "current_navigation_notice_contiguous_suffix"
+        return description
