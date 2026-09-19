@@ -5,6 +5,7 @@ All connectors and the global-route return undergo the same footprint checks.
 """
 
 import csv
+import copy
 import json
 import math
 from pathlib import Path
@@ -12,29 +13,38 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
-from scipy.interpolate import CubicHermiteSpline, CubicSpline
+from scipy.interpolate import CubicHermiteSpline, CubicSpline, UnivariateSpline
 
 from ...localization.point import Point
+from ...vehicle_state import VehicleState
 from ..lattice_planning import parameters as p
 from ..lattice_planning.structures import CandidatePath, LatticePlanningResult
 from .corridor_graph import search_corridor
 
 
-ROOT = Path(__file__).resolve().parent
-STEP = 0.2
-MAX_CURVATURE = p.STATIC_MAX_CURVATURE
-GLOBAL_REJOIN_POINT = (-59.97, -116.70, 28.37)
-RETURN_WINDOW = 20.0
-RETURN_MAX_CURVATURE = 0.12
-TRACKING_SPEED = 10.0 / 3.6  # m/s; ceiling for gentle, well-aligned avoidance.
-ALIGNMENT_SPEED = 1.0  # m/s; tight-bend/alignment target, not a safety-stop floor.
-ALIGNMENT_HEADING_ERROR = math.radians(1.5)
-ALIGNMENT_FULL_HEADING_ERROR = math.radians(3.0)
-ALIGNMENT_CROSS_TRACK_ERROR = .1
-ALIGNMENT_FULL_CROSS_TRACK_ERROR = .2
-ALIGNMENT_PREVIEW = 3.0
-ALIGNMENT_CURVATURE = .08  # Begin progressive bend slowdown [1/m].
-TIGHT_CURVATURE = .18      # Full alignment speed for tight bends [1/m].
+# =============================================================================
+# 정적 장애물 기록 경로 플래닝: 경로 자료·전역 경로 복귀
+# 공통 속도·조향·사전 계획 설정은 ../lattice_planning/parameters.py의 2번 항목 참조.
+# =============================================================================
+ROOT = Path(__file__).resolve().parent # 기록 경로 목록 및 후보 경로 자료를 읽을 기준 폴더
+STEP = 0.2                           # 현재 미사용: 이전 경로 샘플 간격 [m]
+MAX_CURVATURE = p.STATIC_MAX_CURVATURE # 기록 경로 연결에 허용할 최대 곡률; 공통 설정 참조 [1/m]
+GLOBAL_REJOIN_POINT = (-59.97, -116.70, 28.37) # 전역 경로 복귀 기준점 (x, y, z) [m]
+RETURN_WINDOW = 20.0                 # 복귀점 앞에서 완만한 복귀 시작 위치를 탐색할 y 방향 범위 [m]
+RETURN_MAX_CURVATURE = 0.12           # 기록 경로에서 전역 경로로 복귀할 때 허용할 최대 곡률 [1/m]
+TRACKING_SPEED = p.STATIC_MAX_SPEED_KPH / 3.6 # 정적 회피 속도 상한의 제어용 환산값 [m/s]
+
+# =============================================================================
+# 정적 장애물 추종: 자세 오차에 따른 감속
+# 시작 기준부터 최대 감속 기준까지 감속 강도를 선형으로 늘린다.
+# 방향·횡오차가 모두 시작 기준의 절반 미만이 되면 감속 상태를 해제한다.
+# =============================================================================
+ALIGNMENT_SPEED = 1.0                 # 최대 자세 보정 감속의 목표속도 및 통로 추종 기준속도; 안전 정지는 0 [m/s]
+ALIGNMENT_HEADING_ERROR = math.radians(2.0) # 방향 오차에 따른 감속 시작 기준; 2도 [rad]
+ALIGNMENT_FULL_HEADING_ERROR = math.radians(4.0) # 방향 오차에 따른 최대 감속 기준; 4도 [rad]
+ALIGNMENT_CROSS_TRACK_ERROR = .12      # 경로 횡오차에 따른 감속 시작 기준 [m]
+ALIGNMENT_FULL_CROSS_TRACK_ERROR = .25 # 경로 횡오차에 따른 최대 감속 기준 [m]
+ALIGNMENT_PREVIEW = 3.0               # 추종 제어에 전달할 전방 최대 곡률을 조회하는 경로 길이 [m]
 
 
 def load_routes(root=ROOT):
@@ -108,6 +118,11 @@ class RecordedStaticPlanner:
         self.reset()
 
     def reset(self):
+        if self.pending is not None:
+            self.pending.cancel()
+            self.pending = None
+        self.pending_key = None
+        self.preplanned = False
         self.path = []
         self.progress = 0
         self.done = False
@@ -130,6 +145,114 @@ class RecordedStaticPlanner:
         self.tracking_error = 0.
         self.cross_track_error = 0.
         self.alignment_slow = False
+        self._speed_profile_path = None
+        self._cached_speed_profile = None
+        self.curve_speed_limits = {}
+        self.path_smoothing_deviation = 0.
+
+    @staticmethod
+    def _obstacle_key(obstacles):
+        return tuple(sorted((float(o.position.x), float(o.position.y),
+                             float(o.heading_deg), float(o.size_x), float(o.size_y))
+                            for o in obstacles))
+
+    def preplan(self, ego, global_path, obstacles):
+        """Warm the complete maneuver using GT and a fixed future entry pose.
+
+        The worker owns its geometry/state. A reset or a changed GT snapshot
+        cannot let an obsolete worker overwrite the live planner.
+        """
+        if self.done and ego.position.y < p.STATIC_PREPLAN_ENTRY_Y and -65 < ego.position.x < -44:
+            self.reset()
+        if self.executor is None or self.active or self.done or self.error:
+            return
+        if ego.position.y >= p.STATIC_PREPLAN_ENTRY_Y and self.contains(ego):
+            return  # A late start is planned from the measured pose by plan().
+        if not obstacles:
+            return
+        key = self._obstacle_key(obstacles)
+        if self.pending is not None:
+            if key == self.pending_key:
+                return
+            if not self.pending.done() and not self.pending.cancel():
+                return  # Discard this obsolete result on the next cycle.
+            self.pending = None
+        if time.monotonic()-self.last_attempt < 1.:
+            return
+        route = [point for point in global_path if -180 < point.y < -85 and -65 < point.x < -54]
+        if len(route) < 10:
+            return
+        xy = np.array(route)
+        xy = xy[np.r_[True, np.diff(xy[:, 1]) > .01]]
+        y = p.STATIC_PREPLAN_ENTRY_Y
+        if np.any(np.diff(xy[:, 1]) <= 0) or xy[0, 1] > y or xy[-1, 1] < GLOBAL_REJOIN_POINT[1]+10.:
+            return
+        curve = CubicSpline(xy[:, 1], xy[:, 0], bc_type='natural')
+        entry = VehicleState(float(curve(y)), y, math.atan2(1., float(curve(y, 1))), 0.)
+        self._submit(entry, route, obstacles)
+        self.preplanned = True
+
+    def _submit(self, ego, route, obstacles):
+        worker = copy.copy(self)
+        worker.pending = None
+        worker.executor = None
+        worker.reset()
+        self.pending_key = self._obstacle_key(obstacles)
+        self.last_attempt = time.monotonic()
+        self.pending = self.executor.submit(worker._prepare_snapshot, copy.deepcopy(ego),
+                                            list(route), copy.deepcopy(list(obstacles)))
+
+    def approach_result(self, ego, reference_path):
+        """Brake for a known entry bend before reaching the lateral handoff."""
+        if (self.pending is None or not self.pending.done() or not self.preplanned
+                or not -65 < ego.position.x < -44 or math.sin(ego.yaw) <= .5
+                or not 0. <= p.STATIC_PREPLAN_ENTRY_Y-ego.position.y <= 100.):
+            return None
+        try:
+            worker = self.pending.result()
+        except Exception:
+            return None  # plan() reports the failure if entry is reached.
+        if not worker.path:
+            return None
+        entry_limit, _ = worker._curve_speed_limit(worker.path)
+        distance = max(0., p.STATIC_PREPLAN_ENTRY_Y-ego.position.y-p.STATIC_SPEED_PREVIEW)
+        speed = math.sqrt(entry_limit**2+2*p.STATIC_END_DECELERATION*distance)
+        return LatticePlanningResult(reference_path, mode='static_obstacle',
+            acc_target_velocity=speed, reason='static_recorded_approach',
+            debug_details={'static_avoidance': dict(phase='approach', path_validated=False,
+                preplanned_complete=True, entry_speed_limit=entry_limit, entry_distance_m=distance)})
+
+    def _prepare_snapshot(self, ego, route, obstacles):
+        complete = self._prepare(ego, route, obstacles)
+        self.path = [Point(x, y) for x, y in complete] if complete is not None else []
+        if self.path:
+            self._curve_speed_limit(self.path)
+        return self
+
+    def _waiting_result(self, ego, reference_path, obstacles, phase, error=None):
+        """Keep driving only as far as the currently validated reference permits."""
+        points = [ego.position] + [v for v in reference_path if v.y > ego.position.y+.01]
+        if len(points) < 3:
+            return self._result(reference_path, False, phase, error)
+        yaw = np.array([ego.yaw] + [self.planner._path_heading(points, i) for i in range(1, len(points))])
+        # Dense samples avoid stepping over a small obstacle on a sparse route.
+        distance = np.r_[0., np.cumsum(np.linalg.norm(np.diff(np.array(points), axis=0), axis=1))]
+        sample_s = np.linspace(0., distance[-1], max(2, int(math.ceil(distance[-1]/.1))+1))
+        xy = np.array(points)
+        samples = np.column_stack([np.interp(sample_s, distance, xy[:, axis]) for axis in (0, 1)])
+        headings = np.interp(sample_s, distance, np.unwrap(yaw))
+        clear = self._collision_mask(samples, headings, obstacles, .12)
+        blocked = np.flatnonzero(~clear)
+        available = sample_s[blocked[0]] if len(blocked) else distance[-1]
+        speed = min(self._curve_speed_limit(reference_path)[0],
+                    math.sqrt(2*p.STATIC_END_DECELERATION*max(0., available-p.STATIC_END_BUFFER)))
+        result = self._result(reference_path, False, phase, error)
+        result.acc_target_velocity = speed
+        details = result.debug_details['static_avoidance']
+        details.update(reference_clear_distance_m=float(available), preplanned_entry=self.preplanned,
+                       speed_policy_reason='planning_reference_clearance',
+                       tracking_speed_limits={'planning_reference_clearance': speed})
+        return result
 
     @property
     def active(self):
@@ -161,6 +284,14 @@ class RecordedStaticPlanner:
             raise ValueError("global preview ends before complete return")
         self.route = list(global_path)
         self.global_curve = CubicSpline(points[:, 1], points[:, 0], bc_type="natural")
+        # 지도 점을 정확히 보간하며 생기는 작은 굴곡은 가짜 조향 변화율 제한을 만든다.
+        # 최대 변위를 제한하고, 이후 모든 연결 경로를 기존 차체·장애물 기준으로 검사한다.
+        smooth = UnivariateSpline(points[:, 1], points[:, 0],
+                                  s=len(points)*p.STATIC_PATH_SMOOTHING_RMS**2)
+        probe = np.linspace(points[0, 1], points[-1, 1],
+                            int(math.ceil((points[-1, 1]-points[0, 1])/.05))+1)
+        if np.max(np.abs(smooth(probe)-self.global_curve(probe))) <= p.STATIC_PATH_SMOOTHING_MAX_DEVIATION:
+            self.global_curve = smooth
         self.global_x = lambda y: self.global_curve(y)
         self.curves = []
         for name, data, curve in self.records:
@@ -256,16 +387,58 @@ class RecordedStaticPlanner:
                 edge = self._edge(curve, start, end, obstacles, body_margin=.2)
                 tail = self._edge(self.global_curve, end, self.goal_y, obstacles)
                 if edge is not None and tail is not None:
-                    options.append((end, float(np.max(curvature)), start, edge, tail))
+                    result = np.vstack((complete[complete[:,1] < start-1e-6], edge, tail[1:]))
+                    options.append((self._tracking_delay(result), end, start, result))
         if not options:
             return complete
-        end, _, start, edge, tail = min(options, key=lambda item: (item[0], item[1]))
-        result = np.vstack((complete[complete[:,1] < start-1e-6], edge, tail[1:]))
+        # 복귀 종료 위치를 먼저 고르면 짧고 급한 복귀가 선택되어 다시 제동하게 된다.
+        # 기준속도에서 필요한 감속을 먼저 최소화하고, 같을 때만 빠른 복귀를 선택한다.
+        _, end, start, result = min(options, key=lambda item: (item[0], item[1]))
         points = [Point(x,y) for x,y in result]
         if self.planner._max_curvature(points) > MAX_CURVATURE:
             return complete
         self.return_start_y, self.handoff_y = float(start), float(end)
         return result
+
+    def _tracking_delay(self, xy):
+        """기준속도 대비 곡률·조향 변화·통로 여유 때문에 추가되는 주행시간 [s]."""
+        station, _, profiles = self._speed_profile(xy)
+        cruise = p.STATIC_PATH_DESIGN_SPEED_KPH/3.6
+        limits = np.minimum(cruise, np.minimum.reduce(list(profiles.values())))
+        # 속도 제한 직전 감속도 비용에 포함해, 짧고 급한 연결이 유리해지지 않게 한다.
+        for i in range(len(limits)-2, -1, -1):
+            limits[i] = min(limits[i], math.sqrt(limits[i+1]**2
+                + 2*p.STATIC_END_DECELERATION*(station[i+2]-station[i+1])))
+        return float(np.sum(np.diff(station)[1:]*(1/np.maximum(limits, .1)-1/cruise)))
+
+    def _smooth_recorded_path(self, complete, obstacles):
+        """기록 경로의 작은 흔들림만 제거하고 시작·끝 위치/방향/곡률은 유지한다."""
+        y = complete[:, 1]
+        original = CubicSpline(y, complete[:, 0])
+        best, cost = complete, self._tracking_delay(complete)
+        probe = np.linspace(y[0], y[-1], int(math.ceil((y[-1]-y[0])/.025))+1)
+        for scale in (1., 2., 4.):
+            fit = UnivariateSpline(y, complete[:, 0],
+                                   s=len(y)*(scale*p.STATIC_PATH_SMOOTHING_RMS)**2)
+            blend = min(4., (y[-1]-y[0])/3.)
+            head_end, tail_start = y[0]+blend, y[-1]-blend
+            head = connector(self._state(original, y[0]), self._state(fit, head_end))
+            tail = connector(self._state(fit, tail_start), self._state(original, y[-1]))
+            def curve(value, derivative=0):
+                value = np.asarray(value)
+                return np.where(value < head_end, head(value, derivative),
+                    np.where(value > tail_start, tail(value, derivative), fit(value, derivative)))
+            deviation = float(np.max(np.abs(curve(probe)-original(probe))))
+            if deviation > p.STATIC_PATH_SMOOTHING_MAX_DEVIATION:
+                continue
+            candidate = self._edge(curve, y[0], y[-1], obstacles)
+            if candidate is None:
+                continue
+            candidate_cost = self._tracking_delay(candidate)
+            if candidate_cost < cost-1e-6:
+                best, cost = candidate, candidate_cost
+                self.path_smoothing_deviation = deviation
+        return best
 
     def _early_handoff_ready(self, ego, reference_path, obstacles):
         if (not self.active or self.handoff_y is None or ego.position.y < self.handoff_y
@@ -411,23 +584,69 @@ class RecordedStaticPlanner:
 
     def _curve_speed_limit(self, points):
         if len(points) < 3:
+            self.curve_speed_limits = {}
             return TRACKING_SPEED, 0.
+        start = len(self.path)-len(points)
+        is_suffix = (start >= 0 and self.path and points[0] is self.path[start]
+                     and points[-1] is self.path[-1])
+        if is_suffix:
+            if self._speed_profile_path is not self.path:
+                self._cached_speed_profile = self._speed_profile(self.path)
+                self._speed_profile_path = self.path
+            station, curvature, profiles = self._cached_speed_profile
+            distance = station[start+1:-1]-station[start]
+            curvature = curvature[start:]
+            profiles = {name: values[start:] for name, values in profiles.items()}
+        else:
+            station, curvature, profiles = self._speed_profile(points)
+            distance = station[1:-1]
+        # Cache the immutable full-path constraints so cropping the local path
+        # cannot change a future steering-rate estimate and create a speed jump.
+        self.curve_speed_limits = {name: min(TRACKING_SPEED, float(np.min(np.sqrt(
+            targets*targets+2*p.STATIC_END_DECELERATION*np.maximum(0., distance-p.STATIC_SPEED_PREVIEW)))))
+            for name, targets in profiles.items()}
+        preview = curvature[distance <= ALIGNMENT_PREVIEW]
+        return min(self.curve_speed_limits.values()), float(np.max(preview)) if len(preview) else 0.
+
+    def _speed_profile(self, points):
         xy = np.asarray(points)
         delta = np.diff(xy, axis=0)
         lengths = np.linalg.norm(delta, axis=1)
         chord = np.linalg.norm(xy[2:]-xy[:-2], axis=1)
-        twice_area = np.abs(delta[:-1, 0]*delta[1:, 1]-delta[:-1, 1]*delta[1:, 0])
-        curvature = 2*twice_area / np.maximum(lengths[:-1]*lengths[1:]*chord, 1e-9)
+        twice_area = delta[:-1, 0]*delta[1:, 1]-delta[:-1, 1]*delta[1:, 0]
+        signed_curvature = 2*twice_area / np.maximum(lengths[:-1]*lengths[1:]*chord, 1e-9)
+        curvature = np.abs(signed_curvature)
         distance = np.cumsum(lengths)[:-1]
-        targets = np.interp(curvature, [ALIGNMENT_CURVATURE, TIGHT_CURVATURE],
-                            [TRACKING_SPEED, ALIGNMENT_SPEED])
-        targets = np.minimum(targets, np.sqrt(p.STATIC_LATERAL_ACCEL/np.maximum(curvature, .001)))
-        # Back-propagate upcoming limits so entering the preview does not cause
-        # a step from cruise to crawl. Geometry and collision checks stay unchanged.
-        limits = np.sqrt(targets*targets + 2*p.STATIC_END_DECELERATION
-                         * np.maximum(0., distance-ALIGNMENT_PREVIEW))
-        preview = curvature[distance <= ALIGNMENT_PREVIEW]
-        return min(TRACKING_SPEED, float(np.min(limits))), float(np.max(preview)) if len(preview) else 0.
+        # Apply the requested offset before braking propagation and the other
+        # speed constraints. The reference acceleration is no longer a hard cap.
+        profiles = {'lateral_acceleration': (
+            np.sqrt(p.STATIC_LATERAL_ACCEL/np.maximum(curvature, 1e-6))
+            + p.STATIC_CURVATURE_SPEED_OFFSET_KPH/3.6)}
+        if self.curves:
+            # Near a recorded road edge, extra speed causes the delayed yaw
+            # response to swing the nose out of the validated body corridor.
+            # Keep the validated low-speed baseline and spend only the measured
+            # lateral headroom on faster tracking: extra_v * k * tau * length.
+            tangent = np.arctan2(xy[2:, 1]-xy[:-2, 1], xy[2:, 0]-xy[:-2, 0])
+            clearance = np.full(len(curvature), np.inf)
+            for along in (0., self.planner.vehicle_length):
+                for side in (-self.planner.vehicle_half_width, self.planner.vehicle_half_width):
+                    x = xy[1:-1, 0]+along*np.cos(tangent)-side*np.sin(tangent)
+                    y = xy[1:-1, 1]+along*np.sin(tangent)+side*np.cos(tangent)
+                    clearance = np.minimum(clearance, np.minimum(
+                        x-np.interp(y, self.envelope_y, self.envelope_low),
+                        np.interp(y, self.envelope_y, self.envelope_high)-x))
+            tracking = ALIGNMENT_SPEED + np.maximum(0., clearance)/(self.planner.vehicle_length
+                        *p.STATIC_STEERING_RESPONSE_TIME*np.maximum(curvature, 1e-6))
+            profiles['corridor_tracking'] = tracking
+        if len(distance) > 1:
+            steering = np.arctan(p.STATIC_WHEELBASE*signed_curvature)
+            # Evaluate changes over the controller's minimum 1 m preview, not
+            # recording/sample jitter at adjacent 0.1 m points.
+            low, high = np.maximum(distance[0], distance-.5), np.minimum(distance[-1], distance+.5)
+            slew_per_m = np.abs(np.interp(high, distance, steering)-np.interp(low, distance, steering)) / np.maximum(high-low, 1e-6)
+            profiles['steering_rate'] = p.STATIC_STEERING_RATE/np.maximum(slew_per_m, 1e-6)
+        return np.r_[0., np.cumsum(lengths)], curvature, profiles
 
     def _result(self, points, valid, phase, error=None):
         candidate = CandidatePath(layer="recorded")
@@ -445,7 +664,8 @@ class RecordedStaticPlanner:
                 lateral_severity = (self.cross_track_error-ALIGNMENT_CROSS_TRACK_ERROR) / (
                     ALIGNMENT_FULL_CROSS_TRACK_ERROR-ALIGNMENT_CROSS_TRACK_ERROR)
                 severity = float(np.clip(max(heading_severity, lateral_severity), 0., 1.))
-                limits['alignment'] = TRACKING_SPEED-(TRACKING_SPEED-ALIGNMENT_SPEED)*severity
+                base = min(limits.values())
+                limits['alignment'] = base-(max(0., base-ALIGNMENT_SPEED))*severity
         if not valid:
             limits['blocked'] = 0.
         speed_reason = min(limits, key=limits.get)
@@ -461,6 +681,10 @@ class RecordedStaticPlanner:
                 cross_track_error_m=self.cross_track_error, alignment_slow=self.alignment_slow,
                 preview_curvature=preview_curvature, speed_policy_reason=speed_reason,
                 tracking_speed_limits=dict(limits),
+                curve_speed_limits=dict(self.curve_speed_limits),
+                curvature_speed_offset_kph=p.STATIC_CURVATURE_SPEED_OFFSET_KPH,
+                path_design_speed_kph=p.STATIC_PATH_DESIGN_SPEED_KPH,
+                path_smoothing_deviation_m=self.path_smoothing_deviation,
                 recovery_until_y=self.recovery_until_y, recovery_count=self.recovery_count,
                 return_start_y=self.return_start_y, handoff_y=self.handoff_y,
                 preplanned_complete=bool(self.path), plan_count=self.plan_count)})
@@ -480,25 +704,25 @@ class RecordedStaticPlanner:
         if not self.active:
             if self.pending is not None:
                 if not self.pending.done():
-                    return self._result(reference_path, False, "planning")
+                    return self._waiting_result(ego, reference_path, obstacles, "planning")
                 try:
-                    complete = self.pending.result()
+                    worker = self.pending.result()
                 except Exception as exc:
                     self.pending = None
                     return self._result(reference_path, False, "planning_error", str(exc))
                 self.pending = None
                 self.last_attempt = time.monotonic()
-                if complete is None:
+                if not worker.path:
                     return self._result(reference_path, False, "no_complete_route")
-                self.path = [Point(x,y) for x,y in complete]
+                # All adopted lambdas close over the isolated completed worker.
+                for name, value in vars(worker).items():
+                    if name not in ('executor', 'pending', 'pending_key', 'preplanned', 'last_attempt'):
+                        setattr(self, name, value)
             elif self.executor is not None:
-                if abs(ego.velocity) > .3:
-                    return self._result(reference_path, False, "settle_at_entry")
                 if time.monotonic()-self.last_attempt >= 1.:
-                    self.last_attempt = time.monotonic()
                     route = list(prediction_path if prediction_path is not None else reference_path)
-                    self.pending = self.executor.submit(self._prepare, ego, route, list(obstacles))
-                return self._result(reference_path, False, "planning")
+                    self._submit(ego, route, obstacles)
+                return self._waiting_result(ego, reference_path, obstacles, "planning")
         if not self.active:
             if time.monotonic()-self.last_attempt < 1.:
                 return self._result(reference_path, False, "no_complete_route")
@@ -558,4 +782,6 @@ class RecordedStaticPlanner:
         self.known = list(obstacles)
         self.plan_count += 1
         complete = self._search(ego, obstacles)
-        return self._smooth_return(complete, obstacles) if complete is not None else None
+        if complete is None:
+            return None
+        return self._smooth_return(self._smooth_recorded_path(complete, obstacles), obstacles)

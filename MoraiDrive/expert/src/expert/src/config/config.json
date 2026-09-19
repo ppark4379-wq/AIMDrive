@@ -75,7 +75,10 @@
       "pedestrian_lateral_threshold": 10.0,
       "vehicle_lateral_threshold": 2.5,
       "traffic_light_lateral_threshold": 4.0,
-      "pedestrian_longitudinal_max": 35.0
+      "pedestrian_longitudinal_max": 35.0,
+      "vehicle_width": 2.0,
+      "pedestrian_clearance_margin": 0.5,
+      "pedestrian_default_radius": 0.4
     },
     "traffic_light_stop": {
       "stop_statuses": [1],

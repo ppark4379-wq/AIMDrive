@@ -127,6 +127,7 @@ class AutonomousDriving:
             vehicle_state, local_path, planning_object_info_dic_list,
             desired_velocity=planned_velocity,
             prediction_path=prediction_path,
+            global_path=self.path,
         )
         planning_path = lattice_result.path
         static_valid = (lattice_result.mode == 'static_obstacle' and lattice_result.active
@@ -211,18 +212,24 @@ class AutonomousDriving:
         fast_roundabout_release = self._roundabout_entry_fast_release(
             target_velocity, lattice_result
         )
-        if fast_roundabout_release:
+        fast_pedestrian_release = (
+            self.adaptive_cruise_control.pedestrian_released
+            and self.previous_target_velocity is not None
+            and self.previous_target_velocity <= .05 and target_velocity > .05
+        )
+        fast_stop_release = fast_roundabout_release or fast_pedestrian_release
+        if fast_stop_release:
             self.pid.reset()
         # 속도 제어를 위한 PID control
         acc_cmd = self.pid.get_output(
             target_velocity, vehicle_state.velocity,
-            derivative_on_measurement=lattice_result.mode == "roundabout_entry",
+            derivative_on_measurement=(lattice_result.mode == "roundabout_entry" or fast_pedestrian_release),
         )
         # 합류 양보/충돌 예측이 정지를 요구하면 현재 속도와 무관하게 즉시 제동합니다.
         if target_velocity <= 0.05:
             self.pid.reset()
             acc_cmd = -1.
-        elif fast_roundabout_release:
+        elif fast_stop_release:
             acc_cmd = max(0.0, acc_cmd)
         else:
             acc_cmd = self._smooth_longitudinal_command(acc_cmd)
@@ -393,8 +400,14 @@ class AutonomousDriving:
     def _recorded_lookahead_limits(self, vehicle_state, lattice_result):
         details = getattr(lattice_result, 'debug_details', {}).get('static_avoidance', {})
         if getattr(lattice_result, 'active', False) and details.get('planner') == 'recorded_route_graph':
+            # Longer preview stabilizes fast gentle avoidance; retain the short
+            # preview through tight bends so the body does not cut a corner.
+            nominal = max(lattice_parameters.STATIC_TRACKING_LOOKAHEAD[1],
+                          self.pure_pursuit.lfd_gain*vehicle_state.velocity)
+            upper = float(np.interp(details.get('preview_curvature', .08),
+                                    [.02, .08], [nominal, 1.5]))
             value = float(np.clip(self.pure_pursuit.lfd_gain*vehicle_state.velocity,
-                                  *lattice_parameters.STATIC_TRACKING_LOOKAHEAD))
+                                  lattice_parameters.STATIC_TRACKING_LOOKAHEAD[0], upper))
             self._recorded_last_lookahead = value
             return (value, value)
         previous = getattr(self, '_recorded_last_lookahead', None)

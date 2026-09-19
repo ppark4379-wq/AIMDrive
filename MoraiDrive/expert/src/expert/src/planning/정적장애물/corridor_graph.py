@@ -12,12 +12,18 @@ import time
 import numpy as np
 
 
-LONGITUDINAL_STEP = 1.0
-LATERAL_STEP = .1
-HEADING_SLOPES = tuple(np.arange(-.5, .51, .1))
-SEARCH_TIMEOUT = 8.0
-HEURISTIC_WEIGHT = 1.15
-BODY_TRACKING_RESERVE = .15
+# =============================================================================
+# 정적 장애물 통로 플래닝: 탐색 격자와 방향 후보
+# 기록 경로 연결로 해결되지 않을 때 통로 전체의 횡위치·방향을 탐색한다.
+# =============================================================================
+LONGITUDINAL_STEP = 1.0               # 탐색 상태를 배치할 전역 y 방향 간격 [m]
+LATERAL_STEP = .1                     # 각 y 위치에서 생성할 횡방향 x 후보 간격 [m]
+HEADING_SLOPES = tuple(np.arange(-.5, .51, .1)) # 전역 경로의 dx/dy 기울기에 더할 방향 후보 [무차원]
+
+# 탐색 시간·우선순위와 차체 여유
+SEARCH_TIMEOUT = 8.0                 # 횡방향 격자 탐색의 시간 제한; 선행 기록 경로 탐색 시간은 별도 [s]
+HEURISTIC_WEIGHT = 1.15               # 남은 거리 추정 비용의 가중치; 클수록 목표 방향 탐색 우선
+BODY_TRACKING_RESERVE = .15           # 기록된 통로 경계 안에 차체를 유지하기 위한 추종 여유 [m]
 
 
 def search_recordings(owner, ego, obstacles, connector):

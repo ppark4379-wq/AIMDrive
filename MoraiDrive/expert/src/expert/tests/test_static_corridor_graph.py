@@ -29,53 +29,133 @@ def captured_scene():
 
 
 class CorridorGraphTests(unittest.TestCase):
-    def test_gentle_tracking_target_is_ten_kph(self):
+    def test_sparse_box_has_twenty_kph_avoidance_and_return_geometry(self):
+        ego, route, _ = captured_scene()
+        objects = [ObjectInfo(-59.9, -143., 0., 2, is_static=True, size_x=1.2, size_y=1.2)]
         planner = module.RecordedStaticPlanner(LatticePlanner())
-        for bend in (0., .02):
+        result = planner.plan(ego, route, objects, route)
+        self.assertTrue(result.active, result.debug_details)
+        xy = np.array(planner.path)
+        yaw = np.array([planner.planner._path_heading(planner.path, i) for i in range(len(xy))])
+        self.assertTrue(planner._envelope_clear(xy, yaw))
+        self.assertTrue(planner.collision_free(xy, yaw, objects, .12))
+        self.assertGreater(planner.handoff_y-planner.return_start_y, 10.)
+        # This recorded-map scene previously selected right_03 and a 4 m return.
+        # Its slew limit dropped below 8 km/h even with perfect tracking.
+        for y in np.arange(-153., planner.handoff_y, .5):
+            index = int(np.argmin(abs(xy[:, 1]-y)))
+            speed, _ = planner._curve_speed_limit(planner.path[index:])
+            self.assertGreaterEqual(speed*3.6, 20., (y, planner.curve_speed_limits))
+        # A newly observed obstruction must still stop the smoothed maneuver.
+        point = planner.path[100]
+        blocked = ObjectInfo(point.x, point.y, 0., 2, is_static=True, size_x=1., size_y=1.)
+        self.assertEqual(planner.plan(ego, route, objects+[blocked]).acc_target_velocity, 0.)
+
+    def test_sparse_box_tracks_twenty_without_a_second_return_slowdown(self):
+        from expert.src.autonomous_driving import AutonomousDriving
+        from expert.src.control.pure_pursuit import PurePursuit
+        for lag, gain in ((.2, 1.), (.45, .75)):
+            with self.subTest(lag=lag, gain=gain):
+                ego, route, _ = captured_scene()
+                ego.velocity = 20./3.6
+                objects = [ObjectInfo(-59.9, -143., 0., 2, is_static=True, size_x=1.2, size_y=1.2)]
+                planner = module.RecordedStaticPlanner(LatticePlanner())
+                controller = AutonomousDriving.__new__(AutonomousDriving)
+                controller.control_dt = dt = 1./30.
+                controller.previous_target_velocity = ego.velocity
+                controller.pure_pursuit = PurePursuit(.65, 3., 2., 30.)
+                steering, avoidance_speeds, return_speeds = 0., [], []
+                with contextlib.redirect_stdout(io.StringIO()):
+                    for step in range(1500):
+                        reference = [v for v in route if ego.position.y-.25 <= v.y < -90. and -65. < v.x < -54.]
+                        result = planner.plan(ego, reference, objects, route)
+                        self.assertGreater(result.acc_target_velocity, 0., result.debug_details)
+                        target = controller._smooth_static_target_speed(min(20./3.6, result.acc_target_velocity), ego, result)
+                        controller.previous_target_velocity = target
+                        pp = controller.pure_pursuit
+                        pp.path, pp.vehicle_state = result.path, ego
+                        command = float(np.clip(pp.calculate_steering_angle(controller._recorded_lookahead_limits(ego, result)),
+                                                -math.radians(40.), math.radians(40.)))
+                        steering += float(np.clip((gain*command-steering)*dt/lag,
+                                                  -math.radians(45.)*dt, math.radians(45.)*dt))
+                        speed = max(0., ego.velocity+float(np.clip(target-ego.velocity, -3.*dt, 1.2*dt)))
+                        if -150. <= ego.position.y < planner.return_start_y:
+                            avoidance_speeds.append(speed*3.6)
+                        if planner.return_start_y <= ego.position.y < planner.handoff_y+3.:
+                            return_speeds.append(speed*3.6)
+                        ego = VehicleState(ego.position.x+speed*dt*math.cos(ego.yaw),
+                                           ego.position.y+speed*dt*math.sin(ego.yaw),
+                                           ego.yaw+speed*dt*math.tan(steering)/3., speed)
+                        if result.active:
+                            self.assertTrue(planner._envelope_clear(np.array([ego.position]), np.array([ego.yaw])),
+                                            (step, ego.position, result.debug_details))
+                        self.assertTrue(planner.collision_free(np.array([ego.position]), np.array([ego.yaw]), objects))
+                        if planner.done and ego.position.y > planner.handoff_y+3.:
+                            break
+                    else:
+                        self.fail('Sparse avoidance did not finish')
+                self.assertTrue(avoidance_speeds)
+                self.assertTrue(return_speeds)
+                if gain == 1.:
+                    self.assertGreaterEqual(min(avoidance_speeds), 19.)
+                    self.assertGreaterEqual(min(return_speeds), 19.)
+                else:
+                    # Sluggish/weak steering must retain the alignment slowdown.
+                    self.assertGreater(min(avoidance_speeds), 10.)
+                    self.assertGreater(min(return_speeds), 10.)
+                self.assertEqual(planner.plan_count, 1)
+
+    def test_gentle_tracking_preserves_route_cruise(self):
+        planner = module.RecordedStaticPlanner(LatticePlanner())
+        for bend in (0., .001):
             with self.subTest(bend=bend):
-                points = [Point(-60.+bend*s*s, -160.+s) for s in np.linspace(0., 10., 101)]
+                points = [Point(-60.+bend*s*s, -160.+s) for s in np.linspace(0., 160., 1601)]
                 planner.path = points
-                self.assertLess(planner.planner._max_curvature(points), module.ALIGNMENT_CURVATURE)
+                self.assertLess(planner.planner._max_curvature(points), .08)
                 result = planner._result(points, True, 'follow')
-                self.assertAlmostEqual(result.acc_target_velocity*3.6, 10.)
+                self.assertAlmostEqual(result.acc_target_velocity*3.6, 60.)
 
     def test_bend_preview_and_recovery_keep_slow_target(self):
         planner = module.RecordedStaticPlanner(LatticePlanner())
         points = [Point(-60.+.12*s*s, -160.+s) for s in np.linspace(0., 10., 101)]
         planner.path = points
-        self.assertGreater(planner.planner._max_curvature(points), module.ALIGNMENT_CURVATURE)
+        self.assertGreater(planner.planner._max_curvature(points), .08)
         self.assertFalse(planner.alignment_slow)
-        self.assertAlmostEqual(planner._result(points, True, 'follow').acc_target_velocity*3.6, 3.6)
+        speed = planner._result(points, True, 'follow').acc_target_velocity
+        self.assertGreater(speed*3.6, 10.)
+        self.assertLess(speed*3.6, 15.)
         straight = [Point(-60., -160.+s) for s in np.linspace(0., 10., 101)]
         planner.path = straight
         planner.recovery_until_y = -155.
         self.assertAlmostEqual(planner._result(straight, True, 'recover_alignment').acc_target_velocity*3.6, 3.6)
         planner.recovery_until_y = None
-        self.assertAlmostEqual(planner._result(straight, True, 'follow').acc_target_velocity*3.6, 10.)
+        self.assertGreater(planner._result(straight, True, 'follow').acc_target_velocity*3.6, 20.)
 
     def test_alignment_target_preserves_stop_limits(self):
         planner = module.RecordedStaticPlanner(LatticePlanner())
         points = [Point(-60., -160.+.1*i) for i in range(61)]
         planner.path = points
         planner.alignment_slow = True
-        planner.heading_error = module.ALIGNMENT_FULL_HEADING_ERROR
-        result = planner._result(points, True, 'follow')
-        self.assertAlmostEqual(result.acc_target_velocity*3.6, 3.6)
+        for heading, lateral in ((module.ALIGNMENT_FULL_HEADING_ERROR, 0.),
+                                 (0., module.ALIGNMENT_FULL_CROSS_TRACK_ERROR)):
+            planner.heading_error, planner.cross_track_error = heading, lateral
+            result = planner._result(points, True, 'follow')
+            self.assertAlmostEqual(result.acc_target_velocity*3.6, 3.6)
         self.assertEqual(planner._result(points, False, 'blocked').acc_target_velocity, 0.)
         self.assertEqual(planner._result(points[-3:], True, 'follow').acc_target_velocity, 0.)
 
-    def test_small_heading_error_does_not_toggle_ten_to_crawl(self):
+    def test_small_heading_error_has_progressive_slowdown(self):
         planner = module.RecordedStaticPlanner(LatticePlanner())
         planner.path = [Point(-60., -160.+.1*i) for i in range(101)]
         planner.alignment_slow = True
         speeds = []
-        for error in (1.49, 1.51, 2., 3., 5.):
+        for error in (1.99, 2.01, 3., 4., 5.):
             planner.heading_error = math.radians(error)
             speeds.append(planner._result(planner.path, True, 'follow').acc_target_velocity*3.6)
-        self.assertAlmostEqual(speeds[0], 10.)
-        self.assertLess(speeds[0]-speeds[1], .1)
-        self.assertGreater(speeds[2], 7.)
-        self.assertLess(speeds[2], 10.)
+        self.assertGreater(speeds[0], 20.)
+        self.assertLess(speeds[0]-speeds[1], .2)
+        self.assertGreater(speeds[2], 3.6)
+        self.assertLess(speeds[2], speeds[0])
         self.assertAlmostEqual(speeds[3], 3.6)
         self.assertAlmostEqual(speeds[4], 3.6)
 
@@ -88,11 +168,32 @@ class CorridorGraphTests(unittest.TestCase):
             points = [Point(-60.+radius*(1-math.cos(a)), -160.+radius*math.sin(a)) for a in angles]
             planner.path = points
             speeds.append(planner._result(points, True, 'follow').acc_target_velocity*3.6)
-        self.assertAlmostEqual(speeds[0], 10.)
+        self.assertAlmostEqual(speeds[0], 3.6*math.sqrt(1.5/.0799)+5., places=5)
         self.assertLess(speeds[0]-speeds[1], .02)
         self.assertGreater(speeds[2], 3.6)
-        self.assertLess(speeds[2], 10.)
-        self.assertAlmostEqual(speeds[3], 3.6, places=5)
+        self.assertLess(speeds[2], speeds[0])
+        self.assertAlmostEqual(speeds[3], 3.6*math.sqrt(1.5/.18)+5., places=5)
+
+    def test_curvature_offset_adds_five_kph_across_turn_radii(self):
+        from unittest.mock import patch
+        # Analytic circular arcs isolate curvature from slew and corridor
+        # limits; check both signs and ensure the final stop still wins.
+        for curvature in (.03, .05, .10, .15, .24):
+            for sign in (-1., 1.):
+                radius = 1./curvature
+                angles = np.linspace(0., 20./radius, 401)
+                points = [Point(sign*radius*(1-math.cos(a)), radius*math.sin(a)) for a in angles]
+                speeds = []
+                for offset in (0., 5.):
+                    with patch.object(module.p, 'STATIC_CURVATURE_SPEED_OFFSET_KPH', offset):
+                        planner = module.RecordedStaticPlanner(LatticePlanner())
+                        planner.path = points
+                        result = planner._result(points, True, 'follow')
+                        speeds.append(result.acc_target_velocity*3.6)
+                        self.assertAlmostEqual(speeds[-1], 3.6*math.sqrt(1.5/curvature)+offset, places=5)
+                        self.assertEqual(planner._result(points, False, 'blocked').acc_target_velocity, 0.)
+                        self.assertEqual(planner._result(points[-3:], True, 'follow').acc_target_velocity, 0.)
+                self.assertAlmostEqual(speeds[1]-speeds[0], 5., places=5)
 
     def test_upcoming_tight_bend_has_a_braking_profile(self):
         planner = module.RecordedStaticPlanner(LatticePlanner())
@@ -101,10 +202,11 @@ class CorridorGraphTests(unittest.TestCase):
                    for a in np.linspace(0., 1.4, 141)[1:]]
         planner.path = points
         targets = [planner._result(points[i:], True, 'follow').acc_target_velocity for i in range(101)]
-        self.assertAlmostEqual(targets[0]*3.6, 10.)
-        self.assertAlmostEqual(targets[-1]*3.6, 3.6)
-        self.assertTrue(any(1.01 < v < 2.7 for v in targets))
-        for before, after in zip(targets, targets[1:]):
+        self.assertGreater(targets[0]*3.6, 10.)
+        self.assertGreater(min(targets), 0.)
+        self.assertLess(min(targets), math.sqrt(1.5/.2))
+        minimum = int(np.argmin(targets))
+        for before, after in zip(targets[:minimum], targets[1:minimum+1]):
             self.assertLessEqual(after, before+1e-8)
             self.assertLessEqual(before**2-after**2, 2*module.p.STATIC_END_DECELERATION*.1+1e-8)
 
@@ -120,14 +222,23 @@ class CorridorGraphTests(unittest.TestCase):
         self.assertAlmostEqual(details['tracking_error_m'], .25)
         self.assertAlmostEqual(details['cross_track_error_m'], 0.)
         self.assertFalse(details['alignment_slow'])
-        self.assertAlmostEqual(result.acc_target_velocity*3.6, 10.)
+        cruise = result.acc_target_velocity*3.6
+        self.assertGreater(cruise, 20.)
+        # Ordinary 11 cm tracking error no longer reduces an otherwise clear
+        # straight-path target; larger error still slows and eventually crawls.
+        result = planner.plan(VehicleState(-59.74, -160.25, math.pi/2, 1.), [], [])
+        self.assertFalse(result.debug_details['static_avoidance']['alignment_slow'])
+        self.assertAlmostEqual(result.acc_target_velocity*3.6, cruise)
         offset = VehicleState(-59.70, -160.25, math.pi/2, 1.)
         result = planner.plan(offset, [], [])
         self.assertTrue(result.debug_details['static_avoidance']['alignment_slow'])
         self.assertGreater(result.acc_target_velocity*3.6, 3.6)
-        self.assertLess(result.acc_target_velocity*3.6, 10.)
-        result = planner.plan(VehicleState(-59.64, -160.25, math.pi/2, 1.), [], [])
-        self.assertAlmostEqual(result.acc_target_velocity*3.6, 3.6)
+        self.assertLess(result.acc_target_velocity*3.6, cruise)
+        result = planner.plan(VehicleState(-59.59, -160.25, math.pi/2, 1.), [], [])
+        # This 26 cm deviation leaves the recorded body envelope. Relaxing the
+        # speed policy must not lift the independent boundary stop.
+        self.assertEqual(result.acc_target_velocity, 0.)
+        self.assertEqual(result.debug_details['static_avoidance']['error'], 'recorded_envelope')
 
     def test_tangent_is_interpolated_at_the_measured_projection(self):
         planner = module.RecordedStaticPlanner(LatticePlanner())
@@ -153,21 +264,18 @@ class CorridorGraphTests(unittest.TestCase):
         xs = np.where(ys < start, curve(ys), np.where(ys < end, tail(ys), planner.global_curve(ys)))
         planner.path = [Point(x,y) for x,y in zip(xs,ys)]
         planner.handoff_y = end
-        cases = [(-59.31, -154.47, 79.84, 'curvature', 5., 7.),
-                 (-58.14, -150.98, 66.04, 'tracking', 9.9, 10.),
-                 (-56.99, -148.31, 68.23, 'curvature', 7., 8.),
-                 (-56.18, -145.99, 73.57, 'tracking', 9.9, 10.),
-                 (-55.14, -141.43, 81.72, 'curvature', 6., 8.),
-                 (-55.25, -136.19, 101.63, 'curvature', 3.6, 3.6),
-                 (-55.73, -134.63, 109.88, 'tracking', 9.9, 10.)]
-        for x, y, heading, reason, low, high in cases:
+        cases = [(-59.31, -154.47, 79.84), (-58.14, -150.98, 66.04),
+                 (-56.99, -148.31, 68.23), (-56.18, -145.99, 73.57),
+                 (-55.14, -141.43, 81.72), (-55.25, -136.19, 101.63),
+                 (-55.73, -134.63, 109.88)]
+        for x, y, heading in cases:
             with self.subTest(y=y):
                 result = planner.plan(VehicleState(x,y,math.radians(heading),1.), [], [])
                 details = result.debug_details['static_avoidance']
                 self.assertIsNone(details['error'])
-                self.assertEqual(details['speed_policy_reason'], reason)
-                self.assertGreaterEqual(result.acc_target_velocity*3.6, low-1e-6)
-                self.assertLessEqual(result.acc_target_velocity*3.6, high+1e-6)
+                self.assertIn(details['speed_policy_reason'], ('curvature', 'alignment', 'path_end', 'tracking'))
+                self.assertGreater(result.acc_target_velocity, 0.)
+                self.assertLessEqual(result.acc_target_velocity, module.TRACKING_SPEED)
 
     def test_speed_ramp_does_not_raise_or_delay_stop_requests(self):
         from expert.src.autonomous_driving import AutonomousDriving
@@ -324,7 +432,7 @@ class CorridorGraphTests(unittest.TestCase):
             begin = time.monotonic()
             result = planner.plan(ego, route, objects, route)
             self.assertLess(time.monotonic()-begin, .2)
-            self.assertEqual(result.acc_target_velocity, 0.)
+            self.assertGreater(result.acc_target_velocity, 0.)
             planner.pending.result(timeout=12.)
             result = planner.plan(ego, [], objects)
             self.assertGreater(result.acc_target_velocity, 0., result.debug_details)

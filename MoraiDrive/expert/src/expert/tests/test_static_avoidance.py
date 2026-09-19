@@ -38,6 +38,19 @@ class StaticAvoidanceTest(unittest.TestCase):
         point = path[index]
         return VehicleState(point.x, point.y, LatticePlanner._path_heading(path, index), 2.0)
 
+    def test_curvature_offset_also_applies_to_lattice_fallback(self):
+        maneuver = self.process.static_avoidance
+        radius = 10.
+        points = [Point(radius*math.sin(i*.005), radius*(1-math.cos(i*.005))) for i in range(401)]
+        maneuver.path = points
+        speeds = []
+        for offset in (0., 5.):
+            with patch.object(parameters, 'STATIC_CURVATURE_SPEED_OFFSET_KPH', offset):
+                speeds.append(maneuver._result(points, True, 'avoid').acc_target_velocity*3.6)
+                self.assertEqual(maneuver._result(points, False, 'blocked').acc_target_velocity, 0.)
+        self.assertAlmostEqual(speeds[1]-speeds[0], 5., places=5)
+        self.assertAlmostEqual(speeds[1], 3.6*math.sqrt(1.5/.1)+5., places=5)
+
     def finish_leg(self, maneuver):
         return maneuver.plan(self.at(maneuver.path, len(maneuver.path) - 8), [], [])
 
