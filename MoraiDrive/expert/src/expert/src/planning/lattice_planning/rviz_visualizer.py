@@ -201,6 +201,9 @@ class LatticeRvizVisualizer:
                     details.get('phase', '').upper(), ' -> '.join(details.get('selected_routes', [])),
                     details.get('final_target_velocity', result.acc_target_velocity)*3.6,
                     details.get('speed_source', 'planner'))
+                if details.get('live_preview'):
+                    entry = 'EGO POSE' if details.get('preview_ego_on_route') else 'NOMINAL ENTRY'
+                    marker.text += '\nEDITOR LIVE REPLAN: {}'.format(entry)
             if details.get('blocked_by'):
                 marker.text += '\nBLOCK: {}'.format(details['blocked_by'])
                 if 'required_right_offset' in details:

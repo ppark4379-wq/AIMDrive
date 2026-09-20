@@ -110,6 +110,17 @@ class RecordedStaticPlanner:
         self.executor = ThreadPoolExecutor(max_workers=1) if background else None
         self.pending = None
         self.error = None
+        # Scenario Editor only: invalidate the cached maneuver whenever the
+        # operator moves an obstacle or teleports Ego. Normal driving leaves
+        # this disabled and therefore retains the proven one-plan policy.
+        self.live_preview_enabled = False
+        # Once the editor releases control, keep the accepted route and run
+        # the same progress/tracking checks as production driving. This stays
+        # latched so pausing cannot turn a moving Ego back into preview mode.
+        self.live_drive_committed = False
+        self._live_preview_obstacle_key = None
+        self._live_preview_ego_pose = None
+        self.preview_ego_on_route = False
         try:
             self.records, self.audit = load_routes(root)
         except (OSError, ValueError, KeyError) as exc:
@@ -155,6 +166,75 @@ class RecordedStaticPlanner:
         return tuple(sorted((float(o.position.x), float(o.position.y),
                              float(o.heading_deg), float(o.size_x), float(o.size_y))
                             for o in obstacles))
+
+    @staticmethod
+    def _preview_obstacle_key(obstacles):
+        """Stable geometry key for interactive edits, ignoring float noise."""
+        return tuple(sorted((round(float(o.position.x), 3),
+                             round(float(o.position.y), 3),
+                             round(float(o.heading_deg), 2),
+                             round(float(o.size_x), 3),
+                             round(float(o.size_y), 3))
+                            for o in obstacles))
+
+    def set_live_preview(self, enabled):
+        enabled = bool(enabled)
+        if enabled == self.live_preview_enabled:
+            return
+        self.live_preview_enabled = enabled
+        self.live_drive_committed = False
+        self._live_preview_obstacle_key = None
+        self._live_preview_ego_pose = None
+        self.preview_ego_on_route = False
+        self.reset()
+
+    @property
+    def interactive_preview(self):
+        return self.live_preview_enabled and not self.live_drive_committed
+
+    def set_live_drive(self, enabled):
+        """Commit the editor preview for real Expert tracking.
+
+        Enabling is one-way until the Expert process restarts. The browser's
+        stop action pauses commands without discarding planner progress.
+        """
+        if bool(enabled) and self.live_preview_enabled:
+            self.live_drive_committed = True
+
+    def refresh_live_preview(self, ego, obstacles):
+        """Reset an editor preview after a material scene change.
+
+        This hook is intentionally called only when the Expert was launched
+        with the Scenario Editor private ROS parameter. Ego is stationary in
+        that mode, so a 25 cm/3 degree threshold rejects status jitter while
+        still detecting an operator teleport.
+        """
+        if not self.interactive_preview:
+            return False
+        obstacle_key = self._preview_obstacle_key(obstacles)
+        ego_pose = (float(ego.position.x), float(ego.position.y), float(ego.yaw))
+        changed = False
+        if self._live_preview_obstacle_key is not None:
+            changed = obstacle_key != self._live_preview_obstacle_key
+        if self._live_preview_ego_pose is not None:
+            previous_x, previous_y, previous_yaw = self._live_preview_ego_pose
+            yaw_delta = abs(math.atan2(
+                math.sin(ego_pose[2] - previous_yaw),
+                math.cos(ego_pose[2] - previous_yaw),
+            ))
+            changed = changed or math.hypot(
+                ego_pose[0] - previous_x, ego_pose[1] - previous_y
+            ) > .25 or yaw_delta > math.radians(3.)
+        if changed:
+            self.reset()
+        self._live_preview_obstacle_key = obstacle_key
+        self._live_preview_ego_pose = ego_pose
+        self.preview_ego_on_route = (
+            -65 < ego.position.x < -44
+            and -164 < ego.position.y < GLOBAL_REJOIN_POINT[1]
+            and math.sin(ego.yaw) > .5
+        )
+        return changed
 
     def preplan(self, ego, global_path, obstacles):
         """Warm the complete maneuver using GT and a fixed future entry pose.
@@ -221,6 +301,50 @@ class RecordedStaticPlanner:
             acc_target_velocity=speed, reason='static_recorded_approach',
             debug_details={'static_avoidance': dict(phase='approach', path_validated=False,
                 preplanned_complete=True, entry_speed_limit=entry_limit, entry_distance_m=distance)})
+
+    def committed_approach_result(self, ego, reference_path):
+        """Follow the global route until a committed editor path starts.
+
+        Interactive preview deliberately exposes the complete avoidance path
+        while Ego is held at the scenario start. After control is released,
+        that path may still start many metres ahead. Tracking it immediately
+        would exceed the production cross-track guard and command a stop.
+        """
+        if (not self.live_drive_committed or not self.path
+                or len(reference_path) < 2
+                or ego.position.y >= self.path[0].y-.25):
+            return None
+        entry_limit, _ = self._curve_speed_limit(self.path)
+        distance = max(
+            0., self.path[0].y-ego.position.y-p.STATIC_SPEED_PREVIEW
+        )
+        speed = math.sqrt(
+            entry_limit**2 + 2*p.STATIC_END_DECELERATION*distance
+        )
+        candidate = CandidatePath(layer="recorded")
+        candidate.points = list(self.path)
+        candidate.valid = True
+        return LatticePlanningResult(
+            reference_path,
+            active=True,
+            mode="static_obstacle",
+            obstacle_detected=True,
+            acc_override=True,
+            acc_target_velocity=speed,
+            candidates=[candidate],
+            reason="static_recorded_drive_approach",
+            debug_details={"static_avoidance": dict(
+                phase="drive_approach",
+                path_validated=True,
+                planner="recorded_route_graph",
+                live_preview=False,
+                live_drive_committed=True,
+                selected_routes=self.selected_names,
+                entry_speed_limit=entry_limit,
+                entry_distance_m=distance,
+                preplanned_complete=True,
+            )},
+        )
 
     def _prepare_snapshot(self, ego, route, obstacles):
         complete = self._prepare(ego, route, obstacles)
@@ -675,6 +799,9 @@ class RecordedStaticPlanner:
             candidates=[candidate], reason="static_recorded_"+phase,
             debug_details={"static_avoidance": dict(phase=phase, path_validated=valid,
                 planner="recorded_route_graph", boundary_source="recorded_swept_envelope_not_map",
+                live_preview=self.interactive_preview,
+                live_drive_committed=self.live_drive_committed,
+                preview_ego_on_route=self.preview_ego_on_route,
                 selected_routes=self.selected_names, recording_audit=self.audit, error=error,
                 corridor_search=dict(self.search_details),
                 heading_error_deg=math.degrees(self.heading_error), tracking_error_m=self.tracking_error,
@@ -690,8 +817,9 @@ class RecordedStaticPlanner:
                 preplanned_complete=bool(self.path), plan_count=self.plan_count)})
 
     def plan(self, ego, reference_path, obstacles, prediction_path=None):
-        if ((not self.active and self.past_rejoin(ego) and len(reference_path) >= 2)
-                or self._early_handoff_ready(ego, reference_path, obstacles)):
+        if (not self.interactive_preview and (
+                (not self.active and self.past_rejoin(ego) and len(reference_path) >= 2)
+                or self._early_handoff_ready(ego, reference_path, obstacles))):
             # Do not restart avoidance here, even if no maneuver was captured.
             if self.pending is not None:
                 self.pending.cancel()
@@ -734,6 +862,17 @@ class RecordedStaticPlanner:
             if complete is None:
                 return self._result(reference_path, False, "no_complete_route")
             self.path = [Point(x,y) for x,y in complete]
+        if self.interactive_preview and self.active:
+            # Do not advance progress or reject a useful full-route preview
+            # because the editor's stationary Ego was moved off the route.
+            # The same path has already passed the production envelope,
+            # curvature and obstacle checks in the isolated worker.
+            return self._result(list(self.path), True, "preview")
+        committed_approach = self.committed_approach_result(
+            ego, reference_path
+        )
+        if committed_approach is not None:
+            return committed_approach
         xy = np.array(self.path)
         nearest = int(np.argmin(np.linalg.norm(xy[max(0,self.progress-2):]-np.asarray(ego.position), axis=1)))+max(0,self.progress-2)
         error = ego.position.distance(self.path[nearest])

@@ -67,6 +67,15 @@ full_loop:
       position: {x: -60.610000610351563, y: -142.17799377441406, z: 28.374000549316406}
       yaw_deg: -83.219
       scale: [2.0, 3.0, 2.0]
+      # Scenario-only two-object test positions. Both remain inside the
+      # intersection conflict area and retain the same legal escape side.
+      multi_positions:
+        - route_path_index: 660
+          position: {x: -60.600, y: -146.393, z: 28.376}
+          yaw_deg: -83.219
+        - route_path_index: 680
+          position: {x: -60.615, y: -136.393, z: 28.383}
+          yaw_deg: -83.219
 
     dynamic_obstacle:
       actor_type: pedestrian

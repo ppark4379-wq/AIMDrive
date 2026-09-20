@@ -92,6 +92,16 @@ class LatticePlanningProcess:
         self.last_result = None
         self._last_log_state = None
 
+    def set_static_editor_mode(self, enabled):
+        """Enable scene-change replanning only for the interactive editor."""
+        if self.recorded_static is not None:
+            self.recorded_static.set_live_preview(enabled)
+
+    def set_static_editor_driving(self, enabled):
+        """Commit the current editor route to normal Expert tracking."""
+        if self.recorded_static is not None:
+            self.recorded_static.set_live_drive(enabled)
+
     def run(self, vehicle_state, reference_path, object_info_list, desired_velocity=None,
             prediction_path=None, global_path=None):
         static_objects = [item['object_info'] for item in object_info_list
@@ -99,6 +109,7 @@ class LatticePlanningProcess:
                           and -75 < item['object_info'].position.x < -40
                           and -180 < item['object_info'].position.y < -90]
         if self.recorded_static is not None:
+            self.recorded_static.refresh_live_preview(vehicle_state, static_objects)
             self.recorded_static.preplan(vehicle_state,
                 global_path if global_path is not None else (prediction_path or reference_path), static_objects)
         approach_result = (self.recorded_static.approach_result(vehicle_state, reference_path)
@@ -112,7 +123,12 @@ class LatticePlanningProcess:
             if self.highway_lane_planner is not None:
                 self.highway_lane_planner.reset()
             result = roundabout_result
-        elif self.recorded_static is not None and (self.recorded_static.active or (
+        elif self.recorded_static is not None and (
+                (self.recorded_static.interactive_preview and (
+                    self.recorded_static.active
+                    or self.recorded_static.pending is not None
+                    or bool(static_objects)))
+                or self.recorded_static.active or (
                 self.recorded_static.contains(vehicle_state) and
                 (self.recorded_static.pending is not None or static_objects))):
             result = self.recorded_static.plan(vehicle_state, reference_path, static_objects, prediction_path)

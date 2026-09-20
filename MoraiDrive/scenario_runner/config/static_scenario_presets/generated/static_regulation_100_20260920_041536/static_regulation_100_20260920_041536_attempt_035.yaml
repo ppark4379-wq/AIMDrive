@@ -1,0 +1,49 @@
+schema: morai_static_obstacle_preset_v1
+name: static_regulation_100_20260920_041536_attempt_035
+map_name: R_KR_PR_K-city_2025
+scenario: full_loop_static
+source: automated_static_expert_verified
+generation:
+  batch_seed: 7472814053904834310
+  attempt: 35
+  candidate_only_until_expert_passes: false
+obstacles:
+- model: CargoBox
+  position:
+    x: -60.489182
+    y: -142.141978
+    z: 28.378976
+  yaw_deg: -76.502825
+  scale:
+  - 1.967211
+  - 2.950817
+  - 1.967211
+  route_path_index: 669
+  generation:
+    longitudinal_fraction: 0.42508464
+    lateral_offset_m: -0.117195
+    scale_multiplier: 0.983606
+- model: Scooter_02
+  position:
+    x: -60.998801
+    y: -139.877438
+    z: 28.380561
+  yaw_deg: -85.678027
+  scale:
+  - 0.930405
+  - 0.930405
+  - 0.930405
+  route_path_index: 673
+  generation:
+    longitudinal_fraction: 0.65161454
+    lateral_offset_m: 0.389028
+    scale_multiplier: 0.930405
+verification:
+  expert_completed: true
+  collision_free: true
+  runner_return_code: 0
+  max_cross_track_error_m: 2.23
+  cross_track_limit_m: 3.0
+  valid_plan_samples: 22
+  verified_at_unix: 1789847301.2175355
+  log: scenario_runner/.runtime/static_scenario_batch/static_regulation_100_20260920_041536/logs/static_regulation_100_20260920_041536_attempt_035.log

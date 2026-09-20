@@ -119,7 +119,13 @@ class PortableSensorRecordEntrypointTest(unittest.TestCase):
         self.assertIn("MORAI_ASYNC_DEPS", shared)
         self.assertIn("source \"$TOOLS/internal_sensor_record_env.sh\"", preflight)
         self.assertIn("source \"$PUBLIC_TOOLS/internal_sensor_record_env.sh\"", campaign)
-        self.assertIn("morai_prepare_internal_sensor_record_environment sensor-set", preflight)
+        self.assertIn('prepare_mode="sensor-set"', preflight)
+        self.assertIn('prepare_mode="runtime"', preflight)
+        self.assertIn(
+            'morai_prepare_internal_sensor_record_environment "$prepare_mode"',
+            preflight,
+        )
+        self.assertIn("--scenario-only", preflight)
         self.assertIn("morai_prepare_internal_sensor_record_environment runtime", campaign)
         self.assertIn("morai_prepare_internal_sensor_record_environment runtime", validator_shell)
         self.assertIn('capture_python = "/usr/bin/python3"', validator)

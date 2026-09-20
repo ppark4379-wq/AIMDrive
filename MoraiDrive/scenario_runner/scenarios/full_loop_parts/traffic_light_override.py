@@ -95,6 +95,9 @@ def prepare(context):
 
 
 def _emit_collection_event(context, event_name, **fields):
+    # Scenario-only Expert verification has no collection event writer.  Keep
+    # the same intervention evidence visible in its persistent batch log.
+    print("[TRAFFIC OVERRIDE] {} {}".format(event_name, fields))
     writer = getattr(context, "event", None)
     if callable(writer):
         writer(event_name, training_visible=False, **fields)

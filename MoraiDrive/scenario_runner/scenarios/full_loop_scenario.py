@@ -62,7 +62,11 @@ class FullLoopScenario(FullLoopDriveBase):
         self.dynamic_obstacle_started_scenario_time = None
         self.dynamic_obstacle_min_ego_distance_m = float("inf")
         self.static_obstacle = None
+        self.static_obstacles = []
         self.static_obstacle_expected = None
+        self.static_obstacle_expectations = []
+        self.static_obstacle_models_selected = []
+        self.static_obstacle_scales = []
         self.static_obstacle_route_s = None
         self.static_obstacle_last_verify_elapsed = float("-inf")
         self.static_obstacle_pass_verified = False
@@ -99,6 +103,7 @@ class FullLoopScenario(FullLoopDriveBase):
             self.apply_time()
             if self.clean_road_mode:
                 self.static_obstacle = None
+                self.static_obstacles = []
                 self.static_obstacle_model = None
                 self.static_obstacle_scale = None
                 self.dynamic_obstacle_model = None
@@ -122,7 +127,7 @@ class FullLoopScenario(FullLoopDriveBase):
             f"[FullLoop] ready profile={self.profile['name']}, "
             f"weather={self.profile['weather']}, "
             f"time={self.scenario_hour:02d}:00, "
-            f"static={self.static_obstacle_model}, "
+            f"static={self.static_obstacle_models_selected or self.static_obstacle_model}, "
             f"dynamic={self.dynamic_obstacle_model}, "
             f"roundabout_npcs={len(self.roundabout_npcs)}, "
             f"highway_npcs_planned={self.highway_npc_planned_count}"
@@ -146,7 +151,13 @@ class FullLoopScenario(FullLoopDriveBase):
 
     make_actor_scale = static_obstacle.make_actor_scale
     _read_static_obstacle_state = static_obstacle.read_static_obstacle_state
+    select_static_obstacle_placements = (
+        static_obstacle.select_static_obstacle_placements
+    )
     spawn_static_obstacle = static_obstacle.spawn_static_obstacle
+    maintain_static_obstacles_for_editor = (
+        static_obstacle.maintain_static_obstacles_for_editor
+    )
     verify_static_obstacle = static_obstacle.verify_static_obstacle
 
     spawn_dynamic_obstacle = dynamic_obstacle.spawn_dynamic_obstacle
@@ -235,6 +246,9 @@ class FullLoopScenario(FullLoopDriveBase):
             "time_hour": self.scenario_hour,
             "static_obstacle_model": self.static_obstacle_model,
             "static_obstacle_scale": self.static_obstacle_scale,
+            "static_obstacle_models": self.static_obstacle_models_selected,
+            "static_obstacle_scales": self.static_obstacle_scales,
+            "static_obstacle_count": len(self.static_obstacles),
             "dynamic_obstacle_model": self.dynamic_obstacle_model,
             "run_seed": self.run_seed,
             "saved_at_unix": time.time(),
@@ -262,6 +276,10 @@ class FullLoopScenario(FullLoopDriveBase):
         )
 
     def cleanup_spawned_actors(self):
+        # A preflight failure can occur before setup() initializes any
+        # scenario-owned actor state. In that case there is nothing to clean.
+        if not hasattr(self, "scenario_actors"):
+            return
         try:
             self._set_highway_spawn_points_enabled(False)
         except Exception as e:

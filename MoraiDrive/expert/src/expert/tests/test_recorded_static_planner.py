@@ -207,6 +207,77 @@ class RecordedStaticTests(unittest.TestCase):
         self.assertEqual(result.acc_target_velocity, 0.)
         np.testing.assert_array_equal(original, self.planner.path)
 
+    def test_editor_preview_replans_after_obstacle_or_ego_move(self):
+        self.planner.set_live_preview(True)
+        self.assertFalse(self.planner.refresh_live_preview(self.ego, []))
+        result = self.start()
+        self.assertEqual(result.reason, 'static_recorded_preview')
+        self.assertTrue(self.planner.active)
+
+        obstacle = ObjectInfo(-59.85, -145., 0., 2, is_static=True,
+                              size_x=1., size_y=1.)
+        self.assertTrue(self.planner.refresh_live_preview(self.ego, [obstacle]))
+        self.assertFalse(self.planner.active)
+
+        # Establish the new scene, then reject tiny pose noise but reset for
+        # an actual operator teleport.
+        self.assertFalse(self.planner.refresh_live_preview(self.ego, [obstacle]))
+        self.planner.path = [Point(-59.85, -162.), Point(-59.85, -161.)]
+        jitter = VehicleState(self.ego.position.x+.05, self.ego.position.y,
+                              self.ego.yaw, 0.)
+        self.assertFalse(self.planner.refresh_live_preview(jitter, [obstacle]))
+        moved = VehicleState(self.ego.position.x+1., self.ego.position.y,
+                             self.ego.yaw, 0.)
+        self.assertTrue(self.planner.refresh_live_preview(moved, [obstacle]))
+        self.assertFalse(self.planner.active)
+
+    def test_editor_drive_commits_preview_and_uses_production_tracking(self):
+        self.planner.set_live_preview(True)
+        self.assertFalse(self.planner.refresh_live_preview(self.ego, []))
+        preview = self.start()
+        self.assertEqual(preview.reason, 'static_recorded_preview')
+
+        original = np.array(self.planner.path)
+        self.planner.set_live_drive(True)
+        moved = VehicleState(self.ego.position.x, self.ego.position.y+.5,
+                             self.ego.yaw, 0.)
+        self.assertFalse(self.planner.refresh_live_preview(moved, []))
+        np.testing.assert_array_equal(original, self.planner.path)
+
+        tracked = self.planner.plan(self.ego, self.route[:80], [], self.route)
+        self.assertEqual(tracked.reason, 'static_recorded_follow')
+        self.assertTrue(tracked.debug_details['static_avoidance']['live_drive_committed'])
+
+        # Browser stop is a command pause. It must not reactivate preview
+        # invalidation while Ego is already away from the editor start pose.
+        self.planner.set_live_drive(False)
+        self.assertFalse(self.planner.interactive_preview)
+
+    def test_editor_drive_uses_global_route_until_avoidance_entry(self):
+        self.planner.set_live_preview(True)
+        self.assertFalse(self.planner.refresh_live_preview(self.ego, []))
+        self.start()
+        avoidance = list(self.planner.path)
+        self.planner.set_live_drive(True)
+
+        far_ego = VehicleState(-59.85, -175., math.pi/2, 0.)
+        approach_route = [Point(-59.85, -180.+.2*i) for i in range(425)]
+        result = self.planner.plan(
+            far_ego, approach_route[:100], [], approach_route
+        )
+        self.assertEqual(result.reason, 'static_recorded_drive_approach')
+        self.assertEqual(result.path, approach_route[:100])
+        self.assertEqual(result.candidates[0].points, avoidance)
+        self.assertGreater(result.acc_target_velocity, 0.)
+
+    def test_production_mode_ignores_editor_refresh_hook(self):
+        self.start()
+        original = np.array(self.planner.path)
+        obstacle = ObjectInfo(-59.85, -145., 0., 2, is_static=True,
+                              size_x=1., size_y=1.)
+        self.assertFalse(self.planner.refresh_live_preview(self.ego, [obstacle]))
+        np.testing.assert_array_equal(original, self.planner.path)
+
     def test_no_global_return_fails_closed(self):
         result = self.planner.plan(self.ego, [], [], [])
         self.assertFalse(result.active)

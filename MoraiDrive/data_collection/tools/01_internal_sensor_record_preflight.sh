@@ -5,9 +5,46 @@ set -Eeuo pipefail
 TOOLS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$TOOLS/internal_sensor_record_env.sh"
 
-echo "[1/5] 이 PC의 고정 MORAI 연결 주소·ROS/catkin·Python·저장 경로를 준비합니다."
+RUN_MODE="capture"
+case "${1:-}" in
+    "") ;;
+    --scenario-only)
+        RUN_MODE="scenario"
+        shift
+        ;;
+    -h|--help)
+        cat <<'EOF'
+사용법:
+  ./data_collection/tools/01_internal_sensor_record_preflight.sh
+      전체 Sensor Record 수집용 센서 계약과 stream을 검사합니다.
+
+  ./data_collection/tools/01_internal_sensor_record_preflight.sh --scenario-only
+      데이터 저장 없이 Scenario Runner·Expert 검증에 필요한 ROS master와
+      bridge만 유지합니다. Camera/LiDAR/GPS/IMU/clock 연결을 요구하지 않습니다.
+EOF
+        exit 0
+        ;;
+    *)
+        echo "[FAIL] 알 수 없는 옵션: $1" >&2
+        exit 2
+        ;;
+esac
+if (( $# != 0 )); then
+    echo "[FAIL] 불필요한 인자가 있습니다: $*" >&2
+    exit 2
+fi
+
+if [[ "$RUN_MODE" == "scenario" ]]; then
+    echo "[MODE] Scenario Runner·Expert 검증 전용 bridge 유지 모드"
+    echo "       Sensor Record와 Camera/LiDAR/GPS/IMU/clock 연결은 검사하지 않습니다."
+    prepare_mode="runtime"
+else
+    prepare_mode="sensor-set"
+fi
+
+echo "[1/5] 이 PC의 고정 MORAI 연결 주소·ROS/catkin·Python 환경을 준비합니다."
 echo "      Git 추적 소스는 수정하지 않습니다. PC별 설정은 .runtime에만 저장합니다."
-morai_prepare_internal_sensor_record_environment sensor-set
+morai_prepare_internal_sensor_record_environment "$prepare_mode"
 morai_load_internal_sensor_record_environment
 morai_require_capture_python
 
@@ -40,7 +77,9 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-if [[ ! "$CONNECT_TIMEOUT" =~ ^[0-9]+$ ]] || (( CONNECT_TIMEOUT < 30 )); then
+if [[ "$RUN_MODE" == "capture" ]] \
+        && { [[ ! "$CONNECT_TIMEOUT" =~ ^[0-9]+$ ]] \
+             || (( CONNECT_TIMEOUT < 30 )); }; then
     echo "[FAIL] MORAI_CONNECT_TIMEOUT_SECONDS는 30 이상의 정수여야 합니다." >&2
     exit 2
 fi
@@ -52,24 +91,32 @@ echo "      MORAI 연결 주소 : ${MORAI_BRIDGE_IP}:9090"
 echo "      WSL ROS node 주소: ${ROS_IP} (내부 자동 탐지)"
 echo "      ROS master       : $ROS_MASTER_URI"
 echo "      원본 저장 경로   : $MORAI_STORAGE_ROOT"
-echo "      센서셋 파일      : $MORAI_SENSOR_SET_PATH"
-/usr/bin/python3 "$INTERNAL/tools/preflight_local_storage.py" --reserve-gib 70
+if [[ "$RUN_MODE" == "capture" ]]; then
+    echo "      센서셋 파일      : $MORAI_SENSOR_SET_PATH"
+    /usr/bin/python3 "$INTERNAL/tools/preflight_local_storage.py" --reserve-gib 70
 
-clock_report="$MORAI_PROJECT_ROOT/.runtime/data_collection/clock_preflight.json"
-/usr/bin/python3 "$INTERNAL/tools/preflight_local_clock.py" \
-    --wait-seconds "${MORAI_CLOCK_STABILIZATION_WAIT_SECONDS:-90}" \
-    --output "$clock_report"
+    clock_report="$MORAI_PROJECT_ROOT/.runtime/data_collection/clock_preflight.json"
+    /usr/bin/python3 "$INTERNAL/tools/preflight_local_clock.py" \
+        --wait-seconds "${MORAI_CLOCK_STABILIZATION_WAIT_SECONDS:-90}" \
+        --output "$clock_report"
+else
+    echo "[SKIP] 데이터 저장 공간·WSL 수집 시계 검사 (시나리오 전용 모드)"
+fi
 
 echo
-echo "[3/5] MORAI 26.R1.H3와 AIM 센서 geometry/rate/topic 계약을 검사합니다."
-if ! contract_report=$(/usr/bin/python3 \
-        "$INTERNAL/tools/preflight_internal_sensor_record.py" 2>&1); then
-    echo "$contract_report" >&2
-    echo "[FAIL] 센서셋 내용이 AIM 수집 계약과 다릅니다." >&2
-    echo "       주소 외 geometry/FOV/rate/topic 차이는 자동 수정하지 않습니다." >&2
-    exit 2
+if [[ "$RUN_MODE" == "capture" ]]; then
+    echo "[3/5] MORAI 26.R1.H3와 AIM 센서 geometry/rate/topic 계약을 검사합니다."
+    if ! contract_report=$(/usr/bin/python3 \
+            "$INTERNAL/tools/preflight_internal_sensor_record.py" 2>&1); then
+        echo "$contract_report" >&2
+        echo "[FAIL] 센서셋 내용이 AIM 수집 계약과 다릅니다." >&2
+        echo "       주소 외 geometry/FOV/rate/topic 차이는 자동 수정하지 않습니다." >&2
+        exit 2
+    fi
+    echo "[PASS] 센서셋 정적 계약 통과"
+else
+    echo "[3/5] [SKIP] Sensor Record 센서셋 계약 검사 (시나리오 전용 모드)"
 fi
-echo "[PASS] 센서셋 정적 계약 통과"
 
 echo
 echo "[4/5] ROS master와 계측 bridge를 준비합니다."
@@ -103,8 +150,16 @@ until rosparam list >/dev/null 2>&1; do
     sleep 1
 done
 
-rosparam set /use_sim_time true
-echo "[PASS] ROS master 준비 및 /use_sim_time=true"
+if [[ "$RUN_MODE" == "capture" ]]; then
+    rosparam set /use_sim_time true
+    echo "[PASS] ROS master 준비 및 /use_sim_time=true"
+else
+    # With no Simulator Network /clock connection, use_sim_time=true freezes
+    # rospy timers used by the Expert and editor. Scenario-only validation is
+    # deliberately asynchronous and uses host/receive time.
+    rosparam set /use_sim_time false
+    echo "[PASS] ROS master 준비 및 /use_sim_time=false (비동기 시나리오 검증)"
+fi
 
 if [[ "$MORAI_ENDPOINT_IP" == 127.* ]]; then
     localhost_code=2
@@ -132,6 +187,36 @@ if [[ "$MORAI_ENDPOINT_IP" == 127.* ]]; then
     echo "[PASS] Windows→WSL 고정 주소 127.0.0.1:9090 접속 확인"
 fi
 echo
+if [[ "$RUN_MODE" == "scenario" ]]; then
+    echo "[5/5] 시나리오 검증용 bridge를 계속 유지합니다."
+    echo "      Camera/LiDAR/GPS/IMU, Sensor Record, Synchronization Mode는 꺼도 됩니다."
+    echo "      Expert 실제 주행에는 MORAI 차량 정보와 객체 정보 연결이 필요합니다."
+    echo "      다른 터미널에서 다음 자동 검증을 실행하세요:"
+    echo "        cd $MORAI_PROJECT_ROOT"
+    echo "        ./scenario_runner/tools/run_static_scenario_batch.sh --attempts 3"
+    echo
+    echo "      이 터미널은 자동 검증이 끝날 때까지 닫지 마세요. Ctrl+C로 종료합니다."
+    keepalive_report_at=$((SECONDS + 30))
+    while true; do
+        if [[ "$STARTED_BRIDGE" == "1" ]]; then
+            if ! kill -0 "$BRIDGE_PID" 2>/dev/null; then
+                wait "$BRIDGE_PID" || true
+                echo "[FAIL] 시나리오 검증용 bridge가 종료됐습니다." >&2
+                tail -n 40 "$BRIDGE_LOG" >&2 || true
+                exit 2
+            fi
+        elif ! ss -H -ltn 'sport = :9090' 2>/dev/null | grep -q .; then
+            echo "[FAIL] 기존 9090 bridge listener가 종료됐습니다." >&2
+            exit 2
+        fi
+        if (( SECONDS >= keepalive_report_at )); then
+            echo "[KEEPALIVE] ROS master와 bridge 정상; 전체 센서 없이 시나리오 검증 대기 중"
+            keepalive_report_at=$((SECONDS + 30))
+        fi
+        sleep 1
+    done
+fi
+
 echo "[5/5] 실제 메시지를 확인합니다."
 echo "      MORAI에서 차량 정보·Simulator Network(/clock)와"
 echo "      Camera 1~4·LiDAR·GPS·IMU를"

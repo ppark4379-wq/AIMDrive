@@ -234,11 +234,10 @@ class BoundedCampaignSelectionTests(unittest.TestCase):
         source = (
             TOOLS / "collect_scenario_laps.sh").read_text(encoding="utf-8")
         self.assertIn("for ((lap=1; lap<=LAPS; lap++))", source)
-        self.assertIn(
-            'cleanup_failed_sensor_record_attempt.py" --run-name '
-            '"$CURRENT_RUN" --failure-status "failed_$code"',
-            source,
-        )
+        self.assertIn('cleanup_failed_sensor_record_attempt.py"', source)
+        self.assertIn('--run-name "$CURRENT_RUN"', source)
+        self.assertIn('--failure-status "failed_$code"', source)
+        self.assertIn('--run-root "$CAMPAIGN_ROOT/$CURRENT_RUN"', source)
         self.assertIn("[CONTINUE] lap $lap", source)
         self.assertNotIn('exit "$code"', source)
         self.assertIn('"requested_attempts": attempts', source)

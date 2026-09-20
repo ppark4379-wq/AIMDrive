@@ -1506,6 +1506,10 @@ def _morai_get_ego_motion_state(self):
         "speed": speed,
         "current_link": vehicle_state.current_link_info.id.value,
         "front_wheel_angle": float(vehicle_state.front_wheel_angle),
+        "collision_objects": [
+            str(value) for value in vehicle_state.collision_objects
+            if str(value).strip()
+        ],
     }
 
 

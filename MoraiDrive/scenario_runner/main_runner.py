@@ -188,7 +188,53 @@ def build_parser():
         action="store_true",
         help="Validate paths, imports, route, and configuration without MORAI.",
     )
+    parser.add_argument(
+        "--no-sync-runtime",
+        action="store_true",
+        help=(
+            "Run an asynchronous scenario-only test without MORAI Sync "
+            "Runtime or sensor capture. Ego progress is read through gRPC."
+        ),
+    )
+    parser.add_argument(
+        "--static-obstacle-count",
+        type=int,
+        choices=(1, 2),
+        default=1,
+        help=(
+            "Spawn one or two verified static obstacles. Two is intended "
+            "for scenario-only full_loop_static testing."
+        ),
+    )
+    parser.add_argument(
+        "--static-preset",
+        default=None,
+        help=(
+            "Replay a static-obstacle preset saved by the live editor. "
+            "Use a preset name from config/static_scenario_presets or a YAML path."
+        ),
+    )
+    parser.add_argument(
+        "--static-editor",
+        action="store_true",
+        help=(
+            "Allow live MORAI obstacle repositioning for scenario design. "
+            "This is a no-capture, asynchronous full_loop_static mode."
+        ),
+    )
     return parser
+
+
+def resolve_static_preset(value):
+    path = Path(value)
+    if not path.suffix and path.name == str(path):
+        path = PACKAGE_ROOT / "config" / "static_scenario_presets" / (str(path) + ".yaml")
+    elif not path.is_absolute():
+        path = PROJECT_ROOT / path
+    path = path.resolve()
+    if not path.is_file():
+        raise ValueError("Static obstacle preset not found: {}".format(path))
+    return str(path)
 
 
 def run_offline_check(global_cfg, scenario_cfg, scenario_name):
@@ -209,6 +255,40 @@ def main():
         parser.error("--max-runs must be at least 1")
 
     global_cfg, zone_cfg, base_scenario_cfg = load_configuration()
+    if args.static_editor:
+        if args.scenario != "full_loop_static":
+            parser.error("--static-editor requires --scenario full_loop_static")
+        if args.static_preset:
+            parser.error("--static-editor cannot be combined with --static-preset")
+        base_scenario_cfg["static_obstacle_editor_mode"] = True
+        base_scenario_cfg.setdefault("sync_runtime", {})["enabled"] = False
+        # Keep Ego fixed at the scenario start while retaining the Expert's
+        # complete perception and planning graph. Only its final vehicle
+        # command is redirected; /local_path and /lattice/paths remain live.
+        base_scenario_cfg["expert_ros_remaps"] = [
+            "/ctrl_cmd:=/static_scenario_editor/ctrl_cmd",
+            "_static_editor_mode:=true",
+        ]
+    if args.no_sync_runtime:
+        base_scenario_cfg.setdefault("sync_runtime", {})["enabled"] = False
+    if args.static_obstacle_count != 1:
+        if args.scenario != "full_loop_static":
+            parser.error(
+                "--static-obstacle-count 2 requires "
+                "--scenario full_loop_static"
+            )
+        base_scenario_cfg["static_obstacle_count"] = args.static_obstacle_count
+    if args.static_preset:
+        if args.scenario != "full_loop_static":
+            parser.error("--static-preset requires --scenario full_loop_static")
+        if args.static_obstacle_count != 1:
+            parser.error("--static-preset cannot be combined with --static-obstacle-count")
+        try:
+            base_scenario_cfg["static_obstacle_preset"] = resolve_static_preset(
+                args.static_preset
+            )
+        except ValueError as error:
+            parser.error(str(error))
     if args.scenario in MISSION_MODES:
         base_scenario_cfg["mission_mode"] = args.scenario
     if (

@@ -1,0 +1,66 @@
+schema: morai_static_obstacle_preset_v1
+name: static_regulation_100_20260920_041536_attempt_047
+map_name: R_KR_PR_K-city_2025
+scenario: full_loop_static
+source: manually_reviewed_static_expert_verified
+generation:
+  batch_seed: 7472814053904834310
+  attempt: 47
+  candidate_only_until_expert_passes: false
+obstacles:
+- model: WoodBox
+  position:
+    x: -60.007421
+    y: -145.320399
+    z: 28.37675
+  yaw_deg: -88.532844
+  scale:
+  - 1.930485
+  - 2.895727
+  - 1.930485
+  route_path_index: 662
+  generation:
+    longitudinal_fraction: 0.10717101
+    lateral_offset_m: -0.594188
+    scale_multiplier: 0.965242
+- model: TrafficBarrel
+  position:
+    x: -60.203801
+    y: -140.606068
+    z: 28.38005
+  yaw_deg: -88.806453
+  scale:
+  - 2.056717
+  - 3.085076
+  - 2.056717
+  route_path_index: 672
+  generation:
+    longitudinal_fraction: 0.57863246
+    lateral_offset_m: -0.404878
+    scale_multiplier: 1.028359
+- model: ElectricScooter2
+  position:
+    x: -60.75754
+    y: -137.185888
+    z: 28.382445
+  yaw_deg: -72.452433
+  scale:
+  - 0.983463
+  - 0.983463
+  - 0.983463
+  route_path_index: 678
+  generation:
+    longitudinal_fraction: 0.92073275
+    lateral_offset_m: 0.143729
+    scale_multiplier: 0.983463
+verification:
+  accepted: true
+  automatic_gate_passed: false
+  manual_review:
+    accepted: true
+    reviewer: dydwns
+    note: 기존 static_pilot_10 attempt 3에서 MORAI 화면으로 확인한 합법적 횡단보도 통과 경로와 동일한 Expert
+      recorded-route 조합 및 동일 최대 횡오차 위치; 각 실행의 목표 도달·유효 경로·무충돌 증거를 확인하여 동등 승인
+    reviewed_at_unix: 1789889769.6820178
+    automatic_rejection_reasons:
+    - cross_track_limit_exceeded

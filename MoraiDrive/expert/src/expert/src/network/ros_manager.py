@@ -16,7 +16,7 @@ from morai_msgs.msg import (
     SetTrafficLight,
 )
 from nav_msgs.msg import Odometry, Path
-from std_msgs.msg import Float32
+from std_msgs.msg import Bool, Float32
 
 from ..config.config import Config
 from ..obstacle.object_info import ObjectInfo
@@ -37,6 +37,21 @@ class RosManager:
 
         config = Config()
         rospy.init_node("morai_standard", anonymous=True)
+
+        editor_parameter = rospy.get_param("~static_editor_mode", False)
+        self.static_editor_mode = (
+            editor_parameter.strip().lower() in ("1", "true", "yes", "on")
+            if isinstance(editor_parameter, str)
+            else bool(editor_parameter)
+        )
+        self.autonomous_driving.lattice_planning_process.set_static_editor_mode(
+            self.static_editor_mode
+        )
+        if self.static_editor_mode:
+            rospy.logwarn(
+                "Static Scenario Editor live-replan preview is enabled; "
+                "vehicle commands remain controlled by the caller remap"
+            )
 
         self.traffic_light_control = config["map"]["traffic_light_control"]
         self.global_path = self.convert_to_ros_path(config["map"]["path"], "/map")
@@ -386,6 +401,18 @@ class RosManager:
             "/GetTrafficLightStatus",
             GetTrafficLightStatus,
             self.traffic_light_callback,
+        )
+        if self.static_editor_mode:
+            rospy.Subscriber(
+                "/static_scenario_editor/drive_enabled",
+                Bool,
+                self.static_editor_drive_callback,
+                queue_size=1,
+            )
+
+    def static_editor_drive_callback(self, message):
+        self.autonomous_driving.lattice_planning_process.set_static_editor_driving(
+            bool(message.data)
         )
 
     def _send_data(

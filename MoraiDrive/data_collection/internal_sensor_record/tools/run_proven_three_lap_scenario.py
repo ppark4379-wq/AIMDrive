@@ -30,6 +30,7 @@ from scenario_runner.main_runner import (
     PACKAGE_ROOT as SCENARIO_PACKAGE_ROOT,
     SUPPORTED_SCENARIOS,
     load_configuration,
+    resolve_static_preset,
 )
 from scenario_runner.scenarios.full_loop_scenario import FullLoopScenario
 from scenario_runner.scenarios.segment_modes.modes import MISSION_MODES, PRIMARY_SCENARIOS
@@ -55,7 +56,7 @@ def software_inventory(expert_root):
         ROOT / 'async_capture/temporal_groups.py',
     ]
     files += sorted((PROJECT_ROOT / 'scenario_runner').rglob('*.py'))
-    files += sorted((PROJECT_ROOT / 'scenario_runner/config').glob('*.yaml'))
+    files += sorted((PROJECT_ROOT / 'scenario_runner/config').rglob('*.yaml'))
     files += sorted(
         path for path in Path(expert_root).rglob('*')
         if path.is_file() and path.suffix.lower() in {
@@ -337,6 +338,13 @@ class RawScenario(FullLoopScenario):
                                      self.expert_controller.runtime_path_csv)},
                      collision_policy=self.collision_policy, time_mode=self.time_mode,
                      expert_clock=self.expert_clock, duration_clock='host_monotonic',
+                     static_obstacle_preset=(
+                         dict(
+                             path=str(self.cfg['static_obstacle_preset']),
+                             sha256=digest(Path(self.cfg['static_obstacle_preset'])),
+                         )
+                         if self.cfg.get('static_obstacle_preset') else None
+                     ),
                      training_visible=False, object_geometry_verified=False)
         write_json(self.output / 'episode.json', setup)
         self.capture_log = (self.output / 'capture.log').open('x')
@@ -548,6 +556,8 @@ def main():
     p.add_argument('--check', action='store_true')
     p.add_argument('--scenario', choices=PRIMARY_SCENARIOS, default='full_loop',
                    help='Main Scenario Runner mode to execute (default: full_loop)')
+    p.add_argument('--static-preset',
+                   help='Static editor preset name or YAML path; full_loop_static only')
     p.add_argument(
         '--expert-runtime', choices=('current',), default='current',
         help='Execute MoraiDrive/expert; the frozen proven mode has been removed',
@@ -591,6 +601,13 @@ def main():
     print('[Expert] root=' + str(expert_root), flush=True)
     if not a.grpc_target:
         a.grpc_target = default_grpc_target()
+    if a.static_preset:
+        if a.scenario != 'full_loop_static':
+            p.error('--static-preset requires --scenario full_loop_static')
+        try:
+            a.static_preset = resolve_static_preset(a.static_preset)
+        except ValueError as error:
+            p.error(str(error))
     # The main adapter supports environment discovery; the collection command
     # remains authoritative about the exact target as it was before migration.
     os.environ['MORAI_GRPC_TARGET'] = a.grpc_target
@@ -631,6 +648,8 @@ def main():
                expert_ros_remaps=['/ctrl_cmd:=' + a.control_topic])
     if a.scenario in MISSION_MODES:
         cfg['mission_mode'] = a.scenario
+    if a.static_preset:
+        cfg['static_obstacle_preset'] = a.static_preset
     scenario_type = collection_scenario_class(a.scenario)
     provenance = expert_provenance(a.expert_runtime, expert_root)
     global_cfg['expert_provenance'] = provenance

@@ -1,0 +1,34 @@
+schema: morai_static_obstacle_preset_v1
+name: static_regulation_100_20260920_041536_attempt_049
+map_name: R_KR_PR_K-city_2025
+scenario: full_loop_static
+source: automated_static_expert_verified
+generation:
+  batch_seed: 7472814053904834310
+  attempt: 49
+  candidate_only_until_expert_passes: false
+obstacles:
+- model: Bicycle_city
+  position:
+    x: -61.139367
+    y: -137.235038
+    z: 28.382411
+  yaw_deg: -87.212162
+  scale:
+  - 1.04591
+  - 1.04591
+  - 1.04591
+  route_path_index: 678
+  generation:
+    longitudinal_fraction: 0.91587504
+    lateral_offset_m: 0.52563
+    scale_multiplier: 1.04591
+verification:
+  expert_completed: true
+  collision_free: true
+  runner_return_code: 0
+  max_cross_track_error_m: 1.25
+  cross_track_limit_m: 3.0
+  valid_plan_samples: 16
+  verified_at_unix: 1789848062.471776
+  log: scenario_runner/.runtime/static_scenario_batch/static_regulation_100_20260920_041536/logs/static_regulation_100_20260920_041536_attempt_049.log

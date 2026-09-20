@@ -22,6 +22,16 @@ Runner는 `setup()`과 Expert 프로세스 실행 확인 후 `/morai_drive/scena
 
 종료 시 READY를 해제하고 ROS 구독을 해제한 뒤 Expert를 종료합니다. Runtime은 READY 해제를 확인하여 SyncMode를 종료합니다. 매 회차 Runtime을 먼저 다시 실행하고 Runner를 `--once`로 실행하는 것을 권장합니다.
 
+센서 파일을 저장하지 않고 시나리오와 Expert 동작만 확인할 때는 Sync Runtime을 실행하지 않고 Runner에 `--no-sync-runtime`을 지정합니다. 이 모드는 gRPC Ego 상태로 진행 거리를 계산하며 Sensor Record와 센서 캡처를 사용하지 않습니다.
+
+```bash
+python3 -m scenario_runner.main_runner \
+  --zone full_loop \
+  --scenario full_loop_dynamic \
+  --once \
+  --no-sync-runtime
+```
+
 시나리오 내부 전체 제한은 0으로 비활성화했고, 진행 watchdog도 비활성화했습니다. 경로 이탈 타임아웃은 1e12초로 사실상 비활성입니다. 데이터 수집 명령의 별도 wall-time 제한은 그대로 적용됩니다.
 
 ## 전체 폐루프 실행
@@ -61,6 +71,17 @@ python3 -m scenario_runner.main_runner --zone full_loop --scenario full_loop_nor
 
 ```bash
 python3 -m scenario_runner.main_runner --zone full_loop --scenario full_loop_static
+```
+
+Sensor Record 없이 교차로 내부 정적 장애물 2개에 대한 Expert 주행을 확인할 때는 다음처럼 실행합니다.
+
+```bash
+python3 -m scenario_runner.main_runner \
+  --zone full_loop \
+  --scenario full_loop_static \
+  --once \
+  --no-sync-runtime \
+  --static-obstacle-count 2
 ```
 
 여섯 모드는 정상 도착 후 객체 정리 → 같은 모드 시작점으로 재배치 → 다음 회차를 반복합니다.
@@ -107,3 +128,161 @@ export SCENARIO_ROUTE_PATH_TXT=$PWD/scenario_runner/.runtime/expert/path_scenari
 
 SDL_AUDIODRIVER=dummy python3 expert/src/expert/src/path/mgeo_visualization.py
 ```
+## 정적 장애물 배치 편집기
+
+MORAI에서 정적 장애물을 직접 옮기면서 현재 Expert의 경로를 확인하고,
+그 배치를 재현 가능한 Scenario Runner 프리셋으로 저장할 수 있다. 편집 중에는
+Expert 차량 명령을 제동 relay가 막는다. 브라우저의 `실제 Expert 주행 시작`
+버튼을 누르면 같은 명령을 `/ctrl_cmd`로 전달하므로 MORAI의 실제 주행과 웹의
+계획 경로·Ego 궤적을 한 화면에서 비교할 수 있다.
+
+01번 bridge를 유지하고 아래 편집용 시나리오를 실행한다. 이 모드에서만 장애물
+위치 고정 감시를 끄고 Expert의 최종 `/ctrl_cmd`를 편집 전용 토픽으로 보내므로
+브라우저에서 주행을 시작하기 전까지 Ego는 제동 상태이고 경로 계산만 계속된다.
+Sensor Record와 Synchronization Mode는 사용하지 않는다.
+
+```bash
+/usr/bin/python3 -m scenario_runner.main_runner \
+  --zone full_loop \
+  --scenario full_loop_static \
+  --once \
+  --static-editor \
+  --static-obstacle-count 2
+```
+
+시나리오가 실행되면 별도 터미널로 편집 화면을 시작한다.
+
+```bash
+cd ~/AIMDrive/MoraiDrive
+./scenario_runner/tools/run_static_scenario_editor.sh
+```
+
+두 번째 명령을 실행하자마자 유효 경로가 준비되는 시점에 실제 Expert 주행까지
+자동 시작하려면 다음 옵션을 붙인다. 장애물 위치를 더 편집해야 한다면 이 옵션을
+빼고 브라우저의 시작 버튼을 사용한다.
+
+```bash
+./scenario_runner/tools/run_static_scenario_editor.sh --auto-drive
+```
+
+브라우저에서 `http://127.0.0.1:8765`를 열면 회색 global path, 파란 Expert
+최종 경로, 후보의 초록·빨강·회색 외곽선과 현재 MORAI 장애물이 표시된다.
+주황 사각형은 gRPC `bounding_box`로 읽은 MORAI의 실제 물리 박스이고, 노란
+외곽선은 `/lattice/objects`를 통해 확인한 Expert 충돌 검사 박스다. 두 박스의
+방향이나 크기가 다르면 저장 전에 센서/모델 형상 계약부터 확인해야 한다. 선택된
+경로 주변의 파란 반투명 영역은 현재 Expert의 차체 크기와 정적 회피 안전 여유를
+적용한 sweep 시각화다. `실제 Expert 주행 시작`을 누르면 청록색 실제 Ego 궤적,
+현재 계획 경로와 MORAI `collision_objects` 상태가 주행 중에도 계속 갱신된다.
+주행을 시작한 뒤에는 장애물을 움직이지 않는다. `실제 Expert 주행 정지`를 누르면
+Expert 명령을 다시 차단하고 제동 명령을 보낸다.
+편집 모드는 장애물 위치가 바뀌거나 Ego가 25cm 이상 이동하면 기존 정적 회피
+경로 캐시를 버리고 다시 탐색한다. 화면의 상태가 `PLANNING`에서 `PREVIEW` 또는
+`NO_COMPLETE_ROUTE`로 바뀐 뒤 배치를 판단한다. Ego가 기록 경로 구간 밖에 있으면
+실제 수집 진입 자세인 `NOMINAL ENTRY` 기준으로 계산하며, 구간 안에 있으면 현재
+`EGO POSE` 기준으로 계산한다. MORAI에서 장애물을 옮긴 뒤 저장할 장애물과
+모델·스케일을 확인하고 `선택한 현재 배치 저장`을 누른다. 프리셋은
+`scenario_runner/config/static_scenario_presets/<name>.yaml`에 저장된다.
+
+저장한 배치를 다시 실행하는 명령은 다음과 같다.
+
+```bash
+/usr/bin/python3 -m scenario_runner.main_runner \
+  --zone full_loop \
+  --scenario full_loop_static \
+  --once \
+  --no-sync-runtime \
+  --static-preset <name>
+```
+
+같은 프리셋으로 Sensor Record 데이터를 수집할 때는 01번 bridge와 센서 연결을
+정상 상태로 만든 후 02번에 프리셋 이름을 전달한다.
+
+```bash
+./data_collection/tools/02_collect_internal_sensor_record_laps.sh 30 \
+  --scenario full_loop_static \
+  --static-preset <name>
+```
+
+프리셋 요청은 campaign plan에, 실제 해석된 YAML 경로와 SHA-256은 각
+`episode.json`에 남는다. 따라서 수집 후 어떤 장애물 배치를 사용했는지 확인할
+수 있다.
+
+화면의 `기하 경로 검증: PASS`는 planner 내부의 차체 OBB, 안전 여유, 기록 경로
+envelope와 곡률 검사 통과를 뜻한다. 브라우저 주행은 MORAI에서 경로 추종을 직접
+살펴보는 용도다. 수집 승인 전에 동일 프리셋의 충돌·경로 이탈·정체를 자동 판정할
+때는 편집기와 편집용 시나리오를 종료하고, 01번 bridge만 유지한 상태에서 다음
+명령을 실행한다. Sensor Record와 Synchronization Mode는 필요하지 않다.
+
+```bash
+cd ~/AIMDrive/MoraiDrive
+./scenario_runner/tools/verify_static_scenario.sh <프리셋 이름> 1
+```
+
+이 명령은 저장된 장애물 actor pose를 다시 생성한 뒤 `full_loop_static` 구간을
+Expert가 실제로 주행한다. MORAI가 보고한 `collision_objects`, 공식 경로 이탈,
+진행 정체, 장애물 이동·소실과 구간 목표 도달을 함께 검사한다. 마지막에
+`[PASS] static preset closed-loop verification`이 출력되어야 수집 후보로 사용한다.
+로그는 `scenario_runner/.runtime/static_scenario_verification/`에 보존된다.
+
+편집 화면은 Expert가 실제 발행한 궤적을 보여주지만 차선 실선의 법적 경계를
+자동 판정하지는 않는다. 저장 전 MORAI 화면과 RViz에서 차선 침범 여부를 함께
+확인한다. 기존 수집 시나리오는 `--static-preset`을 주지 않으면 그대로 동작한다.
+
+### 정적 장애물 자동 후보 생성·폐루프 선별
+
+수동 편집기로 대표 배치를 확인한 뒤에는 모델, 모델별 크기, 장애물 수, 위치와
+방향을 매 시도마다 다르게 만든 후보를 실제 Expert로 자동 검증할 수 있다. 이
+과정은 Sensor Record를 켜지 않으며, 구간 목표 도달과 MORAI 충돌·정체·경로 이탈
+검사를 모두 통과한 후보만 재현 가능한 프리셋으로 채택한다. 수동 에디터의 제동
+relay와 충돌하지 않도록 에디터 프로세스를 먼저 종료하고 01번 bridge만 유지한다.
+
+```bash
+cd ~/AIMDrive/MoraiDrive
+./scenario_runner/tools/run_static_scenario_batch.sh \
+  --attempts 100 \
+  --min-obstacles 1 \
+  --max-obstacles 3
+```
+
+100회 시도는 100개의 서로 다른 후보를 뜻하며, 통과 개수는 실행 결과에 따라
+작아질 수 있다. 후보 YAML과 전체 로그는
+`scenario_runner/.runtime/static_scenario_batch/<suite>/`에 남고, 통과한
+프리셋과 결과 목록은
+`scenario_runner/config/static_scenario_presets/generated/<suite>/`에 저장된다.
+`suite_manifest.json`에는 seed, 각 후보의 모델·개수, 성공 여부, 실행 시간,
+로그와 채택 프리셋 SHA-256이 기록된다. 같은 후보 분포를 재현하려면 `--seed`를
+지정한다. 모델을 바꾸면 실제 bbox도 달라지므로 모든 후보는 별도 Expert 주행을
+반드시 거치며, 실패 후보가 자동으로 수집 프리셋에 들어가지는 않는다.
+Expert가 플래너 오류로 막히고 유효한 회피 후보가 없는 상태가 기본 15초간
+계속되면 해당 배치를 조기에 탈락시키고 다음 후보로 넘어간다. 자동 신호 해제가
+동작하지 않아 유효 경로가 신호 제한만으로 정지한 상태는 30초 후 별도 사유로
+탈락한다. 정상적인 10초 신호 대기는 허용한다. 필요하면
+`--invalid-plan-timeout-sec`, `--signal-stop-timeout-sec`으로 각 지속 시간을
+조정할 수 있다.
+완주와 무충돌만으로는 실선 밖 우회가 섞일 수 있으므로 공식 경로 기준 샘플링된
+최대 횡오차도 검사한다. 기본 채택 한계는 3.0m이며 필요할 때
+`--max-cross-track-error-m`으로 더 엄격하게 지정할 수 있다. 이 수치는 지도 차선
+마킹 자체의 기하 검증을 대신하지 않으므로, 최종 분포 확정 전 대표 프리셋의 MORAI
+화면 검토는 유지한다.
+
+자동 횡오차 기준에서 탈락했지만 실제 교차로 형상에서는 합법적인 회피로 보이는
+후보는 아래 명령으로 동일 배치를 다시 주행하며 직접 확인한다.
+
+```bash
+./scenario_runner/tools/review_static_scenario_candidate.sh <suite> <attempt>
+```
+
+완주·유효 경로 증거가 있고 자동 탈락 사유가 횡오차 초과뿐이며, MORAI 화면에서
+실선·차선 침범이 없음을 확인한 경우에만 검토자와 근거를 적어 수동 승인한다.
+
+```bash
+./scenario_runner/tools/review_static_scenario_candidate.sh \
+  <suite> <attempt> --promote \
+  --reviewer <이름> \
+  --note "MORAI 화면에서 실선 침범 없이 합법적 회피 확인"
+```
+
+수동 승인 프리셋에는 `automatic_gate_passed=false`와 원래 자동 탈락 사유가
+남으며, suite manifest도 자동 승인과 수동 승인을 별도로 집계한다. 충돌, 미완주,
+유효 경로 부재, 실행 실패와 시간 초과는 눈으로 괜찮아 보이더라도 수동 승인할 수
+없다.

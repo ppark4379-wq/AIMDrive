@@ -33,9 +33,10 @@ SSD_ROOT="$(MORAI_PROJECT_ROOT="$PROJECT_ROOT" \
 LEGACY_BASE="$SSD_ROOT/sensor_record_auto_v1"
 DATASET_ROOT="$SSD_ROOT/dataset"
 usage() {
-    echo "사용법: $0 <회차 수> [campaign_id] [--scenario <name>]"
+    echo "사용법: $0 <회차 수> [campaign_id] [--scenario <name>] [--static-preset <name|path>]"
     echo "예:   $0 3"
     echo "      $0 100 --scenario full_loop_static"
+    echo "      $0 30 --scenario full_loop_static --static-preset intersection_pair_01"
     echo "      $0 3 campaign_static --scenario full_loop_static"
     echo "campaign_id를 생략하면 <시나리오_폴더>_lap<회차>_<생성일시>로 자동 생성합니다."
     echo "시나리오: full_loop, full_loop_normal, full_loop_static, full_loop_dynamic,"
@@ -50,6 +51,7 @@ if (( $# > 0 )); then
 fi
 CAMPAIGN_ID=""
 SCENARIO="full_loop"
+STATIC_PRESET=""
 while (( $# > 0 )); do
     case "$1" in
         --scenario)
@@ -63,6 +65,19 @@ while (( $# > 0 )); do
             ;;
         --scenario=*)
             SCENARIO="${1#--scenario=}"
+            shift
+            ;;
+        --static-preset)
+            if (( $# < 2 )); then
+                echo "[FAIL] --static-preset 뒤에 프리셋 이름 또는 YAML 경로가 필요합니다." >&2
+                usage >&2
+                exit 2
+            fi
+            STATIC_PRESET="$2"
+            shift 2
+            ;;
+        --static-preset=*)
+            STATIC_PRESET="${1#--static-preset=}"
             shift
             ;;
         --*)
@@ -90,6 +105,10 @@ case "$SCENARIO" in
         exit 2
         ;;
 esac
+if [[ -n "$STATIC_PRESET" && "$SCENARIO" != "full_loop_static" ]]; then
+    echo "[FAIL] --static-preset은 --scenario full_loop_static에서만 사용할 수 있습니다." >&2
+    exit 2
+fi
 case "$SCENARIO" in
     full_loop) SCENARIO_FOLDER="full_route" ;;
     full_loop_normal) SCENARIO_FOLDER="basic_driving" ;;
@@ -141,6 +160,9 @@ scenario_check=(
     --time-mode simulation_free_run --collision-policy record
     --raw-camera-transport bridge_dropped --max-speed-kmh 60
 )
+if [[ -n "$STATIC_PRESET" ]]; then
+    scenario_check+=(--static-preset "$STATIC_PRESET")
+fi
 runtime_label="현재 MoraiDrive/expert runtime"
 if ! "${scenario_check[@]}" >"$integration_log" 2>&1; then
     echo "[FAIL] 선택한 Scenario Runner·Expert·수집기 인터페이스가 호환되지 않습니다." >&2
@@ -233,9 +255,9 @@ fi
 RUNS_FILE="$CAMPAIGN_DIR/runs.tsv"
 mkdir -p "$CAMPAIGN_DIR"
 printf 'lap\tseed\trun_name\tstatus\tweather\ttime_hour\tstatic_obstacle\tdynamic_obstacle\tstarted_utc\tfinished_utc\n' > "$RUNS_FILE"
-/usr/bin/python3 - "$CAMPAIGN_DIR/campaign_plan.json" "$CAMPAIGN_ID" "$LAPS" "$BASE_SEED" "$LAP_WALL_SECONDS" "$SIMULATOR_PID" "$SCENARIO" "$SCENARIO_RUNTIME" "$SCENARIO_FOLDER" <<'PY'
+/usr/bin/python3 - "$CAMPAIGN_DIR/campaign_plan.json" "$CAMPAIGN_ID" "$LAPS" "$BASE_SEED" "$LAP_WALL_SECONDS" "$SIMULATOR_PID" "$SCENARIO" "$SCENARIO_RUNTIME" "$SCENARIO_FOLDER" "$STATIC_PRESET" <<'PY'
 import json, pathlib, sys, time
-path, campaign_id, laps, seed, seconds, pid, scenario_name, scenario_runtime, scenario_folder = sys.argv[1:]
+path, campaign_id, laps, seed, seconds, pid, scenario_name, scenario_runtime, scenario_folder, static_preset = sys.argv[1:]
 payload = {
     "schema": "morai_sensor_record_campaign_v1",
     "campaign_id": campaign_id,
@@ -243,6 +265,7 @@ payload = {
     "scenario_runtime": scenario_runtime,
     "dataset_scenario_folder": scenario_folder,
     "scenario_runtime_policy": "current team checkout; requires live validation",
+    "static_obstacle_preset_request": static_preset or None,
     "requested_laps": int(laps),
     "base_seed": int(seed),
     "lap_wall_limit_seconds": int(seconds),
@@ -318,14 +341,18 @@ for ((lap=1; lap<=LAPS; lap++)); do
         "$lap" "$seed" "$CURRENT_RUN" "$started" >> "$RUNS_FILE"
     echo
     echo "[LAP $lap/$LAPS] seed=$seed run=$CURRENT_RUN"
-    /usr/bin/python3 "$INTEGRATION/tools/run_sensor_record_scenario.py" \
+    collector_command=(/usr/bin/python3 "$INTEGRATION/tools/run_sensor_record_scenario.py" \
             --name "$CURRENT_RUN" --pid "$SIMULATOR_PID" \
             --run-root "$CAMPAIGN_ROOT/$CURRENT_RUN" \
             --session-evidence-root "$CAMPAIGN_DIR/runtime/$CURRENT_RUN" \
             --scenario "$SCENARIO" --scenario-runtime "$SCENARIO_RUNTIME" \
             --seconds "$LAP_WALL_SECONDS" --full-lap \
             --seed "$seed" --profile-state "$PROFILE_STATE" \
-            --raw-camera-transport bridge_dropped --defer-offline-review &
+            --raw-camera-transport bridge_dropped --defer-offline-review)
+    if [[ -n "$STATIC_PRESET" ]]; then
+        collector_command+=(--static-preset "$STATIC_PRESET")
+    fi
+    "${collector_command[@]}" &
     COLLECTOR_PID=$!
     if wait "$COLLECTOR_PID"; then
         COLLECTOR_PID=""

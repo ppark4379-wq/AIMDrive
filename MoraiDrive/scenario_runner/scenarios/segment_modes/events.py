@@ -72,6 +72,10 @@ def resolve_profile_models(context):
     )
     context.static_obstacle_scale = []
     context.static_obstacle = None
+    context.static_obstacles = []
+    context.static_obstacle_expectations = []
+    context.static_obstacle_models_selected = []
+    context.static_obstacle_scales = []
 
 
 def spawn_static_obstacle(context):

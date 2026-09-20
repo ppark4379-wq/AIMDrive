@@ -85,6 +85,15 @@ scenarios:
       Tree02: [0.5, 0.5, 0.5]
       Tree03: [0.5, 0.5, 0.5]
 
+    # Applied only when the scenario-only CLI requests two static obstacles.
+    # Move the pair together so the legal escape corridor stays on one side.
+    static_obstacle_multi_randomization:
+      enabled: true
+      longitudinal_margin_m: 2.0
+      lateral_margin_m: 0.35
+      spacing_jitter_m: 1.0
+      yaw_margin_deg: 3.0
+
     # 26.R1 live-verified movable dynamic models. police1 and NCAP_EPTc are
     # intentionally excluded because they failed spawn/movement verification.
     dynamic_obstacle_models:

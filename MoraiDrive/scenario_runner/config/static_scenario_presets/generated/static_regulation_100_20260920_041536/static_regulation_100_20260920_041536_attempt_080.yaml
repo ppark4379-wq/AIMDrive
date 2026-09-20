@@ -1,0 +1,66 @@
+schema: morai_static_obstacle_preset_v1
+name: static_regulation_100_20260920_041536_attempt_080
+map_name: R_KR_PR_K-city_2025
+scenario: full_loop_static
+source: manually_reviewed_static_expert_verified
+generation:
+  batch_seed: 7472814053904834310
+  attempt: 80
+  candidate_only_until_expert_passes: false
+obstacles:
+- model: Steel_Barricade
+  position:
+    x: -60.240393
+    y: -144.524161
+    z: 28.377308
+  yaw_deg: -72.338719
+  scale:
+  - 0.944578
+  - 0.944578
+  - 0.944578
+  route_path_index: 664
+  generation:
+    longitudinal_fraction: 0.18682949
+    lateral_offset_m: -0.36241
+    scale_multiplier: 0.944578
+- model: CargoBox
+  position:
+    x: -60.112767
+    y: -142.41296
+    z: 28.378786
+  yaw_deg: -73.89502
+  scale:
+  - 1.980643
+  - 2.970965
+  - 1.980643
+  route_path_index: 668
+  generation:
+    longitudinal_fraction: 0.39793005
+    lateral_offset_m: -0.493202
+    scale_multiplier: 0.990322
+- model: Lane_Separation_Bar
+  position:
+    x: -61.078388
+    y: -139.454912
+    z: 28.380857
+  yaw_deg: -83.517577
+  scale:
+  - 0.974261
+  - 0.974261
+  - 0.974261
+  route_path_index: 674
+  generation:
+    longitudinal_fraction: 0.69387904
+    lateral_offset_m: 0.46798
+    scale_multiplier: 0.974261
+verification:
+  accepted: true
+  automatic_gate_passed: false
+  manual_review:
+    accepted: true
+    reviewer: dydwns
+    note: attempt 16을 MORAI 화면에서 실선·중앙선·주행영역 침범 없이 완주하는 경로로 직접 확인; 동일한 Expert recorded-route
+      조합과 완주·무충돌 증거를 가진 동등 후보 승인
+    reviewed_at_unix: 1789890454.9046838
+    automatic_rejection_reasons:
+    - cross_track_limit_exceeded

@@ -1,0 +1,51 @@
+schema: morai_static_obstacle_preset_v1
+name: static_regulation_100_20260920_041536_attempt_051
+map_name: R_KR_PR_K-city_2025
+scenario: full_loop_static
+source: manually_reviewed_static_expert_verified
+generation:
+  batch_seed: 7472814053904834310
+  attempt: 51
+  candidate_only_until_expert_passes: false
+obstacles:
+- model: Steel_Barricade
+  position:
+    x: -60.59928
+    y: -143.741151
+    z: 28.377856
+  yaw_deg: -73.92354
+  scale:
+  - 0.974821
+  - 0.974821
+  - 0.974821
+  route_path_index: 665
+  generation:
+    longitudinal_fraction: 0.26518422
+    lateral_offset_m: -0.004698
+    scale_multiplier: 0.974821
+- model: YellowBarrel
+  position:
+    x: -60.579137
+    y: -136.622737
+    z: 28.382839
+  yaw_deg: -75.03304
+  scale:
+  - 2.159981
+  - 3.239972
+  - 2.159981
+  route_path_index: 680
+  generation:
+    longitudinal_fraction: 0.97702101
+    lateral_offset_m: -0.035518
+    scale_multiplier: 1.079991
+verification:
+  accepted: true
+  automatic_gate_passed: false
+  manual_review:
+    accepted: true
+    reviewer: dydwns
+    note: 기존 static_pilot_10 attempt 3에서 MORAI 화면으로 확인한 합법적 횡단보도 통과 경로와 동일한 Expert
+      recorded-route 조합 및 동일 최대 횡오차 위치; 각 실행의 목표 도달·유효 경로·무충돌 증거를 확인하여 동등 승인
+    reviewed_at_unix: 1789889769.70225
+    automatic_rejection_reasons:
+    - cross_track_limit_exceeded

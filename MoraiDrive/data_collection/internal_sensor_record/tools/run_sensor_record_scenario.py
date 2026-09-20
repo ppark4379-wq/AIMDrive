@@ -141,6 +141,8 @@ def main():
                    help='Campaign-private directory for pre-creation junction plans and UI evidence')
     p.add_argument('--scenario', choices=PRIMARY_SCENARIOS, default='full_loop',
                    help='Main Scenario Runner mode to execute (default: full_loop)')
+    p.add_argument('--static-preset',
+                   help='Static editor preset name or YAML path; full_loop_static only')
     p.add_argument(
         '--scenario-runtime', choices=('current',), default='current',
         help=(
@@ -187,6 +189,8 @@ def main():
             or not 90<=a.seconds<=max_seconds):p.error('Simple unique name up to 80 characters, 90..%d wall seconds'%max_seconds)
     if not 0 <= a.seed < 2**31:
         p.error('Seed must be in [0, 2^31)')
+    if a.static_preset and a.scenario != 'full_loop_static':
+        p.error('--static-preset requires --scenario full_loop_static')
     immutable_preflight=capture_preflight(a.assembly,a.sensor_set,a.static_evidence)
     if not immutable_preflight['ready']:
         raise RuntimeError('Pinned MORAI build/sensor-set preflight failed: '+str(immutable_preflight['failures']))
@@ -277,6 +281,8 @@ def main():
     command=['/usr/bin/python3',str(runner),
              '--scenario',a.scenario,'--nearby-actors',
              '--expert-runtime',a.scenario_runtime]
+    if a.static_preset:
+        command += ['--static-preset', a.static_preset]
     command += [
         '--time-mode','simulation_free_run','--collision-policy','record',
         '--max-speed-kmh','60','--seconds',str(a.seconds),'--audit-scope','timing','--output',str(run),
