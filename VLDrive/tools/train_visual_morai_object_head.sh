@@ -37,7 +37,8 @@ if [[ -z "$CHECKPOINT_SHA256" ]]; then
 fi
 
 echo "[START] 현재 waypoint/light 모델에서 object head만 균형 미세조정합니다."
-echo "        object-positive : verified-empty = 1 : 1"
+echo "        object-positive : verified-empty = 1 : 2"
+echo "        5초 이상 장기 정차는 경계 1초와 내부 1Hz만 train에 사용합니다."
 echo "        shared 106-token encoder, waypoint head, light head는 고정됩니다."
 echo "        동일 validation baseline과 epoch별 object AP/F1을 비교해 최적 checkpoint를 보존합니다."
 
@@ -48,8 +49,9 @@ exec "$PYTHON" -u train.py vision-encoder-morai \
   --checkpoint-sha256 "$CHECKPOINT_SHA256" \
   --trainable-scope object_head \
   --frame-sampling object_balanced \
-  --object-negative-ratio 1.0 \
+  --object-negative-ratio 2.0 \
+  --long-stop-sampling thin \
   --detection-loss-policy lmdrive_lav_v1 \
-  --learning-rate 1e-4 \
-  --epochs 5 \
+  --learning-rate 1e-5 \
+  --epochs 1 \
   "$@"
