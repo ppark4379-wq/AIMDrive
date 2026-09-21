@@ -206,7 +206,21 @@ def select_profile(self):
     self.validate_profiles(profiles)
     previous_state = self.read_profile_state()
     previous_index = int(previous_state.get("profile_index", -1))
-    if previous_index < 0:
+    forced_weather = self.cfg.get("forced_weather")
+    if forced_weather is not None:
+        forced_weather = str(forced_weather).upper()
+        matches = [
+            index for index, profile in enumerate(profiles)
+            if str(profile.get("weather", "")).upper() == forced_weather
+        ]
+        if len(matches) != 1:
+            raise RuntimeError(
+                "forced_weather must match exactly one profile: {}".format(
+                    forced_weather
+                )
+            )
+        profile_index = matches[0]
+    elif previous_index < 0:
         profile_index = self.random.randrange(len(profiles))
     else:
         previous_weather = str(previous_state.get("weather", "")).upper()
@@ -275,7 +289,11 @@ def resolve_profile_models(self):
 def apply_weather(self):
     weather = str(self.profile["weather"]).upper()
     previous_weather = self.previous_profile_state.get("weather")
-    if previous_weather and weather == str(previous_weather).upper():
+    if (
+        self.cfg.get("forced_weather") is None
+        and previous_weather
+        and weather == str(previous_weather).upper()
+    ):
         raise RuntimeError(
             f"Weather must differ from previous run: {previous_weather}"
         )
@@ -294,6 +312,20 @@ def select_scenario_hour(self):
     invalid = [hour for hour in hours if hour < 0 or hour > 23]
     if invalid:
         raise RuntimeError(f"Invalid scenario_times hours: {invalid}")
+    forced_hour = self.cfg.get("forced_time_hour")
+    if forced_hour is not None:
+        forced_hour = int(forced_hour)
+        if forced_hour not in hours:
+            raise RuntimeError(
+                "forced_time_hour={} is not in scenario_times {}".format(
+                    forced_hour, hours
+                )
+            )
+        print(
+            f"[FullLoop] scenario time forced={forced_hour:02d}:00 "
+            f"from collection plan"
+        )
+        return forced_hour
     previous_hour = self.previous_profile_state.get("time_hour")
     candidates = [hour for hour in hours if hour != previous_hour]
     if not candidates:

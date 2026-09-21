@@ -33,10 +33,11 @@ SSD_ROOT="$(MORAI_PROJECT_ROOT="$PROJECT_ROOT" \
 LEGACY_BASE="$SSD_ROOT/sensor_record_auto_v1"
 DATASET_ROOT="$SSD_ROOT/dataset"
 usage() {
-    echo "사용법: $0 <회차 수> [campaign_id] [--scenario <name>] [--static-preset <name|path>]"
+    echo "사용법: $0 <회차 수> [campaign_id] [--scenario <name>] [--static-preset <name|path>] [--static-plan <json>]"
     echo "예:   $0 3"
     echo "      $0 100 --scenario full_loop_static"
     echo "      $0 30 --scenario full_loop_static --static-preset intersection_pair_01"
+    echo "      $0 100 --scenario full_loop_static --static-plan scenario_runner/config/static_scenario_presets/plans/static_balanced_100.json"
     echo "      $0 3 campaign_static --scenario full_loop_static"
     echo "campaign_id를 생략하면 <시나리오_폴더>_lap<회차>_<생성일시>로 자동 생성합니다."
     echo "시나리오: full_loop, full_loop_normal, full_loop_static, full_loop_dynamic,"
@@ -52,6 +53,7 @@ fi
 CAMPAIGN_ID=""
 SCENARIO="full_loop"
 STATIC_PRESET=""
+STATIC_PLAN=""
 while (( $# > 0 )); do
     case "$1" in
         --scenario)
@@ -78,6 +80,19 @@ while (( $# > 0 )); do
             ;;
         --static-preset=*)
             STATIC_PRESET="${1#--static-preset=}"
+            shift
+            ;;
+        --static-plan)
+            if (( $# < 2 )); then
+                echo "[FAIL] --static-plan 뒤에 collection plan JSON 경로가 필요합니다." >&2
+                usage >&2
+                exit 2
+            fi
+            STATIC_PLAN="$2"
+            shift 2
+            ;;
+        --static-plan=*)
+            STATIC_PLAN="${1#--static-plan=}"
             shift
             ;;
         --*)
@@ -107,6 +122,14 @@ case "$SCENARIO" in
 esac
 if [[ -n "$STATIC_PRESET" && "$SCENARIO" != "full_loop_static" ]]; then
     echo "[FAIL] --static-preset은 --scenario full_loop_static에서만 사용할 수 있습니다." >&2
+    exit 2
+fi
+if [[ -n "$STATIC_PLAN" && "$SCENARIO" != "full_loop_static" ]]; then
+    echo "[FAIL] --static-plan은 --scenario full_loop_static에서만 사용할 수 있습니다." >&2
+    exit 2
+fi
+if [[ -n "$STATIC_PRESET" && -n "$STATIC_PLAN" ]]; then
+    echo "[FAIL] --static-preset과 --static-plan은 함께 사용할 수 없습니다." >&2
     exit 2
 fi
 case "$SCENARIO" in
@@ -153,6 +176,22 @@ export MORAI_SCENARIO_RUNTIME
 
 integration_log="$MORAI_PROJECT_ROOT/.runtime/data_collection/scenario_contract_check.log"
 mkdir -p "$(dirname "$integration_log")"
+STATIC_PLAN_TOOL="$PROJECT_ROOT/scenario_runner/tools/static_collection_plan.py"
+STATIC_CHECK_PRESET="$STATIC_PRESET"
+if [[ -n "$STATIC_PLAN" ]]; then
+    if [[ ! -f "$STATIC_PLAN_TOOL" ]]; then
+        echo "[FAIL] static collection plan 검사기가 없습니다: $STATIC_PLAN_TOOL" >&2
+        exit 2
+    fi
+    if ! /usr/bin/python3 "$STATIC_PLAN_TOOL" check \
+            --plan "$STATIC_PLAN" --laps "$LAPS" >"$integration_log" 2>&1; then
+        echo "[FAIL] 정적 장애물 collection plan이 실행 가능한 상태가 아닙니다." >&2
+        cat "$integration_log" >&2 || true
+        exit 2
+    fi
+    STATIC_CHECK_PRESET="$(/usr/bin/python3 "$STATIC_PLAN_TOOL" resolve \
+        --plan "$STATIC_PLAN" --lap 1 --field preset)"
+fi
 scenario_check=(
     /usr/bin/python3 "$INTEGRATION/tools/run_proven_three_lap_scenario.py"
     --check --scenario "$SCENARIO" --nearby-actors
@@ -160,8 +199,8 @@ scenario_check=(
     --time-mode simulation_free_run --collision-policy record
     --raw-camera-transport bridge_dropped --max-speed-kmh 60
 )
-if [[ -n "$STATIC_PRESET" ]]; then
-    scenario_check+=(--static-preset "$STATIC_PRESET")
+if [[ -n "$STATIC_CHECK_PRESET" ]]; then
+    scenario_check+=(--static-preset "$STATIC_CHECK_PRESET")
 fi
 runtime_label="현재 MoraiDrive/expert runtime"
 if ! "${scenario_check[@]}" >"$integration_log" 2>&1; then
@@ -254,10 +293,17 @@ else
 fi
 RUNS_FILE="$CAMPAIGN_DIR/runs.tsv"
 mkdir -p "$CAMPAIGN_DIR"
+STATIC_PLAN_ACTIVE=""
+if [[ -n "$STATIC_PLAN" ]]; then
+    STATIC_PLAN_ACTIVE="$CAMPAIGN_DIR/static_collection_plan.json"
+    cp -- "$(readlink -f -- "$STATIC_PLAN")" "$STATIC_PLAN_ACTIVE"
+    /usr/bin/python3 "$STATIC_PLAN_TOOL" check \
+        --plan "$STATIC_PLAN_ACTIVE" --laps "$LAPS" >/dev/null
+fi
 printf 'lap\tseed\trun_name\tstatus\tweather\ttime_hour\tstatic_obstacle\tdynamic_obstacle\tstarted_utc\tfinished_utc\n' > "$RUNS_FILE"
-/usr/bin/python3 - "$CAMPAIGN_DIR/campaign_plan.json" "$CAMPAIGN_ID" "$LAPS" "$BASE_SEED" "$LAP_WALL_SECONDS" "$SIMULATOR_PID" "$SCENARIO" "$SCENARIO_RUNTIME" "$SCENARIO_FOLDER" "$STATIC_PRESET" <<'PY'
-import json, pathlib, sys, time
-path, campaign_id, laps, seed, seconds, pid, scenario_name, scenario_runtime, scenario_folder, static_preset = sys.argv[1:]
+/usr/bin/python3 - "$CAMPAIGN_DIR/campaign_plan.json" "$CAMPAIGN_ID" "$LAPS" "$BASE_SEED" "$LAP_WALL_SECONDS" "$SIMULATOR_PID" "$SCENARIO" "$SCENARIO_RUNTIME" "$SCENARIO_FOLDER" "$STATIC_PRESET" "$STATIC_PLAN" "$STATIC_PLAN_ACTIVE" <<'PY'
+import hashlib, json, pathlib, sys, time
+path, campaign_id, laps, seed, seconds, pid, scenario_name, scenario_runtime, scenario_folder, static_preset, static_plan, static_plan_active = sys.argv[1:]
 payload = {
     "schema": "morai_sensor_record_campaign_v1",
     "campaign_id": campaign_id,
@@ -266,6 +312,14 @@ payload = {
     "dataset_scenario_folder": scenario_folder,
     "scenario_runtime_policy": "current team checkout; requires live validation",
     "static_obstacle_preset_request": static_preset or None,
+    "static_collection_plan_request": static_plan or None,
+    "static_collection_plan_evidence": (
+        pathlib.Path(static_plan_active).name if static_plan_active else None
+    ),
+    "static_collection_plan_sha256": (
+        hashlib.sha256(pathlib.Path(static_plan_active).read_bytes()).hexdigest()
+        if static_plan_active else None
+    ),
     "requested_laps": int(laps),
     "base_seed": int(seed),
     "lap_wall_limit_seconds": int(seconds),
@@ -273,6 +327,11 @@ payload = {
     "mode": "Simulation Time / internal sensor sync 10Hz / External Sync OFF",
     "weather_candidates": ["SUNNY", "FOGGY"],
     "time_candidates": [11, 13, 15],
+    "environment_schedule": (
+        "sealed per-run weather/time from static collection plan"
+        if static_plan_active else
+        "deterministic fresh selection with adjacent-repeat prevention"
+    ),
     "static_and_dynamic_obstacles": "main scenario mode selection; deterministic fresh choice for enabled zones per lap",
     "highway_native_vehicle_cap": "team scenario configuration",
     "competition_reference_spawnpoint_cap_per_point": 50,
@@ -341,6 +400,20 @@ for ((lap=1; lap<=LAPS; lap++)); do
         "$lap" "$seed" "$CURRENT_RUN" "$started" >> "$RUNS_FILE"
     echo
     echo "[LAP $lap/$LAPS] seed=$seed run=$CURRENT_RUN"
+    LAP_STATIC_PRESET="$STATIC_PRESET"
+    LAP_SCENARIO_WEATHER=""
+    LAP_SCENARIO_HOUR=""
+    if [[ -n "$STATIC_PLAN_ACTIVE" ]]; then
+        LAP_STATIC_PRESET="$(/usr/bin/python3 "$STATIC_PLAN_TOOL" resolve \
+            --plan "$STATIC_PLAN_ACTIVE" --lap "$lap" --field preset)"
+        LAP_SCENARIO_WEATHER="$(/usr/bin/python3 "$STATIC_PLAN_TOOL" resolve \
+            --plan "$STATIC_PLAN_ACTIVE" --lap "$lap" --field weather)"
+        LAP_SCENARIO_HOUR="$(/usr/bin/python3 "$STATIC_PLAN_TOOL" resolve \
+            --plan "$STATIC_PLAN_ACTIVE" --lap "$lap" --field time_hour)"
+        lap_plan_json="$(/usr/bin/python3 "$STATIC_PLAN_TOOL" resolve \
+            --plan "$STATIC_PLAN_ACTIVE" --lap "$lap" --field json)"
+        echo "[STATIC PLAN] $lap_plan_json"
+    fi
     collector_command=(/usr/bin/python3 "$INTEGRATION/tools/run_sensor_record_scenario.py" \
             --name "$CURRENT_RUN" --pid "$SIMULATOR_PID" \
             --run-root "$CAMPAIGN_ROOT/$CURRENT_RUN" \
@@ -349,8 +422,14 @@ for ((lap=1; lap<=LAPS; lap++)); do
             --seconds "$LAP_WALL_SECONDS" --full-lap \
             --seed "$seed" --profile-state "$PROFILE_STATE" \
             --raw-camera-transport bridge_dropped --defer-offline-review)
-    if [[ -n "$STATIC_PRESET" ]]; then
-        collector_command+=(--static-preset "$STATIC_PRESET")
+    if [[ -n "$LAP_STATIC_PRESET" ]]; then
+        collector_command+=(--static-preset "$LAP_STATIC_PRESET")
+    fi
+    if [[ -n "$LAP_SCENARIO_WEATHER" ]]; then
+        collector_command+=(
+            --scenario-weather "$LAP_SCENARIO_WEATHER"
+            --scenario-hour "$LAP_SCENARIO_HOUR"
+        )
     fi
     "${collector_command[@]}" &
     COLLECTOR_PID=$!
@@ -371,6 +450,16 @@ print(x["weather"], x["time_hour"],
       x["static_obstacle_model"], x["dynamic_obstacle_model"])
 PY
         )
+        if [[ -n "$LAP_SCENARIO_WEATHER" ]] \
+                && { [[ "$weather" != "$LAP_SCENARIO_WEATHER" ]] \
+                    || [[ "$hour" != "$LAP_SCENARIO_HOUR" ]]; }; then
+            printf '%s\t%s\t%s\tfailed_environment_mismatch\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+                "$lap" "$seed" "$CURRENT_RUN" "$weather" "$hour" \
+                "$static_model" "$dynamic_model" "$started" "$finished" >> "$RUNS_FILE"
+            echo "[FATAL] plan 환경과 실제 MORAI 환경이 다릅니다: expected=${LAP_SCENARIO_WEATHER}/${LAP_SCENARIO_HOUR}, actual=${weather}/${hour}" >&2
+            echo "        원본과 증거는 보존하며 다음 reset은 진행하지 않습니다." >&2
+            exit 2
+        fi
         printf '%s\t%s\t%s\tcaptured\t%s\t%s\t%s\t%s\t%s\t%s\n' \
             "$lap" "$seed" "$CURRENT_RUN" "$weather" "$hour" "$static_model" "$dynamic_model" "$started" "$finished" >> "$RUNS_FILE"
         echo "[CAPTURED] lap=$lap weather=$weather time=${hour}:00 static=$static_model dynamic=$dynamic_model"

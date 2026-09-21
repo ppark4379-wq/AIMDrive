@@ -269,6 +269,20 @@ class InternalSensorRecordTest(unittest.TestCase):
         self.assertIn("source_files_deleted=$false", source)
         self.assertNotIn("Remove-Item", source)
 
+    def test_direct_dataset_target_uses_one_powershell_path_separator(self):
+        source = (INTERNAL / "tools/prepare_sensor_record_session.ps1").read_text()
+        self.assertIn(r"TrimEnd('\')+'\'", source)
+        self.assertIn(
+            r".Split('\',[StringSplitOptions]::RemoveEmptyEntries)", source)
+        self.assertNotIn(r"TrimEnd('\\')+'\\'", source)
+
+    def test_sensor_record_ui_tools_allow_direct_collecting_layout(self):
+        for name in ("stop_sensor_record.ps1", "bounded_sensor_record.ps1"):
+            source = (INTERNAL / "tools" / name).read_text()
+            self.assertIn("'dataset\\.collecting'", source)
+            self.assertIn("[IO.Path]::GetFullPath", source)
+            self.assertIn("[StringComparison]::OrdinalIgnoreCase", source)
+
     def test_bridge_ip_override_and_sensor_contract_are_machine_portable(self):
         with patch.dict("os.environ", {"MORAI_BRIDGE_IP": "192.0.2.25"}, clear=False):
             self.assertEqual(bridge_ip(), "192.0.2.25")

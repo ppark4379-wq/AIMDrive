@@ -255,7 +255,14 @@ class FullLoopScenario(FullLoopDriveBase):
         }
         previous = self.previous_profile_state
         for key in ("weather", "time_hour"):
-            if previous.get(key) == state[key]:
+            forced_key = {
+                "weather": "forced_weather",
+                "time_hour": "forced_time_hour",
+            }[key]
+            if (
+                self.cfg.get(forced_key) is None
+                and previous.get(key) == state[key]
+            ):
                 raise RuntimeError(
                     f"Run-scoped profile did not change for {key}: {state[key]}"
                 )

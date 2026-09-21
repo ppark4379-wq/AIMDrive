@@ -1,4 +1,5 @@
 """Causal input, split isolation and original masked multitask loss checks."""
+import argparse
 import json
 import unittest
 from pathlib import Path
@@ -11,9 +12,31 @@ from datasets.morai_sensor_record_dataset import (
     verify_admission_recovery, verify_publication_source,
 )
 from utils.morai_transfer_objective import multitask_loss
-from utils.morai_transfer_training import object_selection_score, selected_training_indices
+from utils.morai_transfer_training import (
+    add_arguments, long_stationary_duplicate_indices, object_selection_score,
+    resolve_args, selected_training_indices,
+)
 
 class TransferTests(unittest.TestCase):
+    def test_manifest_campaign_discovers_direct_dataset_layout(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            publication = (root/'campaign'/'_campaign'/'validations'/'validation_1'/
+                           'training_dataset_v1'/'manifest_index.json')
+            publication.parent.mkdir(parents=True)
+            publication.write_text('{}')
+            checkpoint = root/'checkpoint.pth.tar'
+            checkpoint.write_bytes(b'x')
+            config = root/'config.json'
+            config.write_text('{}')
+            parser = add_arguments(argparse.ArgumentParser())
+            args = parser.parse_args([
+                '--config', str(config), '--manifest-campaign', str(root/'campaign'),
+                '--checkpoint', str(checkpoint), '--device', 'cpu',
+            ])
+            resolve_args(args)
+            self.assertEqual(args.manifest_index, [publication.resolve()])
+
     def test_publication_accepts_strict_and_fail_closed_subset_schemas(self):
         strict = 'morai_sensor_record_campaign_validation_v1'
         subset = 'morai_sensor_record_campaign_validation_subset_v1'
@@ -111,6 +134,54 @@ class TransferTests(unittest.TestCase):
         self.assertNotIn(3,indices)
         self.assertEqual(summary['object_positive_frames'],1)
         self.assertEqual(summary['selected_verified_empty_frames'],1)
+
+    def test_long_stop_sampling_thins_only_continuous_segment_interiors(self):
+        def row(native, frame, speed, light=0):
+            return (Path(native), {
+                'sensor_time_ns': frame * 100_000_000,
+                'ego_pose': {'speed': speed},
+                'traffic_light': light,
+                'object_valid': True,
+                'object_positive': False,
+            }, None, 0.)
+        # Seven seconds at 10 Hz is thinned.  A separate three-second episode
+        # is retained in full and cannot be joined across the episode boundary.
+        rows = [row('/run/a', i, 0.) for i in range(71)]
+        rows += [row('/run/b', i, 0., -1) for i in range(31)]
+        rows += [row('/run/b', 31, 2., -1)]
+        removed, summary = long_stationary_duplicate_indices(rows)
+        kept = set(range(len(rows))) - removed
+        self.assertEqual(summary['long_stop_segments'], 1)
+        self.assertEqual(summary['long_stop_episodes'], 1)
+        self.assertGreater(summary['long_stop_removed_frames'], 0)
+        self.assertEqual(summary['long_stop_traffic_light_counts'][0], 71)
+        self.assertTrue(set(range(71, len(rows))).issubset(kept))
+        # Entry and release boundaries of the long stop are always retained.
+        self.assertTrue(set(range(0, 11)).issubset(kept))
+        self.assertTrue(set(range(60, 71)).issubset(kept))
+
+    def test_object_balance_runs_after_long_stop_thinning(self):
+        def row(frame, speed, positive):
+            return (Path('/run/a'), {
+                'sensor_time_ns': frame * 100_000_000,
+                'ego_pose': {'speed': speed}, 'traffic_light': 0,
+                'object_valid': True, 'object_positive': positive,
+            }, None, 0.)
+        class Dataset:
+            rows = [row(i, 0., i == 0) for i in range(71)]
+            rows += [row(71, 2., True), row(72, 2., False)]
+            def __len__(self): return len(self.rows)
+        args=type('Args',(),dict(
+            frame_sampling='object_balanced', seed=42,
+            object_negative_ratio=1., diagnostic_limit=0,
+            long_stop_sampling='thin', long_stop_speed_threshold=.2,
+            long_stop_min_seconds=5., long_stop_edge_seconds=1.,
+            long_stop_stride_seconds=1.))()
+        indices,summary=selected_training_indices(Dataset(),args)
+        self.assertEqual(len(indices),4)
+        self.assertEqual(summary['object_positive_frames'],2)
+        self.assertEqual(summary['selected_verified_empty_frames'],2)
+        self.assertGreater(summary['long_stop_removed_frames'],0)
 
     def test_gps_speed_is_causal_interval(self):
         a=(1000000000,37.,127.)

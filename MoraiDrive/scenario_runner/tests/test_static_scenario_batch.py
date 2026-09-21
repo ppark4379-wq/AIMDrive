@@ -123,6 +123,7 @@ class StaticScenarioBatchTest(unittest.TestCase):
             log = Path(directory) / "trial.log"
             log.write_text(
                 "[PLAN] candidate dir=L valid=True cost=1\n"
+                "[STATIC] {'selected_routes': ['right_02.csv', 'right_03.csv']}\n"
                 "[KCityFullLoop] lap=1 cte=0.42 remain=10\n"
                 "[KCityFullLoop] lap=1 cte=2.31 remain=2\n"
                 "[KCityFullLoop] GOAL REACHED lap=1\n",
@@ -133,6 +134,21 @@ class StaticScenarioBatchTest(unittest.TestCase):
         self.assertEqual(evidence["valid_plan_samples"], 1)
         self.assertEqual(evidence["cross_track_samples"], 2)
         self.assertAlmostEqual(evidence["max_cross_track_error_m"], 2.31)
+        self.assertEqual(
+            evidence["selected_routes"],
+            ["right_02.csv", "right_03.csv"],
+        )
+        self.assertEqual(
+            batch.classify_selected_routes(evidence["selected_routes"]),
+            "alternate",
+        )
+
+    def test_accepted_route_target_parser(self):
+        self.assertEqual(batch.parse_route_targets("11,11,0"), {
+            "short": 11, "alternate": 11, "wide": 0,
+        })
+        with self.assertRaisesRegex(ValueError, "three"):
+            batch.parse_route_targets("11,11")
 
     def test_live_planner_health_detects_latest_tracking_failure(self):
         with tempfile.TemporaryDirectory() as directory:

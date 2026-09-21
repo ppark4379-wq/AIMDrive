@@ -24,6 +24,13 @@ NATIVE_ROLES = (
     "LIDAR_5", "GPS_6", "IMU_7",
 )
 PRE_READINESS_EXIT = "Scenario ROS capture exited before readiness"
+PRE_REDIRECT_FAILURE_STAGES = {
+    "native_session_plan",
+    "live_sensor_preflight",
+    "simulation_mode_preflight",
+    "record_off_preflight",
+    "native_session_plan_seal",
+}
 
 
 def _load(path):
@@ -115,6 +122,55 @@ def _pre_record_failure_evidence(run, native, base, capture_result,
     native = Path(native)
     base = Path(base)
     error = str(capture_result.get("error") or "")
+    failure_stage = capture_result.get("failure_stage")
+    if (failure_stage in PRE_REDIRECT_FAILURE_STAGES
+            and capture_result.get("sensor_record_owner_invoked") is False
+            and capture_result.get("sensor_record_paths_mutated") is False
+            and session_evidence_root is not None):
+        evidence_root = Path(session_evidence_root).resolve()
+        seal_path = evidence_root / "pre_capture_failure.json"
+        forbidden = {
+            "ready": run / "episode_000" / "ready.json",
+            "coordination": run / "episode_000" / "sensor_record_coordination",
+            "raw": run / "episode_000" / "raw",
+            "capture_contract": run / "capture_contract.json",
+            "native_setup": run / "native_setup.json",
+            "native_ui_result": run / "native_ui_result.json",
+            "session_plan": evidence_root / "native_session_plan.json",
+            "session_apply": evidence_root / "native_session_apply.json",
+        }
+        if any(path.exists() for path in forbidden.values()):
+            return None
+        if (not seal_path.is_file() or seal_path.is_symlink()
+                or evidence_root.is_symlink()):
+            return None
+        try:
+            seal = _load(seal_path)
+        except (OSError, ValueError, TypeError):
+            return None
+        allowed_run_files = {
+            "NATIVE_CAPTURE_RESULT.json", "FAILED_ATTEMPT.json",
+        }
+        if (seal.get("schema") != "morai_sensor_record_pre_capture_failure_v1"
+                or seal.get("run_name") != run.name
+                or seal.get("failure_stage") != failure_stage
+                or seal.get("sensor_record_owner_invoked") is not False
+                or seal.get("sensor_record_paths_mutated") is not False
+                or str(seal.get("error") or "") != error
+                or not run.is_dir() or run.is_symlink()
+                or {path.name for path in run.iterdir()} - allowed_run_files):
+            return None
+        return {
+            "stage": failure_stage,
+            "sensor_record_owner_invoked": False,
+            "sensor_record_paths_mutated": False,
+            "capture_error": error,
+            "capture_result": str(run / "NATIVE_CAPTURE_RESULT.json"),
+            "pre_capture_failure_seal": str(seal_path),
+            "absent_capture_paths": {
+                label: str(path) for label, path in forbidden.items()
+            },
+        }
     if PRE_READINESS_EXIT not in error:
         return None
     if capture_result.get("scenario_exit_code") in (None, 0):

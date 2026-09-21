@@ -1,0 +1,1505 @@
+{
+  "schema": "morai_static_obstacle_suite_v1",
+  "name": "static_balance_pair_01",
+  "seed": 16001622206745496911,
+  "requested_attempts": 100,
+  "accepted_count": 6,
+  "accepted_route_counts": {
+    "short": 6,
+    "alternate": 0,
+    "wide": 0
+  },
+  "rejected_count": 24,
+  "interrupted": true,
+  "created_at_unix": 1789895914.3781528,
+  "generation_policy": {
+    "min_obstacles": 2,
+    "max_obstacles": 2,
+    "lateral_margin_m": 0.6,
+    "yaw_margin_deg": 12.0,
+    "scale_jitter": 0.1,
+    "trial_timeout_sec": 240.0,
+    "invalid_plan_timeout_sec": 15.0,
+    "signal_stop_timeout_sec": 30.0,
+    "max_cross_track_error_m": 3.0,
+    "models": [
+      "WoodBox",
+      "CargoBox",
+      "YellowBarrel",
+      "TrafficBarrel",
+      "PE_Drum",
+      "Scooter_02",
+      "ElectricScooter1",
+      "ElectricScooter2",
+      "Bicycle_city",
+      "Bicycle_mountain",
+      "Steel_Barricade",
+      "Lane_Separation_Bar"
+    ],
+    "accepted_route_targets": {
+      "short": 11,
+      "alternate": 11,
+      "wide": 0
+    }
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "accepted": false,
+      "obstacle_count": 2,
+      "models": [
+        "ElectricScooter2",
+        "WoodBox"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_001.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_001.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 55,
+        "cross_track_samples": 70,
+        "max_cross_track_error_m": 6.2,
+        "selected_routes": [
+          "right_04.csv",
+          "right_05.csv",
+          "right_06_retry.csv",
+          "right_01.csv"
+        ]
+      },
+      "rejection_reasons": [
+        "cross_track_limit_exceeded"
+      ],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 79.121,
+      "failure_tail": [
+        "[CTRL] raw_steering=-0.57deg front_steer=+0.57deg (+0.010rad) acc_cmd=+0.209 target_v=8.19 planned_v=13.04 profile_v=13.04 cur_v=5.59",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 13.043606678520852, 'signal': 13.043606678520852, 'path_speed': 13.043606678520852, 'static': inf, 'static_acceleration': 8.1921024792419}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.1921024792419}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[KCityFullLoop] lap=1 t=72.4s ego=(-59.83, -105.85) yaw=89.7 speed=21.9 link=A2256W000220 s=128.0/132.4 cte=0.08 remain=4.3 dist_to_goal=4.32m",
+        "[PP] pos=(-59.83,-105.73) yaw=+89.70deg vel=6.08 lfd=3.95 path_len=50",
+        "[PP]   local_path first=(-59.91,-105.56) last=(-59.88,-82.03)",
+        "[PP]   lookahead=(-59.78,-101.53) veh_frame=(+4.20,-0.03) theta=-0.42deg steering=-0.64deg",
+        "[CTRL] raw_steering=-0.64deg front_steer=+0.64deg (+0.011rad) acc_cmd=+0.223 target_v=8.79 planned_v=12.58 profile_v=12.58 cur_v=6.08",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.575201664122224, 'signal': 12.575201664122224, 'path_speed': 12.575201664122224, 'static': inf, 'static_acceleration': 8.792102479241887}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.792102479241887}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[TrafficSignal] red signal has no upcoming route stop node: id=C1256W000016",
+        "[KCityFullLoop] GOAL REACHED lap=1, link=A2256W000202, dist=1.83m, s=130.5/132.4, elapsed=72.8s",
+        "[Expert] stopping process: pid=557456",
+        "end simulation",
+        "[MORAI] actors destroyed: ok=True, settle=1.50s",
+        "[MORAI] finalized"
+      ]
+    },
+    {
+      "attempt": 2,
+      "accepted": false,
+      "obstacle_count": 2,
+      "models": [
+        "WoodBox",
+        "Scooter_02"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_002.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_002.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 49,
+        "cross_track_samples": 49,
+        "max_cross_track_error_m": 6.2,
+        "selected_routes": [
+          "right_04.csv",
+          "right_05.csv",
+          "right_06_retry.csv",
+          "right_01.csv"
+        ]
+      },
+      "rejection_reasons": [
+        "cross_track_limit_exceeded"
+      ],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 57.089,
+      "failure_tail": [
+        "[KCityFullLoop] lap=1 t=50.2s ego=(-59.85, -106.38) yaw=89.8 speed=21.5 link=A2256W000220 s=127.5/132.4 cte=0.08 remain=4.8 dist_to_goal=4.84m",
+        "[PP] pos=(-59.85,-106.31) yaw=+89.77deg vel=5.99 lfd=3.89 path_len=50",
+        "[PP]   local_path first=(-59.92,-106.06) last=(-59.88,-82.53)",
+        "[PP]   lookahead=(-59.79,-102.03) veh_frame=(+4.28,-0.04) theta=-0.48deg steering=-0.74deg",
+        "[CTRL] raw_steering=-0.74deg front_steer=+0.74deg (+0.013rad) acc_cmd=+0.206 target_v=8.67 planned_v=12.65 profile_v=12.65 cur_v=5.99",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.65447330852309, 'signal': 12.65447330852309, 'path_speed': 12.65447330852309, 'static': inf, 'static_acceleration': 8.666224144332123}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.666224144332123}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[TrafficSignal] GO: id=C1256W000016 status=48",
+        "[CTRL] raw_steering=+1.30deg front_steer=-1.30deg (-0.023rad) acc_cmd=+0.233 target_v=9.27 planned_v=12.17 profile_v=12.17 cur_v=6.36",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.16552094309236, 'signal': 12.16552094309236, 'path_speed': 12.16552094309236, 'static': inf, 'static_acceleration': 9.26622414433211}, 'speed_source': 'static_acceleration', 'final_target_velocity': 9.26622414433211}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[KCityFullLoop] GOAL REACHED lap=1, link=A2256W000202, dist=1.62m, s=130.7/132.4, elapsed=50.7s",
+        "[Expert] stopping process: pid=558759",
+        "end simulation",
+        "[MORAI] actors destroyed: ok=True, settle=1.50s",
+        "[MORAI] finalized"
+      ]
+    },
+    {
+      "attempt": 3,
+      "accepted": true,
+      "obstacle_count": 2,
+      "models": [
+        "TrafficBarrel",
+        "PE_Drum"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_003.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_003.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 17,
+        "cross_track_samples": 20,
+        "max_cross_track_error_m": 1.25,
+        "selected_routes": [
+          "right_02.csv"
+        ]
+      },
+      "rejection_reasons": [],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 27.54,
+      "accepted_preset": "scenario_runner/config/static_scenario_presets/generated/static_balance_pair_01/static_balance_pair_01_attempt_003.yaml",
+      "route_class": "short",
+      "sha256": "cc4d18e7256b1660ee0f7c9c070ee56f2c9179241d1893f902fe107361ce2eca"
+    },
+    {
+      "attempt": 4,
+      "accepted": false,
+      "obstacle_count": 2,
+      "models": [
+        "CargoBox",
+        "Scooter_02"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_004.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_004.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 49,
+        "cross_track_samples": 49,
+        "max_cross_track_error_m": 6.21,
+        "selected_routes": [
+          "right_04.csv",
+          "right_05.csv",
+          "right_06_retry.csv",
+          "right_01.csv"
+        ]
+      },
+      "rejection_reasons": [
+        "cross_track_limit_exceeded"
+      ],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 56.586,
+      "failure_tail": [
+        "[PP] pos=(-59.86,-106.89) yaw=+89.86deg vel=5.91 lfd=3.84 path_len=50",
+        "[PP]   local_path first=(-59.95,-107.06) last=(-59.87,-83.53)",
+        "[PP]   lookahead=(-59.83,-103.03) veh_frame=(+3.86,-0.03) theta=-0.40deg steering=-0.62deg",
+        "[CTRL] raw_steering=-0.62deg front_steer=+0.62deg (+0.011rad) acc_cmd=+0.188 target_v=8.55 planned_v=12.81 profile_v=12.81 cur_v=5.91",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.81154506307711, 'signal': 12.81154506307711, 'path_speed': 12.81154506307711, 'static': inf, 'static_acceleration': 8.554588958626853}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.554588958626853}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[KCityFullLoop] lap=1 t=50.2s ego=(-59.84, -105.94) yaw=89.7 speed=21.8 link=A2256W000220 s=127.9/132.4 cte=0.08 remain=4.4 dist_to_goal=4.41m",
+        "[TrafficSignal] red signal has no upcoming route stop node: id=C1256W000016",
+        "[CTRL] raw_steering=+0.98deg front_steer=-0.98deg (-0.017rad) acc_cmd=+0.228 target_v=9.15 planned_v=12.33 profile_v=12.33 cur_v=6.30",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.328823941097433, 'signal': 12.328823941097433, 'path_speed': 12.328823941097433, 'static': inf, 'static_acceleration': 9.15458895862684}, 'speed_source': 'static_acceleration', 'final_target_velocity': 9.15458895862684}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[KCityFullLoop] GOAL REACHED lap=1, link=A2256W000202, dist=1.79m, s=130.6/132.4, elapsed=50.6s",
+        "[Expert] stopping process: pid=560123",
+        "end simulation",
+        "[MORAI] actors destroyed: ok=True, settle=1.50s",
+        "[MORAI] finalized"
+      ]
+    },
+    {
+      "attempt": 5,
+      "accepted": false,
+      "obstacle_count": 2,
+      "models": [
+        "PE_Drum",
+        "ElectricScooter1"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_005.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_005.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 48,
+        "cross_track_samples": 35,
+        "max_cross_track_error_m": 6.19,
+        "selected_routes": [
+          "right_04.csv",
+          "right_05.csv",
+          "right_06_retry.csv",
+          "right_01.csv"
+        ]
+      },
+      "rejection_reasons": [
+        "cross_track_limit_exceeded"
+      ],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 43.063,
+      "failure_tail": [
+        "[PP] pos=(-59.91,-108.66) yaw=+90.12deg vel=5.55 lfd=3.60 path_len=50",
+        "[PP]   local_path first=(-59.98,-108.56) last=(-59.86,-85.03)",
+        "[PP]   lookahead=(-59.89,-105.03) veh_frame=(+3.64,-0.02) theta=-0.35deg steering=-0.59deg",
+        "[CTRL] raw_steering=-0.59deg front_steer=+0.59deg (+0.010rad) acc_cmd=+0.229 target_v=8.19 planned_v=13.04 profile_v=13.04 cur_v=5.55",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 13.043606678520852, 'signal': 13.043606678520852, 'path_speed': 13.043606678520852, 'static': inf, 'static_acceleration': 8.187755560436491}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.187755560436491}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[KCityFullLoop] lap=1 t=35.9s ego=(-59.90, -108.36) yaw=90.1 speed=20.2 link=A2256W000220 s=125.5/132.4 cte=0.08 remain=6.8 dist_to_goal=6.83m",
+        "[CTRL] raw_steering=-0.52deg front_steer=+0.52deg (+0.009rad) acc_cmd=+0.195 target_v=8.79 planned_v=12.57 profile_v=12.57 cur_v=6.08",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.569801100304444, 'signal': 12.569801100304444, 'path_speed': 12.569801100304444, 'static': inf, 'static_acceleration': 8.787755560436478}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.787755560436478}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[TrafficSignal] GO: id=C1256W000016 status=48",
+        "[KCityFullLoop] GOAL REACHED lap=1, link=A2256W000202, dist=1.91m, s=130.4/132.4, elapsed=36.7s",
+        "[Expert] stopping process: pid=561015",
+        "end simulation",
+        "[MORAI] actors destroyed: ok=True, settle=1.50s",
+        "[MORAI] finalized"
+      ]
+    },
+    {
+      "attempt": 6,
+      "accepted": false,
+      "obstacle_count": 2,
+      "models": [
+        "PE_Drum",
+        "Scooter_02"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_006.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_006.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 49,
+        "cross_track_samples": 49,
+        "max_cross_track_error_m": 6.2,
+        "selected_routes": [
+          "right_04.csv",
+          "right_05.csv",
+          "right_06_retry.csv",
+          "right_01.csv"
+        ]
+      },
+      "rejection_reasons": [
+        "cross_track_limit_exceeded"
+      ],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 57.083,
+      "failure_tail": [
+        "[PP] pos=(-59.87,-107.30) yaw=+89.94deg vel=5.81 lfd=3.77 path_len=50",
+        "[PP]   local_path first=(-59.95,-107.06) last=(-59.87,-83.53)",
+        "[PP]   lookahead=(-59.83,-103.03) veh_frame=(+4.27,-0.04) theta=-0.56deg steering=-0.90deg",
+        "[CTRL] raw_steering=-0.90deg front_steer=+0.90deg (+0.016rad) acc_cmd=+0.196 target_v=8.41 planned_v=12.81 profile_v=12.81 cur_v=5.81",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.81154506307711, 'signal': 12.81154506307711, 'path_speed': 12.81154506307711, 'static': inf, 'static_acceleration': 8.413423516062233}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.413423516062233}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[KCityFullLoop] lap=1 t=50.2s ego=(-59.86, -106.84) yaw=89.9 speed=21.2 link=A2256W000220 s=127.0/132.4 cte=0.08 remain=5.3 dist_to_goal=5.31m",
+        "[TrafficSignal] red signal has no upcoming route stop node: id=C1256W000016",
+        "[CTRL] raw_steering=+0.70deg front_steer=-0.70deg (-0.012rad) acc_cmd=+0.222 target_v=9.01 planned_v=12.33 profile_v=12.33 cur_v=6.23",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.328823941097433, 'signal': 12.328823941097433, 'path_speed': 12.328823941097433, 'static': inf, 'static_acceleration': 9.01342351606222}, 'speed_source': 'static_acceleration', 'final_target_velocity': 9.01342351606222}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[KCityFullLoop] GOAL REACHED lap=1, link=A2256W000202, dist=1.88m, s=130.5/132.4, elapsed=50.7s",
+        "[Expert] stopping process: pid=561707",
+        "end simulation",
+        "[MORAI] actors destroyed: ok=True, settle=1.50s",
+        "[MORAI] finalized"
+      ]
+    },
+    {
+      "attempt": 7,
+      "accepted": false,
+      "obstacle_count": 2,
+      "models": [
+        "Steel_Barricade",
+        "PE_Drum"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_007.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_007.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 60,
+        "cross_track_samples": 53,
+        "max_cross_track_error_m": 6.21,
+        "selected_routes": [
+          "right_04.csv",
+          "right_05.csv",
+          "right_06_retry.csv",
+          "right_01.csv"
+        ]
+      },
+      "rejection_reasons": [
+        "cross_track_limit_exceeded"
+      ],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 60.592,
+      "failure_tail": [
+        "[PP] pos=(-59.86,-106.70) yaw=+89.84deg vel=5.91 lfd=3.84 path_len=50",
+        "[PP]   local_path first=(-59.93,-106.56) last=(-59.87,-83.03)",
+        "[PP]   lookahead=(-59.81,-102.53) veh_frame=(+4.17,-0.04) theta=-0.48deg steering=-0.75deg",
+        "[CTRL] raw_steering=-0.75deg front_steer=+0.75deg (+0.013rad) acc_cmd=+0.218 target_v=8.58 planned_v=12.73 profile_v=12.73 cur_v=5.91",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.733251384060921, 'signal': 12.733251384060921, 'path_speed': 12.733251384060921, 'static': inf, 'static_acceleration': 8.584450564209888}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.584450564209888}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[TrafficSignal] GO: id=C1256W000016 status=48",
+        "[KCityFullLoop] lap=1 t=54.4s ego=(-59.77, -103.74) yaw=89.6 speed=22.7 link=A2256W000202 s=130.1/132.4 cte=0.08 remain=2.2 dist_to_goal=2.21m",
+        "[CTRL] raw_steering=+1.12deg front_steer=-1.12deg (-0.020rad) acc_cmd=+0.221 target_v=9.18 planned_v=12.25 profile_v=12.25 cur_v=6.31",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.24744462301006, 'signal': 12.24744462301006, 'path_speed': 12.24744462301006, 'static': inf, 'static_acceleration': 9.184450564209875}, 'speed_source': 'static_acceleration', 'final_target_velocity': 9.184450564209875}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[KCityFullLoop] GOAL REACHED lap=1, link=A2256W000202, dist=1.96m, s=130.4/132.4, elapsed=54.4s",
+        "[Expert] stopping process: pid=562591",
+        "end simulation",
+        "[MORAI] actors destroyed: ok=True, settle=1.50s",
+        "[MORAI] finalized"
+      ]
+    },
+    {
+      "attempt": 8,
+      "accepted": false,
+      "obstacle_count": 2,
+      "models": [
+        "PE_Drum",
+        "TrafficBarrel"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_008.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_008.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 47,
+        "cross_track_samples": 35,
+        "max_cross_track_error_m": 6.21,
+        "selected_routes": [
+          "right_04.csv",
+          "right_05.csv",
+          "right_06_retry.csv",
+          "right_01.csv"
+        ]
+      },
+      "rejection_reasons": [
+        "cross_track_limit_exceeded"
+      ],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 43.064,
+      "failure_tail": [
+        "[KCityFullLoop] lap=1 t=35.8s ego=(-59.92, -109.12) yaw=90.2 speed=19.8 link=A2256W000220 s=124.8/132.4 cte=0.08 remain=7.6 dist_to_goal=7.59m",
+        "[PP] pos=(-59.90,-108.18) yaw=+90.05deg vel=5.65 lfd=3.67 path_len=50",
+        "[PP]   local_path first=(-59.97,-108.06) last=(-59.86,-84.53)",
+        "[PP]   lookahead=(-59.86,-104.03) veh_frame=(+4.15,-0.04) theta=-0.56deg steering=-0.91deg",
+        "[CTRL] raw_steering=-0.91deg front_steer=+0.91deg (+0.016rad) acc_cmd=+0.197 target_v=8.23 planned_v=12.97 profile_v=12.97 cur_v=5.65",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.966714275034661, 'signal': 12.966714275034661, 'path_speed': 12.966714275034661, 'static': inf, 'static_acceleration': 8.233423311822493}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.233423311822493}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[CTRL] raw_steering=-0.14deg front_steer=+0.14deg (+0.002rad) acc_cmd=+0.227 target_v=8.83 planned_v=12.49 profile_v=12.49 cur_v=6.13",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.4899919825569, 'signal': 12.4899919825569, 'path_speed': 12.4899919825569, 'static': inf, 'static_acceleration': 8.83342331182248}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.83342331182248}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[TrafficSignal] red signal has no upcoming route stop node: id=C1256W000016",
+        "[KCityFullLoop] GOAL REACHED lap=1, link=A2256W000202, dist=1.87m, s=130.5/132.4, elapsed=36.8s",
+        "[Expert] stopping process: pid=563531",
+        "end simulation",
+        "[MORAI] actors destroyed: ok=True, settle=1.50s",
+        "[MORAI] finalized"
+      ]
+    },
+    {
+      "attempt": 9,
+      "accepted": false,
+      "obstacle_count": 2,
+      "models": [
+        "Bicycle_city",
+        "WoodBox"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_009.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_009.log",
+      "closed_loop_evidence": {
+        "goal_reached": false,
+        "valid_plan_samples": 67,
+        "cross_track_samples": 54,
+        "max_cross_track_error_m": 0.41,
+        "selected_routes": [
+          "right_04.csv",
+          "right_05.csv",
+          "right_06_retry.csv",
+          "right_01.csv"
+        ]
+      },
+      "rejection_reasons": [
+        "persistent_signal_stop",
+        "goal_not_proven"
+      ],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": true,
+      "watchdog_evidence": {
+        "persistent_invalid_plan": false,
+        "persistent_signal_stop": true,
+        "static_status": "[STATIC] {'phase': 'follow', 'path_validated': True, 'planner': 'recorded_route_graph', 'boundary_source': 'recorded_swept_envelope_not_map', 'live_preview': False, 'live_drive_committed': False, 'preview_ego_on_route': False, 'selected_routes': ['right_04.csv', 'right_05.csv', 'right_06_retry.csv', 'right_01.csv'], 'recording_audit': [{'name': 'right_01.csv', 'recorded_points': 152, 'trimmed_prefix_points': 0, 'start': [-60.10157012939453, -162.49542236328125], 'end': [-59.676292419433594, -124.45750427246094], 'length_m': 38.04291241080227}, {'name': 'right_02.csv', 'recorded_points': 160, 'trimmed_prefix_points': 0, 'start': [-60.094608306884766, -161.83642578125], 'end': [-59.938629150390625, -123.59259796142578], 'length_m': 38.3514465526511}, {'name': 'right_03.csv', 'recorded_points': 180, 'trimmed_prefix_points': 0, 'start': [-59.938899993896484, -160.93035888671875], 'end': [-59.96949005126953, -120.548583984375], 'length_m': 41.10752999232243}, {'name': 'right_04.csv', 'recorded_points': 183, 'trimmed_prefix_points': 5, 'start': [-59.84436798095703, -161.9197998046875], 'end': [-59.539398193359375, -120.56988525390625], 'length_m': 42.80119742763548}, {'name': 'right_05.csv', 'recorded_points': 178, 'trimmed_prefix_points': 0, 'start': [-59.828712463378906, -160.43600463867188], 'end': [-60.14023971557617, -122.23265075683594], 'length_m': 41.17613917786055}, {'name': 'right_06_retry.csv', 'recorded_points': 206, 'trimmed_prefix_points': 1, 'start': [-60.125732421875, -161.47267150878906], 'end': [-59.81993103027344, -119.82349395751953], 'length_m': 47.133441629534715}], 'error': None, 'corridor_search': {'method': 'recorded_connections', 'status': 'complete', 'elapsed_s': 1.9398102609993657}, 'heading_error_deg': 2.1539149008001055, 'tracking_error_m': 0.055479495513131825, 'cross_track_error_m': 0.04205000479432569, 'alignment_slow': True, 'preview_curvature': 0.08727449729843076, 'speed_policy_reason': 'alignment', 'tracking_speed_limits': {'tracking': 16.666666666666668, 'curvature': 2.020303929930698, 'path_end': 14.182533444585786, 'alignment': 1.9417839408500772}, 'curve_speed_limits': {'lateral_acceleration': 5.53462783605179, 'corridor_tracking': 2.020303929930698, 'steering_rate': 8.398840331906957}, 'curvature_speed_offset_kph': 5.0, 'path_design_speed_kph': 20.0, 'path_smoothing_deviation_m': 0.021731483932896367, 'recovery_until_y': None, 'recovery_count': 0, 'return_start_y': -132.7, 'handoff_y': -117.69999999999999, 'preplanned_complete': True, 'plan_count': 1, 'speed_limits': {'legacy_acc': 14.213643956332126, 'signal': 0.0, 'path_speed': 14.213643956332126, 'static': 1.9417839408500772}, 'speed_source': 'signal', 'final_target_velocity': 0.0}",
+        "candidate_status": "[PLAN] candidate dir=? link= valid=True cost=0.00 collision=inf curvature=0.0000"
+      },
+      "duration_sec": 62.112,
+      "failure_tail": [
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=1.94m/s keep_valid=True keep_collision=inf",
+        "[PLAN] candidate dir=? link= valid=True cost=0.00 collision=inf curvature=0.0000",
+        "[INFO] [1789896397.753473]: [ExpertInput] mode=realtime ego_seq=2744 dt=0.033s object_msgs=2742 selected_objects=4 object_delta=n/a traffic_msgs=1264 traffic_selected=true traffic_age=29.701s source=ros grpc_snapshots=0 grpc_tick=n/a tick_delta=n/a",
+        "[PP] pos=(-59.42,-155.47) yaw=+84.24deg vel=0.00 lfd=1.00 path_len=490",
+        "[PP]   local_path first=(-59.48,-155.60) last=(-59.93,-106.70)",
+        "[PP]   lookahead=(-59.29,-154.40) veh_frame=(+1.08,-0.03) theta=-1.45deg steering=-8.64deg",
+        "[CTRL] raw_steering=-8.64deg front_steer=+8.64deg (+0.151rad) acc_cmd=-1.000 target_v=0.00 planned_v=14.21 profile_v=14.21 cur_v=0.00",
+        "[STATIC] {'phase': 'follow', 'path_validated': True, 'planner': 'recorded_route_graph', 'boundary_source': 'recorded_swept_envelope_not_map', 'live_preview': False, 'live_drive_committed': False, 'preview_ego_on_route': False, 'selected_routes': ['right_04.csv', 'right_05.csv', 'right_06_retry.csv', 'right_01.csv'], 'recording_audit': [{'name': 'right_01.csv', 'recorded_points': 152, 'trimmed_prefix_points': 0, 'start': [-60.10157012939453, -162.49542236328125], 'end': [-59.676292419433594, -124.45750427246094], 'length_m': 38.04291241080227}, {'name': 'right_02.csv', 'recorded_points': 160, 'trimmed_prefix_points': 0, 'start': [-60.094608306884766, -161.83642578125], 'end': [-59.938629150390625, -123.59259796142578], 'length_m': 38.3514465526511}, {'name': 'right_03.csv', 'recorded_points': 180, 'trimmed_prefix_points': 0, 'start': [-59.938899993896484, -160.93035888671875], 'end': [-59.96949005126953, -120.548583984375], 'length_m': 41.10752999232243}, {'name': 'right_04.csv', 'recorded_points': 183, 'trimmed_prefix_points': 5, 'start': [-59.84436798095703, -161.9197998046875], 'end': [-59.539398193359375, -120.56988525390625], 'length_m': 42.80119742763548}, {'name': 'right_05.csv', 'recorded_points': 178, 'trimmed_prefix_points': 0, 'start': [-59.828712463378906, -160.43600463867188], 'end': [-60.14023971557617, -122.23265075683594], 'length_m': 41.17613917786055}, {'name': 'right_06_retry.csv', 'recorded_points': 206, 'trimmed_prefix_points': 1, 'start': [-60.125732421875, -161.47267150878906], 'end': [-59.81993103027344, -119.82349395751953], 'length_m': 47.133441629534715}], 'error': None, 'corridor_search': {'method': 'recorded_connections', 'status': 'complete', 'elapsed_s': 1.9398102609993657}, 'heading_error_deg': 2.1539149008001055, 'tracking_error_m': 0.055479495513131825, 'cross_track_error_m': 0.04205000479432569, 'alignment_slow': True, 'preview_curvature': 0.08727449729843076, 'speed_policy_reason': 'alignment', 'tracking_speed_limits': {'tracking': 16.666666666666668, 'curvature': 2.020303929930698, 'path_end': 14.182533444585786, 'alignment': 1.9417839408500772}, 'curve_speed_limits': {'lateral_acceleration': 5.53462783605179, 'corridor_tracking': 2.020303929930698, 'steering_rate': 8.398840331906957}, 'curvature_speed_offset_kph': 5.0, 'path_design_speed_kph': 20.0, 'path_smoothing_deviation_m': 0.021731483932896367, 'recovery_until_y': None, 'recovery_count': 0, 'return_start_y': -132.7, 'handoff_y': -117.69999999999999, 'preplanned_complete': True, 'plan_count': 1, 'speed_limits': {'legacy_acc': 14.213643956332126, 'signal': 0.0, 'path_speed': 14.213643956332126, 'static': 1.9417839408500772}, 'speed_source': 'signal', 'final_target_velocity': 0.0}",
+        "[PLAN] reason=static_recorded_follow state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=490 active=True",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=1.94m/s keep_valid=True keep_collision=inf",
+        "[PLAN] candidate dir=? link= valid=True cost=0.00 collision=inf curvature=0.0000",
+        "[Expert] stopping process: pid=564236",
+        "end simulation",
+        "[MORAI] actors destroyed: ok=True, settle=1.50s",
+        "[KCityRunner] Ctrl+C received; stopping",
+        "[MORAI] finalized",
+        "",
+        "[STATIC BATCH WATCHDOG] traffic-signal-only stop persisted; candidate rejected early"
+      ]
+    },
+    {
+      "attempt": 10,
+      "accepted": true,
+      "obstacle_count": 2,
+      "models": [
+        "Bicycle_city",
+        "ElectricScooter1"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_010.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_010.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 37,
+        "cross_track_samples": 31,
+        "max_cross_track_error_m": 2.29,
+        "selected_routes": [
+          "corridor_astar"
+        ]
+      },
+      "rejection_reasons": [],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 38.557,
+      "accepted_preset": "scenario_runner/config/static_scenario_presets/generated/static_balance_pair_01/static_balance_pair_01_attempt_010.yaml",
+      "route_class": "short",
+      "sha256": "83149744cd53a067c2aa6c4837cc9335052b6bf2951fe6deb2a166c5703f764c"
+    },
+    {
+      "attempt": 11,
+      "accepted": false,
+      "obstacle_count": 2,
+      "models": [
+        "TrafficBarrel",
+        "Lane_Separation_Bar"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_011.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_011.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 50,
+        "cross_track_samples": 49,
+        "max_cross_track_error_m": 6.21,
+        "selected_routes": [
+          "right_04.csv",
+          "right_05.csv",
+          "right_06_retry.csv",
+          "right_01.csv"
+        ]
+      },
+      "rejection_reasons": [
+        "cross_track_limit_exceeded"
+      ],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 56.589,
+      "failure_tail": [
+        "[CTRL] raw_steering=-0.90deg front_steer=+0.90deg (+0.016rad) acc_cmd=+0.183 target_v=8.18 planned_v=13.04 profile_v=13.04 cur_v=5.58",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 13.043606678520852, 'signal': 13.043606678520852, 'path_speed': 13.043606678520852, 'static': inf, 'static_acceleration': 8.177199658004705}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.177199658004705}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[PP] pos=(-59.83,-105.72) yaw=+89.71deg vel=6.08 lfd=3.95 path_len=50",
+        "[PP]   local_path first=(-59.91,-105.56) last=(-59.88,-82.03)",
+        "[PP]   lookahead=(-59.78,-101.53) veh_frame=(+4.19,-0.03) theta=-0.43deg steering=-0.65deg",
+        "[CTRL] raw_steering=-0.65deg front_steer=+0.65deg (+0.011rad) acc_cmd=+0.209 target_v=8.78 planned_v=12.58 profile_v=12.58 cur_v=6.08",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.575201664122224, 'signal': 12.575201664122224, 'path_speed': 12.575201664122224, 'static': inf, 'static_acceleration': 8.777199658004692}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.777199658004692}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[TrafficSignal] red signal has no upcoming route stop node: id=C1256W000016",
+        "[KCityFullLoop] lap=1 t=50.2s ego=(-59.78, -104.13) yaw=89.6 speed=22.5 link=A2256W000202 s=129.8/132.4 cte=0.08 remain=2.6 dist_to_goal=2.60m",
+        "[KCityFullLoop] GOAL REACHED lap=1, link=A2256W000202, dist=1.97m, s=130.4/132.4, elapsed=50.3s",
+        "[Expert] stopping process: pid=565841",
+        "end simulation",
+        "[MORAI] actors destroyed: ok=True, settle=1.50s",
+        "[MORAI] finalized"
+      ]
+    },
+    {
+      "attempt": 12,
+      "accepted": false,
+      "obstacle_count": 2,
+      "models": [
+        "TrafficBarrel",
+        "Bicycle_mountain"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_012.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_012.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 48,
+        "cross_track_samples": 36,
+        "max_cross_track_error_m": 6.2,
+        "selected_routes": [
+          "right_04.csv",
+          "right_05.csv",
+          "right_06_retry.csv",
+          "right_01.csv"
+        ]
+      },
+      "rejection_reasons": [
+        "cross_track_limit_exceeded"
+      ],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 43.065,
+      "failure_tail": [
+        "[PP] pos=(-59.91,-109.12) yaw=+90.19deg vel=5.50 lfd=3.58 path_len=50",
+        "[PP]   local_path first=(-59.99,-109.06) last=(-59.86,-85.53)",
+        "[PP]   lookahead=(-59.91,-105.53) veh_frame=(+3.59,-0.02) theta=-0.31deg steering=-0.52deg",
+        "[CTRL] raw_steering=-0.52deg front_steer=+0.52deg (+0.009rad) acc_cmd=+0.182 target_v=8.11 planned_v=13.12 profile_v=13.12 cur_v=5.50",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 13.120048447986763, 'signal': 13.120048447986763, 'path_speed': 13.120048447986763, 'static': inf, 'static_acceleration': 8.105232675065682}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.105232675065682}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[CTRL] raw_steering=-0.80deg front_steer=+0.80deg (+0.014rad) acc_cmd=+0.221 target_v=8.71 planned_v=12.73 profile_v=12.73 cur_v=5.99",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.733251384060921, 'signal': 12.733251384060921, 'path_speed': 12.733251384060921, 'static': inf, 'static_acceleration': 8.70523267506567}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.70523267506567}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[TrafficSignal] GO: id=C1256W000016 status=48",
+        "[KCityFullLoop] lap=1 t=36.9s ego=(-59.77, -103.93) yaw=89.6 speed=22.6 link=A2256W000202 s=130.0/132.4 cte=0.08 remain=2.4 dist_to_goal=2.40m",
+        "[KCityFullLoop] GOAL REACHED lap=1, link=A2256W000202, dist=1.76m, s=130.6/132.4, elapsed=37.0s",
+        "[Expert] stopping process: pid=566709",
+        "end simulation",
+        "[MORAI] actors destroyed: ok=True, settle=1.50s",
+        "[MORAI] finalized"
+      ]
+    },
+    {
+      "attempt": 13,
+      "accepted": false,
+      "obstacle_count": 2,
+      "models": [
+        "PE_Drum",
+        "ElectricScooter2"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_013.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_013.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 49,
+        "cross_track_samples": 48,
+        "max_cross_track_error_m": 6.2,
+        "selected_routes": [
+          "right_04.csv",
+          "right_05.csv",
+          "right_06_retry.csv",
+          "right_01.csv"
+        ]
+      },
+      "rejection_reasons": [
+        "cross_track_limit_exceeded"
+      ],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 56.087,
+      "failure_tail": [
+        "[KCityFullLoop] lap=1 t=49.2s ego=(-59.90, -108.56) yaw=90.1 speed=20.2 link=A2256W000220 s=125.3/132.4 cte=0.08 remain=7.0 dist_to_goal=7.03m",
+        "[CTRL] raw_steering=-0.67deg front_steer=+0.67deg (+0.012rad) acc_cmd=+0.203 target_v=8.60 planned_v=12.73 profile_v=12.73 cur_v=5.95",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.733251384060921, 'signal': 12.733251384060921, 'path_speed': 12.733251384060921, 'static': inf, 'static_acceleration': 8.601059523558389}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.601059523558389}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[TrafficSignal] red signal has no upcoming route stop node: id=C1256W000016",
+        "[PP] pos=(-59.76,-103.52) yaw=+89.62deg vel=6.32 lfd=4.11 path_len=50",
+        "[PP]   local_path first=(-59.84,-103.53) last=(-59.90,-79.03)",
+        "[PP]   lookahead=(-59.79,-99.03) veh_frame=(+4.49,+0.06) theta=+0.78deg steering=+1.14deg",
+        "[CTRL] raw_steering=+1.14deg front_steer=-1.14deg (-0.020rad) acc_cmd=+0.240 target_v=9.20 planned_v=12.25 profile_v=12.25 cur_v=6.32",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.24744462301006, 'signal': 12.24744462301006, 'path_speed': 12.24744462301006, 'static': inf, 'static_acceleration': 9.201059523558376}, 'speed_source': 'static_acceleration', 'final_target_velocity': 9.201059523558376}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[KCityFullLoop] GOAL REACHED lap=1, link=A2256W000202, dist=1.72m, s=130.6/132.4, elapsed=50.1s",
+        "[Expert] stopping process: pid=567410",
+        "end simulation",
+        "[MORAI] actors destroyed: ok=True, settle=1.50s",
+        "[MORAI] finalized"
+      ]
+    },
+    {
+      "attempt": 14,
+      "accepted": false,
+      "obstacle_count": 2,
+      "models": [
+        "Lane_Separation_Bar",
+        "Bicycle_mountain"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_014.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_014.log",
+      "closed_loop_evidence": {
+        "goal_reached": false,
+        "valid_plan_samples": 27,
+        "cross_track_samples": 38,
+        "max_cross_track_error_m": 0.29,
+        "selected_routes": [
+          "right_04.csv",
+          "right_05.csv",
+          "right_06_retry.csv",
+          "right_01.csv"
+        ]
+      },
+      "rejection_reasons": [
+        "persistent_invalid_expert_plan",
+        "goal_not_proven"
+      ],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": true,
+      "early_signal_stop": false,
+      "watchdog_evidence": {
+        "persistent_invalid_plan": true,
+        "persistent_signal_stop": false,
+        "static_status": "[STATIC] {'phase': 'blocked', 'path_validated': False, 'planner': 'recorded_route_graph', 'boundary_source': 'recorded_swept_envelope_not_map', 'live_preview': False, 'live_drive_committed': False, 'preview_ego_on_route': False, 'selected_routes': ['right_04.csv', 'right_05.csv', 'right_06_retry.csv', 'right_01.csv'], 'recording_audit': [{'name': 'right_01.csv', 'recorded_points': 152, 'trimmed_prefix_points': 0, 'start': [-60.10157012939453, -162.49542236328125], 'end': [-59.676292419433594, -124.45750427246094], 'length_m': 38.04291241080227}, {'name': 'right_02.csv', 'recorded_points': 160, 'trimmed_prefix_points': 0, 'start': [-60.094608306884766, -161.83642578125], 'end': [-59.938629150390625, -123.59259796142578], 'length_m': 38.3514465526511}, {'name': 'right_03.csv', 'recorded_points': 180, 'trimmed_prefix_points': 0, 'start': [-59.938899993896484, -160.93035888671875], 'end': [-59.96949005126953, -120.548583984375], 'length_m': 41.10752999232243}, {'name': 'right_04.csv', 'recorded_points': 183, 'trimmed_prefix_points': 5, 'start': [-59.84436798095703, -161.9197998046875], 'end': [-59.539398193359375, -120.56988525390625], 'length_m': 42.80119742763548}, {'name': 'right_05.csv', 'recorded_points': 178, 'trimmed_prefix_points': 0, 'start': [-59.828712463378906, -160.43600463867188], 'end': [-60.14023971557617, -122.23265075683594], 'length_m': 41.17613917786055}, {'name': 'right_06_retry.csv', 'recorded_points': 206, 'trimmed_prefix_points': 1, 'start': [-60.125732421875, -161.47267150878906], 'end': [-59.81993103027344, -119.82349395751953], 'length_m': 47.133441629534715}], 'error': 'recorded_envelope', 'corridor_search': {'method': 'recorded_connections', 'status': 'complete', 'elapsed_s': 1.7521157279988984}, 'heading_error_deg': 6.33769551743151, 'tracking_error_m': 0.12241655536513349, 'cross_track_error_m': 0.11648688132407806, 'alignment_slow': True, 'preview_curvature': 0.01711196485236471, 'speed_policy_reason': 'blocked', 'tracking_speed_limits': {'tracking': 16.666666666666668, 'curvature': 4.916732100222639, 'path_end': 15.208265973381017, 'alignment': 1.0, 'blocked': 0.0}, 'curve_speed_limits': {'lateral_acceleration': 7.63851737744624, 'corridor_tracking': 4.916732100222639, 'steering_rate': 10.03432199658609}, 'curvature_speed_offset_kph': 5.0, 'path_design_speed_kph': 20.0, 'path_smoothing_deviation_m': 0.021731483932896367, 'recovery_until_y': None, 'recovery_count': 0, 'return_start_y': -132.7, 'handoff_y': -117.69999999999999, 'preplanned_complete': True, 'plan_count': 1, 'speed_limits': {'legacy_acc': 14.213643956332126, 'signal': 14.213643956332126, 'path_speed': 14.213643956332126, 'static': 0.0}, 'speed_source': 'static', 'final_target_velocity': 0.0}",
+        "candidate_status": "[PLAN] candidate dir=? link= valid=False cost=0.00 collision=inf curvature=0.0000"
+      },
+      "duration_sec": 44.985,
+      "failure_tail": [
+        "[PP]   lookahead=(-60.12,-162.00) veh_frame=(+1.05,-0.01) theta=-0.40deg steering=-2.42deg",
+        "[CTRL] raw_steering=-2.42deg front_steer=+2.42deg (+0.042rad) acc_cmd=-1.000 target_v=0.00 planned_v=14.21 profile_v=14.21 cur_v=-0.00",
+        "[STATIC] {'phase': 'blocked', 'path_validated': False, 'planner': 'recorded_route_graph', 'boundary_source': 'recorded_swept_envelope_not_map', 'live_preview': False, 'live_drive_committed': False, 'preview_ego_on_route': False, 'selected_routes': ['right_04.csv', 'right_05.csv', 'right_06_retry.csv', 'right_01.csv'], 'recording_audit': [{'name': 'right_01.csv', 'recorded_points': 152, 'trimmed_prefix_points': 0, 'start': [-60.10157012939453, -162.49542236328125], 'end': [-59.676292419433594, -124.45750427246094], 'length_m': 38.04291241080227}, {'name': 'right_02.csv', 'recorded_points': 160, 'trimmed_prefix_points': 0, 'start': [-60.094608306884766, -161.83642578125], 'end': [-59.938629150390625, -123.59259796142578], 'length_m': 38.3514465526511}, {'name': 'right_03.csv', 'recorded_points': 180, 'trimmed_prefix_points': 0, 'start': [-59.938899993896484, -160.93035888671875], 'end': [-59.96949005126953, -120.548583984375], 'length_m': 41.10752999232243}, {'name': 'right_04.csv', 'recorded_points': 183, 'trimmed_prefix_points': 5, 'start': [-59.84436798095703, -161.9197998046875], 'end': [-59.539398193359375, -120.56988525390625], 'length_m': 42.80119742763548}, {'name': 'right_05.csv', 'recorded_points': 178, 'trimmed_prefix_points': 0, 'start': [-59.828712463378906, -160.43600463867188], 'end': [-60.14023971557617, -122.23265075683594], 'length_m': 41.17613917786055}, {'name': 'right_06_retry.csv', 'recorded_points': 206, 'trimmed_prefix_points': 1, 'start': [-60.125732421875, -161.47267150878906], 'end': [-59.81993103027344, -119.82349395751953], 'length_m': 47.133441629534715}], 'error': 'recorded_envelope', 'corridor_search': {'method': 'recorded_connections', 'status': 'complete', 'elapsed_s': 1.7521157279988984}, 'heading_error_deg': 6.33769551743151, 'tracking_error_m': 0.12241655536513349, 'cross_track_error_m': 0.11648688132407806, 'alignment_slow': True, 'preview_curvature': 0.01711196485236471, 'speed_policy_reason': 'blocked', 'tracking_speed_limits': {'tracking': 16.666666666666668, 'curvature': 4.916732100222639, 'path_end': 15.208265973381017, 'alignment': 1.0, 'blocked': 0.0}, 'curve_speed_limits': {'lateral_acceleration': 7.63851737744624, 'corridor_tracking': 4.916732100222639, 'steering_rate': 10.03432199658609}, 'curvature_speed_offset_kph': 5.0, 'path_design_speed_kph': 20.0, 'path_smoothing_deviation_m': 0.021731483932896367, 'recovery_until_y': None, 'recovery_count': 0, 'return_start_y': -132.7, 'handoff_y': -117.69999999999999, 'preplanned_complete': True, 'plan_count': 1, 'speed_limits': {'legacy_acc': 14.213643956332126, 'signal': 14.213643956332126, 'path_speed': 14.213643956332126, 'static': 0.0}, 'speed_source': 'static', 'final_target_velocity': 0.0}",
+        "[PLAN] reason=static_recorded_blocked state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=565 active=True",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=0.00m/s keep_valid=True keep_collision=inf",
+        "[PLAN] candidate dir=? link= valid=False cost=0.00 collision=inf curvature=0.0000",
+        "[KCityFullLoop] lap=1 t=39.0s ego=(-60.10, -163.05) yaw=91.5 speed=0.0 link=A2256W000213 s=70.8/132.4 cte=0.13 remain=61.5 dist_to_goal=61.52m",
+        "ACC ON_Vehicle",
+        "ACC ON_Vehicle",
+        "ACC ON_Vehicle",
+        "ACC ON_Vehicle",
+        "[Expert] stopping process: pid=568275",
+        "end simulation",
+        "[MORAI] actors destroyed: ok=True, settle=1.50s",
+        "[KCityRunner] Ctrl+C received; stopping",
+        "[MORAI] finalized",
+        "",
+        "[STATIC BATCH WATCHDOG] persistent invalid Expert plan; candidate rejected early"
+      ]
+    },
+    {
+      "attempt": 15,
+      "accepted": false,
+      "obstacle_count": 2,
+      "models": [
+        "YellowBarrel",
+        "ElectricScooter1"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_015.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_015.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 50,
+        "cross_track_samples": 49,
+        "max_cross_track_error_m": 6.21,
+        "selected_routes": [
+          "right_04.csv",
+          "right_05.csv",
+          "right_06_retry.csv",
+          "right_01.csv"
+        ]
+      },
+      "rejection_reasons": [
+        "cross_track_limit_exceeded"
+      ],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 56.588,
+      "failure_tail": [
+        "[CTRL] raw_steering=-0.59deg front_steer=+0.59deg (+0.010rad) acc_cmd=+0.197 target_v=8.17 planned_v=13.04 profile_v=13.04 cur_v=5.58",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 13.043606678520852, 'signal': 13.043606678520852, 'path_speed': 13.043606678520852, 'static': inf, 'static_acceleration': 8.16539604057418}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.16539604057418}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[PP] pos=(-59.84,-106.10) yaw=+89.75deg vel=6.03 lfd=3.92 path_len=50",
+        "[PP]   local_path first=(-59.92,-106.06) last=(-59.88,-82.53)",
+        "[PP]   lookahead=(-59.79,-102.03) veh_frame=(+4.07,-0.03) theta=-0.41deg steering=-0.62deg",
+        "[CTRL] raw_steering=-0.62deg front_steer=+0.62deg (+0.011rad) acc_cmd=+0.238 target_v=8.77 planned_v=12.65 profile_v=12.65 cur_v=6.03",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.65447330852309, 'signal': 12.65447330852309, 'path_speed': 12.65447330852309, 'static': inf, 'static_acceleration': 8.765396040574167}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.765396040574167}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[KCityFullLoop] lap=1 t=50.2s ego=(-59.81, -104.98) yaw=89.6 speed=22.3 link=A2256W000009 s=128.9/132.4 cte=0.08 remain=3.4 dist_to_goal=3.45m",
+        "[TrafficSignal] red signal has no upcoming route stop node: id=C1256W000016",
+        "[KCityFullLoop] GOAL REACHED lap=1, link=A2256W000202, dist=1.94m, s=130.4/132.4, elapsed=50.5s",
+        "[Expert] stopping process: pid=568997",
+        "end simulation",
+        "[MORAI] actors destroyed: ok=True, settle=1.50s",
+        "[MORAI] finalized"
+      ]
+    },
+    {
+      "attempt": 16,
+      "accepted": true,
+      "obstacle_count": 2,
+      "models": [
+        "Scooter_02",
+        "ElectricScooter1"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_016.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_016.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 22,
+        "cross_track_samples": 36,
+        "max_cross_track_error_m": 2.22,
+        "selected_routes": [
+          "right_03.csv",
+          "right_02.csv"
+        ]
+      },
+      "rejection_reasons": [],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 43.065,
+      "accepted_preset": "scenario_runner/config/static_scenario_presets/generated/static_balance_pair_01/static_balance_pair_01_attempt_016.yaml",
+      "route_class": "short",
+      "sha256": "644499dcc3539b5adbfff77c32fe5211cdcfc7cb9ceca2975d32c62b285960eb"
+    },
+    {
+      "attempt": 17,
+      "accepted": false,
+      "obstacle_count": 2,
+      "models": [
+        "ElectricScooter1",
+        "Bicycle_city"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_017.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_017.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 49,
+        "cross_track_samples": 44,
+        "max_cross_track_error_m": 6.21,
+        "selected_routes": [
+          "right_04.csv",
+          "right_05.csv",
+          "right_06_retry.csv",
+          "right_01.csv"
+        ]
+      },
+      "rejection_reasons": [
+        "cross_track_limit_exceeded"
+      ],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 51.079,
+      "failure_tail": [
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.88936317266379, 'signal': 12.88936317266379, 'path_speed': 12.88936317266379, 'static': inf, 'static_acceleration': 8.402770405335673}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.402770405335673}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[KCityFullLoop] lap=1 t=45.1s ego=(-59.80, -104.86) yaw=89.6 speed=22.3 link=A2256W000009 s=129.0/132.4 cte=0.08 remain=3.3 dist_to_goal=3.33m",
+        "[PP] pos=(-59.80,-104.59) yaw=+89.58deg vel=6.22 lfd=4.04 path_len=50",
+        "[PP]   local_path first=(-59.87,-104.53) last=(-59.90,-80.03)",
+        "[PP]   lookahead=(-59.78,-100.53) veh_frame=(+4.06,+0.02) theta=+0.23deg steering=+0.35deg",
+        "[CTRL] raw_steering=+0.35deg front_steer=-0.35deg (-0.006rad) acc_cmd=+0.222 target_v=9.00 planned_v=12.41 profile_v=12.41 cur_v=6.22",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.409669606700108, 'signal': 12.409669606700108, 'path_speed': 12.409669606700108, 'static': inf, 'static_acceleration': 9.00277040533566}, 'speed_source': 'static_acceleration', 'final_target_velocity': 9.00277040533566}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[TrafficSignal] GO: id=C1256W000016 status=4",
+        "[TrafficSignal] red signal has no upcoming route stop node: id=C1256W000016",
+        "[KCityFullLoop] GOAL REACHED lap=1, link=A2256W000202, dist=1.95m, s=130.4/132.4, elapsed=45.3s",
+        "[Expert] stopping process: pid=570578",
+        "end simulation",
+        "[MORAI] actors destroyed: ok=True, settle=1.50s",
+        "[MORAI] finalized"
+      ]
+    },
+    {
+      "attempt": 18,
+      "accepted": false,
+      "obstacle_count": 2,
+      "models": [
+        "TrafficBarrel",
+        "Bicycle_city"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_018.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_018.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 116,
+        "cross_track_samples": 81,
+        "max_cross_track_error_m": 6.2,
+        "selected_routes": [
+          "right_04.csv",
+          "right_05.csv",
+          "right_06_retry.csv",
+          "right_01.csv"
+        ]
+      },
+      "rejection_reasons": [
+        "cross_track_limit_exceeded"
+      ],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 92.647,
+      "failure_tail": [
+        "[CTRL] raw_steering=-0.85deg front_steer=+0.85deg (+0.015rad) acc_cmd=+0.213 target_v=8.17 planned_v=13.12 profile_v=13.12 cur_v=5.55",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 13.120048447986763, 'signal': 13.120048447986763, 'path_speed': 13.120048447986763, 'static': inf, 'static_acceleration': 8.170164408446071}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.170164408446071}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[KCityFullLoop] lap=1 t=83.0s ego=(-59.87, -107.18) yaw=89.9 speed=21.2 link=A2256W000220 s=126.7/132.4 cte=0.08 remain=5.7 dist_to_goal=5.65m",
+        "[PP] pos=(-59.84,-106.12) yaw=+89.77deg vel=6.05 lfd=3.93 path_len=50",
+        "[PP]   local_path first=(-59.92,-106.06) last=(-59.88,-82.53)",
+        "[PP]   lookahead=(-59.79,-102.03) veh_frame=(+4.09,-0.03) theta=-0.45deg steering=-0.68deg",
+        "[CTRL] raw_steering=-0.68deg front_steer=+0.68deg (+0.012rad) acc_cmd=+0.223 target_v=8.77 planned_v=12.65 profile_v=12.65 cur_v=6.05",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.65447330852309, 'signal': 12.65447330852309, 'path_speed': 12.65447330852309, 'static': inf, 'static_acceleration': 8.770164408446059}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.770164408446059}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[TrafficSignal] red signal has no upcoming route stop node: id=C1256W000016",
+        "[KCityFullLoop] GOAL REACHED lap=1, link=A2256W000202, dist=1.83m, s=130.5/132.4, elapsed=83.6s",
+        "[Expert] stopping process: pid=571382",
+        "end simulation",
+        "[MORAI] actors destroyed: ok=True, settle=1.50s",
+        "[MORAI] finalized"
+      ]
+    },
+    {
+      "attempt": 19,
+      "accepted": false,
+      "obstacle_count": 2,
+      "models": [
+        "YellowBarrel",
+        "ElectricScooter1"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_019.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_019.log",
+      "closed_loop_evidence": {
+        "goal_reached": false,
+        "valid_plan_samples": 29,
+        "cross_track_samples": 81,
+        "max_cross_track_error_m": 2.97,
+        "selected_routes": [
+          "corridor_astar"
+        ]
+      },
+      "rejection_reasons": [
+        "persistent_invalid_expert_plan",
+        "goal_not_proven"
+      ],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": true,
+      "early_signal_stop": false,
+      "watchdog_evidence": {
+        "persistent_invalid_plan": true,
+        "persistent_signal_stop": false,
+        "static_status": "[STATIC] {'phase': 'blocked', 'path_validated': False, 'planner': 'recorded_route_graph', 'boundary_source': 'recorded_swept_envelope_not_map', 'live_preview': False, 'live_drive_committed': False, 'preview_ego_on_route': False, 'selected_routes': ['corridor_astar'], 'recording_audit': [{'name': 'right_01.csv', 'recorded_points': 152, 'trimmed_prefix_points': 0, 'start': [-60.10157012939453, -162.49542236328125], 'end': [-59.676292419433594, -124.45750427246094], 'length_m': 38.04291241080227}, {'name': 'right_02.csv', 'recorded_points': 160, 'trimmed_prefix_points': 0, 'start': [-60.094608306884766, -161.83642578125], 'end': [-59.938629150390625, -123.59259796142578], 'length_m': 38.3514465526511}, {'name': 'right_03.csv', 'recorded_points': 180, 'trimmed_prefix_points': 0, 'start': [-59.938899993896484, -160.93035888671875], 'end': [-59.96949005126953, -120.548583984375], 'length_m': 41.10752999232243}, {'name': 'right_04.csv', 'recorded_points': 183, 'trimmed_prefix_points': 5, 'start': [-59.84436798095703, -161.9197998046875], 'end': [-59.539398193359375, -120.56988525390625], 'length_m': 42.80119742763548}, {'name': 'right_05.csv', 'recorded_points': 178, 'trimmed_prefix_points': 0, 'start': [-59.828712463378906, -160.43600463867188], 'end': [-60.14023971557617, -122.23265075683594], 'length_m': 41.17613917786055}, {'name': 'right_06_retry.csv', 'recorded_points': 206, 'trimmed_prefix_points': 1, 'start': [-60.125732421875, -161.47267150878906], 'end': [-59.81993103027344, -119.82349395751953], 'length_m': 47.133441629534715}], 'error': 'alignment_recovery_unavailable', 'corridor_search': {'method': 'corridor_astar', 'expanded': 9, 'checked_edges': 626, 'elapsed_s': 2.9487962639977923, 'status': 'complete'}, 'heading_error_deg': 4.183351235130915, 'tracking_error_m': 0.2822405700355225, 'cross_track_error_m': 0.280771040626379, 'alignment_slow': True, 'preview_curvature': 0.007702700803974413, 'speed_policy_reason': 'blocked', 'tracking_speed_limits': {'tracking': 16.666666666666668, 'curvature': 3.1072361709250975, 'path_end': 12.069660325345637, 'alignment': 1.0, 'blocked': 0.0}, 'curve_speed_limits': {'lateral_acceleration': 10.146658043426275, 'corridor_tracking': 10.045168681976092, 'steering_rate': 3.1072361709250975}, 'curvature_speed_offset_kph': 5.0, 'path_design_speed_kph': 20.0, 'path_smoothing_deviation_m': 0.0, 'recovery_until_y': None, 'recovery_count': 0, 'return_start_y': -136.7, 'handoff_y': -121.69999999999999, 'preplanned_complete': True, 'plan_count': 1, 'speed_limits': {'legacy_acc': 0.0, 'signal': 16.666666666666668, 'path_speed': 16.666666666666668, 'static': 0.0}, 'speed_source': 'static', 'final_target_velocity': 0.0}",
+        "candidate_status": "[PLAN] candidate dir=? link= valid=False cost=0.00 collision=inf curvature=0.0000"
+      },
+      "duration_sec": 89.609,
+      "failure_tail": [
+        "ACC ON_Vehicle",
+        "ACC ON_Vehicle",
+        "ACC ON_Vehicle",
+        "ACC ON_Vehicle",
+        "ACC ON_Vehicle",
+        "ACC ON_Vehicle",
+        "[CTRL] raw_steering=+63.25deg front_steer=-40.00deg (-0.698rad) acc_cmd=-1.000 target_v=0.00 planned_v=16.67 profile_v=16.67 cur_v=-0.00",
+        "[STATIC] {'phase': 'blocked', 'path_validated': False, 'planner': 'recorded_route_graph', 'boundary_source': 'recorded_swept_envelope_not_map', 'live_preview': False, 'live_drive_committed': False, 'preview_ego_on_route': False, 'selected_routes': ['corridor_astar'], 'recording_audit': [{'name': 'right_01.csv', 'recorded_points': 152, 'trimmed_prefix_points': 0, 'start': [-60.10157012939453, -162.49542236328125], 'end': [-59.676292419433594, -124.45750427246094], 'length_m': 38.04291241080227}, {'name': 'right_02.csv', 'recorded_points': 160, 'trimmed_prefix_points': 0, 'start': [-60.094608306884766, -161.83642578125], 'end': [-59.938629150390625, -123.59259796142578], 'length_m': 38.3514465526511}, {'name': 'right_03.csv', 'recorded_points': 180, 'trimmed_prefix_points': 0, 'start': [-59.938899993896484, -160.93035888671875], 'end': [-59.96949005126953, -120.548583984375], 'length_m': 41.10752999232243}, {'name': 'right_04.csv', 'recorded_points': 183, 'trimmed_prefix_points': 5, 'start': [-59.84436798095703, -161.9197998046875], 'end': [-59.539398193359375, -120.56988525390625], 'length_m': 42.80119742763548}, {'name': 'right_05.csv', 'recorded_points': 178, 'trimmed_prefix_points': 0, 'start': [-59.828712463378906, -160.43600463867188], 'end': [-60.14023971557617, -122.23265075683594], 'length_m': 41.17613917786055}, {'name': 'right_06_retry.csv', 'recorded_points': 206, 'trimmed_prefix_points': 1, 'start': [-60.125732421875, -161.47267150878906], 'end': [-59.81993103027344, -119.82349395751953], 'length_m': 47.133441629534715}], 'error': 'alignment_recovery_unavailable', 'corridor_search': {'method': 'corridor_astar', 'expanded': 9, 'checked_edges': 626, 'elapsed_s': 2.9487962639977923, 'status': 'complete'}, 'heading_error_deg': 4.183351235130915, 'tracking_error_m': 0.2822405700355225, 'cross_track_error_m': 0.280771040626379, 'alignment_slow': True, 'preview_curvature': 0.007702700803974413, 'speed_policy_reason': 'blocked', 'tracking_speed_limits': {'tracking': 16.666666666666668, 'curvature': 3.1072361709250975, 'path_end': 12.069660325345637, 'alignment': 1.0, 'blocked': 0.0}, 'curve_speed_limits': {'lateral_acceleration': 10.146658043426275, 'corridor_tracking': 10.045168681976092, 'steering_rate': 3.1072361709250975}, 'curvature_speed_offset_kph': 5.0, 'path_design_speed_kph': 20.0, 'path_smoothing_deviation_m': 0.0, 'recovery_until_y': None, 'recovery_count': 0, 'return_start_y': -136.7, 'handoff_y': -121.69999999999999, 'preplanned_complete': True, 'plan_count': 1, 'speed_limits': {'legacy_acc': 0.0, 'signal': 16.666666666666668, 'path_speed': 16.666666666666668, 'static': 0.0}, 'speed_source': 'static', 'final_target_velocity': 0.0}",
+        "[PLAN] reason=static_recorded_blocked state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=373 active=True",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=0.00m/s keep_valid=True keep_collision=inf",
+        "[PLAN] candidate dir=? link= valid=False cost=0.00 collision=inf curvature=0.0000",
+        "[Expert] stopping process: pid=572731",
+        "end simulation",
+        "[MORAI] actors destroyed: ok=True, settle=1.50s",
+        "[KCityRunner] Ctrl+C received; stopping",
+        "[MORAI] finalized",
+        "",
+        "[STATIC BATCH WATCHDOG] persistent invalid Expert plan; candidate rejected early"
+      ]
+    },
+    {
+      "attempt": 20,
+      "accepted": false,
+      "obstacle_count": 2,
+      "models": [
+        "TrafficBarrel",
+        "CargoBox"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_020.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_020.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 50,
+        "cross_track_samples": 79,
+        "max_cross_track_error_m": 6.19,
+        "selected_routes": [
+          "right_04.csv",
+          "right_05.csv",
+          "right_06_retry.csv",
+          "right_01.csv"
+        ]
+      },
+      "rejection_reasons": [
+        "cross_track_limit_exceeded"
+      ],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 87.641,
+      "failure_tail": [
+        "[PP] pos=(-59.86,-106.88) yaw=+89.86deg vel=5.87 lfd=3.82 path_len=50",
+        "[PP]   local_path first=(-59.95,-107.06) last=(-59.87,-83.53)",
+        "[PP]   lookahead=(-59.83,-103.03) veh_frame=(+3.85,-0.03) theta=-0.41deg steering=-0.64deg",
+        "[CTRL] raw_steering=-0.64deg front_steer=+0.64deg (+0.011rad) acc_cmd=+0.186 target_v=8.51 planned_v=12.81 profile_v=12.81 cur_v=5.87",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.81154506307711, 'signal': 12.81154506307711, 'path_speed': 12.81154506307711, 'static': inf, 'static_acceleration': 8.506998206152174}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.506998206152174}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[INFO] [1789897057.286958]: [ExpertInput] mode=realtime ego_seq=4008 dt=0.033s object_msgs=4006 selected_objects=4 object_delta=n/a traffic_msgs=3127 traffic_selected=true traffic_age=17.299s source=ros grpc_snapshots=0 grpc_tick=n/a tick_delta=n/a",
+        "[TrafficSignal] red signal has no upcoming route stop node: id=C1256W000016",
+        "[CTRL] raw_steering=+0.98deg front_steer=-0.98deg (-0.017rad) acc_cmd=+0.226 target_v=9.11 planned_v=12.33 profile_v=12.33 cur_v=6.27",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.328823941097433, 'signal': 12.328823941097433, 'path_speed': 12.328823941097433, 'static': inf, 'static_acceleration': 9.106998206152161}, 'speed_source': 'static_acceleration', 'final_target_velocity': 9.106998206152161}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[KCityFullLoop] GOAL REACHED lap=1, link=A2256W000202, dist=1.95m, s=130.4/132.4, elapsed=81.6s",
+        "[Expert] stopping process: pid=574040",
+        "end simulation",
+        "[MORAI] actors destroyed: ok=True, settle=1.50s",
+        "[MORAI] finalized"
+      ]
+    },
+    {
+      "attempt": 21,
+      "accepted": false,
+      "obstacle_count": 2,
+      "models": [
+        "PE_Drum",
+        "TrafficBarrel"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_021.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_021.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 115,
+        "cross_track_samples": 81,
+        "max_cross_track_error_m": 6.21,
+        "selected_routes": [
+          "right_04.csv",
+          "right_05.csv",
+          "right_06_retry.csv",
+          "right_01.csv"
+        ]
+      },
+      "rejection_reasons": [
+        "cross_track_limit_exceeded"
+      ],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 89.141,
+      "failure_tail": [
+        "[CTRL] raw_steering=-0.64deg front_steer=+0.64deg (+0.011rad) acc_cmd=+0.213 target_v=8.45 planned_v=12.89 profile_v=12.89 cur_v=5.82",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.88936317266379, 'signal': 12.88936317266379, 'path_speed': 12.88936317266379, 'static': inf, 'static_acceleration': 8.448289612460542}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.448289612460542}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[TrafficSignal] GO: id=C1256W000016 status=4",
+        "[PP] pos=(-59.79,-104.30) yaw=+89.57deg vel=6.24 lfd=4.05 path_len=50",
+        "[PP]   local_path first=(-59.87,-104.53) last=(-59.90,-80.03)",
+        "[PP]   lookahead=(-59.79,-100.03) veh_frame=(+4.27,+0.03) theta=+0.44deg steering=+0.65deg",
+        "[CTRL] raw_steering=+0.65deg front_steer=-0.65deg (-0.011rad) acc_cmd=+0.214 target_v=9.05 planned_v=12.41 profile_v=12.41 cur_v=6.24",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.409669606700108, 'signal': 12.409669606700108, 'path_speed': 12.409669606700108, 'static': inf, 'static_acceleration': 9.048289612460529}, 'speed_source': 'static_acceleration', 'final_target_velocity': 9.048289612460529}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[KCityFullLoop] lap=1 t=83.0s ego=(-59.77, -103.87) yaw=89.6 speed=22.6 link=A2256W000202 s=130.0/132.4 cte=0.08 remain=2.3 dist_to_goal=2.34m",
+        "[KCityFullLoop] GOAL REACHED lap=1, link=A2256W000202, dist=1.71m, s=130.6/132.4, elapsed=83.1s",
+        "[Expert] stopping process: pid=575341",
+        "end simulation",
+        "[MORAI] actors destroyed: ok=True, settle=1.50s",
+        "[MORAI] finalized"
+      ]
+    },
+    {
+      "attempt": 22,
+      "accepted": false,
+      "obstacle_count": 2,
+      "models": [
+        "Steel_Barricade",
+        "Lane_Separation_Bar"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_022.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_022.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 114,
+        "cross_track_samples": 81,
+        "max_cross_track_error_m": 6.21,
+        "selected_routes": [
+          "right_04.csv",
+          "right_05.csv",
+          "right_06_retry.csv",
+          "right_01.csv"
+        ]
+      },
+      "rejection_reasons": [
+        "cross_track_limit_exceeded"
+      ],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 89.642,
+      "failure_tail": [
+        "[CTRL] raw_steering=-0.81deg front_steer=+0.81deg (+0.014rad) acc_cmd=+0.182 target_v=8.28 planned_v=12.97 profile_v=12.97 cur_v=5.69",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.966714275034661, 'signal': 12.966714275034661, 'path_speed': 12.966714275034661, 'static': inf, 'static_acceleration': 8.283970427602835}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.283970427602835}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[KCityFullLoop] lap=1 t=83.1s ego=(-59.82, -105.27) yaw=89.6 speed=22.1 link=A2256W000220 s=128.6/132.4 cte=0.08 remain=3.7 dist_to_goal=3.74m",
+        "[PP] pos=(-59.82,-105.41) yaw=+89.66deg vel=6.12 lfd=3.98 path_len=50",
+        "[PP]   local_path first=(-59.91,-105.53) last=(-59.88,-81.53)",
+        "[PP]   lookahead=(-59.78,-101.03) veh_frame=(+4.38,-0.01) theta=-0.19deg steering=-0.28deg",
+        "[CTRL] raw_steering=-0.28deg front_steer=+0.28deg (+0.005rad) acc_cmd=+0.240 target_v=8.88 planned_v=12.57 profile_v=12.57 cur_v=6.12",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.569801100304444, 'signal': 12.569801100304444, 'path_speed': 12.569801100304444, 'static': inf, 'static_acceleration': 8.883970427602822}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.883970427602822}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[TrafficSignal] red signal has no upcoming route stop node: id=C1256W000016",
+        "[KCityFullLoop] GOAL REACHED lap=1, link=A2256W000202, dist=1.99m, s=130.4/132.4, elapsed=83.4s",
+        "[Expert] stopping process: pid=576646",
+        "end simulation",
+        "[MORAI] actors destroyed: ok=True, settle=1.50s",
+        "[MORAI] finalized"
+      ]
+    },
+    {
+      "attempt": 23,
+      "accepted": true,
+      "obstacle_count": 2,
+      "models": [
+        "ElectricScooter2",
+        "CargoBox"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_023.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_023.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 22,
+        "cross_track_samples": 35,
+        "max_cross_track_error_m": 2.16,
+        "selected_routes": [
+          "right_03.csv",
+          "right_02.csv"
+        ]
+      },
+      "rejection_reasons": [],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 42.565,
+      "accepted_preset": "scenario_runner/config/static_scenario_presets/generated/static_balance_pair_01/static_balance_pair_01_attempt_023.yaml",
+      "route_class": "short",
+      "sha256": "e8a7143e66cb663c84c2b500b72b6ea18be934d96062d5daea67628ea27c2c78"
+    },
+    {
+      "attempt": 24,
+      "accepted": true,
+      "obstacle_count": 2,
+      "models": [
+        "Bicycle_mountain",
+        "Bicycle_city"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_024.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_024.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 23,
+        "cross_track_samples": 29,
+        "max_cross_track_error_m": 1.28,
+        "selected_routes": [
+          "right_03.csv",
+          "right_02.csv"
+        ]
+      },
+      "rejection_reasons": [],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 36.054,
+      "accepted_preset": "scenario_runner/config/static_scenario_presets/generated/static_balance_pair_01/static_balance_pair_01_attempt_024.yaml",
+      "route_class": "short",
+      "sha256": "e0efc01a8bcff8c6eef0ec07844dd1a6764e12e77d6de0e15555317131b213b9"
+    },
+    {
+      "attempt": 25,
+      "accepted": false,
+      "obstacle_count": 2,
+      "models": [
+        "ElectricScooter1",
+        "YellowBarrel"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_025.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_025.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 49,
+        "cross_track_samples": 49,
+        "max_cross_track_error_m": 6.21,
+        "selected_routes": [
+          "right_04.csv",
+          "right_05.csv",
+          "right_06_retry.csv",
+          "right_01.csv"
+        ]
+      },
+      "rejection_reasons": [
+        "cross_track_limit_exceeded"
+      ],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 56.59,
+      "failure_tail": [
+        "[CTRL] raw_steering=-0.80deg front_steer=+0.80deg (+0.014rad) acc_cmd=+0.229 target_v=8.44 planned_v=12.89 profile_v=12.89 cur_v=5.83",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.88936317266379, 'signal': 12.88936317266379, 'path_speed': 12.88936317266379, 'static': inf, 'static_acceleration': 8.439472234039398}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.439472234039398}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[PP] pos=(-59.79,-104.35) yaw=+89.55deg vel=6.26 lfd=4.07 path_len=50",
+        "[PP]   local_path first=(-59.87,-104.53) last=(-59.90,-80.03)",
+        "[PP]   lookahead=(-59.79,-100.03) veh_frame=(+4.32,+0.03) theta=+0.40deg steering=+0.59deg",
+        "[CTRL] raw_steering=+0.59deg front_steer=-0.59deg (-0.010rad) acc_cmd=+0.213 target_v=9.04 planned_v=12.41 profile_v=12.41 cur_v=6.26",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.409669606700108, 'signal': 12.409669606700108, 'path_speed': 12.409669606700108, 'static': inf, 'static_acceleration': 9.039472234039385}, 'speed_source': 'static_acceleration', 'final_target_velocity': 9.039472234039385}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[TrafficSignal] GO: id=C1256W000016 status=48",
+        "[KCityFullLoop] lap=1 t=50.3s ego=(-59.78, -103.99) yaw=89.5 speed=22.7 link=A2256W000202 s=129.9/132.4 cte=0.08 remain=2.5 dist_to_goal=2.46m",
+        "[KCityFullLoop] GOAL REACHED lap=1, link=A2256W000202, dist=1.70m, s=130.7/132.4, elapsed=50.4s",
+        "[Expert] stopping process: pid=579566",
+        "end simulation",
+        "[MORAI] actors destroyed: ok=True, settle=1.50s",
+        "[MORAI] finalized"
+      ]
+    },
+    {
+      "attempt": 26,
+      "accepted": false,
+      "obstacle_count": 2,
+      "models": [
+        "TrafficBarrel",
+        "Bicycle_mountain"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_026.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_026.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 50,
+        "cross_track_samples": 39,
+        "max_cross_track_error_m": 6.21,
+        "selected_routes": [
+          "right_04.csv",
+          "right_05.csv",
+          "right_06_retry.csv",
+          "right_01.csv"
+        ]
+      },
+      "rejection_reasons": [
+        "cross_track_limit_exceeded"
+      ],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 46.571,
+      "failure_tail": [
+        "[CTRL] raw_steering=-0.61deg front_steer=+0.61deg (+0.011rad) acc_cmd=+0.196 target_v=8.12 planned_v=13.04 profile_v=13.04 cur_v=5.56",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 13.043606678520852, 'signal': 13.043606678520852, 'path_speed': 13.043606678520852, 'static': inf, 'static_acceleration': 8.12302343469939}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.12302343469939}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[KCityFullLoop] lap=1 t=39.9s ego=(-59.84, -105.86) yaw=89.7 speed=21.8 link=A2256W000220 s=128.0/132.4 cte=0.08 remain=4.3 dist_to_goal=4.33m",
+        "[PP] pos=(-59.83,-105.63) yaw=+89.68deg vel=6.06 lfd=3.94 path_len=50",
+        "[PP]   local_path first=(-59.91,-105.56) last=(-59.88,-82.03)",
+        "[PP]   lookahead=(-59.78,-101.53) veh_frame=(+4.10,-0.03) theta=-0.40deg steering=-0.61deg",
+        "[CTRL] raw_steering=-0.61deg front_steer=+0.61deg (+0.011rad) acc_cmd=+0.205 target_v=8.72 planned_v=12.58 profile_v=12.58 cur_v=6.06",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.575201664122224, 'signal': 12.575201664122224, 'path_speed': 12.575201664122224, 'static': inf, 'static_acceleration': 8.723023434699376}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.723023434699376}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[TrafficSignal] red signal has no upcoming route stop node: id=C1256W000016",
+        "[KCityFullLoop] GOAL REACHED lap=1, link=A2256W000202, dist=1.98m, s=130.4/132.4, elapsed=40.3s",
+        "[Expert] stopping process: pid=580520",
+        "end simulation",
+        "[MORAI] actors destroyed: ok=True, settle=1.50s",
+        "[MORAI] finalized"
+      ]
+    },
+    {
+      "attempt": 27,
+      "accepted": false,
+      "obstacle_count": 2,
+      "models": [
+        "WoodBox",
+        "ElectricScooter2"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_027.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_027.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 51,
+        "cross_track_samples": 80,
+        "max_cross_track_error_m": 6.21,
+        "selected_routes": [
+          "right_04.csv",
+          "right_05.csv",
+          "right_06_retry.csv",
+          "right_01.csv"
+        ]
+      },
+      "rejection_reasons": [
+        "cross_track_limit_exceeded"
+      ],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 89.647,
+      "failure_tail": [
+        "[CTRL] raw_steering=-0.91deg front_steer=+0.91deg (+0.016rad) acc_cmd=+0.179 target_v=8.27 planned_v=12.97 profile_v=12.97 cur_v=5.68",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.966714275034661, 'signal': 12.966714275034661, 'path_speed': 12.966714275034661, 'static': inf, 'static_acceleration': 8.270309140534838}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.270309140534838}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[KCityFullLoop] lap=1 t=82.0s ego=(-59.85, -106.33) yaw=89.8 speed=21.6 link=A2256W000220 s=127.6/132.4 cte=0.08 remain=4.8 dist_to_goal=4.80m",
+        "[PP] pos=(-59.82,-105.26) yaw=+89.63deg vel=6.14 lfd=3.99 path_len=50",
+        "[PP]   local_path first=(-59.89,-105.03) last=(-59.89,-80.53)",
+        "[PP]   lookahead=(-59.78,-101.03) veh_frame=(+4.23,-0.01) theta=-0.12deg steering=-0.18deg",
+        "[CTRL] raw_steering=-0.18deg front_steer=+0.18deg (+0.003rad) acc_cmd=+0.238 target_v=8.87 planned_v=12.49 profile_v=12.49 cur_v=6.14",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.4899919825569, 'signal': 12.4899919825569, 'path_speed': 12.4899919825569, 'static': inf, 'static_acceleration': 8.870309140534825}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.870309140534825}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[TrafficSignal] GO: id=C1256W000016 status=4",
+        "[KCityFullLoop] GOAL REACHED lap=1, link=A2256W000202, dist=1.96m, s=130.4/132.4, elapsed=82.4s",
+        "[Expert] stopping process: pid=581324",
+        "end simulation",
+        "[MORAI] actors destroyed: ok=True, settle=1.50s",
+        "[MORAI] finalized"
+      ]
+    },
+    {
+      "attempt": 28,
+      "accepted": true,
+      "obstacle_count": 2,
+      "models": [
+        "TrafficBarrel",
+        "YellowBarrel"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_028.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_028.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 88,
+        "cross_track_samples": 68,
+        "max_cross_track_error_m": 2.11,
+        "selected_routes": [
+          "right_03.csv",
+          "right_02.csv"
+        ]
+      },
+      "rejection_reasons": [],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 79.624,
+      "accepted_preset": "scenario_runner/config/static_scenario_presets/generated/static_balance_pair_01/static_balance_pair_01_attempt_028.yaml",
+      "route_class": "short",
+      "sha256": "d0d3ab88192a56e83832db62ea61264cf00934f741f5009fd7a91ed7ae105f2a"
+    },
+    {
+      "attempt": 29,
+      "accepted": false,
+      "obstacle_count": 2,
+      "models": [
+        "Steel_Barricade",
+        "ElectricScooter1"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_029.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_029.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 49,
+        "cross_track_samples": 49,
+        "max_cross_track_error_m": 6.2,
+        "selected_routes": [
+          "right_04.csv",
+          "right_05.csv",
+          "right_06_retry.csv",
+          "right_01.csv"
+        ]
+      },
+      "rejection_reasons": [
+        "cross_track_limit_exceeded"
+      ],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 57.089,
+      "failure_tail": [
+        "[PP] pos=(-59.87,-107.19) yaw=+89.91deg vel=5.87 lfd=3.82 path_len=50",
+        "[PP]   local_path first=(-59.95,-107.06) last=(-59.87,-83.53)",
+        "[PP]   lookahead=(-59.83,-103.03) veh_frame=(+4.16,-0.04) theta=-0.52deg steering=-0.82deg",
+        "[CTRL] raw_steering=-0.82deg front_steer=+0.82deg (+0.014rad) acc_cmd=+0.170 target_v=8.49 planned_v=12.81 profile_v=12.81 cur_v=5.87",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.81154506307711, 'signal': 12.81154506307711, 'path_speed': 12.81154506307711, 'static': inf, 'static_acceleration': 8.494479490560986}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.494479490560986}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[KCityFullLoop] lap=1 t=50.2s ego=(-59.85, -106.57) yaw=89.8 speed=21.6 link=A2256W000220 s=127.3/132.4 cte=0.08 remain=5.0 dist_to_goal=5.04m",
+        "[TrafficSignal] red signal has no upcoming route stop node: id=C1256W000016",
+        "[CTRL] raw_steering=+0.74deg front_steer=-0.74deg (-0.013rad) acc_cmd=+0.225 target_v=9.09 planned_v=12.33 profile_v=12.33 cur_v=6.27",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.328823941097433, 'signal': 12.328823941097433, 'path_speed': 12.328823941097433, 'static': inf, 'static_acceleration': 9.094479490560973}, 'speed_source': 'static_acceleration', 'final_target_velocity': 9.094479490560973}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[KCityFullLoop] GOAL REACHED lap=1, link=A2256W000202, dist=1.95m, s=130.4/132.4, elapsed=50.8s",
+        "[Expert] stopping process: pid=583935",
+        "end simulation",
+        "[MORAI] actors destroyed: ok=True, settle=1.50s",
+        "[MORAI] finalized"
+      ]
+    },
+    {
+      "attempt": 30,
+      "accepted": false,
+      "obstacle_count": 2,
+      "models": [
+        "TrafficBarrel",
+        "Bicycle_city"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/candidates/static_balance_pair_01_attempt_030.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_030.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 46,
+        "cross_track_samples": 35,
+        "max_cross_track_error_m": 6.2,
+        "selected_routes": [
+          "right_04.csv",
+          "right_05.csv",
+          "right_06_retry.csv",
+          "right_01.csv"
+        ]
+      },
+      "rejection_reasons": [
+        "cross_track_limit_exceeded"
+      ],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 42.564,
+      "failure_tail": [
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.733251384060921, 'signal': 12.733251384060921, 'path_speed': 12.733251384060921, 'static': inf, 'static_acceleration': 8.513167157610523}, 'speed_source': 'static_acceleration', 'final_target_velocity': 8.513167157610523}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[KCityFullLoop] lap=1 t=35.8s ego=(-59.85, -106.27) yaw=89.8 speed=21.6 link=A2256W000220 s=127.6/132.4 cte=0.08 remain=4.7 dist_to_goal=4.74m",
+        "[INFO] [1789897687.027380]: [ExpertInput] mode=realtime ego_seq=1641 dt=0.033s object_msgs=1659 selected_objects=4 object_delta=n/a traffic_msgs=837 traffic_selected=true traffic_age=17.082s source=ros grpc_snapshots=0 grpc_tick=n/a tick_delta=n/a",
+        "[TrafficSignal] red signal has no upcoming route stop node: id=C1256W000016",
+        "[PP] pos=(-59.76,-103.56) yaw=+89.59deg vel=6.31 lfd=4.10 path_len=50",
+        "[PP]   local_path first=(-59.84,-103.53) last=(-59.90,-79.03)",
+        "[PP]   lookahead=(-59.79,-99.03) veh_frame=(+4.52,+0.06) theta=+0.78deg steering=+1.14deg",
+        "[CTRL] raw_steering=+1.14deg front_steer=-1.14deg (-0.020rad) acc_cmd=+0.227 target_v=9.11 planned_v=12.25 profile_v=12.25 cur_v=6.31",
+        "[STATIC] {'phase': 'static_recorded_rejoined', 'speed_limits': {'legacy_acc': 12.24744462301006, 'signal': 12.24744462301006, 'path_speed': 12.24744462301006, 'static': inf, 'static_acceleration': 9.11316715761051}, 'speed_source': 'static_acceleration', 'final_target_velocity': 9.11316715761051}",
+        "[PLAN] reason=static_recorded_rejoined state=OFF link= lane=? s=0.0 -> target_link= objects=0/0 path=50 active=False",
+        "[PLAN] risk gap=inf TTC=inf front_acc=inf merge_raw=inf merge_filtered=inf final_acc=inf keep_valid=True keep_collision=inf",
+        "[KCityFullLoop] GOAL REACHED lap=1, link=A2256W000202, dist=1.90m, s=130.5/132.4, elapsed=36.3s",
+        "[Expert] stopping process: pid=584848",
+        "end simulation",
+        "[MORAI] actors destroyed: ok=True, settle=1.50s",
+        "[MORAI] finalized"
+      ]
+    }
+  ],
+  "accepted_presets": [
+    "scenario_runner/config/static_scenario_presets/generated/static_balance_pair_01/static_balance_pair_01_attempt_003.yaml",
+    "scenario_runner/config/static_scenario_presets/generated/static_balance_pair_01/static_balance_pair_01_attempt_010.yaml",
+    "scenario_runner/config/static_scenario_presets/generated/static_balance_pair_01/static_balance_pair_01_attempt_016.yaml",
+    "scenario_runner/config/static_scenario_presets/generated/static_balance_pair_01/static_balance_pair_01_attempt_023.yaml",
+    "scenario_runner/config/static_scenario_presets/generated/static_balance_pair_01/static_balance_pair_01_attempt_024.yaml",
+    "scenario_runner/config/static_scenario_presets/generated/static_balance_pair_01/static_balance_pair_01_attempt_028.yaml"
+  ],
+  "completed_attempts": 30,
+  "accepted_route_targets_met": false,
+  "finished_at_unix": 1789897777.2846165
+}
