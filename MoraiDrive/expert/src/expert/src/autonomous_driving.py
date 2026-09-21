@@ -6,6 +6,7 @@ from .planning.adaptive_cruise_control import AdaptiveCruiseControl
 from .planning.traffic_light_stop import TrafficLightStopController
 from .planning.lattice_planning import LatticePlanningProcess
 from .planning.lattice_planning import parameters as lattice_parameters
+from .planning.lattice_planning import roundabout_debug
 from .planning.highway_lane_planning import parameters as highway_parameters
 from .control.pure_pursuit import PurePursuit
 from .control.pid import Pid
@@ -224,6 +225,9 @@ class AutonomousDriving:
         acc_cmd = self.pid.get_output(
             target_velocity, vehicle_state.velocity,
             derivative_on_measurement=(lattice_result.mode == "roundabout_entry" or fast_pedestrian_release),
+            acceleration_p_gain=self._roundabout_entry_acceleration_gain(
+                target_velocity, vehicle_state, lattice_result
+            ),
         )
         # 합류 양보/충돌 예측이 정지를 요구하면 현재 속도와 무관하게 즉시 제동합니다.
         if target_velocity <= 0.05:
@@ -279,6 +283,8 @@ class AutonomousDriving:
             self.max_steering,
         )
         self.previous_front_steer_rad = float(front_steer_rad)
+        roundabout_debug.record_control(
+            lattice_result, target_velocity, acc_cmd, self.control_dt, front_steer_rad)
 
         self._debug_counter = getattr(self, "_debug_counter", 0) + 1
         if (
@@ -527,6 +533,26 @@ class AutonomousDriving:
         )
         maximum_step = rate * self.control_dt
         return min(requested_command, previous + maximum_step)
+
+    @staticmethod
+    def _roundabout_entry_acceleration_gain(target_velocity, vehicle_state, lattice_result):
+        """Raise P only for permitted entry acceleration, keeping other limits."""
+        if (getattr(lattice_result, "mode", "") != "roundabout_entry"
+                or target_velocity <= 0.05 or target_velocity <= vehicle_state.velocity):
+            return None
+        details = lattice_result.debug_details.get("roundabout_entry", {})
+        if details.get("phase") not in ("cruise", "rear_pressure") or details.get("front_gap") is not None:
+            return None
+        entry_started = (details.get("entering", False) or details.get("committed", False)
+                         or details.get("hold_gap", float("inf")) <= lattice_parameters.ROUNDABOUT_HOLD_TOLERANCE)
+        if not entry_started:
+            return None
+        limits = details.get("speed_limits", {})
+        entry_target = min(limits.get("path_speed", float("inf")), lattice_result.acc_target_velocity)
+        # A pedestrian/signal or another lower speed limit keeps the base gain.
+        if target_velocity < entry_target - 1e-6:
+            return None
+        return lattice_parameters.ROUNDABOUT_ENTRY_ACCEL_P_GAIN
 
     def _roundabout_entry_fast_release(self, target_velocity, lattice_result):
         if self.previous_target_velocity is None:

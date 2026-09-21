@@ -1,0 +1,115 @@
+{
+  "문서_용도": "현재 저장소의 notice 토큰화 흐름을 설명하는 파일입니다. 이 설명 파일 자체를 LLM에 보내는 것은 아닙니다.",
+  "한줄_설명": "구간 JSON에서 현재 구간의 text를 선택하고, 네비 문장과 합친 뒤, 기존 TinyLlama tokenizer로 숫자 ID를 만들고 embedding으로 바꿔 LLM에 전달합니다.",
+  "실제_토큰값의_출처": {
+    "tokenizer": "TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T",
+    "local_tokenizer": "VLDrive/.runtime/notice-tokenizer",
+    "조건": "기존 모델 로더와 동일하게 pad_token이 없으면 eos_token을 pad_token으로 사용했습니다. 토큰 ID는 이 tokenizer로 실제 계산한 결과입니다.",
+    "주의": "아래 navigation 문장은 흐름을 보여주기 위한 예시입니다. 실제 주행에서는 네비 모듈이 그 시점에 제공하는 문장이 들어갑니다. 따라서 토큰 개수도 달라집니다."
+  },
+  "1_구간_JSON에_저장하는_것": {
+    "파일": "VLDrive/configs/notice_zones/kcity.json",
+    "설명": "실제 구간 정의의 핵심 필드만 발췌했습니다. 아직 숫자 토큰이 아닌 영어 문장입니다.",
+    "구간_예시": {
+      "id": "signal_01",
+      "start": {"route_index": 351},
+      "end": {"route_index": 424},
+      "text": "You are in a signalized intersection zone. Pay attention to traffic lights."
+    },
+    "각_필드의_역할": {
+      "id": "구간을 식별하는 이름입니다.",
+      "route_index": "전역경로에서 몇 번째 점인지 나타냅니다. 시간 순서의 프레임 번호와 다릅니다.",
+      "text": "이 구간에서 사용할 notice 문장입니다.",
+      "좌표와_id": "현재 구간 판정에 사용합니다. 토큰화할 문장에는 넣지 않습니다."
+    }
+  },
+  "2_현재_위치로_notice를_선택": {
+    "코드": "VLDrive/utils/notice_policy.py: RouteNoticePolicy.at_position / at_index",
+    "예시_현재_경로점": 400,
+    "판정_결과": {
+      "zone_ids": ["signal_01"],
+      "notice_text": "You are in a signalized intersection zone. Pay attention to traffic lights."
+    },
+    "설명": "400번 점은 신호등 1 구간 안에 있으므로 해당 text를 가져옵니다. 구간 안에서는 매 추론에 유지하고 밖에서는 빈 문자열을 사용합니다."
+  },
+  "3_네비와_notice를_한_문장_입력으로_결합": {
+    "코드": "VLDrive/models/vldrive.py: predict -> compose_instruction_batch",
+    "입력의_텍스트_필드": {
+      "instruction": ["Proceed along this route."],
+      "notice_text": ["You are in a signalized intersection zone. Pay attention to traffic lights."]
+    },
+    "시각_입력": "같은 model_inputs에 visual_feature Tensor도 들어가지만 이 설명에서는 생략했습니다.",
+    "합치는_규칙": "navigation + 줄바꿈 + notice",
+    "tokenizer에_실제로_전달하는_문자열": "Proceed along this route.\nYou are in a signalized intersection zone. Pay attention to traffic lights.",
+    "설명": "문장들을 합친 다음 한 번에 토큰화합니다. JSON의 키나 중괄호는 보내지 않습니다. 별도의 채팅 템플릿이나 Navigation: 접두어도 붙이지 않습니다."
+  },
+  "4_tokenizer가_숫자_ID로_변환": {
+    "코드": "VLDrive/models/language_model.py: _tokenize",
+    "호출": "self.tokenizer(list(instructions), padding=True, truncation=False, return_tensors='pt')",
+    "실제_단일_샘플_결과": {
+      "input_ids": [1, 1019, 3947, 3412, 445, 5782, 29889, 13, 3492, 526, 297, 263, 7182, 1891, 17686, 10640, 29889, 14617, 8570, 304, 12469, 26068, 29889],
+      "attention_mask": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      "token_count": 23,
+      "실제_Tensor_형태": "위 배열들이 배치 차원으로 감싸져 각각 [1, 23] 형태의 Tensor가 됩니다."
+    },
+    "앞부분을_조각별로_읽으면": [
+      {"조각": "<s>", "id": 1, "뜻": "문장 입력 시작을 나타내는 기존 특수 토큰"},
+      {"조각": "▁Pro", "id": 1019, "뜻": "Proceed의 앞부분"},
+      {"조각": "ceed", "id": 3947, "뜻": "Proceed의 뒷부분"},
+      {"조각": "▁along", "id": 3412},
+      {"조각": "▁this", "id": 445},
+      {"조각": "▁route", "id": 5782},
+      {"조각": ".", "id": 29889},
+      {"조각": "<0x0A>", "id": 13, "뜻": "네비와 notice 사이 줄바꿈"},
+      {"조각": "You", "id": 3492, "뜻": "여기서부터 notice 문장의 토큰"}
+    ],
+    "이해할_점": [
+      "tokenizer는 문장을 단어 또는 단어보다 작은 조각으로 나누고 기존 사전의 ID를 붙입니다. 한 단어가 여러 토큰이 될 수 있습니다.",
+      "조각 표기의 ▁는 공백 또는 단어 시작을 나타내는 tokenizer 표기입니다.",
+      "토큰 ID는 사전의 번호입니다. 숫자가 크다고 더 중요한 지시라는 뜻은 아닙니다.",
+      "notice 전용 새 단어나 특수 토큰을 등록하지 않았습니다. 네비에 쓰던 tokenizer를 그대로 사용합니다.",
+      "attention_mask의 1은 유효한 토큰, 0은 배치 길이를 맞추기 위한 padding입니다. 위 단일 문장에는 padding이 없어 모두 1입니다.",
+      "truncation=False라서 긴 문장을 조용히 잘라 버리지 않습니다. 모델의 최대 지시문 길이를 넘으면 오류로 알려줍니다."
+    ]
+  },
+  "5_토큰_ID를_embedding으로_변환": {
+    "코드": "VLDrive/models/language_model.py: forward",
+    "호출": "instruction_embeddings = self.tinyllama.get_input_embeddings()(encoded['input_ids'])",
+    "설명": "토큰 ID마다 LLM의 학습된 embedding 표에서 숫자 벡터를 찾습니다. LLM에는 ID를 그대로 이어붙이는 대신 이 벡터들을 전달합니다.",
+    "예시_형태": "[1, 23] 정수 ID Tensor -> [1, 23, LLM hidden size] embedding Tensor",
+    "주의": "이 단계의 실제 벡터 값은 로딩한 모델 가중치에 따라 달라집니다. 이 문서에는 임의의 embedding 숫자를 넣지 않았습니다."
+  },
+  "6_시각_토큰과_합쳐_LLM에_전달": {
+    "결합_코드": "VLDrive/models/multimodal_sequence.py: torch.cat((instruction_embeddings, visual_embeddings), dim=1)",
+    "순서": ["네비 + notice의 텍스트 embedding", "시간 순서의 시각 embedding"],
+    "LLM_호출": "self.tinyllama.model(inputs_embeds=sequence.inputs_embeds, attention_mask=sequence.attention_mask, position_ids=sequence.position_ids, ...)",
+    "출력_사용": "LLM의 시각 토큰 위치 hidden state를 waypoint 예측 head에 넣습니다."
+  },
+  "7_다른_구간의_실제_예시": [
+    {
+      "현재_경로점": 0,
+      "active_zone_ids": [],
+      "notice_text": "",
+      "tokenizer_input": "Proceed along this route.",
+      "input_ids": [1, 1019, 3947, 3412, 445, 5782, 29889],
+      "token_count": 7,
+      "설명": "활성 notice가 없으면 네비만 토큰화합니다."
+    },
+    {
+      "현재_경로점": 700,
+      "active_zone_ids": ["signal_static", "static_obstacle"],
+      "notice_text": "You are in a signalized intersection zone. Pay attention to traffic lights. You are in a static obstacle zone. Watch for stationary obstacles.",
+      "tokenizer_input": "Proceed along this route.\nYou are in a signalized intersection zone. Pay attention to traffic lights. You are in a static obstacle zone. Watch for stationary obstacles.",
+      "input_ids": [1, 1019, 3947, 3412, 445, 5782, 29889, 13, 3492, 526, 297, 263, 7182, 1891, 17686, 10640, 29889, 14617, 8570, 304, 12469, 26068, 29889, 887, 526, 297, 263, 2294, 14979, 6436, 10640, 29889, 24274, 363, 5073, 653, 14979, 23435, 29889],
+      "token_count": 39,
+      "설명": "정적장애물 구간에는 신호등 안내도 활성화되어 두 notice 문장을 함께 넣습니다."
+    }
+  ],
+  "8_저장_시점과_실행_시점": {
+    "구간_JSON": "좌표·경로점·영어 문장을 저장합니다.",
+    "학습_notice_JSONL": "각 주행의 어느 프레임에 어떤 문장이 유효한지 저장합니다. start_frame/stop_frame은 경로점 번호가 아니라 해당 주행의 프레임 번호입니다.",
+    "토큰화_시점": "학습 또는 추론에서 language_model.forward가 실행될 때 그 배치의 문장을 토큰화합니다.",
+    "이_파일의_토큰_ID": "설명과 검증을 위해 저장한 실제 결과입니다. 학습·추론이 이 설명 파일을 읽는 구조는 아닙니다.",
+    "검증_범위": "실제 TinyLlama tokenizer 출력과 작은 Llama 모델의 입력·waypoint 출력·gradient 연결을 검증했습니다. 이 설명 파일을 만들기 위해 배포용 LLM 실시간 주행을 실행하지는 않았습니다."
+  }
+}

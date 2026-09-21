@@ -76,6 +76,8 @@ def _setup_debug_output():
 
     atexit.register(close_log)
     print("[DEBUG] run log: {}".format(output_path))
+    from expert.src.planning.lattice_planning import roundabout_debug
+    roundabout_debug.configure(os.path.splitext(output_path)[0] + '_roundabout.jsonl')
 
 
 def main():

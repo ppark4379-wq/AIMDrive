@@ -20,6 +20,7 @@ from std_msgs.msg import Bool, Float32
 
 from ..config.config import Config
 from ..obstacle.object_info import ObjectInfo
+from ..planning.lattice_planning import roundabout_debug
 from ..planning.lattice_planning.rviz_visualizer import LatticeRvizVisualizer
 from ..vehicle_state import VehicleState
 from .grpc_sync_inputs import MoraiGrpcSyncInputs
@@ -141,6 +142,10 @@ class RosManager:
                 grpc_tick,
                 grpc_tick_delta,
             ) = snapshot
+            roundabout_debug.input_context(
+                ego_seq=status_sequence, object_count=len(object_info_list),
+                object_delta_s=object_delta, control_dt_s=control_dt, source=input_source,
+                sync_mode=sync_mode, grpc_tick=grpc_tick, grpc_tick_delta=grpc_tick_delta)
             control_input, local_path = self.autonomous_driving.execute(
                 vehicle_state,
                 object_info_list,

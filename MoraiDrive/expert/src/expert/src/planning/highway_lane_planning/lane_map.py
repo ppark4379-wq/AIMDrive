@@ -9,6 +9,8 @@ import os
 import bisect
 from collections import deque
 
+import numpy as np
+
 from ...localization.point import Point
 from . import parameters
 from .structures import HighwayLaneLink, LaneMatch
@@ -69,6 +71,12 @@ class HighwayLaneMap:
         self.max_section_index = max(
             lane_link.section_index for lane_link in self.links.values()
         )
+        # Loaded map geometry is static, like each link's cumulative_s. Cache
+        # only geometry; vehicle positions and projection results stay live.
+        self._projection_geometry = {
+            link.id: (link, self._compile_projection_geometry(link))
+            for link in self.links.values()
+        }
 
     def match(self, position, heading=None, preferred_ids=()):
         preferred = set(preferred_ids or ())
@@ -92,10 +100,46 @@ class HighwayLaneMap:
         return best_match
 
     def project(self, position, lane_link):
+        cached = getattr(self, "_projection_geometry", {}).get(getattr(lane_link, "id", None))
+        if cached is None or cached[0] is not lane_link or cached[1] is None:
+            return self._project_scalar(position, lane_link)
+        px, py = position.x, position.y
+        # Preserve the original behavior for malformed/nonfinite inputs.
+        if np.ndim(px) or np.ndim(py) or not math.isfinite(px) or not math.isfinite(py):
+            return self._project_scalar(position, lane_link)
+        indices, sx, sy, dx, dy, length_sq = cached[1]
+        ratio = np.clip(((px - sx) * dx + (py - sy) * dy) / length_sq, 0.0, 1.0)
+        distances = np.hypot(px - (sx + ratio * dx), py - (sy + ratio * dy))
+        nearest = float(np.min(distances))
+        if not math.isfinite(nearest):
+            return self._project_scalar(position, lane_link)
+        # NumPy hypot and math.hypot can round differently by a few ulps.
+        # Recompute tied/near-tied candidates using the original scalar math
+        # and order, preserving first-segment tie breaking and exact outputs.
+        tolerance = 8.0 * abs(float(np.spacing(nearest)))
+        candidates = indices[np.flatnonzero(distances <= nearest + tolerance)]
+        return self._project_scalar(position, lane_link, candidates)
+
+    @staticmethod
+    def _compile_projection_geometry(lane_link):
+        xy = np.asarray([(point.x, point.y) for point in lane_link.points], dtype=float)
+        if not np.isfinite(xy).all():
+            return None
+        delta = xy[1:] - xy[:-1]
+        length_sq = delta[:, 0] * delta[:, 0] + delta[:, 1] * delta[:, 1]
+        indices = np.flatnonzero(length_sq >= 1e-9)
+        if not len(indices):
+            return None
+        return (indices, xy[indices, 0], xy[indices, 1], delta[indices, 0],
+                delta[indices, 1], length_sq[indices])
+
+    def _project_scalar(self, position, lane_link, indices=None):
+        """Original projection, also used to resolve vectorized candidates."""
         best = None
-        for index, (start, end) in enumerate(
-            zip(lane_link.points[:-1], lane_link.points[1:])
-        ):
+        if indices is None:
+            indices = range(len(lane_link.points) - 1)
+        for index in indices:
+            start, end = lane_link.points[index], lane_link.points[index + 1]
             dx = end.x - start.x
             dy = end.y - start.y
             length_sq = dx * dx + dy * dy
@@ -121,7 +165,7 @@ class HighwayLaneMap:
         return best
 
     # BEGIN archived projection changes (2026-09-13; disabled).
-    # Active project() above is restored to the Git HEAD implementation.
+    # The previous diagnostic implementation remains disabled.
     # @staticmethod
     # def _projection_xy(point):
     #     """Snapshot coordinates as finite Python floats, without Point indexing."""

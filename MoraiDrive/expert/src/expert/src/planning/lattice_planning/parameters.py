@@ -120,13 +120,15 @@ ROUNDABOUT_ENTRY_APPROACH_HALF_WIDTH = 5.0 # 접근 영역 중심선 좌우 반�
 ROUNDABOUT_ENTRY_STOP_POINT = (-99.312672408123, 317.798954707105) # 정지선 노드 전역 (x, y) [m]
 ROUNDABOUT_ENTRY_HOLD_POINT = (-99.02, 319.29) # 정지 시 자차 기준점의 측정 좌표; 범퍼 좌표와 다름 [m]
 ROUNDABOUT_ENTRY_MERGE_POINT = ROUNDABOUT_ENTRY_APPROACH_END # 진입 완료 판단용 합류점 전역 (x, y) [m]
+ROUNDABOUT_ENTRY_CIRCULATING_LINK_ID = "A2256W000134" # 합류점의 회전 차로; 후방 차량 방향 판정 기준
 ROUNDABOUT_HOLD_TOLERANCE = 0.25      # 정지 목표 위치 도달 및 통과 판정 허용오차 [m]
 ROUNDABOUT_ENTRY_STOP_BACK_DISTANCE = 1.2 # 정지 목표 위치 뒤쪽으로 확보할 진입 판단 영역 [m]
 ROUNDABOUT_ENTRY_STOP_FORWARD_DISTANCE = 1.2 # 정지 목표 위치 앞쪽으로 확보할 진입 판단 영역 [m]
 
 # 주행 속도와 전방 경로
-ROUNDABOUT_APPROACH_VELOCITY = 15.0 / 3.6 # 정지 목표 위치 접근 속도 상한; 15 km/h [m/s]
+ROUNDABOUT_APPROACH_VELOCITY = 30.0 / 3.6 # 정지 목표 위치 접근 속도 상한; 15 km/h [m/s]
 ROUNDABOUT_ENTRY_CRUISE_VELOCITY = 30.0 / 3.6 # 진입 주행 속도 상한; 30 km/h [m/s]
+ROUNDABOUT_ENTRY_ACCEL_P_GAIN = 0.80 # 진입 허용 후 단독 가속에만 적용할 속도 PID P 게인
 ROUNDABOUT_PREVIEW_POINTS = 200       # 회전교차로 예측에 제공할 전방 경로점 개수
 
 # 충돌 예측과 선행차 추종
@@ -140,8 +142,12 @@ ROUNDABOUT_EMERGENCY_TTC = 0.8         # 예측 충돌 시간이 이 값 이하�
 ROUNDABOUT_FOLLOW_TIME_GAP = 1.2       # 선행차 추종 시 자차 속도에 곱할 시간 간격 [s]
 ROUNDABOUT_FOLLOW_MIN_GAP = 3.0        # 선행차 추종 시 기본으로 확보할 범퍼 간 거리 [m]
 ROUNDABOUT_TRACK_DISTANCE = 60.0      # 자차 주변에서 예측 대상으로 추적할 차량 최대 거리 [m]
+ROUNDABOUT_REAR_TRACK_DISTANCE = 80.0 # 회전 차로에서 합류점으로 뒤따라오는 차량의 추적 거리 [m]
+ROUNDABOUT_ENTRY_REAR_FRONT_MARGIN = 4.0 # 진입 전 후방 회전 차량의 앞쪽에 추가할 충돌 예측 여유 [m]; 0이면 기존 판정
 ROUNDABOUT_COMMITTED_DISTANCE = 35.0  # 진입 시작/완료 후 정지선 주변에서 정책을 유지할 거리 [m]
 ROUNDABOUT_STOP_BUFFER = 0.8          # 현재 미사용: 이전 정지 여유 설정 [m]
+ROUNDABOUT_DEBUG_ENABLED = True      # main.py 실행 시 회전교차로 진입 진단 JSONL 기록
+ROUNDABOUT_DEBUG_INTERVAL = 0.2      # 일반 기록 간격 [s]; 판단/진입/차량 목록 변경 시 즉시 기록
 
 # 시각화: MGeo 링크 A2256W000134를 따라 그리는 원호형 감시 영역
 # 아래 중심선과 반폭은 RViz 표시용이며 실제 충돌 판단은 차량 궤적 예측으로 수행한다.
