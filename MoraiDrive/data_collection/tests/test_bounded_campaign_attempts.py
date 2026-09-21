@@ -169,6 +169,107 @@ class FailedAttemptCleanupTests(unittest.TestCase):
                 self.assertTrue((native / role).is_dir())
                 self.assertEqual(list((native / role).iterdir()), [])
 
+    def test_cleanup_accepts_sealed_native_session_plan_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary) / "campaign"
+            run = base / "campaign_lap_001"
+            evidence = Path(temporary) / "runtime" / run.name
+            run.mkdir(parents=True)
+            evidence.mkdir(parents=True)
+            error = "RuntimeError('session plan failed')"
+            result = {
+                "error": error,
+                "failure_stage": "native_session_plan",
+                "sensor_record_owner_invoked": False,
+                "sensor_record_paths_mutated": False,
+            }
+            seal = {
+                "schema": "morai_sensor_record_pre_capture_failure_v1",
+                "run_name": run.name,
+                "failure_stage": "native_session_plan",
+                "sensor_record_owner_invoked": False,
+                "sensor_record_paths_mutated": False,
+                "error": error,
+            }
+            (run / "NATIVE_CAPTURE_RESULT.json").write_text(
+                json.dumps(result))
+            (evidence / "pre_capture_failure.json").write_text(
+                json.dumps(seal))
+
+            cleaned = cleanup_failed_attempt(
+                run.name, base=base, failure_kind="capture",
+                failure_reason="failed_2", require_storage=False,
+                run_root=run, session_evidence_root=evidence)
+
+            self.assertEqual(cleaned["cleanup_status"], "completed")
+            self.assertEqual(cleaned["recording_state"], "not_started")
+            self.assertEqual(cleaned["deleted_files"], 0)
+            self.assertEqual(
+                cleaned["pre_record_failure_evidence"]["stage"],
+                "native_session_plan")
+
+    def test_cleanup_accepts_other_sealed_pre_redirect_stage(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary) / "campaign"
+            run = base / "campaign_lap_001"
+            evidence = Path(temporary) / "runtime" / run.name
+            run.mkdir(parents=True)
+            evidence.mkdir(parents=True)
+            error = "RuntimeError('record OFF check failed')"
+            stage = "record_off_preflight"
+            payload = {
+                "error": error,
+                "failure_stage": stage,
+                "sensor_record_owner_invoked": False,
+                "sensor_record_paths_mutated": False,
+            }
+            seal = dict(payload,
+                schema="morai_sensor_record_pre_capture_failure_v1",
+                run_name=run.name)
+            (run / "NATIVE_CAPTURE_RESULT.json").write_text(
+                json.dumps(payload))
+            (evidence / "pre_capture_failure.json").write_text(
+                json.dumps(seal))
+
+            cleaned = cleanup_failed_attempt(
+                run.name, base=base, failure_kind="capture",
+                failure_reason="failed_2", require_storage=False,
+                run_root=run, session_evidence_root=evidence)
+
+            self.assertEqual(cleaned["recording_state"], "not_started")
+            self.assertEqual(
+                cleaned["pre_record_failure_evidence"]["stage"], stage)
+
+    def test_cleanup_rejects_ambiguous_native_session_plan_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary) / "campaign"
+            run = base / "campaign_lap_001"
+            evidence = Path(temporary) / "runtime" / run.name
+            run.mkdir(parents=True)
+            evidence.mkdir(parents=True)
+            error = "RuntimeError('session plan failed')"
+            (run / "NATIVE_CAPTURE_RESULT.json").write_text(json.dumps({
+                "error": error,
+                "failure_stage": "native_session_plan",
+                "sensor_record_owner_invoked": False,
+                "sensor_record_paths_mutated": False,
+            }))
+            (evidence / "pre_capture_failure.json").write_text(json.dumps({
+                "schema": "morai_sensor_record_pre_capture_failure_v1",
+                "run_name": run.name,
+                "failure_stage": "native_session_plan",
+                "sensor_record_owner_invoked": False,
+                "sensor_record_paths_mutated": False,
+                "error": error,
+            }))
+            (evidence / "native_session_plan.json").write_text("{}")
+
+            with self.assertRaises(RuntimeError):
+                cleanup_failed_attempt(
+                    run.name, base=base, failure_kind="capture",
+                    failure_reason="failed_2", require_storage=False,
+                    run_root=run, session_evidence_root=evidence)
+
     def test_cleanup_keeps_missing_stop_fail_closed_when_ambiguous(self):
         cases = ("ready", "coordination", "native_payload")
         for case in cases:
@@ -315,7 +416,7 @@ class BoundedCampaignSelectionTests(unittest.TestCase):
                 "deleted_bytes": 100,
             }))
 
-            def fake_validate(row, _scenario):
+            def fake_validate(row, _scenario, *_args, **_kwargs):
                 number = int(row["lap"])
                 return {
                     "lap": number,
@@ -409,7 +510,7 @@ class BoundedCampaignSelectionTests(unittest.TestCase):
                 directory.mkdir()
                 (directory / "payload.bin").write_bytes(b"native")
 
-            def fake_validate(row, _scenario):
+            def fake_validate(row, _scenario, *_args, **_kwargs):
                 number = int(row["lap"])
                 valid = number != 2
                 return {

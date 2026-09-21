@@ -46,6 +46,45 @@ from async_capture.route_signal_contract import build_route_signal_contract
 from native_capture.ground_truth import default_grpc_target
 
 
+PREPARED_NATIVE_ROLES = {
+    'CAMERA_1', 'CAMERA_2', 'CAMERA_3', 'CAMERA_4',
+    'LIDAR_5', 'GPS_6', 'IMU_7',
+}
+
+
+def require_prepared_output_root(output):
+    """Accept only the empty native root prepared by the capture owner."""
+    output = Path(output)
+    if not output.is_dir() or output.is_symlink():
+        raise ValueError('Prepared output root must be a real directory')
+    expected = PREPARED_NATIVE_ROLES | {'SESSION.json', 'supervisor.log'}
+    observed = {path.name for path in output.iterdir()}
+    if observed != expected:
+        raise ValueError(
+            'Prepared output root has unexpected entries: '
+            +repr(sorted(observed ^ expected)))
+    session_path = output/'SESSION.json'
+    log_path = output/'supervisor.log'
+    if (not session_path.is_file() or session_path.is_symlink()
+            or not log_path.is_file() or log_path.is_symlink()):
+        raise ValueError('Prepared output ownership files are invalid')
+    try:
+        session = json.loads(session_path.read_text(encoding='utf-8-sig'))
+    except (OSError, ValueError, TypeError) as exc:
+        raise ValueError('Prepared output SESSION.json is invalid') from exc
+    plan = session.get('plan') if isinstance(session, dict) else None
+    if (not isinstance(session, dict)
+            or session.get('applied') is not True or not isinstance(plan, dict)
+            or plan.get('session') != output.name):
+        raise ValueError('Prepared output SESSION.json ownership mismatch')
+    for role in PREPARED_NATIVE_ROLES:
+        directory = output/role
+        if (not directory.is_dir() or directory.is_symlink()
+                or any(directory.iterdir())):
+            raise ValueError(
+                'Prepared native role must be an empty real directory: '+role)
+
+
 def software_inventory(expert_root):
     files = [
         Path(__file__).resolve(),
@@ -559,6 +598,14 @@ def main():
     p.add_argument('--static-preset',
                    help='Static editor preset name or YAML path; full_loop_static only')
     p.add_argument(
+        '--scenario-weather', choices=('SUNNY', 'FOGGY'),
+        help='Force the run weather from a sealed collection plan',
+    )
+    p.add_argument(
+        '--scenario-hour', type=int, choices=(11, 13, 15),
+        help='Force the run hour from a sealed collection plan',
+    )
+    p.add_argument(
         '--expert-runtime', choices=('current',), default='current',
         help='Execute MoraiDrive/expert; the frozen proven mode has been removed',
     )
@@ -570,6 +617,11 @@ def main():
     p.add_argument('--expert-wall-clock',action='store_true',
                    help='Explicit diagnostic wall-time expert scheduling; restore use_sim_time after run')
     p.add_argument('--output', type=Path)
+    p.add_argument(
+        '--prepared-output-root', action='store_true',
+        help=('Use the empty native Sensor Record root prepared by the outer '
+              'capture owner; rejected unless its ownership seal is exact'),
+    )
     p.add_argument('--episodes', type=int, default=1)
     p.add_argument('--seconds', type=float, default=90, help='Maximum driving wall seconds; stop earlier at route completion')
     p.add_argument('--full-lap', action='store_true', help='Require selected-scenario route completion; permit a bounded wall budget up to 3540 seconds')
@@ -599,8 +651,6 @@ def main():
     os.environ['MORAI_EXPERT_MODE'] = a.expert_runtime
     print('[Expert] mode=' + a.expert_runtime, flush=True)
     print('[Expert] root=' + str(expert_root), flush=True)
-    if not a.grpc_target:
-        a.grpc_target = default_grpc_target()
     if a.static_preset:
         if a.scenario != 'full_loop_static':
             p.error('--static-preset requires --scenario full_loop_static')
@@ -608,9 +658,8 @@ def main():
             a.static_preset = resolve_static_preset(a.static_preset)
         except ValueError as error:
             p.error(str(error))
-    # The main adapter supports environment discovery; the collection command
-    # remains authoritative about the exact target as it was before migration.
-    os.environ['MORAI_GRPC_TARGET'] = a.grpc_target
+    if (a.scenario_weather is None) != (a.scenario_hour is None):
+        p.error('--scenario-weather and --scenario-hour must be provided together')
     if a.time_mode=='simulation_free_run' and a.policy_study:
         p.error('Simulation diagnostic cannot use a RealTime policy study')
     ros_clock_expert = a.time_mode=='simulation_free_run' and not a.expert_wall_clock
@@ -634,6 +683,16 @@ def main():
     if not 1 <= a.episodes <= 5 or not 20 <= a.seconds <= max_seconds or not 5 <= a.max_speed_kmh <= 60:
         p.error('Require bounded episodes=1..5, seconds=20..%d, speed=5..60' % max_seconds)
     global_cfg, _, cfg = load_configuration()
+    if not a.grpc_target:
+        if a.check:
+            a.grpc_target = '{}:{}'.format(
+                global_cfg['grpc']['host'], global_cfg['grpc']['port'])
+        else:
+            a.grpc_target = default_grpc_target()
+    # The main adapter supports environment discovery; the collection command
+    # remains authoritative about the exact live target. Offline --check uses
+    # only the checked-in configuration and must not probe a PC network.
+    os.environ['MORAI_GRPC_TARGET'] = a.grpc_target
     resolved_expert_root = Path(global_cfg['paths']['expert_root']).resolve()
     if resolved_expert_root != expert_root:
         raise RuntimeError(
@@ -646,6 +705,9 @@ def main():
                expert_max_velocity_kmh=a.max_speed_kmh,
                expert_python_executable='/usr/bin/python3',
                expert_ros_remaps=['/ctrl_cmd:=' + a.control_topic])
+    if a.scenario_weather is not None:
+        cfg['forced_weather'] = a.scenario_weather
+        cfg['forced_time_hour'] = a.scenario_hour
     if a.scenario in MISSION_MODES:
         cfg['mission_mode'] = a.scenario
     if a.static_preset:
@@ -700,7 +762,12 @@ def main():
                     require_ssd(a.policy_study, reserve_bytes=0)
                     if not (a.policy_study/'report.json').is_file():
                         raise ValueError('Frozen policy study report missing')
-                output.mkdir(parents=True, exist_ok=False)
+                if a.prepared_output_root:
+                    if a.output is None:
+                        p.error('--prepared-output-root requires --output')
+                    require_prepared_output_root(output)
+                else:
+                    output.mkdir(parents=True, exist_ok=False)
                 if ros_clock_expert:
                     os.environ.update(ROS_LOG_DIR=str(output/'ros_logs'), ROS_HOME=str(output/'ros_home'))
                     clock_guard=RosClockGuard()

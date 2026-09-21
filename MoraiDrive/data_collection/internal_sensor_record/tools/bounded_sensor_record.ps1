@@ -5,11 +5,18 @@ param([int]$SimulatorProcessId, [string]$OutputDirectory, [int]$WallSeconds=12,
       [string]$CoordinationDirectory='', [switch]$ObserveOnly, [switch]$RestoreWindow)
 $ErrorActionPreference='Stop'
 if ($WallSeconds -lt 2 -or $WallSeconds -gt 3540) {throw 'Use 2..3540 wall seconds'}
-$allowedPrefix=(Join-Path $AllowedRoot 'sensor_record_auto_v1')+'\'
-if (-not $OutputDirectory.StartsWith($allowedPrefix,[StringComparison]::OrdinalIgnoreCase)) {throw 'Unexpected output root'}
+function Test-AllowedCapturePath([string]$path) {
+ $full=[IO.Path]::GetFullPath($path)
+ foreach($relativeRoot in @('sensor_record_auto_v1','dataset\.collecting')) {
+  $prefix=[IO.Path]::GetFullPath((Join-Path $AllowedRoot $relativeRoot)).TrimEnd('\')+'\'
+  if ($full.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)) {return $true}
+ }
+ return $false
+}
+if (-not (Test-AllowedCapturePath $OutputDirectory)) {throw 'Unexpected output root'}
 if (Test-Path -LiteralPath $OutputDirectory) {throw 'Output already exists'}
 if ($CoordinationDirectory) {
- if (-not $CoordinationDirectory.StartsWith($allowedPrefix,[StringComparison]::OrdinalIgnoreCase)) {
+ if (-not (Test-AllowedCapturePath $CoordinationDirectory)) {
   throw 'Unexpected coordination root'
  }
  if (-not (Test-Path -LiteralPath $CoordinationDirectory -PathType Container)) {
@@ -53,7 +60,7 @@ function Join-Error([string]$primary,[string]$secondary) {
 }
 function Write-CoordinationMarker([string]$name,[hashtable]$payload) {
  if (-not $CoordinationDirectory) {return}
- if (-not $CoordinationDirectory.StartsWith($allowedPrefix,[StringComparison]::OrdinalIgnoreCase)) {
+ if (-not (Test-AllowedCapturePath $CoordinationDirectory)) {
   throw 'Unexpected coordination root'
  }
  # The Python owner creates this before UI ownership. Recreate it defensively

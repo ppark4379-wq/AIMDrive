@@ -9,6 +9,7 @@ enabled by this tool.
 """
 
 import argparse
+import ast
 import copy
 import hashlib
 import json
@@ -91,6 +92,14 @@ def parse_args(argv=None):
         default=None,
         metavar="ACCEPTED",
         help="Stop early after this many accepted layouts",
+    )
+    parser.add_argument(
+        "--accepted-route-targets",
+        metavar="SHORT,ALTERNATE,WIDE",
+        help=(
+            "Stop early only after accepted Expert paths reach all three "
+            "route-class targets"
+        ),
     )
     return parser.parse_args(argv)
 
@@ -412,6 +421,18 @@ def read_closed_loop_evidence(log_path):
         float(value)
         for value in re.findall(r"\bcte=([0-9]+(?:\.[0-9]+)?)", text)
     ]
+    route_matches = re.findall(
+        r"'selected_routes':\s*(\[[^\]]*\])", text
+    )
+    selected_routes = []
+    for encoded in reversed(route_matches):
+        try:
+            parsed = ast.literal_eval(encoded)
+        except (SyntaxError, ValueError):
+            continue
+        if isinstance(parsed, list) and parsed:
+            selected_routes = [str(item) for item in parsed]
+            break
     return {
         "goal_reached": "[KCityFullLoop] GOAL REACHED" in text,
         "valid_plan_samples": len(re.findall(
@@ -421,7 +442,37 @@ def read_closed_loop_evidence(log_path):
         "max_cross_track_error_m": (
             max(cross_track_samples) if cross_track_samples else None
         ),
+        "selected_routes": selected_routes,
     }
+
+
+def classify_selected_routes(routes):
+    routes = list(routes)
+    if len(routes) >= 3:
+        return "wide"
+    if routes == ["right_02.csv", "right_03.csv"]:
+        return "alternate"
+    if routes and routes[0] == "right_04.csv":
+        return "alternate"
+    return "short"
+
+
+def parse_route_targets(value):
+    if not value:
+        return None
+    try:
+        numbers = tuple(int(item) for item in value.split(","))
+    except ValueError as error:
+        raise ValueError(
+            "--accepted-route-targets requires three integers"
+        ) from error
+    if len(numbers) != 3 or any(item < 0 for item in numbers):
+        raise ValueError(
+            "--accepted-route-targets requires three non-negative integers"
+        )
+    if sum(numbers) < 1:
+        raise ValueError("At least one accepted route target must be positive")
+    return dict(zip(("short", "alternate", "wide"), numbers))
 
 
 def build_candidate_document(name, seed, attempt, obstacles, policy):
@@ -442,6 +493,10 @@ def build_candidate_document(name, seed, attempt, obstacles, policy):
 
 def main(argv=None):
     args = parse_args(argv)
+    try:
+        route_targets = parse_route_targets(args.accepted_route_targets)
+    except ValueError as error:
+        raise SystemExit(str(error))
     if args.attempts < 1:
         raise SystemExit("--attempts must be at least 1")
     if args.min_obstacles < 1 or args.max_obstacles < args.min_obstacles:
@@ -456,6 +511,10 @@ def main(argv=None):
         raise SystemExit("--signal-stop-timeout-sec must be positive")
     if args.keep_going_after is not None and args.keep_going_after < 1:
         raise SystemExit("--keep-going-after must be positive")
+    if args.keep_going_after is not None and route_targets is not None:
+        raise SystemExit(
+            "--keep-going-after and --accepted-route-targets are mutually exclusive"
+        )
 
     seed = (
         int(args.seed) if args.seed is not None
@@ -486,6 +545,9 @@ def main(argv=None):
         "seed": seed,
         "requested_attempts": int(args.attempts),
         "accepted_count": 0,
+        "accepted_route_counts": {
+            "short": 0, "alternate": 0, "wide": 0,
+        },
         "rejected_count": 0,
         "interrupted": False,
         "created_at_unix": time.time(),
@@ -502,6 +564,7 @@ def main(argv=None):
             "signal_stop_timeout_sec": float(args.signal_stop_timeout_sec),
             "max_cross_track_error_m": float(args.max_cross_track_error_m),
             "models": policy["models"],
+            "accepted_route_targets": route_targets,
         },
         "attempts": [],
         "accepted_presets": [],
@@ -574,6 +637,8 @@ def main(argv=None):
                 rejection_reasons.append("goal_not_proven")
             if evidence["valid_plan_samples"] < 1:
                 rejection_reasons.append("no_valid_expert_plan_sample")
+            if not evidence["selected_routes"]:
+                rejection_reasons.append("selected_route_evidence_missing")
             max_cte = evidence["max_cross_track_error_m"]
             if max_cte is None:
                 rejection_reasons.append("cross_track_evidence_missing")
@@ -592,6 +657,9 @@ def main(argv=None):
                 **result,
             }
             if accepted:
+                route_class = classify_selected_routes(
+                    evidence["selected_routes"]
+                )
                 document["source"] = "automated_static_expert_verified"
                 document["generation"][
                     "candidate_only_until_expert_passes"
@@ -605,14 +673,17 @@ def main(argv=None):
                         args.max_cross_track_error_m
                     ),
                     "valid_plan_samples": evidence["valid_plan_samples"],
+                    "selected_routes": evidence["selected_routes"],
                     "verified_at_unix": time.time(),
                     "log": portable_path(log_path),
                 }
                 accepted_path = output_dir / (candidate_name + ".yaml")
                 write_yaml_atomic(accepted_path, document)
                 row["accepted_preset"] = portable_path(accepted_path)
+                row["route_class"] = route_class
                 row["sha256"] = sha256_file(accepted_path)
                 manifest["accepted_count"] += 1
+                manifest["accepted_route_counts"][route_class] += 1
                 manifest["accepted_presets"].append(
                     portable_path(accepted_path)
                 )
@@ -636,10 +707,29 @@ def main(argv=None):
                 and manifest["accepted_count"] >= args.keep_going_after
             ):
                 break
+            if (
+                route_targets is not None
+                and all(
+                    manifest["accepted_route_counts"][key] >= target
+                    for key, target in route_targets.items()
+                )
+            ):
+                print(
+                    "[STATIC BATCH] accepted route targets reached: {}".format(
+                        manifest["accepted_route_counts"]
+                    )
+                )
+                break
     except KeyboardInterrupt:
         manifest["interrupted"] = True
         print("\n[STATIC BATCH] interrupted; completed results are preserved")
     finally:
+        manifest["accepted_route_targets_met"] = (
+            all(
+                manifest["accepted_route_counts"][key] >= target
+                for key, target in route_targets.items()
+            ) if route_targets is not None else None
+        )
         manifest["finished_at_unix"] = time.time()
         write_json_atomic(manifest_path, manifest)
 
@@ -649,6 +739,17 @@ def main(argv=None):
         manifest["rejected_count"],
     ))
     print("[STATIC BATCH DONE] manifest={}".format(manifest_path))
+    if manifest["interrupted"]:
+        raise SystemExit(130)
+    if route_targets is not None and not manifest["accepted_route_targets_met"]:
+        print(
+            "[STATIC BATCH INCOMPLETE] accepted route targets were not met: "
+            "target={} actual={}".format(
+                route_targets, manifest["accepted_route_counts"]
+            ),
+            file=sys.stderr,
+        )
+        raise SystemExit(3)
 
 
 if __name__ == "__main__":

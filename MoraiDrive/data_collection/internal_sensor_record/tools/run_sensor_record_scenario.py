@@ -132,6 +132,45 @@ def powershell_with_heartbeat(script, *, timeout, label, heartbeat_seconds=30):
         worker.join(timeout=2)
 
 
+def abort_before_native_redirect(run, evidence, args, stage, exc):
+    """Seal and stop after a failure before any SensorData redirect.
+
+    This narrowly scoped record lets campaign cleanup distinguish a failure
+    before junction mutation from an ambiguous recording failure.
+    """
+    run.mkdir(parents=True, exist_ok=False)
+    error = repr(exc)
+    seal = dict(
+        schema='morai_sensor_record_pre_capture_failure_v1',
+        run_name=args.name,
+        scenario_name=args.scenario,
+        failure_stage=stage,
+        sensor_record_owner_invoked=False,
+        sensor_record_paths_mutated=False,
+        error=error,
+        created_wall_ns=time.time_ns(),
+        training_visible=False,
+    )
+    seal_path=evidence/'pre_capture_failure.json'
+    write_json(seal_path,seal)
+    write_json(run/'NATIVE_CAPTURE_RESULT.json',dict(
+        error=error,
+        scenario_name=args.scenario,
+        scenario_runtime=args.scenario_runtime,
+        scenario_exit_code=None,
+        failure_stage=stage,
+        sensor_record_owner_invoked=False,
+        sensor_record_paths_mutated=False,
+        pre_capture_failure_evidence=str(seal_path),
+        training_visible=False,
+        physical_simultaneity_verified=False,
+    ))
+    print(json.dumps(dict(
+        output=str(run),scenario_name=args.scenario,error=error,
+    )),flush=True)
+    raise SystemExit(2)
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--name',required=True)
@@ -143,6 +182,14 @@ def main():
                    help='Main Scenario Runner mode to execute (default: full_loop)')
     p.add_argument('--static-preset',
                    help='Static editor preset name or YAML path; full_loop_static only')
+    p.add_argument(
+        '--scenario-weather', choices=('SUNNY', 'FOGGY'),
+        help='Force weather from the sealed collection plan',
+    )
+    p.add_argument(
+        '--scenario-hour', type=int, choices=(11, 13, 15),
+        help='Force hour from the sealed collection plan',
+    )
     p.add_argument(
         '--scenario-runtime', choices=('current',), default='current',
         help=(
@@ -191,6 +238,8 @@ def main():
         p.error('Seed must be in [0, 2^31)')
     if a.static_preset and a.scenario != 'full_loop_static':
         p.error('--static-preset requires --scenario full_loop_static')
+    if (a.scenario_weather is None) != (a.scenario_hour is None):
+        p.error('--scenario-weather and --scenario-hour must be provided together')
     immutable_preflight=capture_preflight(a.assembly,a.sensor_set,a.static_evidence)
     if not immutable_preflight['ready']:
         raise RuntimeError('Pinned MORAI build/sensor-set preflight failed: '+str(immutable_preflight['failures']))
@@ -235,7 +284,13 @@ def main():
         "-ExpectedVolumeId '%s' -ReserveBytes %d%s"%
         (a.name,WINDOWS_ROOT,WINDOWS_SENSOR_DATA_ROOT,expected_volume,
          storage['reserve_bytes'],target_argument))
-    session_plan=json.loads(powershell(session_script,timeout=30))
+    try:
+        session_plan=json.loads(powershell(session_script,timeout=30))
+    except Exception as exc:
+        if not direct:
+            raise
+        abort_before_native_redirect(
+            run,evidence,a,'native_session_plan',exc)
     if session_plan.get('bootstrap'):
         previous_links=[]
         previous_native=None
@@ -262,18 +317,36 @@ def main():
     # when the actual /Ego_topic vehicle-info connection has stopped sending.
     log_root=ensure_runtime_directory('sensor_record_preflight_logs')
     env['ROS_LOG_DIR']=str(log_root)
-    preflight=subprocess.run(['/usr/bin/python3',str(ROOT/'tools/probe_sensor_record_readiness.py'),
-        '--raw-camera-transport',a.raw_camera_transport],
-        env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=20)
+    try:
+        preflight=subprocess.run(['/usr/bin/python3',str(ROOT/'tools/probe_sensor_record_readiness.py'),
+            '--raw-camera-transport',a.raw_camera_transport],
+            env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=20)
+    except Exception as exc:
+        if not direct:
+            raise
+        abort_before_native_redirect(
+            run,evidence,a,'live_sensor_preflight',exc)
     print(preflight.stdout,flush=True)
     if preflight.returncode:
-        raise RuntimeError('Live sensor preflight failed before any scenario reset: '+preflight.stderr[-1000:])
+        exc=RuntimeError(
+            'Live sensor preflight failed before any scenario reset: '
+            +preflight.stderr[-1000:])
+        if direct:
+            abort_before_native_redirect(
+                run,evidence,a,'live_sensor_preflight',exc)
+        raise exc
     grpc_target=default_grpc_target()
-    gt=GrpcGroundTruth(grpc_target,timeout=3)
     try:
-        mode_observation=gt.call(gt.simulation.GetSynchronousMode,gt.Empty())
-        observed_mode=require_free_running_mode(mode_observation,'simulation_free_run')
-    finally:gt.close()
+        gt=GrpcGroundTruth(grpc_target,timeout=3)
+        try:
+            mode_observation=gt.call(gt.simulation.GetSynchronousMode,gt.Empty())
+            observed_mode=require_free_running_mode(mode_observation,'simulation_free_run')
+        finally:gt.close()
+    except Exception as exc:
+        if not direct:
+            raise
+        abort_before_native_redirect(
+            run,evidence,a,'simulation_mode_preflight',exc)
     coordination=ep/'sensor_record_coordination'
     # Keep the established production runner path for process-lock identity
     # and recorded software provenance; it now uses only MoraiDrive/expert.
@@ -283,6 +356,11 @@ def main():
              '--expert-runtime',a.scenario_runtime]
     if a.static_preset:
         command += ['--static-preset', a.static_preset]
+    if a.scenario_weather is not None:
+        command += [
+            '--scenario-weather', a.scenario_weather,
+            '--scenario-hour', str(a.scenario_hour),
+        ]
     command += [
         '--time-mode','simulation_free_run','--collision-policy','record',
         '--max-speed-kmh','60','--seconds',str(a.seconds),'--audit-scope','timing','--output',str(run),
@@ -290,6 +368,8 @@ def main():
         '--sensor-record-coordination',str(coordination),
         '--raw-camera-transport',a.raw_camera_transport,'--seed',str(a.seed),
         '--grpc-target',grpc_target]
+    if direct:
+        command.append('--prepared-output-root')
     if a.profile_state is not None:
         command += ['--profile-state',str(a.profile_state)]
     if a.full_lap:command.append('--full-lap')
@@ -308,19 +388,46 @@ def main():
     # Ctrl-C can terminate the WSL parent before the Windows UI owner finishes
     # its finally block.  Before changing any SensorData junction, observe the
     # real MORAI lamp and close a stale recording session if necessary.
-    ensure_off_process=subprocess.run(
-        [sys.executable,str(ROOT/'tools/recover_sensor_record_stop.py'),
-         '--pid',str(a.pid),'--name',a.name+'_preflight_ui',
-         '--output',str(preflight_ui_path)],
-        stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=45,
-    )
+    try:
+        ensure_off_process=subprocess.run(
+            [sys.executable,str(ROOT/'tools/recover_sensor_record_stop.py'),
+             '--pid',str(a.pid),'--name',a.name+'_preflight_ui',
+             '--output',str(preflight_ui_path)],
+            stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=45,
+        )
+    except Exception as exc:
+        if not direct:
+            raise
+        abort_before_native_redirect(
+            run,evidence,a,'record_off_preflight',exc)
     if ensure_off_process.returncode:
-        raise RuntimeError('Cannot establish Sensor Record OFF before native redirect: '
-                           +ensure_off_process.stderr[-1000:])
-    ensure_off_result=json.loads(ensure_off_process.stdout)
+        exc=RuntimeError(
+            'Cannot establish Sensor Record OFF before native redirect: '
+            +ensure_off_process.stderr[-1000:])
+        if direct:
+            abort_before_native_redirect(
+                run,evidence,a,'record_off_preflight',exc)
+        raise exc
+    try:
+        ensure_off_result=json.loads(ensure_off_process.stdout)
+    except Exception as exc:
+        if not direct:
+            raise
+        abort_before_native_redirect(
+            run,evidence,a,'record_off_preflight',exc)
     if ensure_off_result.get('status') != 'off_verified':
-        raise RuntimeError('Sensor Record OFF recovery returned an invalid result')
-    write_json(session_plan_path,session_plan)
+        exc=RuntimeError('Sensor Record OFF recovery returned an invalid result')
+        if direct:
+            abort_before_native_redirect(
+                run,evidence,a,'record_off_preflight',exc)
+        raise exc
+    try:
+        write_json(session_plan_path,session_plan)
+    except Exception as exc:
+        if not direct:
+            raise
+        abort_before_native_redirect(
+            run,evidence,a,'native_session_plan_seal',exc)
     windows_plan=windows_path(session_plan_path)
     apply_script='& {\n'+(ROOT/'tools/prepare_sensor_record_session.ps1').read_text()+(
         "\n} -SessionName '%s' -StorageRoot '%s' -SensorDataRoot '%s' "

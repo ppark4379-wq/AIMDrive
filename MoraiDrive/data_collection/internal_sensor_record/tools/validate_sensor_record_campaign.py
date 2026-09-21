@@ -33,6 +33,8 @@ from python_environment import (
 )
 from dataset_layout import (
     campaign_root_from_metadata,
+    collecting_campaign,
+    final_campaign,
     finalize_collecting_campaign,
     find_campaign,
     is_direct_campaign_metadata,
@@ -58,6 +60,49 @@ SEALED_STAGES = {
     "review": ("review_closeout", "COMPLETE.json"),
     "admission": ("admission_v1", "COMPLETE.json"),
 }
+
+
+def finalize_direct_local_publication(campaign, output, storage_root,
+                                      scenario_name, plan):
+    """Finalize a direct campaign and write its publication record once."""
+    campaign = Path(campaign).resolve()
+    output = Path(output).resolve()
+    source = campaign_root_from_metadata(campaign)
+    campaign_id = plan["campaign_id"]
+    dataset_campaign_id = plan.get("dataset_campaign_id", campaign_id)
+    expected_staging = collecting_campaign(
+        storage_root, scenario_name, campaign_id).resolve()
+    expected_final = final_campaign(
+        storage_root, scenario_name, dataset_campaign_id).resolve()
+    try:
+        relative_output = output.relative_to(source)
+    except ValueError as exc:
+        raise ValueError("Validation output is outside its direct campaign") from exc
+
+    promoted = False
+    if source == expected_staging:
+        finalized = finalize_collecting_campaign(
+            campaign, storage_root, scenario_name,
+            campaign_id, dataset_campaign_id)
+        promoted = True
+        campaign = finalized / "_campaign"
+        output = finalized / relative_output
+    elif source == expected_final:
+        finalized = source
+    else:
+        raise ValueError("Direct campaign is outside staging/final dataset roots")
+
+    publication = {
+        "schema": "morai_local_dataset_campaign_v2",
+        "scenario_folder": plan["dataset_scenario_folder"],
+        "campaign_id": campaign_id,
+        "dataset_campaign_id": dataset_campaign_id,
+        "campaign": str(finalized),
+        "hardlinked": False,
+        "direct_capture": True,
+    }
+    write_json(output / "local_dataset_publication.json", publication)
+    return campaign, output, publication, promoted
 
 
 def offline_stages(run, episode):
@@ -279,7 +324,10 @@ def _lap_numbers(laps):
     return ",".join("%03d" % number for number in numbers) if numbers else "-"
 
 
-def validate_lap(row, expected_scenario="full_loop", campaign=None):
+def validate_lap(
+    row, expected_scenario="full_loop", campaign=None,
+    planned_static_run=None,
+):
     run = campaign_run(campaign, row["run_name"]) if campaign else BASE / row["run_name"]
     episode = run / "episode_000"
     errors = []
@@ -349,6 +397,15 @@ def validate_lap(row, expected_scenario="full_loop", campaign=None):
             and profile_state.get("time_hour") == int(row["time_hour"])
             and profile_state.get("static_obstacle_model") == row.get("static_obstacle")
             and profile_state.get("dynamic_obstacle_model") == row.get("dynamic_obstacle")
+        ),
+        "static_collection_plan_environment": (
+            planned_static_run is None
+            or (
+                setup.get("profile", {}).get("weather")
+                == planned_static_run.get("weather")
+                and setup.get("time_hour")
+                == int(planned_static_run.get("time_hour", -1))
+            )
         ),
         "full_lap_completed": outcome.get("full_mission_completed") is True,
         "capture_contract": admission.get("capture_contract_valid") is True,
@@ -465,6 +522,23 @@ def _main():
     plan = load(campaign / "campaign_plan.json")
     rows = completed_rows(campaign / "runs.tsv")
     requested = int(plan["requested_laps"])
+    static_plan_rows = {}
+    static_plan_name = plan.get("static_collection_plan_evidence")
+    if static_plan_name:
+        static_plan_path = campaign / static_plan_name
+        expected_static_plan_sha = plan.get("static_collection_plan_sha256")
+        if not static_plan_path.is_file():
+            raise ValueError("sealed static collection plan is missing")
+        if not expected_static_plan_sha or digest(static_plan_path) != expected_static_plan_sha:
+            raise ValueError("sealed static collection plan SHA-256 mismatch")
+        static_plan = load(static_plan_path)
+        if static_plan.get("scenario") != "full_loop_static":
+            raise ValueError("invalid static collection plan scenario")
+        static_plan_rows = {
+            int(item["run"]): item for item in static_plan.get("runs", [])
+        }
+        if sorted(static_plan_rows)[:requested] != list(range(1, requested + 1)):
+            raise ValueError("static collection plan does not cover every requested lap")
     scenario_name = plan.get("scenario_name", "full_loop")
     scenario_supported = scenario_name in PRIMARY_SCENARIOS
     laps = []
@@ -545,7 +619,10 @@ def _main():
                         complete_bev_geometry_recovery(
                             run, analysis_python=analysis_python,
                             env=review_env, log=log)
-                lap = validate_lap(row, scenario_name, campaign)
+                lap = validate_lap(
+                    row, scenario_name, campaign,
+                    planned_static_run=static_plan_rows.get(index),
+                )
                 lap.update({
                     "capture_status": "succeeded",
                     "validation_status": "passed" if lap["valid"] else "failed",
@@ -624,7 +701,11 @@ def _main():
     # models are seeded random choices, so an adjacent repeat is valid and
     # must not make a sound capture fail.
     variation_valid = all(
-        not row["contract_required"] or row["weather_changed"]
+        not row["contract_required"]
+        or (
+            row["weather_changed"]
+            and (not static_plan_rows or row["time_changed"])
+        )
         for row in adjacent_variation
     )
     variation_coverage = {
@@ -697,6 +778,9 @@ def _main():
         "analysis_environment": analysis_environment_report,
         "scenario_supported": scenario_supported,
         "campaign_plan_sha256": digest(campaign / "campaign_plan.json"),
+        "static_collection_plan_sha256": plan.get(
+            "static_collection_plan_sha256"
+        ),
         "runs_ledger_sha256": digest(campaign / "runs.tsv"),
         "collection_completion_present": completion.is_file(),
         "collection_completion_scenario_matches": completion_scenario == scenario_name,
@@ -734,7 +818,11 @@ def _main():
         ),
         "subset_coverage_preserved": subset_coverage_preserved,
         "adjacent_environment_and_obstacle_variation": adjacent_variation,
-        "variation_contract": "weather alternates; time and obstacle choices may repeat",
+        "variation_contract": (
+            "sealed static plan: weather and time do not repeat on adjacent runs"
+            if static_plan_rows else
+            "weather alternates; time and obstacle choices may repeat"
+        ),
         "variation_coverage": variation_coverage,
         "full_attempt_variation_coverage": full_variation_coverage,
         "variation_valid": variation_valid,
@@ -745,7 +833,8 @@ def _main():
         "interpretation": (
             "PASS proves sealed native inputs, 10Hz cadence, ROS/native LiDAR identity, "
             "teacher continuity, actor/light transport, selected-scenario completion, and per-lap "
-            "team-scenario weather alternation. It does not create MORAI's missing official "
+            "environment contract (including sealed static-plan weather/time when present). "
+            "It does not create MORAI's missing official "
             "millisecond physical-exposure guarantee."
         ),
     }
@@ -777,12 +866,25 @@ def _main():
     if report["valid"] and len(valid_laps) >= 2 and not args.no_prepare_training:
         training_output = output / "training_dataset_v1"
         print("[BUILD] preparing direct-reference visual training manifests", flush=True)
-        built = subprocess.run([
+        build_command = [
             str(analysis_python),
             str(INTEGRATION / "tools" / "build_sensor_record_training_dataset.py"),
             "--validation-report", str(output / "report.json"),
             "--output", str(training_output),
-        ], env=review_env, text=True)
+        ]
+        split_plan_name = plan.get("static_collection_plan_evidence")
+        if split_plan_name:
+            split_plan_path = campaign / split_plan_name
+            expected_split_sha = plan.get("static_collection_plan_sha256")
+            if not expected_split_sha:
+                raise ValueError(
+                    "campaign plan is missing static collection plan SHA-256"
+                )
+            build_command.extend([
+                "--split-plan", str(split_plan_path),
+                "--split-plan-sha256", str(expected_split_sha),
+            ])
+        built = subprocess.run(build_command, env=review_env, text=True)
         training = {
             "return_code": int(built.returncode),
             "manifest_index": str(training_output / "manifest_index.json"),
@@ -835,8 +937,7 @@ def _main():
             "hardlinked": False,
             "direct_capture": True,
         }
-        write_json(output / "local_dataset_publication.json", local_publication)
-        print("[LOCAL] direct dataset validated in staging: "
+        print("[LOCAL] direct dataset validated: "
               + local_publication["campaign"], flush=True)
     elif plan.get("campaign_id"):
         from nas_publish import materialize_validated
@@ -857,16 +958,11 @@ def _main():
     # publication artifact is sealed.  os.replace is an instant same-volume
     # directory rename; no sensor payload is copied.
     if direct_layout:
-        old_root = campaign_root_from_metadata(campaign)
-        relative_output = output.relative_to(old_root)
-        finalized = finalize_collecting_campaign(
-            campaign, SSD_ROOT, scenario_name, plan["campaign_id"],
-            plan.get("dataset_campaign_id", plan["campaign_id"]))
-        campaign = finalized / "_campaign"
-        output = finalized / relative_output
-        local_publication["campaign"] = str(finalized)
-        write_json(output / "local_dataset_publication.json", local_publication)
-        print("[LOCAL] canonical dataset ready: " + str(finalized), flush=True)
+        campaign, output, local_publication, promoted = (
+            finalize_direct_local_publication(
+                campaign, output, SSD_ROOT, scenario_name, plan))
+        print("[LOCAL] canonical dataset ready: "
+              + local_publication["campaign"], flush=True)
 
     from runtime_paths import LOCAL_MACHINE
     auto_nas = LOCAL_MACHINE.get("nas_auto_publish", False)

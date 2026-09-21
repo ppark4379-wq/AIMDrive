@@ -244,6 +244,20 @@ cd ~/AIMDrive/MoraiDrive
   --max-obstacles 3
 ```
 
+특정 Expert 경로 유형의 승인 후보를 채울 때는 최대 시도 횟수 안에서 목표가 모두
+충족될 때 조기 종료하도록 지정할 수 있다. 배치 생성기의 진단 분류는
+short/alternate/wide이고, 최종 수집 계획에서는 short와 alternate를 모두
+`compact`로 합친다. 아래 예시는 2개 장애물 후보 중 short 승인 경로 2개를 확보한다.
+
+```bash
+./scenario_runner/tools/run_static_scenario_batch.sh \
+  --attempts 30 \
+  --min-obstacles 2 \
+  --max-obstacles 2 \
+  --accepted-route-targets 2,0,0 \
+  --name static_balance_pair_$(date +%Y%m%d_%H%M%S)
+```
+
 100회 시도는 100개의 서로 다른 후보를 뜻하며, 통과 개수는 실행 결과에 따라
 작아질 수 있다. 후보 YAML과 전체 로그는
 `scenario_runner/.runtime/static_scenario_batch/<suite>/`에 남고, 통과한
@@ -286,3 +300,29 @@ Expert가 플래너 오류로 막히고 유효한 회피 후보가 없는 상태
 남으며, suite manifest도 자동 승인과 수동 승인을 별도로 집계한다. 충돌, 미완주,
 유효 경로 부재, 실행 실패와 시간 초과는 눈으로 괜찮아 보이더라도 수동 승인할 수
 없다.
+
+### 정적 장애물 수집 분포 계획
+
+검증된 프리셋을 바로 전부 수집하지 않고 collection plan을 먼저 만든다. 기본 100회
+계획은 현재 검증 후보 풀에 맞춰 장애물 수 1/2/3개를 30/34/36회, Expert 경로
+compact/wide를 44/56회로 맞춘다. `compact`는 Expert의 작은·중간 회피를 함께
+뜻하며, 실제 검증
+주행의 장애물 수, 경로 우회 정도와 최대 횡오차로
+산출한 challenge score 순위를 easy/medium/hard 30/40/30으로 나누며, split은
+프레임이 아니라 프리셋 단위 train/val/test 80/10/10이다. 모델, 종방향 위치,
+횡방향 위치, 크기는 해당 제약 안에서 가능한 한 균등하게 선택한다. 각 run의 환경도
+plan에 고정하며, 기본값은 SUNNY/FOGGY 50/50과 11/13/15시 34/33/33이다.
+연속 run은 같은 날씨나 같은 시간을 반복하지 않는다.
+
+```bash
+/usr/bin/python3 scenario_runner/tools/static_collection_plan.py build \
+  --suite scenario_runner/config/static_scenario_presets/generated/<suite1>/suite_manifest.json \
+  --suite scenario_runner/config/static_scenario_presets/generated/<suite2>/suite_manifest.json \
+  --output scenario_runner/config/static_scenario_presets/plans/static_balanced_100.json
+```
+
+후보가 부족하거나 개수·경로의 결합 분포를 만족할 수 없으면 `ready=false`와 부족한
+유형을 출력하며 정상 수집 계획으로 사용할 수 없다. 계획이 완성되면 각 프리셋의
+SHA-256을 고정하고 02번 수집기가 run마다 서로 다른 프리셋을 선택한다. 계획 또는
+YAML이 이후 변경되면 수집 전 검사가 실패한다. Scenario Runner가 적용한 날씨·시간이
+해당 run의 plan과 다르면 수집 원본은 보존하지만 캠페인을 즉시 중단한다.

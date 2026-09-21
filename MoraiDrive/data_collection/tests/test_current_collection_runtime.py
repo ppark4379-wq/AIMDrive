@@ -87,6 +87,37 @@ class CurrentCollectionRuntimeTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     module.require_expert_root('proven')
 
+    def test_prepared_native_output_requires_exact_empty_owned_layout(self):
+        spec = importlib.util.spec_from_file_location('prepared_output_test', RUNNER)
+        module = importlib.util.module_from_spec(spec)
+        with patch.object(sys, 'path', list(sys.path)), patch.dict(os.environ):
+            spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / 'campaign_lap_001'
+            output.mkdir()
+            for role in module.PREPARED_NATIVE_ROLES:
+                (output / role).mkdir()
+            (output / 'supervisor.log').write_text('')
+            (output / 'SESSION.json').write_text(json.dumps({
+                'applied': True,
+                'plan': {'session': output.name},
+            }))
+
+            module.require_prepared_output_root(output)
+            (output / 'plan.json').write_text('{}')
+            with self.assertRaises(ValueError):
+                module.require_prepared_output_root(output)
+            (output / 'plan.json').unlink()
+            (output / 'CAMERA_1' / 'early.png').write_bytes(b'x')
+            with self.assertRaises(ValueError):
+                module.require_prepared_output_root(output)
+
+    def test_outer_capture_passes_prepared_output_only_for_direct_layout(self):
+        source = (
+            INTERNAL / 'tools/run_sensor_record_scenario.py'
+        ).read_text()
+        self.assertIn("if direct:\n        command.append('--prepared-output-root')", source)
+
     def test_historical_snapshot_survives_removal_but_tampering_fails(self):
         with tempfile.TemporaryDirectory() as temporary:
             run = Path(temporary) / 'old_proven_lap'

@@ -13,19 +13,19 @@ $ErrorActionPreference='Stop'
 if ($SessionName -notmatch '^[A-Za-z0-9_]{1,80}$') {throw 'Invalid session name'}
 if ($StorageRoot -notmatch '^[A-Za-z]:\\' -or $StorageRoot.Contains("'")) {throw 'StorageRoot must be a local Windows drive path'}
 if ($SensorDataRoot -notmatch '^[A-Za-z]:\\' -or $SensorDataRoot.Contains("'")) {throw 'SensorDataRoot must be an absolute Windows drive path'}
-$sourceRoot=$SensorDataRoot.TrimEnd('\\')
+$sourceRoot=$SensorDataRoot.TrimEnd('\')
 $base=Join-Path $StorageRoot 'sensor_record_auto_v1'
 $datasetRoot=Join-Path $StorageRoot 'dataset'
 $collectingRoot=Join-Path $datasetRoot '.collecting'
 if ($TargetRoot) {
- $targetRoot=[IO.Path]::GetFullPath($TargetRoot).TrimEnd('\\')
- $collectingPrefix=[IO.Path]::GetFullPath($collectingRoot).TrimEnd('\\')+'\\'
+ $targetRoot=[IO.Path]::GetFullPath($TargetRoot).TrimEnd('\')
+ $collectingPrefix=[IO.Path]::GetFullPath($collectingRoot).TrimEnd('\')+'\'
  if (-not $targetRoot.StartsWith($collectingPrefix,[StringComparison]::OrdinalIgnoreCase) -or
      (Split-Path $targetRoot -Leaf) -cne $SessionName) {
   throw 'TargetRoot must be this session below dataset\\.collecting'
  }
  $relative=$targetRoot.Substring($collectingPrefix.Length)
- if (@($relative.Split('\\',[StringSplitOptions]::RemoveEmptyEntries)).Count -ne 3) {
+ if (@($relative.Split('\',[StringSplitOptions]::RemoveEmptyEntries)).Count -ne 3) {
   throw 'TargetRoot must be dataset\\.collecting\\scenario\\campaign\\run'
  }
 } else {
@@ -49,8 +49,8 @@ foreach ($role in $roles) {
   $nativeSessions=Join-Path $base 'native_sessions'
   $oldSession=Split-Path $oldRoot -Leaf
   $oldSessionParent=Split-Path $oldRoot -Parent
-  $oldFull=[IO.Path]::GetFullPath($oldRoot).TrimEnd('\\')
-  $collectingPrefix=[IO.Path]::GetFullPath($collectingRoot).TrimEnd('\\')+'\\'
+  $oldFull=[IO.Path]::GetFullPath($oldRoot).TrimEnd('\')
+  $collectingPrefix=[IO.Path]::GetFullPath($collectingRoot).TrimEnd('\')+'\'
   $approvedDirect=$oldFull.StartsWith($collectingPrefix,[StringComparison]::OrdinalIgnoreCase)
   $approvedOld=(($oldRoot -eq (Join-Path $base 'native')) -or
       ($oldSessionParent -eq $nativeSessions -and $oldSession -match '^[A-Za-z0-9_]{1,80}$') -or
