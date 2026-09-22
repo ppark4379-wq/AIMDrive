@@ -1,0 +1,777 @@
+{
+  "schema": "lmdrive-navigation-catalog-v1",
+  "upstream_commit": "308d8da0b4ff3463b1649fe483a9b2c56b108189",
+  "upstream_sha256": "ebe83195f757ec2775352fda995d4a3b6b26c4b2bdb5ba48d92cb5da1f6b77fb",
+  "rules": [
+    {
+      "id": 0,
+      "name": "Turn-01-L",
+      "templates": [
+        "Proceed ahead and make a left turn.",
+        "Just up ahead, take a left.",
+        "Left ahead.",
+        "Hang a left up front.",
+        "Prepare to turn left up ahead.",
+        "Your next action is a left turn, just ahead.",
+        "Up ahead, just take a left.",
+        "A left turn is required up ahead."
+      ]
+    },
+    {
+      "id": 1,
+      "name": "Turn-01-R",
+      "templates": [
+        "Proceed ahead and make a right turn.",
+        "Just up ahead, take a right.",
+        "Right ahead.",
+        "Hang a right up front.",
+        "Prepare to turn right up ahead.",
+        "Your next action is a right turn, just ahead.",
+        "Up ahead, just take a right.",
+        "A right turn is required up ahead."
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Turn-01-L-dis",
+      "templates": [
+        "After [x] meters, execute a left turn.",
+        "After [x] meters, take a left.",
+        "Left in [x] meters.",
+        "After [x] meters, hang a left.",
+        "In [x] meters, prepare to turn left.",
+        "Continue for [x] meters, then turn left.",
+        "Go [x] meters, then just take a left.",
+        "After [x] meters, a left turn is required."
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Turn-01-R-dis",
+      "templates": [
+        "After [x] meters, execute a right turn.",
+        "After [x] meters, take a right.",
+        "Right in [x] meters.",
+        "After [x] meters, hang a right.",
+        "In [x] meters, prepare to turn right.",
+        "Continue for [x] meters, then turn right.",
+        "Go [x] meters, then just take a right.",
+        "After [x] meters, a right turn is required."
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Turn-02-L",
+      "templates": [
+        "Please execute a left turn at the forthcoming intersection.",
+        "You're going to be turning left at the next junction, alright?",
+        "Next intersection, turn left.",
+        "Hang a left at the next crossroads.",
+        "It is obligatory to take a left turn at the forthcoming intersection.",
+        "When you reach the next intersection, you will need to steer your vehicle to the left.",
+        "Next intersection, just swing a left.",
+        "You must turn left at the next intersection."
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Turn-02-R",
+      "templates": [
+        "Please execute a right turn at the upcoming intersection.",
+        "At the next junction, you'll want to turn right, please.",
+        "Next intersection, turn right.",
+        "Hang a right at the next crossroads.",
+        "It is mandatory to take a right turn at the imminent intersection.",
+        "As you approach the next intersection, prepare to make a right turn.",
+        "Next intersection, just swing a right.",
+        "A right turn is necessary at the forthcoming intersection."
+      ]
+    },
+    {
+      "id": 6,
+      "name": "Turn-02-S",
+      "templates": [
+        "Please proceed straight at the next intersection.",
+        "Just keep on going straight at the next junction, okay?",
+        "Next intersection, go straight.",
+        "Straight through the next crossroads.",
+        "It is required to maintain your direction straight at the approaching intersection.",
+        "At the next intersection, continue to progress straight without altering your direction.",
+        "At the next intersection, just keep heading straight, no turn.",
+        "Maintain your course straight at the next intersection."
+      ]
+    },
+    {
+      "id": 7,
+      "name": "Turn-02-L-dis",
+      "templates": [
+        "After traveling [x] meters, you are directed to make a left turn at the intersection.",
+        "Just another [x] meters, then you'll be turning left at the junction, okay?",
+        "After [x] meters, left turn at intersection.",
+        "Go [x] meters then hook a left at the crossroads.",
+        "After navigating [x] meters, a left turn at the intersection is obligatory.",
+        "After travelling a distance of [x] meters, you will need to steer your vehicle to the left at the intersection.",
+        "After [x] meters, go left at the intersection, easy peasy.",
+        "Upon completing [x] meters, a left turn at the intersection is compulsory."
+      ]
+    },
+    {
+      "id": 8,
+      "name": "Turn-02-R-dis",
+      "templates": [
+        "After advancing [x] meters, you are directed to make a right turn at the intersection.",
+        "After going another [x] meters, take a right at the junction, please.",
+        "After [x] meters, right turn at intersection.",
+        "Go [x] meters then hook a right at the crossroads.",
+        "Upon traversing [x] meters, a right turn at the intersection is mandatory.",
+        "After moving forward [x] meters, prepare to make a right turn at the intersection.",
+        "After [x] meters, go right at the intersection, no big deal.",
+        "After a distance of [x] meters, a right turn at the intersection is necessary."
+      ]
+    },
+    {
+      "id": 9,
+      "name": "Turn-02-S-dis",
+      "templates": [
+        "After covering a distance of [x] meters, please continue straight at the intersection.",
+        "Keep going straight for [x] meters and then continue straight at the junction, alright?",
+        "After [x] meters, straight at intersection.",
+        "Go [x] meters then cruise straight at the crossroads.",
+        "After travelling [x] meters, maintaining your direction at the intersection is required.",
+        "After covering [x] meters, continue to progress straight at the intersection without altering your direction.",
+        "[x] meters more, then straight on at the intersection, piece of cake.",
+        "After travelling [x] meters, it is critical to continue straight at the intersection."
+      ]
+    },
+    {
+      "id": 10,
+      "name": "Turn-03-L",
+      "templates": [
+        "Please execute a left turn at the subsequent traffic signal.",
+        "You're going to turn left at the next light, alright?",
+        "Next light, left.",
+        "Take a left at the next light.",
+        "It is required to make a left turn at the next traffic signal.",
+        "When you reach the next traffic signal, you will need to turn left.",
+        "Next light, just swing a left.",
+        "You must turn left at the next traffic signal."
+      ]
+    },
+    {
+      "id": 11,
+      "name": "Turn-03-R",
+      "templates": [
+        "Please execute a right turn upon reaching the upcoming traffic signal.",
+        "At the next light, you'll want to make a right, okay?",
+        "Next light, right.",
+        "Take a right at the next light.",
+        "It is imperative to make a right turn at the next traffic signal.",
+        "At the next traffic signal, you should make a right turn.",
+        "Next light, just swing a right.",
+        "A right turn at the next traffic signal is non-negotiable."
+      ]
+    },
+    {
+      "id": 12,
+      "name": "Turn-03-S",
+      "templates": [
+        "Please maintain your course straight at the next traffic signal.",
+        "Just keep on going straight at the next light, okay?",
+        "Next light, straight.",
+        "Keep straight at the next light.",
+        "Continue straight at the subsequent traffic signal.",
+        "At the subsequent traffic signal, you should continue straight.",
+        "At the next light, just keep heading straight.",
+        "Continue straight at the subsequent traffic signal, without deviation."
+      ]
+    },
+    {
+      "id": 13,
+      "name": "Turn-03-L-dis",
+      "templates": [
+        "Upon traversing [x] meters, execute a left turn at the traffic signal.",
+        "Just another [x] meters, then you'll be turning left at the light, okay?",
+        "[x] meters, left at light.",
+        "After [x] meters, take a left at the light.",
+        "Upon covering [x] meters, make a left turn at the traffic signal.",
+        "Upon advancing [x] meters, you should turn left at the traffic signal.",
+        "After [x] meters, go left at the light.",
+        "Upon covering [x] meters, a left turn at the traffic signal is mandatory."
+      ]
+    },
+    {
+      "id": 14,
+      "name": "Turn-03-R-dis",
+      "templates": [
+        "After covering a distance of [x] meters, execute a right turn at the traffic signal.",
+        "After going another [x] meters, take a right at the light, alright?",
+        "[x] meters, right at light.",
+        "After [x] meters, take a right at the light.",
+        "After a distance of [x] meters, make a right turn at the traffic signal.",
+        "After moving forward [x] meters, make a right turn at the traffic signal.",
+        "After [x] meters, go right at the light.",
+        "After a distance of [x] meters, a right turn at the traffic signal is obligatory."
+      ]
+    },
+    {
+      "id": 15,
+      "name": "Turn-03-S-dis",
+      "templates": [
+        "After traveling [x] meters, maintain your course straight at the traffic signal.",
+        "Keep going straight for [x] meters and then continue straight at the light, alright?",
+        "[x] meters, straight at light.",
+        "After [x] meters, keep straight at the light.",
+        "After traversing [x] meters, continue straight at the traffic signal.",
+        "After traveling [x] meters, you should proceed straight at the traffic signal.",
+        "[x] meters more, then straight on at the light.",
+        "After traversing [x] meters, it's crucial to continue straight at the traffic signal."
+      ]
+    },
+    {
+      "id": 16,
+      "name": "Turn-04-L",
+      "templates": [
+        "At the ensuing T-intersection, make a left turn.",
+        "You'll be turning left at the next T-junction, alright?",
+        "Next T-junction, turn left.",
+        "Next T, hang a left.",
+        "A left turn is necessary at the ensuing T-intersection.",
+        "When you reach the following T-intersection, you will need to turn left.",
+        "At the next T, swing a left, piece of cake.",
+        "A left turn is obligatory at the ensuing T-intersection."
+      ]
+    },
+    {
+      "id": 17,
+      "name": "Turn-04-R",
+      "templates": [
+        "At the forthcoming T-intersection, execute a right turn.",
+        "At the next T-junction, you'll want to turn right, okay?",
+        "Next T-junction, turn right.",
+        "Next T, hang a right.",
+        "At the upcoming T-intersection, a right turn is compulsory.",
+        "At the next T-intersection, you should turn right.",
+        "Next T, just swing a right, no problem.",
+        "A right turn is mandatory at the upcoming T-intersection."
+      ]
+    },
+    {
+      "id": 18,
+      "name": "Turn-04-S",
+      "templates": [
+        "At the upcoming T-intersection, proceed straight.",
+        "Just keep on going straight through the next T-junction, sound good?",
+        "Next T-junction, go straight.",
+        "Next T, keep straight.",
+        "It's critical to keep straight at the forthcoming T-intersection.",
+        "At the ensuing T-intersection, you should continue straight.",
+        "Next T, just keep straight, smooth sailing.",
+        "Maintaining a straight course is imperative at the forthcoming T-intersection."
+      ]
+    },
+    {
+      "id": 19,
+      "name": "Turn-04-L-dis",
+      "templates": [
+        "In another [x] meters, you'll be turning left at the T-junction, alright?",
+        "Upon covering [x] meters, make a left turn at the T-intersection.",
+        "[x] meters, left at T-junction.",
+        "In [x] meters, hang a left at the T.",
+        "Upon covering [x] meters, a left turn at the T-intersection is necessary.",
+        "After covering a distance of [x] meters, you'll arrive at a T-intersection, at which point you need to turn left.",
+        "In [x] meters, swing a left at the T, easy peasy.",
+        "Upon reaching a distance of [x] meters, a left turn at the T-intersection is obligatory."
+      ]
+    },
+    {
+      "id": 20,
+      "name": "Turn-04-R-dis",
+      "templates": [
+        "After [x] meters, you'll want to turn right at the T-junction, okay?",
+        "After traversing [x] meters, execute a right turn at the T-intersection.",
+        "[x] meters, right at T-junction.",
+        "After [x] meters, hang a right at the T.",
+        "After a distance of [x] meters, it's compulsory to turn right at the T-intersection.",
+        "After traveling for [x] meters, you will come to a T-intersection where you should turn right.",
+        "After [x] meters, take a right at the T, no biggie.",
+        "After completing [x] meters, a right turn at the T-intersection is mandatory."
+      ]
+    },
+    {
+      "id": 21,
+      "name": "Turn-04-S-dis",
+      "templates": [
+        "After advancing [x] meters, continue straight at the T-intersection.",
+        "After going [x] meters, just keep on going straight through the T-junction, sound good?",
+        "[x] meters, straight at T-junction.",
+        "After [x] meters, go straight through the T.",
+        "After traversing [x] meters, it's critical to go straight at the T-intersection.",
+        "Upon advancing [x] meters, maintain your direction and proceed straight at the T-intersection.",
+        "After [x] meters, straight through the T, no sweat.",
+        "After a distance of [x] meters, maintaining a straight course at the T-intersection is imperative."
+      ]
+    },
+    {
+      "id": 22,
+      "name": "Turn-05-1",
+      "templates": [
+        "Depart at the first exit on the roundabout.",
+        "Find your way out at the first exit on the roundabout, please.",
+        "First exit.",
+        "Head out on the first exit.",
+        "Proceed to the first exit on the roundabout.",
+        "Carefully navigate to the first exit as you approach the roundabout.",
+        "Just slide out at the first exit on the roundabout.",
+        "It's imperative that you take the first exit on the roundabout."
+      ]
+    },
+    {
+      "id": 23,
+      "name": "Turn-05-2",
+      "templates": [
+        "Depart at the second exit on the roundabout.",
+        "You'll want to take the second exit on the roundabout.",
+        "Second exit.",
+        "Roll out on the second exit.",
+        "Proceed to the second exit on the roundabout.",
+        "As you reach the roundabout, you'll need to take the second exit.",
+        "No sweat, just hit the second exit on the roundabout.",
+        "You are required to take the second exit on the roundabout."
+      ]
+    },
+    {
+      "id": 24,
+      "name": "Turn-05-3",
+      "templates": [
+        "Depart at the third exit on the roundabout.",
+        "Please take a turn at the third exit on our roundabout.",
+        "Third exit.",
+        "Shoot out on the third exit.",
+        "Proceed to the third exit on the roundabout.",
+        "Upon reaching the roundabout, make your way to the third exit.",
+        "Cool, now catch the third exit on the roundabout.",
+        "It is necessary for you to take the third exit on the roundabout."
+      ]
+    },
+    {
+      "id": 25,
+      "name": "Turn-06-L-L",
+      "templates": [
+        "After making a left turn at the current intersection, make a left turn at the next intersection.",
+        "After you've made a left at this intersection, your next move is a left at the following intersection.",
+        "Left, then left again.",
+        "Take a left here, then another left at the next one.",
+        "After executing a left turn at the current intersection, execute a left turn at the succeeding intersection.",
+        "After you've successfully made a left turn at the current intersection, your next step should be to make a left turn at the upcoming intersection.",
+        "After you've turned left at this one, swing a left at the next one.",
+        "Upon executing a left turn at the current intersection, execute a left turn at the subsequent intersection."
+      ]
+    },
+    {
+      "id": 26,
+      "name": "Turn-06-L-R",
+      "templates": [
+        "After making a left turn at the current intersection, make a right turn at the next intersection.",
+        "After you've made a left at this intersection, you'll be turning right at the next one.",
+        "Left, then right.",
+        "Take a left here, then a right at the next one.",
+        "After executing a left turn at the current intersection, execute a right turn at the succeeding intersection.",
+        "After you've successfully made a left turn at the current intersection, your next step should be to make a right turn at the upcoming intersection.",
+        "After you've turned left at this one, swing a right at the next one.",
+        "Upon executing a left turn at the current intersection, execute a right turn at the subsequent intersection."
+      ]
+    },
+    {
+      "id": 27,
+      "name": "Turn-06-L-S",
+      "templates": [
+        "After making a left turn at the current intersection, continue straight at the next intersection.",
+        "After you've made a left at this intersection, just keep going straight at the next one.",
+        "Left, then straight.",
+        "Take a left here, then go straight at the next one.",
+        "After executing a left turn at the current intersection, persist straight at the succeeding intersection.",
+        "After you've successfully made a left turn at the current intersection, your next step should be to continue in a straight direction at the upcoming intersection.",
+        "After you've turned left at this one, just keep on trucking straight at the next one.",
+        "Upon executing a left turn at the current intersection, remain on a straight course at the subsequent intersection."
+      ]
+    },
+    {
+      "id": 28,
+      "name": "Turn-06-R-L",
+      "templates": [
+        "After making a right turn at the current intersection, make a left turn at the next intersection.",
+        "Once you've made a right at this intersection, your next move is a left at the following intersection.",
+        "Right, then left.",
+        "Take a right here, then hang a left at the next one.",
+        "After executing a right turn at the current intersection, execute a left turn at the succeeding intersection.",
+        "After you've successfully made a right turn at the current intersection, your next step should be to make a left turn at the upcoming intersection.",
+        "Once you've turned right at this one, swing a left at the next one.",
+        "Upon executing a right turn at the current intersection, execute a left turn at the subsequent intersection."
+      ]
+    },
+    {
+      "id": 29,
+      "name": "Turn-06-R-R",
+      "templates": [
+        "After making a right turn at the current intersection, make a right turn at the next intersection.",
+        "Once you've made a right at this intersection, you'll be turning right at the next one.",
+        "Right, then right again.",
+        "Take a right here, then another right at the next one.",
+        "After executing a right turn at the current intersection, execute a right turn at the succeeding intersection.",
+        "After you've successfully made a right turn at the current intersection, your next step should be to make a right turn at the upcoming intersection.",
+        "Once you've turned right at this one, swing a right at the next one.",
+        "Upon executing a right turn at the current intersection, execute a right turn at the subsequent intersection."
+      ]
+    },
+    {
+      "id": 30,
+      "name": "Turn-06-R-S",
+      "templates": [
+        "After making a right turn at the current intersection, continue straight at the next intersection.",
+        "Once you've made a right at this intersection, just keep going straight at the next one.",
+        "Right, then straight.",
+        "Take a right here, then go straight at the next one.",
+        "After executing a right turn at the current intersection, persist straight at the succeeding intersection.",
+        "After you've successfully made a right turn at the current intersection, your next step should be to continue in a straight direction at the upcoming intersection.",
+        "Once you've turned right at this one, just keep on trucking straight at the next one.",
+        "Upon executing a right turn at the current intersection, remain on a straight course at the subsequent intersection."
+      ]
+    },
+    {
+      "id": 31,
+      "name": "Turn-06-S-L",
+      "templates": [
+        "After proceeding straight through the current intersection, make a left turn at the next intersection.",
+        "Once you've gone straight through this intersection, your next move is a left turn at the following intersection.",
+        "Straight, then left.",
+        "Go straight through here, then hang a left at the next one.",
+        "After proceeding in a straight direction through the current intersection, execute a left turn at the succeeding intersection.",
+        "After you've successfully proceeded straight through the current intersection, your next step should be to make a left turn at the upcoming intersection.",
+        "Once you're through this intersection, swing a left at the next one.",
+        "Following a straight course through the current intersection, execute a left turn at the subsequent intersection."
+      ]
+    },
+    {
+      "id": 32,
+      "name": "Turn-06-S-R",
+      "templates": [
+        "After proceeding straight through the current intersection, make a right turn at the next intersection.",
+        "Once you've gone straight through this intersection, you'll be turning right at the next one.",
+        "Straight, then right.",
+        "Go straight through here, then hang a right at the next one.",
+        "After proceeding in a straight direction through the current intersection, execute a right turn at the succeeding intersection.",
+        "After you've successfully proceeded straight through the current intersection, your next step should be to make a right turn at the upcoming intersection.",
+        "Once you're through this intersection, swing a right at the next one.",
+        "Following a straight course through the current intersection, execute a right turn at the subsequent intersection."
+      ]
+    },
+    {
+      "id": 33,
+      "name": "Turn-06-S-S",
+      "templates": [
+        "After proceeding straight through the current intersection, continue straight at the next intersection.",
+        "Once you've gone straight through this intersection, just keep going straight at the next one.",
+        "Straight, then straight again.",
+        "Go straight through here, then straight again at the next one.",
+        "After proceeding in a straight direction through the current intersection, persist straight at the succeeding intersection.",
+        "After you've successfully proceeded straight through the current intersection, your next step should be to continue in a straight direction at the upcoming intersection.",
+        "Once you're through this intersection, just keep on trucking straight at the next one.",
+        "Following a straight course through the current intersection, remain on a straight course at the subsequent intersection."
+      ]
+    },
+    {
+      "id": 34,
+      "name": "Follow-01-L",
+      "templates": [
+        "Transition to the left lane for travel.",
+        "You might want to switch to the left lane.",
+        "Switch to left lane.",
+        "Get over to the left lane.",
+        "Change your route to the left-hand lane.",
+        "Please adjust your course to the left-most lane.",
+        "Just head for the left lane.",
+        "Reposition to the left lane."
+      ]
+    },
+    {
+      "id": 35,
+      "name": "Follow-01-R",
+      "templates": [
+        "Transition to the right lane for travel.",
+        "You might want to switch to the right lane.",
+        "Switch to right lane.",
+        "Get over to the right lane.",
+        "Change your route to the right-hand lane.",
+        "Please adjust your course to the right-most lane.",
+        "Just head for the right lane.",
+        "Reposition to the right lane."
+      ]
+    },
+    {
+      "id": 36,
+      "name": "Follow-01-L-dis",
+      "templates": [
+        "After [x] meters, transition to the left lane for travel.",
+        "In about [x] meters, you'll want to switch to the left lane.",
+        "In [x] meters, switch to left lane.",
+        "In about [x] meters, get over to the left lane.",
+        "In [x] meters, change your route to the left-hand lane.",
+        "After proceeding for [x] meters, adjust your course to the left-most lane.",
+        "In [x] meters, just head for the left lane.",
+        "In [x] meters, reposition to the left lane."
+      ]
+    },
+    {
+      "id": 37,
+      "name": "Follow-01-R-dis",
+      "templates": [
+        "After [x] meters, transition to the right lane for travel.",
+        "In about [x] meters, you'll want to switch to the right lane.",
+        "In [x] meters, switch to right lane.",
+        "In about [x] meters, get over to the right lane.",
+        "In [x] meters, change your route to the right-hand lane.",
+        "After proceeding for [x] meters, adjust your course to the right-most lane.",
+        "In [x] meters, just head for the right lane.",
+        "In [x] meters, reposition to the right lane."
+      ]
+    },
+    {
+      "id": 38,
+      "name": "Follow-02-s1",
+      "templates": [
+        "Proceed along this route.",
+        "Keep going on this road, you're doing great!",
+        "Continue on this road.",
+        "Keep cruising down this road.",
+        "Maintain your course along this route.",
+        "Continue driving straight on this particular road.",
+        "Just keep on rolling down this road.",
+        "Do not deviate from this route."
+      ]
+    },
+    {
+      "id": 39,
+      "name": "Follow-02-s2",
+      "templates": [
+        "Proceed along the highway.",
+        "Keep going on the highway, you're on the right track!",
+        "Continue on the highway.",
+        "Keep cruising down the highway.",
+        "Maintain your course along the highway.",
+        "Continue driving straight on the designated highway.",
+        "Just keep on rolling down the highway.",
+        "Do not deviate from the highway."
+      ]
+    },
+    {
+      "id": 40,
+      "name": "Follow-02-s1-dis",
+      "templates": [
+        "Proceed along this route for [x] meters.",
+        "Keep going on this road for [x] meters, you're almost there!",
+        "Continue for [x] meters.",
+        "Cruise down this road for about [x] meters.",
+        "Maintain your course along this route for precisely [x] meters.",
+        "Continue driving straight on this particular road for exactly [x] meters.",
+        "Roll on down this road for about [x] meters.",
+        "Do not deviate from this route, continue for [x] meters."
+      ]
+    },
+    {
+      "id": 41,
+      "name": "Follow-02-s2-dis",
+      "templates": [
+        "Proceed along the highway for [x] meters.",
+        "Keep going on the highway for [x] meters, you're doing awesome!",
+        "Continue for [x] meters on the highway.",
+        "Cruise down the highway for about [x] meters.",
+        "Maintain your course along the highway for precisely [x] meters.",
+        "Continue driving straight on the designated highway for exactly [x] meters.",
+        "Roll on down the highway for about [x] meters.",
+        "Do not deviate from the highway, continue for [x] meters."
+      ]
+    },
+    {
+      "id": 42,
+      "name": "Follow-03-s1",
+      "templates": [
+        "Maintain your current course.",
+        "Just keep going straight, you're doing great!",
+        "Keep straight.",
+        "Just keep on moving straight.",
+        "Preserve your current trajectory.",
+        "Continue in a straight line along your current path.",
+        "Just keep rolling straight.",
+        "Do not deviate from your current course."
+      ]
+    },
+    {
+      "id": 43,
+      "name": "Follow-03-s2",
+      "templates": [
+        "Maintain your current course until the upcoming intersection.",
+        "Keep going straight until you reach the next junction, you're on the right track!",
+        "Stay straight until the next intersection.",
+        "Keep on going straight till you hit the next intersection.",
+        "Preserve your current trajectory until the forthcoming intersection.",
+        "Continue in a straight line along your current path until you reach the upcoming intersection.",
+        "Keep on rolling straight till you get to the next junction.",
+        "Do not deviate from your current course until the next intersection."
+      ]
+    },
+    {
+      "id": 44,
+      "name": "Follow-03-s1-dis",
+      "templates": [
+        "Maintain your current course for [x] meters.",
+        "Keep going straight for [x] meters, you're almost there!",
+        "Keep straight for [x] meters.",
+        "Go straight for about [x] meters.",
+        "Preserve your current trajectory for exactly [x] meters.",
+        "Continue to drive straight for exactly [x] meters.",
+        "Roll straight for about [x] meters.",
+        "Maintain your straight course for [x] meters."
+      ]
+    },
+    {
+      "id": 45,
+      "name": "Follow-03-s2-dis",
+      "templates": [
+        "Maintain your current course until the upcoming intersection for [x] meters.",
+        "Keep going straight until you reach the next junction for [x] meters, you're on the right track!",
+        "Stay straight for [x] meters until the next intersection.",
+        "Keep on going straight for about [x] meters till you hit the next intersection.",
+        "Preserve your current trajectory for exactly [x] meters until the forthcoming intersection.",
+        "Continue in a straight line along your current path for exactly [x] meters until you reach the upcoming intersection.",
+        "Keep on rolling straight for about [x] meters till you get to the next junction.",
+        "Do not deviate from your current course for [x] meters until the next intersection."
+      ]
+    },
+    {
+      "id": 46,
+      "name": "Follow-04-L",
+      "templates": [
+        "Veering to the left, prepare to enter the highway.",
+        "Just move to the left and get ready to join the highway.",
+        "Left, ready to enter.",
+        "Slide left and plan to hop on the highway.",
+        "Execute a left maneuver, prepare for highway entry.",
+        "Position your vehicle to the left in preparation for your entry onto the highway.",
+        "Ease on to the left and get set to join the highway.",
+        "Proceed to the left, prepare for immediate highway entry."
+      ]
+    },
+    {
+      "id": 47,
+      "name": "Follow-04-R",
+      "templates": [
+        "Veering to the right, prepare to exit the highway.",
+        "Just move to the right and get ready to leave the highway.",
+        "Right, ready to exit.",
+        "Slide right and plan to hop off the highway.",
+        "Execute a right maneuver, prepare for highway exit.",
+        "Position your vehicle to the right in preparation for your exit from the highway.",
+        "Ease on to the right and get set to quit the highway.",
+        "Proceed to the right, prepare for immediate highway departure."
+      ]
+    },
+    {
+      "id": 48,
+      "name": "Follow-04-L-dis",
+      "templates": [
+        "In [x] meters, veer to the left, prepare to exit the highway.",
+        "In [x] meters, move to the left and get ready to leave the highway.",
+        "In [x]m, left, ready to exit.",
+        "In [x] meters, slide left and plan to hop off the highway.",
+        "In [x] meters, execute a left maneuver, prepare for highway exit.",
+        "In [x] meters, position your vehicle to the left in preparation for your exit from the highway.",
+        "In about [x] meters, ease on to the left and get set to quit the highway.",
+        "In [x] meters, proceed to the left, prepare for immediate highway departure."
+      ]
+    },
+    {
+      "id": 49,
+      "name": "Follow-04-R-dis",
+      "templates": [
+        "In [x] meters, veer to the right, prepare to exit the highway.",
+        "In [x] meters, move to the right and get ready to leave the highway.",
+        "In [x]m, right, ready to exit.",
+        "In [x] meters, slide right and plan to hop off the highway.",
+        "In [x] meters, execute a right maneuver, prepare for highway exit.",
+        "In [x] meters, position your vehicle to the right in preparation for your exit from the highway.",
+        "In about [x] meters, ease on to the right and get set to quit the highway.",
+        "In [x] meters, proceed to the right, prepare for immediate highway departure."
+      ]
+    },
+    {
+      "id": 60,
+      "name": "Other-01",
+      "templates": [
+        "Please commence driving.",
+        "Feel free to start driving.",
+        "Start driving.",
+        "Go ahead and start driving.",
+        "It is advised to commence the drive.",
+        "Please initiate your driving operation.",
+        "Alright, you can start driving.",
+        "It is imperative to commence driving."
+      ]
+    },
+    {
+      "id": 61,
+      "name": "Other-02",
+      "templates": [
+        "Please decelerate immediately.",
+        "Could you slow down right away, please?",
+        "Slow down now.",
+        "Easy on the gas, slow down.",
+        "It is advised to reduce your speed immediately.",
+        "Please implement an immediate reduction in your speed.",
+        "You might want to slow down a bit now.",
+        "It is imperative to decelerate immediately."
+      ]
+    },
+    {
+      "id": 62,
+      "name": "Other-03",
+      "templates": [
+        "Please halt your vehicle immediately.",
+        "Could you stop your car right away, please?",
+        "Stop now.",
+        "Hit the brakes, stop now.",
+        "It is advised to bring your vehicle to a stop immediately.",
+        "Please execute an immediate stop of your vehicle.",
+        "Might be a good time to stop your car.",
+        "It is imperative to halt your vehicle immediately."
+      ]
+    },
+    {
+      "id": 63,
+      "name": "Other-04",
+      "templates": [
+        "You are permitted to drive freely.",
+        "Feel free to drive as you wish.",
+        "Drive freely.",
+        "Drive as you like.",
+        "You may navigate freely.",
+        "Please proceed to drive at your own discretion.",
+        "Feel free to drive around.",
+        "You are authorized to drive freely."
+      ]
+    },
+    {
+      "id": 64,
+      "name": "Other-05",
+      "templates": [
+        "Please proceed towards the navigation point; the following point is [x] meters ahead and [y] meters to your left/right.",
+        "Could you head towards the navigation point? Your next stop is [x] meters straight ahead and [y] meters to your left/right.",
+        "Head to the point, next one's [x] meters ahead, [y] meters left/right.",
+        "Get to the point, the next one's just [x] meters ahead and [y] meters to your left/right.",
+        "Please navigate towards the designated point, which is [x] meters in front of you and [y] meters to your left/right.",
+        "Please follow the direction towards the navigation point located [x] meters in front and [y] meters to your left/right.",
+        "Head towards the point, the next one's about [x] meters up front, [y] meters to your left/right.",
+        "Navigate towards the designated point. The next point is located [x] meters ahead and [y] meters to your left/right."
+      ]
+    }
+  ]
+}

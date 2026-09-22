@@ -57,6 +57,7 @@ class VLDriveTrainingConfig:
     checkpoint_language: bool = True
     training_variant: str = 'paper_independent'
     reconstruction_reduction: str = 'sum'
+    reconstruction_feature_space: str = 'encoder'
     detach_reconstruction_loss_mask: bool = False
     inference_selection_mode: str = 'argmax'
     retention_logit_weight: float = 0.
@@ -73,21 +74,33 @@ class VLDriveTrainingConfig:
             raise ValueError('Paper path requires reconstruction_layers=4 and R=0.3')
         if self.pruning_weight != 10. or self.reconstruction_weight != 1.:
             raise ValueError('Paper path requires lambda_pruning=10 and lambda_reconstruction=1')
-        if self.training_variant not in ('paper_independent', 'morai_repair_v1', 'paper_objective_st_probe'):
+        if self.training_variant not in ('paper_independent', 'morai_repair_v1', 'paper_objective_st_probe', 'fixed_nc_debug', 'pruned_mean_debug'):
             raise ValueError('Unknown downstream training variant')
         if self.selector_task_gradient_mode not in ('legacy', 'retained_output_st'):
             raise ValueError('Unknown selector task-gradient mode')
         if (self.training_variant == 'paper_objective_st_probe') != (
                 self.selector_task_gradient_mode == 'retained_output_st'):
             raise ValueError('retained_output_st requires explicit training_variant=paper_objective_st_probe')
-        if self.reconstruction_reduction not in ('sum', 'mean'):
+        if self.reconstruction_reduction not in ('sum', 'mean', 'fixed_nc', 'pruned_mean'):
             raise ValueError('Unsupported reconstruction reduction')
+        if (self.training_variant == 'fixed_nc_debug') != (self.reconstruction_reduction == 'fixed_nc'):
+            raise ValueError('fixed_nc requires explicit training_variant=fixed_nc_debug')
+        if (self.training_variant == 'pruned_mean_debug') != (self.reconstruction_reduction == 'pruned_mean'):
+            raise ValueError('pruned_mean requires explicit training_variant=pruned_mean_debug')
+        if self.training_variant in ('fixed_nc_debug', 'pruned_mean_debug') and (
+                self.detach_reconstruction_loss_mask or self.reconstruction_feature_space != 'encoder'
+                or self.inference_selection_mode != 'argmax' or self.retention_logit_weight != 0.
+                or self.selector_task_gradient_mode != 'legacy'):
+            raise ValueError('Reduction debug variants change reconstruction reduction only')
+        if self.reconstruction_feature_space not in ('encoder', 'normalized'):
+            raise ValueError('Unsupported reconstruction feature space')
         if self.inference_selection_mode not in ('argmax', 'topk'):
             raise ValueError('Unsupported inference token selection')
         if not 0. <= self.retention_logit_weight <= 100.:
             raise ValueError('Retention logit stability weight must be between 0 and 100')
         if self.training_variant in ('paper_independent', 'paper_objective_st_probe') and (
                 self.reconstruction_reduction != 'sum' or self.detach_reconstruction_loss_mask
+                or self.reconstruction_feature_space != 'encoder'
                 or self.inference_selection_mode != 'argmax' or self.retention_logit_weight != 0.):
             raise ValueError('Repair choices require explicit training_variant=morai_repair_v1')
 
@@ -136,6 +149,7 @@ class VLDriveTrainingModel(nn.Module):
                 qformer_intermediate_size=config.qformer_hidden * 4,
                 reconstruction_layers=config.reconstruction_layers,
                 reconstruction_formulation='eq8', reconstruction_reduction=config.reconstruction_reduction,
+                reconstruction_feature_space=config.reconstruction_feature_space,
                 detach_reconstruction_loss_mask=config.detach_reconstruction_loss_mask,
                 inference_selection_mode=config.inference_selection_mode,
                 retention_logit_weight=config.retention_logit_weight,
@@ -156,7 +170,7 @@ class VLDriveTrainingModel(nn.Module):
         return torch.cat([self.visual_encoder({k: v[:, t:t+1] for k, v in sensors.items()})
                           for t in range(sensors['rgb_front'].shape[1])], dim=1)
 
-    def predict(self, inputs, *, compute_auxiliary=None):
+    def predict(self, inputs, *, compute_auxiliary=None, token_selection_mode=None):
         feature_key = 'sensors' if self.config.input_mode == 'raw' else 'visual_feature'
         if set(inputs) != {feature_key, 'instruction'}:
             raise ValueError('VLDrive input allowlist permits only visual inputs and instruction')
@@ -169,7 +183,8 @@ class VLDriveTrainingModel(nn.Module):
             raise ValueError('Nonfinite visual features')
         if features.requires_grad:
             raise ValueError('The paper path uses a frozen encoder or detached frozen feature cache')
-        connected = self.connector(features.float(), compute_reconstruction=compute_auxiliary)
+        connected = self.connector(features.float(), selection_mode=token_selection_mode,
+                                   compute_reconstruction=compute_auxiliary)
         language = self.language_model(texts, connected['language_tokens'],
             connected['selected_valid_mask'], predict_per_frame=True)
         batch, frames = features.shape[:2]

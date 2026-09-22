@@ -1,0 +1,32 @@
+{
+  "schema": "morai-navigation-observer-v1",
+  "mode": "udp",
+  "bundle": null,
+  "episode_id": null,
+  "route": {
+    "global_path": "../MoraiDrive/scenario_runner/data/R_KR_PR_K-city_2025/2026_molit_comp_global_path.txt",
+    "map_root": "../MoraiDrive/scenario_runner/data/R_KR_PR_K-city_2025",
+    "route_definition": "../MoraiDrive/scenario_runner/config/full_loop_links.yaml",
+    "route_key": "full_loop",
+    "policy_config": "configs/navigation_lmdrive.json"
+  },
+  "output": "outputs/logs/navigation_manual",
+  "window": true,
+  "runtime": {
+    "hz": 20.0,
+    "max_age_s": 0.5,
+    "max_pair_skew_s": 0.2,
+    "startup_timeout_s": 30.0,
+    "replay_realtime": false
+  },
+  "udp": {
+    "bind": "0.0.0.0",
+    "gps_port": 10506,
+    "vehicle_status_port": 10909
+  },
+  "position": {
+    "map_crs": "EPSG:32652",
+    "east_offset_m": 302595.0,
+    "north_offset_m": 4124145.0
+  }
+}

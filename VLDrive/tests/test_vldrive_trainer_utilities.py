@@ -286,6 +286,90 @@ def test_evaluation_rejects_balanced_duplicates_or_nonchronological_indices(indi
         evaluate(_Model(), _TrajectoryDataset(), indices, 'cpu')
 
 
+def test_evaluation_forces_gumbel_repeats_seed_and_preserves_training_rng():
+    from types import SimpleNamespace
+
+    class Dataset:
+        trajectory_coordinate_convention = 'lmdrive_left_negative_forward'
+
+        def __getitem__(self, index):
+            return dict(model_inputs={'visual_feature': torch.zeros(1, 4, 2)},
+                        training_targets={'future_trajectory': torch.zeros(1, 5, 2)},
+                        metadata={'run_id': 'route', 'sample_ids': ['route/' + str(index)]})
+
+    class Model(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.anchor = nn.Parameter(torch.zeros(()))
+            self.config = SimpleNamespace(precision='fp32', inference_selection_mode='argmax')
+
+        def predict(self, inputs, *, compute_auxiliary, token_selection_mode):
+            assert not self.training and not torch.is_grad_enabled()
+            assert not compute_auxiliary and token_selection_mode == 'gumbel'
+            mask = torch.nn.functional.gumbel_softmax(torch.zeros(1, 1, 32, 2), hard=True)[..., 1]
+            value = torch.rand(1, 1, 5, 2) + mask.mean()
+            return dict(trajectory=value, selected_count=mask.sum(-1))
+
+    model, dataset = Model(), Dataset()
+    seed_all(33)
+    expected = (random.random(), np.random.rand(), torch.rand(3))
+    seed_all(33)
+    first = evaluate(model, dataset, [0, 1], 'cpu', seed=607)
+    actual = (random.random(), np.random.rand(), torch.rand(3))
+    assert actual[:2] == expected[:2] and torch.equal(actual[2], expected[2])
+    torch.rand(100)
+    assert evaluate(model, dataset, [0, 1], 'cpu', seed=607) == first
+    assert evaluate(model, dataset, [0, 1], 'cpu', seed=608)['ade_m'] != first['ade_m']
+    assert first['selection_policy'] == 'gumbel' and first['evaluation_seed'] == 607
+
+
+def test_evaluation_source_compatibility_does_not_ignore_unreviewed_edits(tmp_path, monkeypatch):
+    import hashlib
+    import inference.vldrive_runtime as runtime
+
+    monkeypatch.setattr(runtime, 'ROOT', tmp_path)
+    folder = tmp_path / 'utils'
+    folder.mkdir()
+    path = folder / 'trainer.py'
+    path.write_bytes(b'unreviewed change')
+    provenance = {'source': {'utils/trainer.py':
+        'f8443704f25aaba3fbe0759d810de88194aff864f08c4797bbbcc5952c7f73e8'}}
+    with pytest.raises(ValueError, match='Training source changed'):
+        runtime.verify_sources(provenance)
+    provenance['source']['utils/trainer.py'] = hashlib.sha256(path.read_bytes()).hexdigest()
+    assert runtime.verify_sources(provenance) == []
+
+
+def test_evaluation_checkpoint_allows_only_reviewed_sources_not_dataset_changes(tmp_path, monkeypatch):
+    import copy
+    import inference.vldrive_runtime as runtime
+
+    model = _Model()
+    path = tmp_path / 'model.pt'
+    old = dict(source={'utils/trainer.py': 'old'},
+               backend={'sources': {'utils/trainer.py': 'old'}, 'version': 1},
+               datasets={'train': 'original'})
+    save_model_checkpoint(path, model, updates=1, provenance=old, settings={}, metrics={})
+    new = copy.deepcopy(old)
+    new['source']['utils/trainer.py'] = 'new'
+    new['backend']['sources']['utils/trainer.py'] = 'new'
+    verified = []
+
+    def reviewed(provenance):
+        verified.append(provenance['source'])
+        assert provenance['source'] == old['source']
+        return ['reviewed evaluation change']
+
+    monkeypatch.setattr(runtime, 'verify_sources', reviewed)
+    with pytest.raises(ValueError, match='provenance mismatch'):
+        restore_model_checkpoint(path, model, provenance=new)
+    state = restore_model_checkpoint(path, model, provenance=new, evaluation_source_compatibility=True)
+    assert len(verified) == 2 and state['evaluation_source_compatibility']
+    new['datasets']['train'] = 'different'
+    with pytest.raises(ValueError, match='provenance mismatch'):
+        restore_model_checkpoint(path, model, provenance=new, evaluation_source_compatibility=True)
+
+
 @pytest.mark.parametrize('state_device', ['cpu', 'model'])
 def test_optimizer_lr_prefix_multipliers_survive_cosine_and_state_roundtrip(state_device):
     model = _TransferModel()
@@ -330,3 +414,29 @@ def test_training_local_sampling_offset_keeps_global_update_and_cosine_lr(tmp_pa
     with pytest.raises(ValueError):
         train(model, optimizer, data, [0], start_update=5, updates=6, schedule_updates=20,
               sampling_step_offset=6, seed=17, device='cpu', log_path=tmp_path/'invalid.jsonl')
+
+
+def test_minibatch_covers_tail_and_resume(tmp_path):
+    seed_all(19)
+    model = _Model()
+    optimizer = make_optimizer(model, lr=0.01)
+    data = [{'model_inputs': {'x': torch.tensor([i * .1, -.1])}} for i in range(5)]
+    options = dict(schedule_updates=6, seed=19, device='cpu', lr=.01,
+                   batch_size=2, telemetry_enabled=False)
+    epochs = []
+    train(model, optimizer, data, list(range(5)), start_update=0, updates=2,
+          log_path=tmp_path/'first.jsonl', **options)
+    save_checkpoint(tmp_path/'state.pt', model, optimizer, updates=2, provenance={}, settings={})
+    train(model, optimizer, data, list(range(5)), start_update=2, updates=6,
+          log_path=tmp_path/'next.jsonl', on_epoch=lambda e,s: epochs.append((e,s)), **options)
+    expected = model.trainable.detach().clone()
+    restore_checkpoint(tmp_path/'state.pt', model, optimizer, provenance={})
+    train(model, optimizer, data, list(range(5)), start_update=2, updates=6,
+          log_path=tmp_path/'resumed.jsonl', **options)
+    assert torch.equal(model.trainable, expected)
+    rows = [json.loads(x) for name in ('first.jsonl','next.jsonl')
+            for x in (tmp_path/name).read_text().splitlines()]
+    assert [x['batch_size'] for x in rows] == [2,2,1,2,2,1]
+    for epoch in (1,2):
+        assert sorted(i for x in rows if x['epoch']==epoch for i in x['batch_indices']) == list(range(5))
+    assert epochs == [(0,3),(1,6)]

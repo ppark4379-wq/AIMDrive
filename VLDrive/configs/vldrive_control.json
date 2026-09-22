@@ -1,0 +1,40 @@
+{
+  "schema": "vldrive-morai-expert-v1",
+  "expert_config_path": "../MoraiDrive/expert/src/expert/src/config/config.json",
+  "max_speed_kmh": 5.0,
+  "lateral": {
+    "type": "lmdrive_pid",
+    "turn_KP": 1.25,
+    "turn_KI": 0.75,
+    "turn_KD": 0.3,
+    "turn_n": 40,
+    "steering_scale": 0.8,
+    "update_hz": 10.0,
+    "target": {
+      "mode": "remaining_path",
+      "time_s": 0.8,
+      "min_distance_m": 4.0,
+      "max_distance_m": 12.0,
+      "min_forward_m": 0.5
+    }
+  },
+  "runtime": {
+    "max_prediction_age_s": 1.25,
+    "max_status_age_s": 0.3,
+    "max_pose_age_s": 0.3,
+    "max_pose_skew_s": 0.15,
+    "max_pose_jump_m": 10.0
+  },
+  "bridge": {
+    "auto_start": true,
+    "host": "windows_host",
+    "listen_host": "0.0.0.0",
+    "listen_port": 19093,
+    "target_host": "127.0.0.1",
+    "target_port": 9093,
+    "watchdog_s": 0.5,
+    "idle_exit_s": 3.0,
+    "startup_timeout_s": 10.0,
+    "windows_python": ".runtime/dashboard_venv/Scripts/pythonw.exe"
+  }
+}

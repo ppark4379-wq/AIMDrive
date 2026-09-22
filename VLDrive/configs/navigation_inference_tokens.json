@@ -1,0 +1,7 @@
+{
+  "instructions": "data/processed/instructions/basic_drive_lmdrive_v2",
+  "output": "data/processed/navigation_tokens/basic_drive_morai_interval2",
+  "language_checkpoint": "data/external/tinyllama-1.1b-3T",
+  "visual_cache": "data/processed/vision_tokens/basic_drive_morai",
+  "max_instruction_tokens": 128
+}

@@ -1,0 +1,39 @@
+{
+  "schema": "morai-vldrive-offline-inference-v1",
+  "vision_checkpoint": "outputs/checkpoints/morai_visual_encoder.pth.tar",
+  "vldrive_checkpoint": "outputs/logs/vldrive_20260919_182054_301289/model-best.pt",
+  "visual_cache": "data/processed/vision_tokens/basic_drive_morai",
+  "dataset": {
+    "root": "data/raw/basic_drive",
+    "format": "morai_native_sensor_record",
+    "namespace": "basic_drive",
+    "route_csv": null,
+    "lidar_axis_policy": "morai_flu_to_lmdrive_fru",
+    "max_sensor_gap_ms": 150.0
+  },
+  "instruction": "Continue straight along the current road.",
+  "history": {
+    "sequence_length": 11,
+    "frame_sampling_interval": 1
+  },
+  "frames": {
+    "ids": null,
+    "start": 10,
+    "stride": 20,
+    "limit": 8
+  },
+  "runtime": {
+    "device": "cuda",
+    "seed": 607,
+    "cpu_threads": 2
+  },
+  "output": {
+    "dir": "outputs/logs/vldrive_offline/basic_drive",
+    "formats": ["pdf", "png"],
+    "dpi": 200
+  },
+  "visualization": {
+    "overview": true,
+    "show_actual_trajectory": true
+  }
+}

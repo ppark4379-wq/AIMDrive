@@ -221,3 +221,32 @@ def test_v2_instruction_policy_has_explicit_provenance(tmp_path):
     _jsonl(instructions, records)
     with pytest.raises(ValueError, match="consistent policy"):
         load_instruction_ranges(instructions)
+
+
+@pytest.mark.parametrize('split,frames', [('train',[0,2,4]),('validation',[35,37,39])])
+def test_paper_sampling_interval_uses_matching_features_and_targets(tmp_path, split, frames):
+    root,cache,split_path,instructions=_build_fixture(tmp_path)
+    dataset=MoraiExpertVLDriveDataset(root,cache_root=cache,split_file=split_path,split=split,
+        sequence_length=3,instructions=instructions,frame_sampling_interval=2)
+    assert len(dataset)==2
+    sample=dataset[0]
+    assert sample['metadata']['frame_ids'].tolist()==frames
+    assert sample['model_inputs']['visual_feature'][:,0,0].tolist()==frames
+    np.testing.assert_allclose(sample['training_targets']['future_trajectory'][:,0,0],np.array(frames)/10)
+    assert dataset.describe()['frame_sampling_interval']==2
+
+
+def test_sample_interval_cannot_hide_intervening_instruction_change(tmp_path):
+    root,cache,split,instructions=_build_fixture(tmp_path)
+    original=[json.loads(line) for line in instructions.read_text().splitlines()]
+    _jsonl(instructions,[dict(original[0],stop_frame=0),
+                         dict(original[1],start_frame=1,stop_frame=1),
+                         dict(original[0],start_frame=2,stop_frame=65)])
+    dataset=MoraiExpertVLDriveDataset(root,cache_root=cache,split_file=split,split='train',
+        sequence_length=3,instructions=instructions,frame_sampling_interval=2,
+        instruction_boundary_policy='current_with_history')
+    assert dataset[0]['metadata']['frame_ids'].tolist()==[0,2,4]
+    assert dataset[0]['training_targets']['frame_loss_mask'].tolist()==[False,True,True]
+    excluded=MoraiExpertVLDriveDataset(root,cache_root=cache,split_file=split,split='train',
+        sequence_length=3,instructions=instructions,frame_sampling_interval=2)
+    assert excluded[0]['metadata']['frame_ids'].tolist()==[2,4,6]

@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VLDrive · Live waypoints</title><link rel="stylesheet" href="/style.css"></head>
+<body><header><div><strong>VLDrive</strong><span> / Live waypoints</span><p id="model"></p></div><div class="badge" id="mode">수신 · 시각화 전용 · 차량 제어 없음</div></header>
+<main><section class="navigation"><div class="eyebrow">NAVIGATION · 표시된 예측에 입력한 지시</div><div id="instruction">센서 수신을 기다립니다.</div><div id="navdetail" class="muted"></div></section>
+<div class="status"><strong id="status">시작 중</strong><span id="reason"></span></div>
+<section id="control-panel" class="navigation" hidden><div class="eyebrow">LMDRIVE LATERAL PID + EXPERT LONGITUDINAL PID · MORAI UDP</div><p id="control-status"></p><p id="control-values"></p><p id="control-detail"></p><p class="muted">요청·수신 휠각은 차량 상태의 부호 기준입니다. 정규화 UDP 조향값과 부호가 다릅니다. 주황색은 마지막 조향 갱신의 목표점을 현재 좌표로 옮겨 표시합니다. ACK는 중계기의 수신 확인이며, Ctrl+C 종료 시 제동 명령을 전송합니다.</p></section>
+<section class="metrics"><div>실제 입력 이력<strong id="history">0 / 11</strong><small>학습 간격 0.2초 · 약 2초 이력</small></div><div>CCDP 유지 토큰<strong id="tokens">—</strong><small>eval · hard Gumbel</small></div><div>계산 시간<strong id="latency">—</strong><small>Encoder + VLDrive</small></div><div>예측 기준 시점 경과<strong id="age">—</strong><small>센서 수신 → 현재 화면</small></div></section>
+<section class="panels"><article class="camera"><h2>전방 카메라 <span id="frame"></span></h2><div class="camera-box"><img id="camera" alt="예측 anchor의 전방 카메라" hidden><p id="camera-placeholder">새로운 예측을 기다립니다.</p></div><p class="muted">카메라는 최신 예측 입력 프레임입니다. 제어 중에는 오른쪽 경로가 마지막 제어 계산 frame을 기준으로 표시됩니다.</p></article>
+<article><h2>예측 waypoint <span>ego 기준 · m</span></h2><svg id="bev" viewBox="0 0 560 520" role="img" aria-label="미래 0.5초부터 2.5초까지 예측 waypoint"></svg><p id="plot-note" class="muted">오른쪽 +x · 전방 +y · 실제 제어에 사용하지 않습니다.</p></article></section>
+<section class="bottom"><article><h2>계획된 global path</h2><svg id="route" viewBox="0 0 500 250" role="img" aria-label="Global path와 차량 위치"></svg><p id="route-detail" class="muted"></p></article><article><h2>UDP 수신 상태</h2><table><thead><tr><th>센서</th><th>Port</th><th>Packets</th><th>완성 샘플</th><th>경과 시간</th></tr></thead><tbody id="streams"></tbody></table></article></section>
+</main><footer>창을 닫아도 추론 프로세스는 계속 실행됩니다. 터미널에서 Ctrl+C로 종료합니다.</footer><script src="/app.js"></script></body></html>

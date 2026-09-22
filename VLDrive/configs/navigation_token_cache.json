@@ -1,0 +1,14 @@
+{
+  "schema": "native-navigation-token-cache-config-v1",
+  "dataset_root": "data/raw/basic_drive",
+  "namespace": "basic_drive",
+  "instructions": "data/processed/instructions/basic_drive_lmdrive_v2",
+  "checkpoint": "outputs/checkpoints/morai_visual_encoder.pth.tar",
+  "checkpoint_sha256": "d0cd815c5ca5303b4844532b18c1420d508bd408f244bad08b9d9d48eee25be4",
+  "output": "data/processed/vision_tokens/basic_drive_morai",
+  "device": "cuda",
+  "cpu_threads": 4,
+  "train_fraction": 0.8,
+  "max_sensor_gap_ms": 150,
+  "log_interval": 100
+}

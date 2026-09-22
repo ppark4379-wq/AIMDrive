@@ -7,6 +7,7 @@ from models.vldrive import VLDriveTrainingConfig, VLDriveTrainingModel
 def test_repair_changes_require_explicit_variant():
     VLDriveTrainingConfig().validate()
     for changed in ({'reconstruction_reduction': 'mean'}, {'detach_reconstruction_loss_mask': True},
+                    {'reconstruction_feature_space': 'normalized'},
                     {'inference_selection_mode': 'topk'}, {'retention_logit_weight': 1.}):
         with pytest.raises(ValueError, match='explicit'):
             VLDriveTrainingConfig(**changed).validate()

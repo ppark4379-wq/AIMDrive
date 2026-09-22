@@ -1,0 +1,543 @@
+{
+  "log": "C:\\Users\\autonav009\\Desktop\\AIMDrive\\VLDrive\\outputs\\logs\\navigation_manual\\20260917_223800_663108",
+  "valid_frames": 8136,
+  "invalid": {
+    "gps_no_packets+status_no_packets": 1
+  },
+  "route_length": 2184.6117233360674,
+  "events": [
+    {
+      "end_index": 1895,
+      "evidence": "route_definition_and_directed_ring_topology",
+      "exit_number": 1,
+      "id": "roundabout:1745",
+      "kind": "roundabout",
+      "start_index": 1745,
+      "start_m": 858.5023964183979,
+      "end_m": 930.6019068794656
+    },
+    {
+      "end_index": 3529,
+      "evidence": "recorded_route_highway_zone",
+      "id": "highway:2275",
+      "kind": "highway",
+      "start_index": 2275,
+      "start_m": 1118.7417511690987,
+      "end_m": 1741.7209885112272
+    },
+    {
+      "declared_direction": "straight",
+      "direction": "left",
+      "end_index": 192,
+      "evidence": "planned_junction_entry_exit_geometry",
+      "id": "turn:147",
+      "junction": true,
+      "kind": "turn",
+      "link_id": "A2256W000182",
+      "start_index": 147,
+      "t_junction": false,
+      "traffic_light": false,
+      "turn_angle_deg": 91.64726202226885,
+      "start_m": 72.62896869677363,
+      "end_m": 94.95424590476594
+    },
+    {
+      "declared_direction": "straight",
+      "direction": "straight",
+      "end_index": 378,
+      "evidence": "planned_junction_entry_exit_geometry",
+      "id": "turn:325",
+      "junction": true,
+      "kind": "turn",
+      "link_id": "A2256W000236",
+      "start_index": 325,
+      "t_junction": true,
+      "traffic_light": false,
+      "turn_angle_deg": 0.2015400925008052,
+      "start_m": 160.00916727063552,
+      "end_m": 186.28573174794164
+    },
+    {
+      "declared_direction": "straight",
+      "direction": "straight",
+      "end_index": 483,
+      "evidence": "planned_junction_entry_exit_geometry",
+      "id": "turn:425",
+      "junction": true,
+      "kind": "turn",
+      "link_id": "A2256W000215",
+      "start_index": 425,
+      "t_junction": true,
+      "traffic_light": true,
+      "turn_angle_deg": 0.5456012546228688,
+      "start_m": 208.4589412270318,
+      "end_m": 237.42279020784048
+    },
+    {
+      "declared_direction": "straight",
+      "direction": "straight",
+      "end_index": 704,
+      "evidence": "planned_junction_entry_exit_geometry",
+      "id": "turn:642",
+      "junction": true,
+      "kind": "turn",
+      "link_id": "A2256W000222",
+      "start_index": 642,
+      "t_junction": true,
+      "traffic_light": true,
+      "turn_angle_deg": 4.511710647574716,
+      "start_m": 315.9060981416605,
+      "end_m": 346.7418235400054
+    },
+    {
+      "declared_direction": "straight",
+      "direction": "straight",
+      "end_index": 943,
+      "evidence": "planned_junction_entry_exit_geometry",
+      "id": "turn:890",
+      "junction": true,
+      "kind": "turn",
+      "link_id": "A2256W000599",
+      "start_index": 890,
+      "t_junction": false,
+      "traffic_light": true,
+      "turn_angle_deg": 1.358127509532051e-07,
+      "start_m": 436.79756644158005,
+      "end_m": 462.9416125173797
+    },
+    {
+      "declared_direction": "right",
+      "direction": "right",
+      "end_index": 1185,
+      "evidence": "planned_junction_entry_exit_geometry",
+      "id": "turn:1124",
+      "junction": true,
+      "kind": "turn",
+      "link_id": "A2256W000318",
+      "start_index": 1124,
+      "t_junction": false,
+      "traffic_light": true,
+      "turn_angle_deg": -88.92827469946036,
+      "start_m": 550.6187353754732,
+      "end_m": 580.868425414428
+    },
+    {
+      "declared_direction": "left",
+      "direction": "left",
+      "end_index": 1297,
+      "evidence": "planned_junction_entry_exit_geometry",
+      "id": "turn:1246",
+      "junction": true,
+      "kind": "turn",
+      "link_id": "A2256W000083",
+      "start_index": 1246,
+      "t_junction": false,
+      "traffic_light": true,
+      "turn_angle_deg": 92.40511991938165,
+      "start_m": 609.8768384406573,
+      "end_m": 635.1126073415751
+    },
+    {
+      "declared_direction": "straight",
+      "direction": "straight",
+      "end_index": 2005,
+      "evidence": "planned_junction_entry_exit_geometry",
+      "id": "turn:1896",
+      "junction": true,
+      "kind": "turn",
+      "link_id": "A2256W000054",
+      "start_index": 1896,
+      "t_junction": true,
+      "traffic_light": false,
+      "turn_angle_deg": -2.8841148744999194,
+      "start_m": 930.6019068794656,
+      "end_m": 984.711781716934
+    },
+    {
+      "declared_direction": "straight",
+      "direction": "straight",
+      "end_index": 4297,
+      "evidence": "planned_junction_entry_exit_geometry",
+      "id": "turn:4274",
+      "junction": true,
+      "kind": "turn",
+      "link_id": "A2256W000333",
+      "start_index": 4274,
+      "t_junction": false,
+      "traffic_light": true,
+      "turn_angle_deg": -23.599907702023145,
+      "start_m": 2109.847527156329,
+      "end_m": 2120.982191954861
+    },
+    {
+      "declared_direction": "straight",
+      "direction": "straight",
+      "end_index": 4321,
+      "evidence": "planned_junction_entry_exit_geometry",
+      "id": "turn:4298",
+      "junction": true,
+      "kind": "turn",
+      "link_id": "A2256W000154",
+      "start_index": 4298,
+      "t_junction": false,
+      "traffic_light": true,
+      "turn_angle_deg": -18.828220398179045,
+      "start_m": 2120.982191954861,
+      "end_m": 2132.2309878620263
+    }
+  ],
+  "changes": [
+    {
+      "index": 0,
+      "progress": 19.9,
+      "route_index": 39,
+      "lap": 0,
+      "rule": "Follow-03-s2",
+      "event": "until:turn:147",
+      "text": "Keep going straight until you reach the next junction, you're on the right track!"
+    },
+    {
+      "index": 213,
+      "progress": 42.9,
+      "route_index": 85,
+      "lap": 0,
+      "rule": "Turn-06-L-S",
+      "event": "turn:147+turn:325",
+      "text": "After you've successfully made a left turn at the current intersection, your next step should be to continue in a straight direction at the upcoming intersection."
+    },
+    {
+      "index": 755,
+      "progress": 188.4,
+      "route_index": 383,
+      "lap": 0,
+      "rule": "Turn-04-S",
+      "event": "turn:425",
+      "text": "At the upcoming T-intersection, proceed straight."
+    },
+    {
+      "index": 867,
+      "progress": 239.5,
+      "route_index": 488,
+      "lap": 0,
+      "rule": "Follow-03-s2",
+      "event": "until:turn:642",
+      "text": "Keep on rolling straight till you get to the next junction."
+    },
+    {
+      "index": 954,
+      "progress": 286.1,
+      "route_index": 581,
+      "lap": 0,
+      "rule": "Turn-04-S",
+      "event": "turn:642",
+      "text": "Next T, keep straight."
+    },
+    {
+      "index": 1069,
+      "progress": 349.1,
+      "route_index": 709,
+      "lap": 0,
+      "rule": "Follow-03-s2",
+      "event": "until:turn:890",
+      "text": "Maintain your current course until the upcoming intersection."
+    },
+    {
+      "index": 1190,
+      "progress": 406.9,
+      "route_index": 827,
+      "lap": 0,
+      "rule": "Turn-03-S",
+      "event": "turn:890",
+      "text": "Next light, straight."
+    },
+    {
+      "index": 1317,
+      "progress": 465.3,
+      "route_index": 948,
+      "lap": 0,
+      "rule": "Follow-03-s2",
+      "event": "until:turn:1124",
+      "text": "Keep going straight until you reach the next junction, you're on the right track!"
+    },
+    {
+      "index": 1433,
+      "progress": 521.2,
+      "route_index": 1063,
+      "lap": 0,
+      "rule": "Turn-06-R-L",
+      "event": "turn:1124+turn:1246",
+      "text": "After making a right turn at the current intersection, make a left turn at the next intersection."
+    },
+    {
+      "index": 1870,
+      "progress": 637.2,
+      "route_index": 1302,
+      "lap": 0,
+      "rule": "Follow-03-s2",
+      "event": "until:roundabout:1745",
+      "text": "Preserve your current trajectory until the forthcoming intersection."
+    },
+    {
+      "index": 2051,
+      "progress": 745.6,
+      "route_index": 1519,
+      "lap": 0,
+      "rule": "Follow-02-s1",
+      "event": "follow:14",
+      "text": "Keep cruising down this road."
+    },
+    {
+      "index": 2055,
+      "progress": 748.3,
+      "route_index": 1524,
+      "lap": 0,
+      "rule": "Follow-03-s2",
+      "event": "until:roundabout:1745",
+      "text": "Continue in a straight line along your current path until you reach the upcoming intersection."
+    },
+    {
+      "index": 2222,
+      "progress": 828.8,
+      "route_index": 1685,
+      "lap": 0,
+      "rule": "Turn-05-1",
+      "event": "roundabout:1745",
+      "text": "Head out on the first exit."
+    },
+    {
+      "index": 2473,
+      "progress": 933.3,
+      "route_index": 1901,
+      "lap": 0,
+      "rule": "Turn-04-S",
+      "event": "turn:1896",
+      "text": "Next T-junction, go straight."
+    },
+    {
+      "index": 2546,
+      "progress": 987.8,
+      "route_index": 2012,
+      "lap": 0,
+      "rule": "Follow-03-s2",
+      "event": "until:turn:4274",
+      "text": "Keep going straight until you reach the next junction, you're on the right track!"
+    },
+    {
+      "index": 2566,
+      "progress": 1001.8,
+      "route_index": 2040,
+      "lap": 0,
+      "rule": "Follow-02-s1",
+      "event": "follow:20",
+      "text": "Continue driving straight on this particular road."
+    },
+    {
+      "index": 2576,
+      "progress": 1008.8,
+      "route_index": 2054,
+      "lap": 0,
+      "rule": "Follow-03-s2",
+      "event": "until:turn:4274",
+      "text": "Keep going straight until you reach the next junction, you're on the right track!"
+    },
+    {
+      "index": 2784,
+      "progress": 1119.4,
+      "route_index": 2277,
+      "lap": 0,
+      "rule": "Follow-02-s2",
+      "event": "follow:22",
+      "text": "Do not deviate from the highway."
+    },
+    {
+      "index": 2861,
+      "progress": 1150.5,
+      "route_index": 2339,
+      "lap": 0,
+      "rule": "Follow-02-s2",
+      "event": "follow:23",
+      "text": "Keep cruising down the highway."
+    },
+    {
+      "index": 2987,
+      "progress": 1200.2,
+      "route_index": 2438,
+      "lap": 0,
+      "rule": "Follow-02-s2",
+      "event": "follow:24",
+      "text": "Do not deviate from the highway."
+    },
+    {
+      "index": 3088,
+      "progress": 1250.3,
+      "route_index": 2539,
+      "lap": 0,
+      "rule": "Follow-02-s2",
+      "event": "follow:25",
+      "text": "Do not deviate from the highway."
+    },
+    {
+      "index": 3170,
+      "progress": 1300.7,
+      "route_index": 2641,
+      "lap": 0,
+      "rule": "Follow-02-s2",
+      "event": "follow:26",
+      "text": "Just keep on rolling down the highway."
+    },
+    {
+      "index": 3238,
+      "progress": 1350.7,
+      "route_index": 2741,
+      "lap": 0,
+      "rule": "Follow-02-s2",
+      "event": "follow:27",
+      "text": "Proceed along the highway."
+    },
+    {
+      "index": 3294,
+      "progress": 1400.1,
+      "route_index": 2841,
+      "lap": 0,
+      "rule": "Follow-02-s2",
+      "event": "follow:28",
+      "text": "Continue driving straight on the designated highway."
+    },
+    {
+      "index": 3349,
+      "progress": 1450.4,
+      "route_index": 2942,
+      "lap": 0,
+      "rule": "Follow-02-s2",
+      "event": "follow:29",
+      "text": "Continue on the highway."
+    },
+    {
+      "index": 3402,
+      "progress": 1500.4,
+      "route_index": 3042,
+      "lap": 0,
+      "rule": "Follow-02-s2",
+      "event": "follow:30",
+      "text": "Just keep on rolling down the highway."
+    },
+    {
+      "index": 3455,
+      "progress": 1550.0,
+      "route_index": 3143,
+      "lap": 0,
+      "rule": "Follow-02-s2",
+      "event": "follow:31",
+      "text": "Continue driving straight on the designated highway."
+    },
+    {
+      "index": 3511,
+      "progress": 1601.1,
+      "route_index": 3247,
+      "lap": 0,
+      "rule": "Follow-02-s2",
+      "event": "follow:32",
+      "text": "Continue on the highway."
+    },
+    {
+      "index": 3578,
+      "progress": 1650.2,
+      "route_index": 3345,
+      "lap": 0,
+      "rule": "Follow-02-s2",
+      "event": "follow:33",
+      "text": "Proceed along the highway."
+    },
+    {
+      "index": 3640,
+      "progress": 1700.5,
+      "route_index": 3445,
+      "lap": 0,
+      "rule": "Follow-02-s2",
+      "event": "follow:34",
+      "text": "Just keep on rolling down the highway."
+    },
+    {
+      "index": 3695,
+      "progress": 1741.8,
+      "route_index": 3530,
+      "lap": 0,
+      "rule": "Follow-03-s2",
+      "event": "until:turn:4274",
+      "text": "Keep going straight until you reach the next junction, you're on the right track!"
+    },
+    {
+      "index": 4114,
+      "progress": 2007.7,
+      "route_index": 4068,
+      "lap": 0,
+      "rule": "Follow-02-s1",
+      "event": "follow:40",
+      "text": "Just keep on rolling down this road."
+    },
+    {
+      "index": 4126,
+      "progress": 2013.5,
+      "route_index": 4079,
+      "lap": 0,
+      "rule": "Follow-03-s2",
+      "event": "until:turn:4274",
+      "text": "Keep on rolling straight till you get to the next junction."
+    },
+    {
+      "index": 4253,
+      "progress": 2069.8,
+      "route_index": 4192,
+      "lap": 0,
+      "rule": "Follow-02-s1",
+      "event": "follow:41",
+      "text": "Continue on this road."
+    },
+    {
+      "index": 4254,
+      "progress": 2070.2,
+      "route_index": 4192,
+      "lap": 0,
+      "rule": "Follow-03-s2",
+      "event": "until:turn:4274",
+      "text": "Stay straight until the next intersection."
+    },
+    {
+      "index": 4280,
+      "progress": 2080.2,
+      "route_index": 4213,
+      "lap": 0,
+      "rule": "Turn-03-S",
+      "event": "turn:4274",
+      "text": "At the next light, just keep heading straight."
+    },
+    {
+      "index": 4380,
+      "progress": 2123.1,
+      "route_index": 4302,
+      "lap": 0,
+      "rule": "Turn-03-S",
+      "event": "turn:4298",
+      "text": "Continue straight at the subsequent traffic signal, without deviation."
+    },
+    {
+      "index": 4404,
+      "progress": 2134.6,
+      "route_index": 4326,
+      "lap": 0,
+      "rule": "Follow-03-s2",
+      "event": "until:turn:147",
+      "text": "Preserve your current trajectory until the forthcoming intersection."
+    },
+    {
+      "index": 4527,
+      "progress": 2173.7,
+      "route_index": 4406,
+      "lap": 0,
+      "rule": "Follow-03-s2",
+      "event": "until:turn:147",
+      "text": "Stay straight until the next intersection."
+    }
+  ],
+  "last_progress": 2173.696109227969
+}

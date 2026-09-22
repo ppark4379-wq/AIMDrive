@@ -211,6 +211,7 @@ class _Receiver:
                 with self._lock:
                     self._latest = sample
                     self._stamp = time.time()
+                    self._monotonic_stamp = time.monotonic()
                     self.samples += 1
 
     def _consume(self, payload):
@@ -222,6 +223,14 @@ class _Receiver:
             if self._latest is None:
                 return None, float("inf")
             return self._latest, time.time() - self._stamp
+
+    def snapshot(self):
+        """Atomic sample, age, sequence and monotonic receipt time (not sim time)."""
+        with self._lock:
+            if self._latest is None:
+                return None, float('inf'), 0, None
+            stamp = self._monotonic_stamp
+            return self._latest, time.monotonic() - stamp, self.samples, stamp
 
     def close(self):
         self._running = False
@@ -249,15 +258,22 @@ class CameraReceiver(_Receiver):
         self._buffer = bytearray()
         self._expect_index = 0
         self._intact = False
+        self._frame_stamp = None
         self.torn_images = 0
         super().__init__(port, recv_bytes=CAMERA_FRAGMENT_BYTES + 64, **kwargs)
 
     def _consume(self, payload):
         if len(payload) < CAMERA_PREFIX.size + 2:
             return None
-        header, _sec, _nsec, index, size = CAMERA_PREFIX.unpack_from(payload, 0)
+        header, sec, nsec, index, size = CAMERA_PREFIX.unpack_from(payload, 0)
         if header != CAMERA_HEADER:
             return None  # 'BOX' bounding boxes are not used here
+        frame_stamp = (sec, nsec)
+        if frame_stamp != self._frame_stamp:
+            self._buffer = bytearray()
+            self._expect_index = 0
+            self._intact = False
+            self._frame_stamp = frame_stamp
         tail = payload[-2:]
         body = payload[CAMERA_PREFIX.size:-2]
         take = min(max(int(size), 0), len(body)) if size else len(body)
@@ -381,7 +397,9 @@ class VehicleStatusReceiver(_Receiver):
         return {
             "competition_variant": competition,
             "layout_bytes": self.layout_bytes,
-            "speed": float(packet.vel_x),
+            # UDP signed velocity is km/h along the vehicle's direction.
+            # PID/navigation consume m/s, not one velocity-vector component.
+            "speed": float(packet.signed_vel) / 3.6,
             "signed_speed": float(packet.signed_vel),
             "yaw": math.radians(float(packet.yaw)),
             "yaw_degrees": float(packet.yaw),
