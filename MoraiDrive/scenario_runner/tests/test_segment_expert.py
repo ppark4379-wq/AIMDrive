@@ -85,6 +85,9 @@ class MissionExpertTest(unittest.TestCase):
             ("full_loop_static", 270, ()),
             ("full_loop_dynamic", 328, ("north_crosswalk_pair",)),
             ("full_loop_roundabout", 307, ()),
+            ("full_loop_roundabout_nonuniform", 307, ()),
+            ("full_loop_roundabout_speed_random", 307, ()),
+            ("full_loop_roundabout_brake", 307, ()),
         ):
             with self.subTest(mode=name):
                 scenario = self.make_scenario(name)

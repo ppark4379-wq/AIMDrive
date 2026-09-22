@@ -105,6 +105,42 @@ class ScenarioInterventionAuditTest(unittest.TestCase):
         self.assertFalse(report["spawn_matches_config"])
         self.assertFalse(report["lifecycle_complete"])
 
+    def test_random_count_roundabout_accepts_configured_range(self):
+        actors = ["6", "10", "13", "15", "18"]
+        events = [
+            {
+                "event": "actor_lifecycle_finished",
+                "action": "roundabout_spawn",
+                "success": True,
+            },
+            {
+                "event": "roundabout_spawn_contract",
+                "actor_ids": actors,
+                "target_speed_mps": 4.0,
+                "actor_motion_contracts": [
+                    {
+                        "actor_id": actor_id,
+                        "speed_limit_acknowledged": True,
+                        "initial_velocity_acknowledged": True,
+                    }
+                    for actor_id in actors
+                ],
+            },
+            {
+                "event": "actor_lifecycle_finished",
+                "action": "roundabout_retire",
+                "success": True,
+                "actor_ids": actors,
+            },
+        ]
+        report = summarize_roundabout_observation(
+            events,
+            {"min_count": 3, "max_count": 5, "speed_mps": 4.0},
+        )
+        self.assertEqual(report["observed_counts"], [5])
+        self.assertTrue(report["spawn_matches_config"])
+        self.assertTrue(report["lifecycle_complete"])
+
 
     def test_six_scenarios_read_enabled_zones_from_main_runner(self):
         self.assertEqual(
@@ -122,6 +158,9 @@ class ScenarioInterventionAuditTest(unittest.TestCase):
             "full_loop_static": {"static"},
             "full_loop_dynamic": {"dynamic"},
             "full_loop_roundabout": {"roundabout"},
+            "full_loop_roundabout_nonuniform": {"roundabout"},
+            "full_loop_roundabout_speed_random": {"roundabout"},
+            "full_loop_roundabout_brake": {"roundabout"},
             "full_loop_highway": {"highway"},
         }
         for scenario_name, enabled in expected.items():
@@ -181,6 +220,30 @@ class ScenarioInterventionAuditTest(unittest.TestCase):
                 tunnel_phases=["disabled"],
             ),
             "full_loop_roundabout": dict(
+                selected_static="OFF",
+                selected_dynamic="OFF",
+                dynamic_phases=["disabled"],
+                roundabout_observation=active_roundabout,
+                highway_samples=0,
+                tunnel_phases=["disabled"],
+            ),
+            "full_loop_roundabout_nonuniform": dict(
+                selected_static="OFF",
+                selected_dynamic="OFF",
+                dynamic_phases=["disabled"],
+                roundabout_observation=active_roundabout,
+                highway_samples=0,
+                tunnel_phases=["disabled"],
+            ),
+            "full_loop_roundabout_speed_random": dict(
+                selected_static="OFF",
+                selected_dynamic="OFF",
+                dynamic_phases=["disabled"],
+                roundabout_observation=active_roundabout,
+                highway_samples=0,
+                tunnel_phases=["disabled"],
+            ),
+            "full_loop_roundabout_brake": dict(
                 selected_static="OFF",
                 selected_dynamic="OFF",
                 dynamic_phases=["disabled"],
@@ -258,6 +321,9 @@ class ScenarioInterventionAuditTest(unittest.TestCase):
             "full_loop_static",
             "full_loop_dynamic",
             "full_loop_roundabout",
+            "full_loop_roundabout_nonuniform",
+            "full_loop_roundabout_speed_random",
+            "full_loop_roundabout_brake",
             "full_loop_highway",
         ):
             self.assertEqual(

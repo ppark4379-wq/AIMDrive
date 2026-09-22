@@ -28,10 +28,14 @@ class CurrentCollectionRuntimeTests(unittest.TestCase):
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                               text=True, timeout=45)
 
-    def test_all_six_scenarios_use_current_expert_without_frozen_tree(self):
+    def test_all_nine_scenarios_use_current_expert_without_frozen_tree(self):
         self.assertFalse((INTERNAL / 'proven_three_lap_runtime').exists())
         for scenario in ('full_loop', 'full_loop_normal', 'full_loop_static',
-                         'full_loop_dynamic', 'full_loop_roundabout', 'full_loop_highway'):
+                         'full_loop_dynamic', 'full_loop_roundabout',
+                         'full_loop_roundabout_nonuniform',
+                         'full_loop_roundabout_speed_random',
+                         'full_loop_roundabout_brake',
+                         'full_loop_highway'):
             with self.subTest(scenario=scenario):
                 result = self.invoke([
                     sys.executable, '-B', str(RUNNER), '--check',

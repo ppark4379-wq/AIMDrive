@@ -110,6 +110,9 @@ class SeparatedPackageTest(unittest.TestCase):
                 "full_loop_static",
                 "full_loop_dynamic",
                 "full_loop_roundabout",
+                "full_loop_roundabout_nonuniform",
+                "full_loop_roundabout_speed_random",
+                "full_loop_roundabout_brake",
                 "full_loop_highway",
             },
         )
@@ -177,9 +180,95 @@ class SeparatedPackageTest(unittest.TestCase):
         )
         self.assertEqual(highway_cfg["background_warmup_distance_m"], 100.0)
         self.assertEqual(highway_cfg["collection_maximum_total_vehicles"], 12)
-        self.assertEqual(roundabout_cfg["count"], 3)
+        self.assertEqual(roundabout_cfg["min_count"], 3)
+        self.assertEqual(roundabout_cfg["max_count"], 5)
+        self.assertEqual(
+            roundabout_cfg["models"],
+            [
+                "DEFAULT_SEDAN",
+                "2016_Hyundai_Sonata",
+                "2020_hyundai_sonata",
+                "2015_Kia_K5",
+                "2020_Kia_K5",
+                "2017_Hyundai_Grandeur",
+                "2014_Kia_K7",
+                "2016_Hyundai_Genesis_DH",
+                "2019_Toyota_Prius",
+                "2021_Volkswagen_Golf_GTI",
+                "2020_Kia_Stinger",
+                "2016_Hyundai_Ioniq",
+                "2023_Hyundai_Ioniq5",
+                "2023_Kia_EV6",
+                "2019_Hyundai_Kona(EV)",
+                "2017_Kia_Niro(HEV)",
+                "2020_Kia_Niro(EV)",
+                "2016_Kia_Soul(EV)",
+                "2020_Kia_Soul(EV)",
+                "2021_Hyundai_G80",
+                "2019_hyundai_genesis_g90",
+                "2019_hyundai_genesis_g90_4WS",
+                "DEFAULT_SUV",
+                "2016_Hyundai_Santafe",
+                "2017_Kia_Sorento",
+                "2020_volvo_xc90",
+                "2021_Hyundai_Genesis_GV80",
+                "2021_Hyundai_GV70",
+                "2019_Hyundai_Nexo",
+                "DEFAULT_MPV",
+                "DEFAULT_WAGON",
+                "2019_kia_sedona",
+                "2021_Kia_Carnival",
+                "2020_chrysler_pacifica_hybrid",
+                "2017_hyundai_solati_h350",
+                "DR_KGTorres_EVX_2024",
+            ],
+        )
         self.assertEqual(roundabout_cfg["speed_mps"], 4.0)
         self.assertEqual(roundabout_cfg["route_laps"], 100)
+        self.assertEqual(
+            roundabout_cfg["nonuniform_position"]["min_spawn_gap_m"],
+            10.0,
+        )
+        self.assertEqual(
+            roundabout_cfg["nonuniform_position"]["tight_gap_max_m"],
+            12.0,
+        )
+        self.assertEqual(
+            roundabout_cfg["nonuniform_position"]["gap_weight_exponent"],
+            2.5,
+        )
+        self.assertEqual(
+            roundabout_cfg["speed_randomization"],
+            {
+                "min_speed_mps": 2.5,
+                "max_speed_mps": 7.0,
+                "slow_band_max_mps": 3.2,
+                "fast_band_min_mps": 6.3,
+                "interaction_gap_min_m": 35.0,
+                "interaction_gap_max_m": 45.0,
+                "emergency_gap_m": 6.0,
+                "follow_gap_m": 9.0,
+                "resume_gap_m": 12.0,
+                "control_period_s": 0.2,
+                "live_log_period_s": 0.5,
+                "ego_gap_radius_m": 6.0,
+            },
+        )
+        self.assertEqual(
+            roundabout_cfg["brake_event"],
+            {
+                "base_speed_mps": 5.5,
+                "trough_speed_mps": 0.5,
+                "hold_duration_s": 6.0,
+                "emergency_gap_m": 6.0,
+                "follow_gap_m": 9.0,
+                "resume_gap_m": 12.0,
+                "control_period_s": 0.2,
+                "live_log_period_s": 0.5,
+                "ego_gap_radius_m": 6.0,
+                "entry_settle_s": 1.0,
+            },
+        )
         self.assertEqual(highway_cfg['reference_safety_distance_m'], 5.0)
         self.assertEqual(highway_cfg['reference_ttc_sec'], 1.0)
         self.assertEqual(scenario_cfg['highway_tunnel_test_start_path_index'], 2275)

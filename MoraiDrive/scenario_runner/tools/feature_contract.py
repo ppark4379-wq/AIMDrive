@@ -78,8 +78,9 @@ def verify_feature_contract(package_root, scenario_cfg):
 
     roundabout = scenario_cfg.get("roundabout_npc", {})
     require(
-        int(roundabout.get("count", 0)) == 3,
-        "Roundabout NPC count must remain fixed at 3",
+        int(roundabout.get("min_count", 0)) == 3
+        and int(roundabout.get("max_count", 0)) == 5,
+        "Roundabout NPC count range must remain 3..5",
     )
     require(
         float(roundabout.get("speed_mps", 0.0)) == 4.0,
@@ -90,8 +91,67 @@ def verify_feature_contract(package_root, scenario_cfg):
         "Roundabout NPC route must remain fixed at 100 laps",
     )
     require(
-        roundabout.get("model") == "DEFAULT_SEDAN",
-        "Roundabout NPCs must remain passenger-car sized",
+        list(roundabout.get("models", [])) == [
+            "DEFAULT_SEDAN",
+            "2016_Hyundai_Sonata",
+            "2020_hyundai_sonata",
+            "2015_Kia_K5",
+            "2020_Kia_K5",
+            "2017_Hyundai_Grandeur",
+            "2014_Kia_K7",
+            "2016_Hyundai_Genesis_DH",
+            "2019_Toyota_Prius",
+            "2021_Volkswagen_Golf_GTI",
+            "2020_Kia_Stinger",
+            "2016_Hyundai_Ioniq",
+            "2023_Hyundai_Ioniq5",
+            "2023_Kia_EV6",
+            "2019_Hyundai_Kona(EV)",
+            "2017_Kia_Niro(HEV)",
+            "2020_Kia_Niro(EV)",
+            "2016_Kia_Soul(EV)",
+            "2020_Kia_Soul(EV)",
+            "2021_Hyundai_G80",
+            "2019_hyundai_genesis_g90",
+            "2019_hyundai_genesis_g90_4WS",
+            "DEFAULT_SUV",
+            "2016_Hyundai_Santafe",
+            "2017_Kia_Sorento",
+            "2020_volvo_xc90",
+            "2021_Hyundai_Genesis_GV80",
+            "2021_Hyundai_GV70",
+            "2019_Hyundai_Nexo",
+            "DEFAULT_MPV",
+            "DEFAULT_WAGON",
+            "2019_kia_sedona",
+            "2021_Kia_Carnival",
+            "2020_chrysler_pacifica_hybrid",
+            "2017_hyundai_solati_h350",
+            "DR_KGTorres_EVX_2024",
+        ],
+        "Roundabout NPCs must use the approved model pool",
+    )
+    nonuniform = roundabout.get("nonuniform_position", {})
+    require(
+        float(nonuniform.get("min_spawn_gap_m", 0.0)) == 10.0
+        and float(nonuniform.get("tight_gap_max_m", 0.0)) == 12.0
+        and float(nonuniform.get("gap_weight_exponent", 0.0)) == 2.5,
+        "Nonuniform roundabout spawn-gap contract changed",
+    )
+    speed_random = roundabout.get("speed_randomization", {})
+    require(
+        float(speed_random.get("min_speed_mps", 0.0)) == 2.5
+        and float(speed_random.get("max_speed_mps", 0.0)) == 7.0
+        and float(speed_random.get("slow_band_max_mps", 0.0)) == 3.2
+        and float(speed_random.get("fast_band_min_mps", 0.0)) == 6.3
+        and float(speed_random.get("interaction_gap_min_m", 0.0)) == 35.0
+        and float(speed_random.get("interaction_gap_max_m", 0.0)) == 45.0
+        and float(speed_random.get("live_log_period_s", 0.0)) == 0.5
+        and float(speed_random.get("emergency_gap_m", 0.0)) == 6.0
+        and float(speed_random.get("follow_gap_m", 0.0)) == 9.0
+        and float(speed_random.get("resume_gap_m", 0.0)) == 12.0
+        and float(speed_random.get("control_period_s", 0.0)) == 0.2,
+        "Random-speed roundabout safety controller contract changed",
     )
 
     actor_lifecycle = scenario_cfg.get("actor_lifecycle", {})

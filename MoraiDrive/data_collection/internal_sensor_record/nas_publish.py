@@ -21,6 +21,9 @@ SCENARIO_FOLDERS = {
     "full_loop_dynamic": "dynamic_obstacle",
     "full_loop_static": "static_obstacle",
     "full_loop_roundabout": "roundabout",
+    "full_loop_roundabout_nonuniform": "roundabout_nonuniform",
+    "full_loop_roundabout_speed_random": "roundabout_speed_random",
+    "full_loop_roundabout_brake": "roundabout_brake",
     "full_loop_highway": "highway",
     # Reserved for the dedicated mode when the Scenario Runner adds it.
     "full_loop_traffic_light": "traffic_light",

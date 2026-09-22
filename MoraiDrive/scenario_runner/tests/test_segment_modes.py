@@ -159,8 +159,8 @@ class MissionModesTest(unittest.TestCase):
         ), self.assertRaisesRegex(RuntimeError, "disappeared"):
             scenario.verify_static_obstacle(1.0, 0.0)
 
-    def test_six_primary_modes_plus_legacy_commands(self):
-        self.assertEqual(len(PRIMARY_SCENARIOS), 6)
+    def test_nine_primary_modes_plus_legacy_commands(self):
+        self.assertEqual(len(PRIMARY_SCENARIOS), 9)
         for name in PRIMARY_SCENARIOS:
             self.assertEqual(build_parser().parse_args(["--scenario", name]).scenario, name)
             self.assertTrue(automatic_repeat_enabled(name, self.base_cfg))
@@ -208,6 +208,24 @@ class MissionModesTest(unittest.TestCase):
                  90.58330256087204, "A2256W000315"),
             ),
             "full_loop_roundabout": (
+                (1668, (-99.27731127804267, 252.81623345968816, 28.359828711565655),
+                 90.28600888072691, "A2256W000304"),
+                (1975, (-25.935784360231036, 345.127016285181, 28.33574698713155),
+                 3.4004013012027805, "A2256W000054"),
+            ),
+            "full_loop_roundabout_nonuniform": (
+                (1668, (-99.27731127804267, 252.81623345968816, 28.359828711565655),
+                 90.28600888072691, "A2256W000304"),
+                (1975, (-25.935784360231036, 345.127016285181, 28.33574698713155),
+                 3.4004013012027805, "A2256W000054"),
+            ),
+            "full_loop_roundabout_speed_random": (
+                (1668, (-99.27731127804267, 252.81623345968816, 28.359828711565655),
+                 90.28600888072691, "A2256W000304"),
+                (1975, (-25.935784360231036, 345.127016285181, 28.33574698713155),
+                 3.4004013012027805, "A2256W000054"),
+            ),
+            "full_loop_roundabout_brake": (
                 (1668, (-99.27731127804267, 252.81623345968816, 28.359828711565655),
                  90.28600888072691, "A2256W000304"),
                 (1975, (-25.935784360231036, 345.127016285181, 28.33574698713155),
@@ -590,8 +608,446 @@ class MissionModesTest(unittest.TestCase):
         )
         self.assertEqual(scenario.grpc.destroy_obstacles_near.call_count, 1)
 
-    def test_roundabout_three_equal_positions_and_existing_controls(self):
+    def test_nonuniform_roundabout_positions_are_seeded_and_keep_minimum_gap(self):
+        first_positions, first_gaps = roundabout._nonuniform_loop_positions(
+            random.Random(1234), 5, 112.0, 16.0
+        )
+        second_positions, second_gaps = roundabout._nonuniform_loop_positions(
+            random.Random(1234), 5, 112.0, 16.0
+        )
+        self.assertEqual(first_positions, second_positions)
+        self.assertEqual(first_gaps, second_gaps)
+        self.assertAlmostEqual(sum(first_gaps), 112.0)
+        self.assertGreaterEqual(min(first_gaps), 16.0)
+        self.assertGreater(len({round(gap, 6) for gap in first_gaps}), 1)
+
+        ordered = sorted(first_positions)
+        circular_gaps = [
+            (ordered[(index + 1) % len(ordered)] - position) % 112.0
+            for index, position in enumerate(ordered)
+        ]
+        self.assertGreaterEqual(min(circular_gaps), 16.0)
+
+    def test_roundabout_speed_policy_wraparound_and_hysteresis(self):
+        config = {
+            "emergency_gap_m": 6.0,
+            "follow_gap_m": 9.0,
+            "resume_gap_m": 12.0,
+        }
+        self.assertEqual(roundabout._circular_gap(108.0, 5.0, 112.0), 9.0)
+        self.assertEqual(
+            roundabout._safe_command_speed(6.7, 2.8, 5.9, False, config),
+            (0.0, True, "emergency_stop"),
+        )
+        self.assertEqual(
+            roundabout._safe_command_speed(6.7, 2.8, 8.0, False, config),
+            (2.8, True, "following"),
+        )
+        self.assertEqual(
+            roundabout._safe_command_speed(6.7, 2.8, 10.5, True, config),
+            (2.8, True, "following"),
+        )
+        self.assertEqual(
+            roundabout._safe_command_speed(6.7, 2.8, 10.5, False, config),
+            (6.7, False, "cruise"),
+        )
+        self.assertEqual(
+            roundabout._safe_command_speed(6.7, 2.8, 12.1, True, config),
+            (6.7, False, "cruise"),
+        )
+
+    def test_roundabout_speed_controller_stops_for_wrapped_emergency_gap(self):
+        actors = [Mock() for _ in range(3)]
+        for actor, actor_id in zip(actors, ("A", "B", "C")):
+            actor.get_id.return_value = actor_id
+        items = [
+            {
+                "actor": actor,
+                "desired_speed_mps": desired,
+                "command_speed_mps": desired,
+                "control_state": "cruise",
+                "following": False,
+            }
+            for actor, desired in zip(actors, (5.0, 3.0, 4.0))
+        ]
+        positions = {
+            "A": (0.0, 0.5),
+            "B": (5.0, 0.0),
+            "C": (10.0, 10.0),
+        }
+        states = [
+            SimpleNamespace(
+                actor_info=SimpleNamespace(id=SimpleNamespace(value=actor_id)),
+                transform=transform(x, y, 0.0, 0.0),
+                global_velocity=SimpleNamespace(
+                    x=desired * 3.6, y=0.0, z=0.0,
+                ),
+            )
+            for actor_id, (x, y), desired in zip(
+                ("A", "B", "C"),
+                positions.values(),
+                (5.0, 3.0, 4.0),
+            )
+        ]
+        grpc = Mock()
+        grpc.get_all_vehicle_states.return_value = states
+        grpc.set_vehicle_speed_limit.return_value = True
+        grpc.set_vehicle_velocity.return_value = True
+        scenario = SimpleNamespace(
+            roundabout_variant="speed_random",
+            roundabout_speed_control_elapsed=None,
+            roundabout_npcs=items,
+            roundabout_loop_segments=[
+                ("south", [(0.0, 0.0, 0.0), (10.0, 0.0, 0.0)], 0.0, 10.0),
+                ("east", [(10.0, 0.0, 0.0), (10.0, 10.0, 0.0)], 10.0, 20.0),
+                ("north", [(10.0, 10.0, 0.0), (0.0, 10.0, 0.0)], 20.0, 30.0),
+                ("west", [(0.0, 10.0, 0.0), (0.0, 0.0, 0.0)], 30.0, 40.0),
+            ],
+            roundabout_loop_length_m=40.0,
+            cfg={
+                "roundabout_npc": {
+                    "speed_randomization": {
+                        "min_speed_mps": 2.5,
+                        "max_speed_mps": 7.0,
+                        "slow_band_max_mps": 3.2,
+                        "fast_band_min_mps": 6.3,
+                        "emergency_gap_m": 6.0,
+                        "follow_gap_m": 9.0,
+                        "resume_gap_m": 12.0,
+                        "control_period_s": 0.2,
+                    },
+                },
+            },
+            grpc=grpc,
+        )
+
+        with redirect_stdout(io.StringIO()):
+            roundabout.update_roundabout_speed_control(scenario, 1.0)
+
+        self.assertAlmostEqual(items[0]["loop_s"], 39.5)
+        self.assertAlmostEqual(items[0]["front_gap_m"], 5.5)
+        self.assertEqual(items[0]["command_speed_mps"], 0.0)
+        self.assertEqual(items[0]["control_state"], "emergency_stop")
+        self.assertEqual(items[1]["command_speed_mps"], 3.0)
+
+    def test_roundabout_speed_controller_treats_nearby_ego_as_leader(self):
+        actor = Mock()
+        actor.get_id.return_value = "F"
+        items = [
+            {
+                "actor": actor,
+                "desired_speed_mps": 7.0,
+                "command_speed_mps": 7.0,
+                "control_state": "cruise",
+                "following": False,
+                "interaction_role": "fast_follower",
+            },
+        ]
+        states = [
+            SimpleNamespace(
+                actor_info=SimpleNamespace(id=SimpleNamespace(value="F")),
+                transform=transform(0.0, 0.0, 0.0, 0.0),
+                global_velocity=SimpleNamespace(x=7.0 * 3.6, y=0.0, z=0.0),
+            ),
+        ]
+        grpc = Mock()
+        grpc.get_all_vehicle_states.return_value = states
+        grpc.set_vehicle_speed_limit.return_value = True
+        grpc.set_vehicle_velocity.return_value = True
+        scenario = SimpleNamespace(
+            roundabout_variant="speed_random",
+            roundabout_speed_control_elapsed=None,
+            roundabout_npcs=items,
+            roundabout_loop_segments=[
+                ("south", [(0.0, 0.0, 0.0), (10.0, 0.0, 0.0)], 0.0, 10.0),
+                ("east", [(10.0, 0.0, 0.0), (10.0, 10.0, 0.0)], 10.0, 20.0),
+                ("north", [(10.0, 10.0, 0.0), (0.0, 10.0, 0.0)], 20.0, 30.0),
+                ("west", [(0.0, 10.0, 0.0), (0.0, 0.0, 0.0)], 30.0, 40.0),
+            ],
+            roundabout_loop_length_m=40.0,
+            cfg={
+                "roundabout_npc": {
+                    "speed_randomization": {
+                        "min_speed_mps": 2.5,
+                        "max_speed_mps": 7.0,
+                        "slow_band_max_mps": 3.2,
+                        "fast_band_min_mps": 6.3,
+                        "emergency_gap_m": 6.0,
+                        "follow_gap_m": 9.0,
+                        "resume_gap_m": 12.0,
+                        "control_period_s": 0.2,
+                    },
+                },
+            },
+            grpc=grpc,
+        )
+
+        # Ego sits 5m ahead of the fast NPC on the same lane; without treating
+        # ego as a leader the NPC would see an empty loop and ram it.
+        with redirect_stdout(io.StringIO()):
+            roundabout.update_roundabout_speed_control(
+                scenario, 1.0, ego_state={"x": 5.0, "y": 0.0, "speed": 10.8},
+            )
+
+        self.assertEqual(items[0]["front_actor_id"], "EGO")
+        self.assertAlmostEqual(items[0]["front_gap_m"], 5.0)
+        self.assertEqual(items[0]["command_speed_mps"], 0.0)
+        self.assertEqual(items[0]["control_state"], "emergency_stop")
+
+    def test_roundabout_speed_controller_ignores_ego_outside_gap_radius(self):
+        actor = Mock()
+        actor.get_id.return_value = "F"
+        items = [
+            {
+                "actor": actor,
+                "desired_speed_mps": 7.0,
+                "command_speed_mps": 7.0,
+                "control_state": "cruise",
+                "following": False,
+            },
+        ]
+        states = [
+            SimpleNamespace(
+                actor_info=SimpleNamespace(id=SimpleNamespace(value="F")),
+                transform=transform(0.0, 0.0, 0.0, 0.0),
+                global_velocity=SimpleNamespace(x=7.0 * 3.6, y=0.0, z=0.0),
+            ),
+        ]
+        grpc = Mock()
+        grpc.get_all_vehicle_states.return_value = states
+        grpc.set_vehicle_speed_limit.return_value = True
+        grpc.set_vehicle_velocity.return_value = True
+        scenario = SimpleNamespace(
+            roundabout_variant="speed_random",
+            roundabout_speed_control_elapsed=None,
+            roundabout_npcs=items,
+            roundabout_loop_segments=[
+                ("south", [(0.0, 0.0, 0.0), (10.0, 0.0, 0.0)], 0.0, 10.0),
+                ("east", [(10.0, 0.0, 0.0), (10.0, 10.0, 0.0)], 10.0, 20.0),
+                ("north", [(10.0, 10.0, 0.0), (0.0, 10.0, 0.0)], 20.0, 30.0),
+                ("west", [(0.0, 10.0, 0.0), (0.0, 0.0, 0.0)], 30.0, 40.0),
+            ],
+            roundabout_loop_length_m=40.0,
+            cfg={
+                "roundabout_npc": {
+                    "speed_randomization": {
+                        "min_speed_mps": 2.5,
+                        "max_speed_mps": 7.0,
+                        "slow_band_max_mps": 3.2,
+                        "fast_band_min_mps": 6.3,
+                        "emergency_gap_m": 6.0,
+                        "follow_gap_m": 9.0,
+                        "resume_gap_m": 12.0,
+                        "control_period_s": 0.2,
+                    },
+                },
+            },
+            grpc=grpc,
+        )
+
+        # Ego is 50m off the loop centerline (still approaching, not yet in
+        # the roundabout); the lone NPC should keep cruising at full speed.
+        with redirect_stdout(io.StringIO()):
+            roundabout.update_roundabout_speed_control(
+                scenario, 1.0, ego_state={"x": 0.0, "y": 50.0, "speed": 10.8},
+            )
+
+        self.assertEqual(items[0]["front_actor_id"], "F")
+        self.assertAlmostEqual(items[0]["front_gap_m"], 40.0)
+        self.assertEqual(items[0]["command_speed_mps"], 7.0)
+        self.assertEqual(items[0]["control_state"], "cruise")
+
+    def test_brake_event_profile_target_dips_then_recovers(self):
+        config = {"trough_speed_mps": 2.0}
+        item = {
+            "desired_speed_mps": 5.5,
+            "brake_phase": "braking",
+            "brake_hold_until_elapsed": 5.0,
+        }
+        self.assertEqual(
+            roundabout._brake_event_profile_target(item, 3.0, config),
+            (2.0, "braking"),
+        )
+        self.assertEqual(item["brake_phase"], "braking")
+
+        self.assertEqual(
+            roundabout._brake_event_profile_target(item, 5.0, config),
+            (5.5, "steady"),
+        )
+        self.assertEqual(item["brake_phase"], "steady")
+
+        self.assertEqual(
+            roundabout._brake_event_profile_target(item, 100.0, config),
+            (5.5, "steady"),
+        )
+
+    def test_maybe_trigger_brake_event_picks_npc_immediately_ahead_of_ego(self):
+        actor_a, actor_b, actor_c = Mock(), Mock(), Mock()
+        actor_a.get_id.return_value = "A"
+        actor_b.get_id.return_value = "B"
+        actor_c.get_id.return_value = "C"
+        items = [
+            {
+                "actor": actor_a, "loop_s": 2.0, "desired_speed_mps": 5.5,
+                "brake_role": "background", "brake_phase": "steady",
+                "brake_hold_until_elapsed": None,
+            },
+            {
+                "actor": actor_b, "loop_s": 8.0, "desired_speed_mps": 5.5,
+                "brake_role": "background", "brake_phase": "steady",
+                "brake_hold_until_elapsed": None,
+            },
+            {
+                "actor": actor_c, "loop_s": 20.0, "desired_speed_mps": 5.5,
+                "brake_role": "background", "brake_phase": "steady",
+                "brake_hold_until_elapsed": None,
+            },
+        ]
+        scenario = SimpleNamespace(
+            roundabout_variant="brake_event",
+            roundabout_brake_triggered=False,
+            roundabout_brake_ego_arrived_elapsed=None,
+            roundabout_npcs=items,
+            roundabout_loop_segments=[
+                ("south", [(0.0, 0.0, 0.0), (10.0, 0.0, 0.0)], 0.0, 10.0),
+                ("east", [(10.0, 0.0, 0.0), (10.0, 10.0, 0.0)], 10.0, 20.0),
+                ("north", [(10.0, 10.0, 0.0), (0.0, 10.0, 0.0)], 20.0, 30.0),
+                ("west", [(0.0, 10.0, 0.0), (0.0, 0.0, 0.0)], 30.0, 40.0),
+            ],
+            roundabout_loop_length_m=40.0,
+            cfg={"roundabout_npc": {"brake_event": {}}},
+        )
+
+        # Ego is still 50m off the loop centerline (approaching, not yet
+        # physically on the curve): no trigger yet.
+        with redirect_stdout(io.StringIO()):
+            roundabout._maybe_trigger_brake_event(
+                scenario, elapsed=1.0, ego_state={"x": 5.0, "y": 50.0},
+            )
+        self.assertFalse(scenario.roundabout_brake_triggered)
+        self.assertTrue(
+            all(item["brake_role"] == "background" for item in items)
+        )
+
+        # Ego first touches the curve (within the collision-avoidance
+        # radius) but hasn't stayed there for entry_settle_s (3.0s
+        # default) yet: still mid-turn, so no trigger.
+        with redirect_stdout(io.StringIO()):
+            roundabout._maybe_trigger_brake_event(
+                scenario, elapsed=1.0, ego_state={"x": 5.0, "y": 0.0},
+            )
+        self.assertFalse(scenario.roundabout_brake_triggered)
+        with redirect_stdout(io.StringIO()):
+            roundabout._maybe_trigger_brake_event(
+                scenario, elapsed=2.5, ego_state={"x": 5.0, "y": 0.0},
+            )
+        self.assertFalse(scenario.roundabout_brake_triggered)
+
+        # Ego has now stayed within the radius for >= entry_settle_s, i.e.
+        # it has actually merged: the NPC immediately ahead of ego on the
+        # loop (B, loop_s=8.0) becomes the brake leader.
+        with redirect_stdout(io.StringIO()):
+            roundabout._maybe_trigger_brake_event(
+                scenario, elapsed=4.5, ego_state={"x": 5.0, "y": 0.0},
+            )
+        self.assertTrue(scenario.roundabout_brake_triggered)
+        self.assertEqual(items[0]["brake_role"], "background")
+        self.assertEqual(items[1]["brake_role"], "leader")
+        self.assertEqual(items[1]["brake_phase"], "braking")
+        self.assertAlmostEqual(items[1]["brake_hold_until_elapsed"], 7.5)
+        self.assertEqual(items[2]["brake_role"], "background")
+
+        # Already triggered: a later call must not retarget another NPC.
+        with redirect_stdout(io.StringIO()):
+            roundabout._maybe_trigger_brake_event(
+                scenario, elapsed=5.0, ego_state={"x": 5.0, "y": 0.0},
+            )
+        self.assertEqual(items[1]["brake_hold_until_elapsed"], 7.5)
+        self.assertEqual(items[0]["brake_role"], "background")
+        self.assertEqual(items[2]["brake_role"], "background")
+
+    def test_update_roundabout_speed_control_brake_event_chain_reaction(self):
+        follower, leader = Mock(), Mock()
+        follower.get_id.return_value = "F"
+        leader.get_id.return_value = "L"
+        items = [
+            {
+                "actor": follower, "desired_speed_mps": 5.5,
+                "command_speed_mps": 5.5, "control_state": "cruise",
+                "following": False, "brake_role": "background",
+                "brake_phase": "steady", "brake_hold_until_elapsed": None,
+                "speed_last_live_log_elapsed": None,
+                "brake_last_live_log_elapsed": None,
+                "interaction_role": "background",
+            },
+            {
+                "actor": leader, "desired_speed_mps": 5.5,
+                "command_speed_mps": 2.0, "control_state": "cruise",
+                "following": False, "brake_role": "leader",
+                "brake_phase": "braking", "brake_hold_until_elapsed": 100.0,
+                "speed_last_live_log_elapsed": None,
+                "brake_last_live_log_elapsed": None,
+                "interaction_role": "background",
+            },
+        ]
+        states = [
+            SimpleNamespace(
+                actor_info=SimpleNamespace(id=SimpleNamespace(value="F")),
+                transform=transform(0.0, 0.0, 0.0, 0.0),
+                global_velocity=SimpleNamespace(x=5.5 * 3.6, y=0.0, z=0.0),
+            ),
+            SimpleNamespace(
+                actor_info=SimpleNamespace(id=SimpleNamespace(value="L")),
+                transform=transform(8.0, 0.0, 0.0, 0.0),
+                global_velocity=SimpleNamespace(x=2.0 * 3.6, y=0.0, z=0.0),
+            ),
+        ]
+        grpc = Mock()
+        grpc.get_all_vehicle_states.return_value = states
+        grpc.set_vehicle_speed_limit.return_value = True
+        grpc.set_vehicle_velocity.return_value = True
+        scenario = SimpleNamespace(
+            roundabout_variant="brake_event",
+            roundabout_speed_control_elapsed=None,
+            roundabout_npcs=items,
+            roundabout_loop_segments=[
+                ("south", [(0.0, 0.0, 0.0), (10.0, 0.0, 0.0)], 0.0, 10.0),
+                ("east", [(10.0, 0.0, 0.0), (10.0, 10.0, 0.0)], 10.0, 20.0),
+                ("north", [(10.0, 10.0, 0.0), (0.0, 10.0, 0.0)], 20.0, 30.0),
+                ("west", [(0.0, 10.0, 0.0), (0.0, 0.0, 0.0)], 30.0, 40.0),
+            ],
+            roundabout_loop_length_m=40.0,
+            cfg={
+                "roundabout_npc": {
+                    "brake_event": {
+                        "base_speed_mps": 5.5,
+                        "trough_speed_mps": 2.0,
+                        "hold_duration_s": 3.0,
+                        "emergency_gap_m": 6.0,
+                        "follow_gap_m": 9.0,
+                        "resume_gap_m": 12.0,
+                        "control_period_s": 0.2,
+                    },
+                },
+            },
+            grpc=grpc,
+        )
+
+        with redirect_stdout(io.StringIO()):
+            roundabout.update_roundabout_speed_control(scenario, 1.0)
+
+        # The leader holds its commanded trough speed...
+        self.assertEqual(items[1]["command_speed_mps"], 2.0)
+        # ...and the follower, 8m behind with a 9m follow-gap threshold,
+        # chain-reacts by matching the leader's slower speed.
+        self.assertEqual(items[0]["command_speed_mps"], 2.0)
+        self.assertEqual(items[0]["control_state"], "following")
+
+    def test_roundabout_random_count_models_equal_positions_and_controls(self):
         scenario = self.make_scenario("full_loop_roundabout")
+        scenario.grpc.get_available_surround_vehicle_models.return_value = list(
+            scenario.cfg["roundabout_npc"]["models"]
+        )
         self.setup_scenario(scenario)
         self.assertEqual(scenario.roundabout_lifecycle_state, "armed")
         scenario.grpc.spawn_vehicle.assert_not_called()
@@ -603,29 +1059,50 @@ class MissionModesTest(unittest.TestCase):
             if str(checkpoint["id"]) == str(zone["ego_entry_checkpoint"])
         )
         trigger_s = scenario.path_s_at_index(entry["path_index"]) - 100.0
+        random_state = scenario.random.getstate()
         roundabout.update_roundabout_npcs(
             scenario,
             elapsed=1.0,
             ego_state={"x": 0.0, "y": 0.0},
             current_s=trigger_s,
         )
-        self.assertEqual(len(scenario.roundabout_npcs), 3)
+        spawned_count = len(scenario.roundabout_npcs)
+        self.assertGreaterEqual(spawned_count, 3)
+        self.assertLessEqual(spawned_count, 5)
         self.assertEqual(scenario.roundabout_lifecycle_state, "spawned")
-        for call in scenario.grpc.spawn_vehicle.call_args_list:
+        spawn_calls = scenario.grpc.spawn_vehicle.call_args_list
+        spawned_models = [call.kwargs["model_name"] for call in spawn_calls]
+        self.assertEqual(len(spawned_models), len(set(spawned_models)))
+        self.assertTrue(
+            set(spawned_models).issubset(
+                set(scenario.cfg["roundabout_npc"]["models"])
+            )
+        )
+        for call in spawn_calls:
             self.assertEqual(call.kwargs["velocity"], 4.0)
-            self.assertEqual(call.kwargs["model_name"], "DEFAULT_SEDAN")
-        self.assertEqual(scenario.grpc.set_vehicle_route.call_count, 3)
-        self.assertEqual(scenario.grpc.set_vehicle_ai.call_count, 3)
-        self.assertEqual(scenario.grpc.set_vehicle_speed_limit.call_count, 3)
-        self.assertEqual(scenario.grpc.set_vehicle_velocity.call_count, 3)
+        self.assertEqual(scenario.grpc.set_vehicle_route.call_count, spawned_count)
+        self.assertEqual(scenario.grpc.set_vehicle_ai.call_count, spawned_count)
+        self.assertEqual(
+            scenario.grpc.set_vehicle_speed_limit.call_count, spawned_count
+        )
+        self.assertEqual(scenario.grpc.set_vehicle_velocity.call_count, spawned_count)
 
         original = self.make_scenario("full_loop_roundabout")
+        original.grpc.get_available_surround_vehicle_models.return_value = list(
+            original.cfg["roundabout_npc"]["models"]
+        )
         original.route_definition = scenario.route_definition
         original.roundabout_npcs, original.scenario_actors = [], []
+        original.random = random.Random()
+        original.random.setstate(random_state)
         with redirect_stdout(io.StringIO()):
             roundabout.spawn_roundabout_npcs_now(original)
         actual = scenario.grpc.spawn_vehicle.call_args_list
         baseline = original.grpc.spawn_vehicle.call_args_list
+        self.assertEqual(
+            [call.kwargs["model_name"] for call in actual],
+            [call.kwargs["model_name"] for call in baseline],
+        )
         self.assertEqual(
             [vars(call.kwargs["transform"].location) for call in actual],
             [vars(call.kwargs["transform"].location) for call in baseline],
@@ -634,6 +1111,105 @@ class MissionModesTest(unittest.TestCase):
             [call.args[1] for call in scenario.grpc.set_vehicle_route.call_args_list],
             [call.args[1] for call in original.grpc.set_vehicle_route.call_args_list],
         )
+
+    def test_roundabout_variant_spawn_contracts_remain_separate(self):
+        for name, variant in (
+            ("full_loop_roundabout_nonuniform", "nonuniform"),
+            ("full_loop_roundabout_speed_random", "speed_random"),
+            ("full_loop_roundabout_brake", "brake_event"),
+        ):
+            with self.subTest(name=name):
+                scenario = self.make_scenario(name)
+                scenario.grpc.get_available_surround_vehicle_models.return_value = list(
+                    scenario.cfg["roundabout_npc"]["models"]
+                )
+                self.setup_scenario(scenario)
+                with redirect_stdout(io.StringIO()):
+                    roundabout.spawn_roundabout_npcs_now(scenario)
+
+                self.assertEqual(scenario.roundabout_variant, variant)
+                self.assertGreaterEqual(
+                    min(scenario.roundabout_spawn_gaps_m), 10.0
+                )
+                if variant == "nonuniform":
+                    self.assertLessEqual(
+                        min(scenario.roundabout_spawn_gaps_m), 12.0
+                    )
+                desired = [
+                    item["desired_speed_mps"]
+                    for item in scenario.roundabout_npcs
+                ]
+                if variant == "nonuniform":
+                    self.assertEqual(set(desired), {4.0})
+                elif variant == "speed_random":
+                    self.assertTrue(
+                        all(2.5 <= speed <= 7.0 for speed in desired)
+                    )
+                    self.assertTrue(any(speed <= 3.2 for speed in desired))
+                    self.assertTrue(any(speed >= 6.3 for speed in desired))
+                    self.assertIn(
+                        "guaranteed_slow",
+                        {
+                            item["speed_profile"]
+                            for item in scenario.roundabout_npcs
+                        },
+                    )
+                    self.assertIn(
+                        "guaranteed_fast",
+                        {
+                            item["speed_profile"]
+                            for item in scenario.roundabout_npcs
+                        },
+                    )
+                    pair = scenario.roundabout_interaction_pair
+                    follower_index = pair["follower_index"]
+                    leader_index = pair["leader_index"]
+                    self.assertEqual(
+                        leader_index,
+                        (follower_index + 1) % len(scenario.roundabout_npcs),
+                    )
+                    self.assertGreaterEqual(
+                        pair["initial_center_gap_m"], 35.0
+                    )
+                    self.assertLessEqual(
+                        pair["initial_center_gap_m"], 45.0
+                    )
+                    self.assertEqual(
+                        scenario.roundabout_npcs[follower_index][
+                            "interaction_role"
+                        ],
+                        "fast_follower",
+                    )
+                    self.assertEqual(
+                        scenario.roundabout_npcs[leader_index][
+                            "interaction_role"
+                        ],
+                        "slow_leader",
+                    )
+                    self.assertGreater(
+                        scenario.roundabout_npcs[follower_index][
+                            "desired_speed_mps"
+                        ],
+                        scenario.roundabout_npcs[leader_index][
+                            "desired_speed_mps"
+                        ],
+                    )
+                elif variant == "brake_event":
+                    self.assertEqual(set(desired), {5.5})
+                    self.assertEqual(
+                        {
+                            item["speed_profile"]
+                            for item in scenario.roundabout_npcs
+                        },
+                        {"brake_event"},
+                    )
+                    self.assertTrue(
+                        all(
+                            item["brake_phase"] == "steady"
+                            and item["brake_role"] == "background"
+                            for item in scenario.roundabout_npcs
+                        )
+                    )
 
     def test_roundabout_retires_owned_actors_30m_after_exit(self):
         scenario = self.make_scenario("full_loop_roundabout")
@@ -652,6 +1228,7 @@ class MissionModesTest(unittest.TestCase):
         roundabout.update_roundabout_npcs(
             scenario, 1.0, {"x": 0.0, "y": 0.0}, entry_s - 100.0
         )
+        spawned_count = len(scenario.roundabout_npcs)
         scenario.grpc.get_all_vehicle_states.return_value = [
             SimpleNamespace(
                 actor_info=SimpleNamespace(
@@ -666,10 +1243,12 @@ class MissionModesTest(unittest.TestCase):
             scenario, 2.0, {"x": 0.0, "y": 0.0}, exit_s + 30.01
         )
         self.assertEqual(scenario.roundabout_lifecycle_state, "retired")
-        self.assertEqual(scenario.grpc.destroy_vehicle_by_id.call_count, 3)
+        self.assertEqual(
+            scenario.grpc.destroy_vehicle_by_id.call_count, spawned_count
+        )
         self.assertEqual(scenario.roundabout_npcs, [])
 
-    def test_roundabout_stall_retires_only_owned_three_actors(self):
+    def test_roundabout_stall_retires_only_owned_actors(self):
         scenario = self.make_scenario("full_loop_roundabout")
         scenario.event = Mock()
         self.setup_scenario(scenario)
@@ -685,6 +1264,7 @@ class MissionModesTest(unittest.TestCase):
         roundabout.update_roundabout_npcs(
             scenario, 1.0, {"x": 0.0, "y": 0.0}, trigger_s
         )
+        spawned_count = len(scenario.roundabout_npcs)
         scenario.grpc.get_all_vehicle_states.return_value = [
             SimpleNamespace(
                 actor_info=SimpleNamespace(
@@ -699,7 +1279,9 @@ class MissionModesTest(unittest.TestCase):
             scenario, 46.0, {"x": 0.0, "y": 0.0}, trigger_s
         )
         self.assertEqual(scenario.roundabout_lifecycle_state, "retired")
-        self.assertEqual(scenario.grpc.destroy_vehicle_by_id.call_count, 3)
+        self.assertEqual(
+            scenario.grpc.destroy_vehicle_by_id.call_count, spawned_count
+        )
         calls = [call for call in scenario.event.call_args_list]
         named = [(call.args[0], call.kwargs) for call in calls]
         self.assertTrue(any(

@@ -18,6 +18,18 @@ class NasPlanningTests(unittest.TestCase):
         self.assertEqual(scenario_folder({"scenario_name": "full_loop_dynamic"}), "dynamic_obstacle")
         self.assertEqual(scenario_folder({"scenario_name": "full_loop_static"}), "static_obstacle")
         self.assertEqual(scenario_folder({"scenario_name": "full_loop_roundabout"}), "roundabout")
+        self.assertEqual(
+            scenario_folder({"scenario_name": "full_loop_roundabout_nonuniform"}),
+            "roundabout_nonuniform",
+        )
+        self.assertEqual(
+            scenario_folder({"scenario_name": "full_loop_roundabout_speed_random"}),
+            "roundabout_speed_random",
+        )
+        self.assertEqual(
+            scenario_folder({"scenario_name": "full_loop_roundabout_brake"}),
+            "roundabout_brake",
+        )
         self.assertEqual(scenario_folder({"scenario_name": "full_loop_highway"}), "highway")
 
     def test_public_dataset_alias_preserves_raw_identity(self):
