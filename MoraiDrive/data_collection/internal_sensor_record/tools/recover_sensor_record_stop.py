@@ -14,10 +14,13 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--pid',type=int,required=True)
     parser.add_argument('--name',required=True)
+    parser.add_argument('--output', type=Path)
     args=parser.parse_args()
     if not args.name.replace('_','').isalnum() or len(args.name)>96:
         parser.error('Use a simple unique output name')
-    windows_output=windows_path(SSD_ROOT/'sensor_record_auto_v1'/args.name)
+    output=(args.output.expanduser().resolve() if args.output
+            else SSD_ROOT/'sensor_record_auto_v1'/args.name)
+    windows_output=windows_path(output)
     source=(ROOT/'tools/stop_sensor_record.ps1').read_text()
     script=("& {\n"+source+"\n} -SimulatorProcessId %d -OutputDirectory '%s' "
             "-AllowedRoot '%s' -MaxAttempts 3"%

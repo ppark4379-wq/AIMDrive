@@ -1,6 +1,6 @@
 """Expert path-following control, shared by ROS expert and VLDrive UDP.
 
-The control block and helper methods were moved verbatim from AutonomousDriving.
+Shared control retains upstream expert improvements; planner events are explicit inputs.
 Planning remains upstream; this module consumes planning_path/target_velocity.
 """
 import numpy as np
@@ -8,6 +8,7 @@ from .pure_pursuit import PurePursuit
 from .pid import Pid
 from .control_input import ControlInput
 from ..planning.lattice_planning import parameters as lattice_parameters
+from ..planning.lattice_planning import roundabout_debug
 from ..planning.highway_lane_planning import parameters as highway_parameters
 
 
@@ -52,7 +53,8 @@ class PathController:
         self.last_control_debug = dict(raw_steering_rad=float(raw_steering_rad))
         return ControlInput(acc_cmd, front_steer_rad)
 
-    def _calculate_control(self, vehicle_state, planning_path, target_velocity, lattice_result):
+    def _calculate_control(self, vehicle_state, planning_path, target_velocity, lattice_result,
+                           *, pedestrian_released=False):
         if self.previous_target_velocity is not None:
             if (
                 target_velocity
@@ -63,18 +65,27 @@ class PathController:
         fast_roundabout_release = self._roundabout_entry_fast_release(
             target_velocity, lattice_result
         )
-        if fast_roundabout_release:
+        fast_pedestrian_release = (
+            pedestrian_released
+            and self.previous_target_velocity is not None
+            and self.previous_target_velocity <= .05 and target_velocity > .05
+        )
+        fast_stop_release = fast_roundabout_release or fast_pedestrian_release
+        if fast_stop_release:
             self.pid.reset()
         # 속도 제어를 위한 PID control
         acc_cmd = self.pid.get_output(
             target_velocity, vehicle_state.velocity,
-            derivative_on_measurement=lattice_result.mode == "roundabout_entry",
+            derivative_on_measurement=(lattice_result.mode == "roundabout_entry" or fast_pedestrian_release),
+            acceleration_p_gain=self._roundabout_entry_acceleration_gain(
+                target_velocity, vehicle_state, lattice_result
+            ),
         )
         # 합류 양보/충돌 예측이 정지를 요구하면 현재 속도와 무관하게 즉시 제동합니다.
         if target_velocity <= 0.05:
             self.pid.reset()
             acc_cmd = -1.
-        elif fast_roundabout_release:
+        elif fast_stop_release:
             acc_cmd = max(0.0, acc_cmd)
         else:
             acc_cmd = self._smooth_longitudinal_command(acc_cmd)
@@ -124,6 +135,8 @@ class PathController:
             self.max_steering,
         )
         self.previous_front_steer_rad = float(front_steer_rad)
+        roundabout_debug.record_control(
+            lattice_result, target_velocity, acc_cmd, self.control_dt, front_steer_rad)
 
         return acc_cmd, raw_steering_rad, front_steer_rad
 
@@ -179,8 +192,14 @@ class PathController:
     def _recorded_lookahead_limits(self, vehicle_state, lattice_result):
         details = getattr(lattice_result, 'debug_details', {}).get('static_avoidance', {})
         if getattr(lattice_result, 'active', False) and details.get('planner') == 'recorded_route_graph':
+            # Longer preview stabilizes fast gentle avoidance; retain the short
+            # preview through tight bends so the body does not cut a corner.
+            nominal = max(lattice_parameters.STATIC_TRACKING_LOOKAHEAD[1],
+                          self.pure_pursuit.lfd_gain*vehicle_state.velocity)
+            upper = float(np.interp(details.get('preview_curvature', .08),
+                                    [.02, .08], [nominal, 1.5]))
             value = float(np.clip(self.pure_pursuit.lfd_gain*vehicle_state.velocity,
-                                  *lattice_parameters.STATIC_TRACKING_LOOKAHEAD))
+                                  lattice_parameters.STATIC_TRACKING_LOOKAHEAD[0], upper))
             self._recorded_last_lookahead = value
             return (value, value)
         previous = getattr(self, '_recorded_last_lookahead', None)
@@ -223,4 +242,22 @@ class PathController:
             "roundabout_entry_follow_lead",
         )
 
-
+    @staticmethod
+    def _roundabout_entry_acceleration_gain(target_velocity, vehicle_state, lattice_result):
+        """Raise P only for permitted entry acceleration, keeping other limits."""
+        if (getattr(lattice_result, "mode", "") != "roundabout_entry"
+                or target_velocity <= 0.05 or target_velocity <= vehicle_state.velocity):
+            return None
+        details = lattice_result.debug_details.get("roundabout_entry", {})
+        if details.get("phase") not in ("cruise", "rear_pressure") or details.get("front_gap") is not None:
+            return None
+        entry_started = (details.get("entering", False) or details.get("committed", False)
+                         or details.get("hold_gap", float("inf")) <= lattice_parameters.ROUNDABOUT_HOLD_TOLERANCE)
+        if not entry_started:
+            return None
+        limits = details.get("speed_limits", {})
+        entry_target = min(limits.get("path_speed", float("inf")), lattice_result.acc_target_velocity)
+        # A pedestrian/signal or another lower speed limit keeps the base gain.
+        if target_velocity < entry_target - 1e-6:
+            return None
+        return lattice_parameters.ROUNDABOUT_ENTRY_ACCEL_P_GAIN

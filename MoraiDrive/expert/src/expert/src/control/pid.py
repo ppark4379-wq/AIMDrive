@@ -27,7 +27,8 @@ class Pid:
             raise ValueError("sampling_time must be positive")
         self.sampling_time = sampling_time
 
-    def get_output(self, target_value, current_value, derivative_on_measurement=False):
+    def get_output(self, target_value, current_value, derivative_on_measurement=False,
+                   acceleration_p_gain=None):
         error = target_value-current_value
         candidate_integral = self.integral_error + error*self.sampling_time
         derivative_error = (error-self.previous_error)/self.sampling_time
@@ -37,6 +38,10 @@ class Pid:
                                 -(current_value-self.previous_measurement)/self.sampling_time)
 
         output = self.p_gain*error + self.i_gain*candidate_integral + self.d_gain*derivative_error
+        # A per-call acceleration gain must not change braking or persist into
+        # another driving mode. Keep derivative-requested braking as well.
+        if acceleration_p_gain is not None and error > 0.0 and output > 0.0:
+            output += (max(self.p_gain, float(acceleration_p_gain)) - self.p_gain) * error
         # Do not wind the integrator farther into actuator saturation.  This is
         # especially important when a long acceleration phase is followed by a
         # merge-yield or emergency-stop target.

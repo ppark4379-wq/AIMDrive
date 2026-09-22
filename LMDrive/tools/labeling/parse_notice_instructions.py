@@ -101,10 +101,23 @@ rule_id_mapping_dict = {}
 for i, key in enumerate(registered_class.keys()):
     rule_id_mapping_dict[key] = i
 
+# CARLA 오프라인 사건 프레임 라벨러이며 MORAI 수집기를 실행하지 않는다.
+# 주의: 기존 목록의 Notice-05 중복 호출은 출력 중복을 만들 수 있다.
+# 이번 변경은 주석 보강만 하므로 재현성을 위해 기존 동작은 바꾸지 않는다.
 notice_processing_rules = ['Notice-01','Notice-02','Notice-03','Notice-04','Notice-05','Notice-05','Notice-06','Notice-07','Notice-08-R','Notice-08-G','Notice-08-Y']
 notice_data = {}
 
 def process_notice(line):
+    """주행 기록 하나를 자동 라벨링한다. 프레임별 수동 annotation은 필요 없다.
+
+    dataset_index.txt의 '<route_path> <frame_count>'를 읽어 순서대로 측정값을
+    로딩하고, 별도의 CARLA 시나리오 정의를 notice_rules에 전달한다.
+    결과는 사건 frame_id + 종류/ID + 출처 정보이며 start/end 클립은 만들지 않는다.
+    LMDrive 학습 연결은 datasets/carla_instruction_dataset.py의 __getitem__:
+    최종 navigation 클립 내부 사건만 선택하고, 선택된 시점 뒤에 문장을 삽입한다.
+    MORAI는 입력 변환/사건 규칙과 별도 loader 연결이 필요하다. 상세 설계:
+    VLDrive/docs/NOTICE_MORAI_INTEGRATION.md.
+    """
     try:
         processed_data = []
         path, frames = line.split()
@@ -121,6 +134,8 @@ def process_notice(line):
 
         scenarios_path = os.path.join(scenarios_dir,"town%02d_all_scenarios.json" % town_id)
         scenarios_data = json.load(open(scenarios_path, 'r'))
+        # 이것은 주행 로그가 아니라 미리 정의한 사건 타입/트리거 좌표 목록이다.
+        # MORAI의 Scenario3라는 폴더/실험 번호와 자동 대응하지 않는다.
 
         for rule in notice_processing_rules:
             results = registered_class[rule].process({'data': json_data, 'town_id': town_id, 'weather_id': weather_id}, scenarios_data, town_str)
@@ -128,6 +143,8 @@ def process_notice(line):
             for result in results:
                 result['instruction'] = rule
                 result['instruction_id'] = rule_id
+                # instruction은 Notice-01 같은 키이다. 실제 자연어 문장은
+                # 학습 loader가 instruction_templates.json에서 나중에 선택한다.
                 result['town_id'] = town_id
                 result['weather_id'] = weather_id
                 result['route_path'] = route_path_relative_to_root(dataset_root, path)

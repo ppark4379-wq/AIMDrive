@@ -1,13 +1,15 @@
-"""Adapt only the three short missions' scenario-owned expert inputs.
+"""Adapt scenario-owned runtime inputs without modifying the external Expert.
 
-The external expert, full-loop modes, and highway settings are not changed.
+Full-loop settings remain intact. Segment modes retain only speed zones wholly
+contained by their exported route, for both link-ID and ENU-coordinate zones.
 """
 import json
 from pathlib import Path
 
 
-SHORT_MISSIONS = frozenset((
+FILTERED_MISSIONS = frozenset((
     "full_loop_static", "full_loop_dynamic", "full_loop_roundabout",
+    "full_loop_highway",
 ))
 
 
@@ -21,6 +23,26 @@ def nearest_index(points, target):
     )
 
 
+def zone_endpoints(zone, map_loader):
+    """Resolve either an ENU-coordinate or legacy link-ID speed zone."""
+    if "start_point" in zone or "end_point" in zone:
+        if "start_point" not in zone or "end_point" not in zone:
+            raise ValueError(
+                "Speed zone must define both start_point and end_point: "
+                + str(zone.get("name", "unnamed"))
+            )
+        return zone["start_point"], zone["end_point"]
+    if "start_link_id" not in zone or "end_link_id" not in zone:
+        raise ValueError(
+            "Speed zone needs coordinate points or link IDs: "
+            + str(zone.get("name", "unnamed"))
+        )
+    return (
+        map_loader.get_link_points(zone["start_link_id"])[0],
+        map_loader.get_link_points(zone["end_link_id"])[-1],
+    )
+
+
 def select_speed_zones(zones, window, map_loader):
     """Discard disjoint zones; reject partial overlaps instead of misprojecting.
 
@@ -29,8 +51,7 @@ def select_speed_zones(zones, window, map_loader):
     """
     kept, skipped = [], []
     for zone in zones:
-        start = map_loader.get_link_points(zone["start_link_id"])[0]
-        end = map_loader.get_link_points(zone["end_link_id"])[-1]
+        start, end = zone_endpoints(zone, map_loader)
         first = nearest_index(window.full_points, start)
         last = nearest_index(window.full_points, end)
         spans = ((first, last),) if first <= last else (
@@ -56,7 +77,7 @@ def select_speed_zones(zones, window, map_loader):
 
 def prepare_speed_zones(context):
     """Run after runtime export and before the external expert is launched."""
-    if context.mission_mode.name not in SHORT_MISSIONS:
+    if context.mission_mode.name not in FILTERED_MISSIONS:
         return
     path = Path(context.expert_controller.runtime_config_path)
     config = json.loads(path.read_text(encoding="utf-8"))

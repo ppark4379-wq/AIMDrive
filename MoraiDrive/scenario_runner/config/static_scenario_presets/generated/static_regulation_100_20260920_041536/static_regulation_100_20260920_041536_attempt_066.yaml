@@ -1,0 +1,51 @@
+schema: morai_static_obstacle_preset_v1
+name: static_regulation_100_20260920_041536_attempt_066
+map_name: R_KR_PR_K-city_2025
+scenario: full_loop_static
+source: manually_reviewed_static_expert_verified
+generation:
+  batch_seed: 7472814053904834310
+  attempt: 66
+  candidate_only_until_expert_passes: false
+obstacles:
+- model: ElectricScooter2
+  position:
+    x: -60.156805
+    y: -141.834473
+    z: 28.37919
+  yaw_deg: -80.243931
+  scale:
+  - 0.979587
+  - 0.979587
+  - 0.979587
+  route_path_index: 669
+  generation:
+    longitudinal_fraction: 0.45578524
+    lateral_offset_m: -0.450032
+    scale_multiplier: 0.979587
+- model: ElectricScooter1
+  position:
+    x: -61.05775
+    y: -139.504288
+    z: 28.380823
+  yaw_deg: -73.325872
+  scale:
+  - 0.984358
+  - 0.984358
+  - 0.984358
+  route_path_index: 674
+  generation:
+    longitudinal_fraction: 0.68893829
+    lateral_offset_m: 0.447416
+    scale_multiplier: 0.984358
+verification:
+  accepted: true
+  automatic_gate_passed: false
+  manual_review:
+    accepted: true
+    reviewer: dydwns
+    note: attempt 16을 MORAI 화면에서 실선·중앙선·주행영역 침범 없이 완주하는 경로로 직접 확인; 동일한 Expert recorded-route
+      조합과 완주·무충돌 증거를 가진 동등 후보 승인
+    reviewed_at_unix: 1789890454.8953807
+    automatic_rejection_reasons:
+    - cross_track_limit_exceeded

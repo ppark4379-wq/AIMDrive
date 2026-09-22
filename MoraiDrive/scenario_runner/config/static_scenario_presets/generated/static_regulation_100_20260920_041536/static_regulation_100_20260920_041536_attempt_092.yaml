@@ -1,0 +1,34 @@
+schema: morai_static_obstacle_preset_v1
+name: static_regulation_100_20260920_041536_attempt_092
+map_name: R_KR_PR_K-city_2025
+scenario: full_loop_static
+source: automated_static_expert_verified
+generation:
+  batch_seed: 7472814053904834310
+  attempt: 92
+  candidate_only_until_expert_passes: false
+obstacles:
+- model: ElectricScooter2
+  position:
+    x: -60.352304
+    y: -143.66
+    z: 28.377913
+  yaw_deg: -75.330452
+  scale:
+  - 0.990988
+  - 0.990988
+  - 0.990988
+  route_path_index: 665
+  generation:
+    longitudinal_fraction: 0.27326222
+    lateral_offset_m: -0.251795
+    scale_multiplier: 0.990988
+verification:
+  expert_completed: true
+  collision_free: true
+  runner_return_code: 0
+  max_cross_track_error_m: 2.13
+  cross_track_limit_m: 3.0
+  valid_plan_samples: 21
+  verified_at_unix: 1789850631.8786743
+  log: scenario_runner/.runtime/static_scenario_batch/static_regulation_100_20260920_041536/logs/static_regulation_100_20260920_041536_attempt_092.log

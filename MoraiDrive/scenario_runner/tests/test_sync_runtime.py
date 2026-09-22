@@ -125,6 +125,49 @@ class SyncRuntimeTest(unittest.TestCase):
             cls.return_value.close.assert_called_once()
         scenario.run_timeline.assert_not_called()
 
+    def test_run_without_sync_runtime_executes_timeline_directly(self):
+        scenario = FullLoopDriveBase(
+            Mock(), None, {}, {"sync_runtime": {"enabled": False}}
+        )
+        calls = Mock()
+        scenario.setup = calls.setup
+        scenario.run_timeline = calls.timeline
+        scenario.cleanup = calls.cleanup
+        scenario.require_async_ros_control_path = calls.preflight
+        with patch(FullLoopDriveBase.__module__ + '.SyncRuntimeBridge') as cls:
+            scenario.run()
+        cls.assert_not_called()
+        self.assertIsNone(scenario.runtime_bridge)
+        self.assertEqual(
+            [call[0] for call in calls.mock_calls],
+            ['preflight', 'setup', 'timeline', 'cleanup'],
+        )
+
+    def test_cleanup_before_setup_does_not_touch_morai_actors(self):
+        scenario = FullLoopScenario(Mock(), None, {}, {})
+        scenario.cleanup_spawned_actors()
+        scenario.grpc.reset_actors.assert_not_called()
+
+    def test_async_mode_resets_motion_before_expert_start(self):
+        calls = Mock()
+        scenario = FullLoopDriveBase(calls.grpc, None, {}, {
+            'sync_runtime': {'enabled': False},
+            'reset_ego_motion_on_start': True,
+            'reset_ego_motion_wait_sec': 0,
+        })
+        scenario.runtime_bridge = None
+        scenario.start_tf = object()
+        scenario.expert_controller = Mock(stop_process=calls.stop_old)
+        def setup():
+            scenario.expert_controller = Mock(start_process=calls.start_new)
+        scenario.setup_expert_controller = setup
+        with patch('time.sleep'):
+            scenario.configure_drive_from_start()
+        names = [call[0] for call in calls.mock_calls]
+        self.assertLess(names.index('stop_old'), names.index('grpc.set_ego_transform'))
+        self.assertLess(names.index('grpc.set_ego_transform'), names.index('grpc.reset_ego_motion'))
+        self.assertLess(names.index('grpc.reset_ego_motion'), names.index('start_new'))
+
     def test_clean_road_skips_spawning_and_events(self):
         for clean in (True, False):
             scenario = FullLoopScenario(Mock(), None, {}, {'clean_road_mode': clean})

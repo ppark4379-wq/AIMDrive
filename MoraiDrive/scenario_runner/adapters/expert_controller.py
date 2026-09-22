@@ -4,6 +4,8 @@ import os
 import signal
 import subprocess
 import sys
+import time
+from ..utils import safe_print as print
 
 
 class ExpertController:
@@ -152,15 +154,47 @@ class ExpertController:
         if self.process is None:
             return
 
+        process_pid = self.process.pid
         if self.process.poll() is None:
-            print(f"[Expert] stopping process: pid={self.process.pid}")
+            print(f"[Expert] stopping process: pid={process_pid}")
             self._terminate_process_group(signal.SIGTERM)
             try:
-                self.process.wait(timeout=3.0)
+                self.process.wait(timeout=10.0)
             except subprocess.TimeoutExpired:
                 self._terminate_process_group(signal.SIGKILL)
-                self.process.wait(timeout=3.0)
+                self.process.wait(timeout=5.0)
+        self._clear_owned_ros_registrations(process_pid)
         self.process = None
+
+    @staticmethod
+    def _owned_ros_nodes(system_state, process_pid):
+        prefix = f"/morai_standard_{int(process_pid)}_"
+        nodes = set()
+        for registrations in system_state:
+            for _, names in registrations:
+                nodes.update(name for name in names if name.startswith(prefix))
+        return sorted(nodes)
+
+    def _clear_owned_ros_registrations(self, process_pid):
+        """Remove only stale registrations owned by the stopped expert PID."""
+        import rosgraph
+        import rosnode
+
+        master = rosgraph.Master('/scenario_runner_expert_cleanup')
+        deadline = time.monotonic() + 5.0
+        while True:
+            owned = self._owned_ros_nodes(master.getSystemState(), process_pid)
+            if not owned:
+                return
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(0.1)
+        rosnode.cleanup_master_blacklist(master, owned)
+        remaining = self._owned_ros_nodes(master.getSystemState(), process_pid)
+        if remaining:
+            raise RuntimeError(
+                "Stopped expert still owns ROS registrations: " + str(remaining)
+            )
 
     def is_running(self):
         return self.process is not None and self.process.poll() is None

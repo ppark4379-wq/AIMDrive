@@ -5,6 +5,7 @@ bytes by their audited relative path and SHA256; it does not duplicate them.
 Teacher state is serialized only as a target and never returned as an encoder
 input.
 """
+from async_capture.route_sources import resolve_audited_map_root
 from bisect import bisect_left
 from collections import Counter
 import hashlib
@@ -110,6 +111,11 @@ def objects_for_entry(gt, geometry):
             raise ValueError("Incomplete object geometry in sealed GT timeline")
         key = str(obj.get("instance_key"))
         audit = geometry_rows.get(key, {})
+        # V2 retains the complete MORAI inventory as evidence, but actors whose
+        # conservative full box is proven disjoint from the supervised BEV do
+        # not have a target cell and must not invalidate or enter the renderer.
+        if audit.get("training_bev_relevant") is False:
+            continue
         result.append({
             "id": str(obj.get("id")),
             "instance_key": key,
@@ -180,10 +186,52 @@ def effective_admission_directory(episode):
         and corrected.get("training_visible") is False
     ):
         raise ValueError("Corrected admission evidence mismatch")
-    return corrected_dir, {
+    seals = {
         "admission_recovery": digest(recovery_path),
         "effective_admission": digest(corrected_dir / "COMPLETE.json"),
     }
+    geometry_record = recovery.get("corrected_object_geometry")
+    if geometry_record is not None:
+        geometry_relative = geometry_record.get("path")
+        geometry_path = (run / str(geometry_relative)).resolve()
+        if (run.resolve() not in geometry_path.parents
+                or geometry_path.name != "report.json"):
+            raise ValueError("Object geometry recovery path escapes its run")
+        geometry_dir = geometry_path.parent
+        _verify_seal(geometry_dir)
+        geometry = load(geometry_path)
+        if not (
+            geometry_record.get("sha256") == digest(geometry_path)
+            and geometry_record.get("seal_sha256")
+                == digest(geometry_dir / "COMPLETE.json")
+            and geometry.get("schema") == "morai_sensor_record_object_geometry_audit_v2"
+            and geometry.get("raw_manifest_sha256") == original.get("raw_manifest_sha256")
+            and geometry.get("structural_valid") is True
+            and corrected.get("input_seals", {}).get("object_geometry_audit")
+                == digest(geometry_dir / "COMPLETE.json")
+        ):
+            raise ValueError("Corrected object geometry evidence mismatch")
+        seals["effective_object_geometry"] = digest(geometry_dir / "COMPLETE.json")
+    return corrected_dir, seals
+
+
+def effective_object_geometry_directory(episode):
+    """Select the geometry ledger linked by the additive admission recovery."""
+    episode = Path(episode).resolve()
+    recovery_path = episode.parent / "ADMISSION_RECOVERY.json"
+    if not recovery_path.is_file():
+        directory = episode / "object_geometry_audit_v1"
+        _verify_seal(directory)
+        return directory
+    # This validates the full recovery chain before returning its geometry.
+    effective_admission_directory(episode)
+    recovery = json.loads(recovery_path.read_text(encoding="utf-8"))
+    if recovery.get("corrected_object_geometry") is None:
+        directory = episode / "object_geometry_audit_v1"
+        _verify_seal(directory)
+        return directory
+    path = (episode.parent / recovery["corrected_object_geometry"]["path"]).resolve()
+    return path.parent
 
 
 def verify_episode_evidence(episode, expected):
@@ -208,65 +256,16 @@ def verify_episode_evidence(episode, expected):
     )
     if recovery_expected:
         _, recovery_seals = effective_admission_directory(episode)
-        for key in ("admission_recovery", "effective_admission"):
+        keys = ["admission_recovery", "effective_admission"]
+        if "effective_object_geometry" in expected:
+            keys.append("effective_object_geometry")
+        for key in keys:
             if expected.get(key) != recovery_seals.get(key):
                 raise ValueError("Sensor Record recovery seal changed: " + key)
 
 
-def resolve_audited_map_root(map_root, scenario_root, expected_global, source_hashes):
-    """Select the exact audited copy, accepting only proven LF/CRLF relocation.
 
-    Never normalize the expected hash. The selected global path must match it
-    byte-for-byte, and all map files must equal the capture copy apart from
-    CRLF. This handles preserved runtimes alongside a Windows checkout.
-    """
-    from async_capture.journal import digest
-    original = Path(map_root)
-    name = "2026_molit_comp_global_path.txt"
-    if (original / name).is_file() and digest(original / name) == expected_global:
-        return original, False, "recorded_path"
-    candidate = Path(scenario_root) / "data" / original.name
-    if not (candidate / name).is_file() or digest(candidate / name) != expected_global:
-        raise ValueError("Official global path differs from the sealed route audit")
-    capture_files_available = True
-    for filename, key in ((name, None), ("link_set.json", "link_set"),
-                          ("node_set.json", "node_set")):
-        before, after = original / filename, candidate / filename
-        if not after.is_file():
-            raise ValueError("Audited map copy is unavailable: " + filename)
-        if not before.is_file():
-            capture_files_available = False
-            if key:
-                normalized = after.read_bytes().replace(b"\r\n", b"\n")
-                if hashlib.sha256(normalized).hexdigest() != source_hashes.get(key):
-                    raise ValueError("Audited map differs from recorded LF hash: " + filename)
-            continue
-        if (key and source_hashes.get(key) != digest(before)):
-            raise ValueError("Capture map differs from its recorded hash: " + filename)
-        if (before.read_bytes().replace(b"\r\n", b"\n")
-                != after.read_bytes().replace(b"\r\n", b"\n")):
-            raise ValueError("Capture/audited map content differs: " + filename)
-    capture_route = original.parents[1] / "config/full_loop_links.yaml"
-    audited_route = Path(scenario_root) / "config/full_loop_links.yaml"
-    if not audited_route.is_file():
-        raise ValueError("Audited route definition is unavailable")
-    if capture_route.is_file():
-        if (digest(capture_route) != source_hashes.get("route_definition")
-                or capture_route.read_bytes().replace(b"\r\n", b"\n")
-                    != audited_route.read_bytes().replace(b"\r\n", b"\n")):
-            raise ValueError("Capture/audited route definition content differs")
-    else:
-        capture_files_available = False
-        normalized = audited_route.read_bytes().replace(b"\r\n", b"\n")
-        if (hashlib.sha256(normalized).hexdigest()
-                != source_hashes.get("route_definition")):
-            raise ValueError("Audited route definition differs from recorded LF hash")
-    resolution = ("capture_copy_lf_crlf_equivalent" if capture_files_available
-                  else "recorded_lf_sha256_equivalent_checkout")
-    return candidate, True, resolution
-
-
-def official_route_tracker(contract, route_report):
+def official_route_tracker(contract, route_report, episode):
     """Rebuild the exact audited competition route used for navigation input.
 
     The target is a point on the official global path 25 m ahead.  It is not
@@ -276,24 +275,13 @@ def official_route_tracker(contract, route_report):
     from async_capture.journal import digest
     from data_collection.mgeo_navigation import MGeoMap, MGeoRouteTracker, load_official_route
 
-    data_collection_root = Path(__file__).resolve().parents[2]
-    scenario_root = data_collection_root.parent / "scenario_runner"
-    traffic = contract.get("capture", {}).get("traffic_light_ground_truth", {})
-    map_root = Path(traffic.get("map_root", "")).resolve()
-    route_definition = scenario_root / "config/full_loop_links.yaml"
-    map_root, relocated_line_endings, map_resolution = resolve_audited_map_root(
-        map_root, scenario_root, route_report.get("global_path_sha256"),
-        traffic.get("source_sha256", {}))
-    global_path = map_root / "2026_molit_comp_global_path.txt"
-    if not map_root.is_dir() or not route_definition.is_file() or not global_path.is_file():
-        raise ValueError("Audited official route inputs are unavailable")
-    if digest(route_definition) != route_report.get("route_definition_sha256"):
-        raise ValueError("Official route definition differs from the sealed route audit")
-    if digest(global_path) != route_report.get("global_path_sha256"):
-        raise ValueError("Official global path differs from the sealed route audit")
-    route_key = str(traffic.get("route_key") or "")
-    if not route_key:
-        raise ValueError("Sensor contract has no official route key")
+    from async_capture.route_sources import resolve_route_sources, verify_route_report
+    sources = resolve_route_sources(episode, contract)
+    verify_route_report(sources, route_report)
+    map_root = sources["map_root"]
+    route_definition = sources["route_definition"]
+    global_path = sources["global_path"]
+    route_key = sources["route_key"]
     world = MGeoMap(str(map_root / "link_set.json"),
                     node_set_path=str(map_root / "node_set.json"))
     route = load_official_route(str(route_definition), str(global_path), route_key)
@@ -305,8 +293,9 @@ def official_route_tracker(contract, route_report):
         "route_topology": "closed_loop" if tracker.closed_route else "open",
         "route_point_count": int(tracker.route_point_count),
         "audited_map_root": str(map_root),
-        "capture_copy_lf_crlf_equivalence_verified": relocated_line_endings,
-        "audited_map_resolution": map_resolution,
+        "capture_copy_lf_crlf_equivalence_verified": sources["line_endings_equivalence_verified"],
+        "audited_map_resolution": sources["resolution"],
+        "route_source_resolution": sources["provenance"],
         "route_definition_sha256": route_report["route_definition_sha256"],
         "global_path_sha256": route_report["global_path_sha256"],
     }
@@ -336,12 +325,13 @@ def build_episode_manifest(episode, *, campaign_validation_sha256, split,
     if expected_evidence is not None:
         verify_episode_evidence(episode, expected_evidence)
     admission_dir, recovery_seals = effective_admission_directory(episode)
+    geometry_dir = effective_object_geometry_directory(episode)
     evidence.update(recovery_seals)
 
     load = lambda path: json.loads(Path(path).read_text(encoding="utf-8"))
     admission = load(admission_dir / "frames.json")
     gt_frames = load(episode / "gt_timeline_v1/frames.json")
-    geometry = load(episode / "object_geometry_audit_v1/frames.json")
+    geometry = load(geometry_dir / "frames.json")
     signals = load(episode / "route_signal_audit_v1/frames.json")
     route_report = load(episode / "route_signal_audit_v1/report.json")
     active = load(episode / "quality/active_signals.json")
@@ -351,7 +341,7 @@ def build_episode_manifest(episode, *, campaign_validation_sha256, split,
     if not (len(admission) == len(gt_frames) == len(geometry) == len(signals)):
         raise ValueError("Sensor Record target timelines have different lengths")
     times, ego_values = dense_ego_timeline(active)
-    route_tracker, navigation_contract = official_route_tracker(contract, route_report)
+    route_tracker, navigation_contract = official_route_tracker(contract, route_report, episode)
     source_root = Path(native["source_root"]).resolve()
     if not source_root.is_dir():
         raise ValueError("Native Sensor Record source root is unavailable")

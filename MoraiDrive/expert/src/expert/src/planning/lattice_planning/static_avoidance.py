@@ -294,7 +294,8 @@ class StaticAvoidance:
         curvature_path = self.path[self.progress:] if self.path else points
         selected.curvature_cost = self.planner._max_curvature(curvature_path)
         speed = min(p.STATIC_MAX_SPEED_KPH / 3.6,
-                    math.sqrt(p.STATIC_LATERAL_ACCEL / max(1e-4, selected.curvature_cost))) if valid else 0.0
+                    math.sqrt(p.STATIC_LATERAL_ACCEL / max(1e-4, selected.curvature_cost))
+                    + p.STATIC_CURVATURE_SPEED_OFFSET_KPH / 3.6) if valid else 0.0
         # An unavailable return is not permission to drive beyond the held leg.
         remaining = self._distances(self.path[self.progress:])[-1] if self.path else 0.0
         speed = min(speed, math.sqrt(2.0 * p.STATIC_END_DECELERATION *

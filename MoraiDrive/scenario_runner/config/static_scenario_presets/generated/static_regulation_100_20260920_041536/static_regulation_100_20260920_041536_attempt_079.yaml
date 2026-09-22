@@ -1,0 +1,34 @@
+schema: morai_static_obstacle_preset_v1
+name: static_regulation_100_20260920_041536_attempt_079
+map_name: R_KR_PR_K-city_2025
+scenario: full_loop_static
+source: automated_static_expert_verified
+generation:
+  batch_seed: 7472814053904834310
+  attempt: 79
+  candidate_only_until_expert_passes: false
+obstacles:
+- model: YellowBarrel
+  position:
+    x: -60.932068
+    y: -137.443432
+    z: 28.382265
+  yaw_deg: -77.811913
+  scale:
+  - 2.141678
+  - 3.212517
+  - 2.141678
+  route_path_index: 678
+  generation:
+    longitudinal_fraction: 0.89500457
+    lateral_offset_m: 0.318643
+    scale_multiplier: 1.070839
+verification:
+  expert_completed: true
+  collision_free: true
+  runner_return_code: 0
+  max_cross_track_error_m: 1.31
+  cross_track_limit_m: 3.0
+  valid_plan_samples: 16
+  verified_at_unix: 1789849807.9433594
+  log: scenario_runner/.runtime/static_scenario_batch/static_regulation_100_20260920_041536/logs/static_regulation_100_20260920_041536_attempt_079.log

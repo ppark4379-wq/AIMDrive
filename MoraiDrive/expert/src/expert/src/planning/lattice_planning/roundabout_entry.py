@@ -3,6 +3,7 @@
 import json
 import math
 import os
+from types import SimpleNamespace
 
 from ...localization.point import Point
 from ..highway_lane_planning.lane_map import HighwayLaneMap
@@ -10,6 +11,7 @@ from ..highway_lane_planning.planner import HighwayLanePlanner
 from ..highway_lane_planning.structures import HighwayLaneLink
 from . import parameters as p
 from .structures import LatticePlanningResult
+from .roundabout_debug import RoundaboutDiagnostics
 
 
 class RoundaboutLaneMap(HighwayLaneMap):
@@ -74,6 +76,7 @@ class RoundaboutEntryPlanner:
         self.entering = False
         self.previous_position = None
         self.active = False
+        self.diagnostics = RoundaboutDiagnostics()
 
     @staticmethod
     def _route(points):
@@ -141,16 +144,54 @@ class RoundaboutEntryPlanner:
             for point, angle, _ in self.lane_map.advance_options(match, speed * time_value)
         ]
 
+    def _is_rear_entry_vehicle(self, match):
+        """Classify upstream traffic along the circulating lane, not Ego's yaw."""
+        circulating = self.lane_map.links.get(p.ROUNDABOUT_ENTRY_CIRCULATING_LINK_ID)
+        if match is None or circulating is None:
+            return False
+        merge = self.lane_map.project(Point(*p.ROUNDABOUT_ENTRY_MERGE_POINT), circulating)
+        if merge is None:
+            return False
+        rear_distance = self.lane_map.forward_distance(match, merge)
+        if rear_distance is None or rear_distance <= 0.0:
+            return False
+        # On a loop, a vehicle ahead can eventually reach the merge again.
+        # Use the nearer directed arc so that it retains the front distance cap.
+        front_distance = self.lane_map.forward_distance(merge, match)
+        if front_distance is not None and front_distance <= rear_distance:
+            return False
+        approach = self.lane_map.match(Point(*p.ROUNDABOUT_ENTRY_HOLD_POINT))
+        if approach is not None and (
+                match.lane_link.id == approach.lane_link.id
+                or self.lane_map.forward_distance(match, approach) is not None):
+            # Cars queued behind Ego on its entry road are not circulating traffic.
+            return False
+        return True
+
     def _tracks(self, ego, entries):
         tracks = []
+        audit = self.diagnostics.tracks if self.diagnostics.checks is not None else None
         for entry in entries:
             obj = entry["object_info"]
             if obj.is_static or obj.type not in (1, 2):
+                if audit is not None:
+                    audit.append((obj, 'static_or_non_vehicle', None))
                 continue
-            if obj.position.distance(ego.position) > p.ROUNDABOUT_TRACK_DISTANCE:
+            distance = obj.position.distance(ego.position)
+            if distance > max(p.ROUNDABOUT_TRACK_DISTANCE, p.ROUNDABOUT_REAR_TRACK_DISTANCE):
+                if audit is not None:
+                    audit.append((obj, 'outside_max_distance', None))
                 continue
             match = self.lane_map.match(obj.position, math.radians(obj.heading_deg))
+            if distance > p.ROUNDABOUT_TRACK_DISTANCE and (
+                    distance > p.ROUNDABOUT_REAR_TRACK_DISTANCE
+                    or not self._is_rear_entry_vehicle(match)):
+                if audit is not None:
+                    audit.append((obj, 'rear_direction_not_confirmed', match))
+                continue
             tracks.append((obj, match))
+            if audit is not None:
+                audit.append((obj, 'base_range' if distance <= p.ROUNDABOUT_TRACK_DISTANCE else 'rear_extension', match))
         return tracks
 
     def _front(self, ego, route, ego_s, tracks):
@@ -171,12 +212,23 @@ class RoundaboutEntryPlanner:
         return lead
 
     def _collision(self, ego, route, ego_s, tracks, target, predictions,
-                   acceleration_scale=1.0, launch_delay=0.0, lead=None):
+                   acceleration_scale=1.0, launch_delay=0.0, lead=None, diagnostic=None):
         speed = max(0.0, ego.velocity)
         rear_collision = None
         rear_impacts = set()
         route_origin, route_yaw, _ = self.lane_map.point_at_s(route, ego_s)
         yaw_error = self.lane_map._angle_difference(ego.yaw, route_yaw)
+        # Enlarge only the incoming rear vehicle's front envelope before entry.
+        # The measured body stays entirely inside it, so no original collision
+        # can disappear. Tracking, lead following and prediction timing stay intact.
+        extra_margin = max(0.0, p.ROUNDABOUT_ENTRY_REAR_FRONT_MARGIN) if not (self.entering or self.committed) else 0.0
+        collision_shapes = []
+        for obj, match in tracks:
+            margin = extra_margin if extra_margin and self._is_rear_entry_vehicle(match) else 0.0
+            shape = SimpleNamespace(size_x=max(1.0, obj.size_x) + margin, size_y=obj.size_y) if margin else obj
+            collision_shapes.append((margin, shape))
+        if diagnostic is not None:
+            diagnostic['rear_front_margin_m_by_track'] = [margin for margin, _ in collision_shapes]
         # Follow a moving lead throughout the prediction, not a frozen launch limit.
         distances = (self._following_distances(speed, target, len(predictions), lead,
                                               acceleration_scale, launch_delay)
@@ -195,11 +247,27 @@ class RoundaboutEntryPlanner:
             point = Point(point.x + (ego.position.x - route_origin.x) * tracking_weight,
                           point.y + (ego.position.y - route_origin.y) * tracking_weight)
             yaw += yaw_error * tracking_weight
+            if diagnostic is not None:
+                diagnostic['checked_until_s'] = time_value
+            if diagnostic is not None and (index % max(1, round(2. / p.ROUNDABOUT_PREDICTION_STEP)) == 0
+                                           or index == len(predictions) - 1):
+                diagnostic['ego_samples'].append([time_value, point.x, point.y, math.degrees(yaw)])
             for track_index, ((obj, _), alternatives) in enumerate(zip(tracks, poses)):
                 if track_index in rear_impacts:
                     continue
                 for center, heading in alternatives:
-                    if HighwayLanePlanner._obb_collision(point, yaw, center, heading, obj):
+                    if diagnostic is not None:
+                        # Reference-point distance only; this is not bumper clearance.
+                        distance_sq = (center.x - point.x) ** 2 + (center.y - point.y) ** 2
+                        previous = diagnostic['closest_reference_distance'].get(str(track_index))
+                        if previous is None or distance_sq < previous['distance_sq_m2']:
+                            diagnostic['closest_reference_distance'][str(track_index)] = dict(
+                                id=obj.unique_id, t_s=time_value, distance_sq_m2=distance_sq,
+                                ego_reference_xy=[point.x, point.y], object_center_xy=[center.x, center.y])
+                    margin, shape = collision_shapes[track_index]
+                    collision_center = (Point(center.x + .5 * margin * math.cos(heading),
+                                              center.y + .5 * margin * math.sin(heading)) if margin else center)
+                    if HighwayLanePlanner._obb_collision(point, yaw, collision_center, heading, shape):
                         behind = ((center.x - point.x) * math.cos(yaw)
                                   + (center.y - point.y) * math.sin(yaw)) < 0.0
                         rear = behind and math.cos(heading - yaw) > 0.5
@@ -207,6 +275,8 @@ class RoundaboutEntryPlanner:
                                      "blocker_unique_id": obj.unique_id, "blocker": obj.name,
                                      "rear_conflict": rear,
                                      "conflict_point": [float(center.x), float(center.y)]}
+                        if margin:
+                            collision['rear_front_margin_m'] = margin
                         if not rear:
                             return collision
                         rear_impacts.add(track_index)
@@ -222,8 +292,18 @@ class RoundaboutEntryPlanner:
                 checks.append((p.ROUNDABOUT_SLOW_ACCELERATION_SCALE, p.ROUNDABOUT_LAUNCH_DELAY))
         conflicts = []
         for scale, delay in checks:
+            diagnostic = None
+            kwargs = {'lead': lead}
+            if self.diagnostics.checks is not None:
+                diagnostic = dict(target_mps=target, acceleration_scale=scale, launch_delay_s=delay,
+                                  lead_id=lead['id'] if lead else None, checked_until_s=0.,
+                                  ego_samples=[], closest_reference_distance={})
+                kwargs['diagnostic'] = diagnostic
             collision = self._collision(ego, route, ego_s, tracks, target, predictions, scale, delay,
-                                        lead=lead)
+                                        **kwargs)
+            if diagnostic is not None:
+                diagnostic['collision'] = dict(collision) if collision is not None else None
+                self.diagnostics.checks.append(diagnostic)
             if collision is not None:
                 collision["acceleration_scale"] = scale
                 collision["launch_delay"] = delay
@@ -245,6 +325,17 @@ class RoundaboutEntryPlanner:
         return None
 
     def plan(self, ego, path, entries, state, desired_velocity=None):
+        self.diagnostics.begin()
+        before = dict(entering=self.entering, committed=self.committed, active=self.active)
+        result = self._plan(ego, path, entries, state, desired_velocity)
+        try:
+            self.diagnostics.finish(self, ego, path, entries, state, desired_velocity, before, result)
+        except Exception as error:
+            self.diagnostics.disabled = True
+            print('[ROUNDABOUT_DEBUG] capture disabled: {}'.format(error))
+        return result
+
+    def _plan(self, ego, path, entries, state, desired_velocity=None):
         stop = Point(*p.ROUNDABOUT_ENTRY_STOP_POINT)
         if self.previous_position is not None and ego.position.distance(self.previous_position) > 12.0:
             self.committed = False
@@ -290,6 +381,8 @@ class RoundaboutEntryPlanner:
              for obj, match in tracks]
             for i in range(count)
         ]
+        if self.diagnostics.checks is not None:
+            self.diagnostics.predictions = (tracks, predictions)
         collision = self._checked_collision(ego, route, ego_match.s, tracks, ceiling, predictions, front)
         original_collision = collision
         adjusted = False

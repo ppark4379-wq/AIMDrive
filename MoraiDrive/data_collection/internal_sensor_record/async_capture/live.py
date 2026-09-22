@@ -1,5 +1,6 @@
 """Raw subscriptions with no image/point-cloud conversion or vehicle commands."""
 from collections import Counter, deque
+import hashlib
 import json
 import math
 import os
@@ -80,6 +81,10 @@ class RawSubscriptions:
         self.healths={};self.bridge_instances={}
         self.subscribers = []
         self.errors = []
+        # Keep enough bounded context to diagnose rare ROS callback failures.
+        # This is diagnostic-only: the existing errors list still makes the
+        # capture fail closed.
+        self.callback_errors = deque(maxlen=32)
         self.poller = None
         self.classes = {}
         self.callback_cv = threading.Condition()
@@ -182,8 +187,98 @@ class RawSubscriptions:
                 self.active_callbacks -= 1
                 self.callback_cv.notify_all()
 
+    def _callback_error_diagnostic(self, msg, spec, mono, wall, clocks, exc,
+                                   connection, typ, md5, cls, payload,
+                                   serialization):
+        topic, role = spec
+        if payload is None and hasattr(msg, '_buff'):
+            try:
+                payload = bytes(msg._buff)
+            except Exception:
+                payload = None
+
+        header = None
+        if payload is not None and len(payload) >= 16:
+            seq, sec, nsec, frame_length = struct.unpack_from('<IIII', payload)
+            header = dict(
+                seq=seq,
+                sec=sec,
+                nsec=nsec,
+                frame_id_length=frame_length,
+                payload_bytes_after_header=len(payload) - 16,
+                nsec_in_range=nsec < 10**9,
+                frame_id_length_in_range=frame_length <= 65536,
+                frame_id_within_payload=16 + frame_length <= len(payload),
+            )
+
+        deserialization = None
+        if payload is not None and cls is not None:
+            try:
+                cls().deserialize(payload)
+                deserialization = dict(status='succeeded')
+            except Exception as decode_error:
+                deserialization = dict(
+                    status='failed',
+                    error=(type(decode_error).__name__ + ': ' +
+                           str(decode_error)[:500]),
+                )
+
+        connection = connection if isinstance(connection, dict) else {}
+
+        def connection_text(name):
+            value = connection.get(name)
+            if isinstance(value, bytes):
+                return value.decode('utf-8', errors='replace')
+            return str(value) if value is not None else None
+
+        return dict(
+            topic=topic,
+            role=role,
+            ros_type=typ,
+            md5sum=md5,
+            caller_id=connection_text('callerid'),
+            connection_topic=connection_text('topic'),
+            latching=connection_text('latching'),
+            message_object_class=(type(msg).__module__ + '.' +
+                                  type(msg).__name__),
+            ros_class=(
+                getattr(cls, '__module__', type(cls).__module__) + '.' +
+                getattr(cls, '__name__', type(cls).__name__)
+                if cls is not None else None
+            ),
+            ros_class_has_header=(
+                bool(getattr(cls, '_has_header', False))
+                if cls is not None else None
+            ),
+            has_raw_buffer=hasattr(msg, '_buff'),
+            serialization=serialization,
+            receive_monotonic_ns=mono,
+            receive_wall_ns=wall,
+            receive_monotonic_raw_ns=(
+                clocks.get('monotonic_raw_ns') if clocks else None
+            ),
+            receive_clock_bracket_ns=(
+                clocks.get('raw_bracket_ns') if clocks else None
+            ),
+            stopping_observed=bool(self.stopping),
+            payload_bytes=(len(payload) if payload is not None else None),
+            payload_sha256=(
+                hashlib.sha256(payload).hexdigest()
+                if payload is not None else None
+            ),
+            payload_prefix_hex=(
+                payload[:64].hex() if payload is not None else None
+            ),
+            header_preview=header,
+            ros_deserialization=deserialization,
+            error=type(exc).__name__ + ': ' + str(exc)[:500],
+        )
+
     def _receive(self, msg, spec, mono, wall, clocks=None):
         topic, role = spec
+        connection = {}
+        typ = md5 = None
+        cls = payload = serialization = None
         try:
             import roslib.message
             connection = msg._connection_header
@@ -282,8 +377,22 @@ class RawSubscriptions:
                 if not ok and not self.errors:
                     self.errors.append('raw_writer_refused_record')
         except Exception as exc:
+            try:
+                diagnostic = self._callback_error_diagnostic(
+                    msg, spec, mono, wall, clocks, exc, connection, typ, md5,
+                    cls, payload, serialization,
+                )
+            except Exception as diagnostic_error:
+                diagnostic = dict(
+                    topic=topic,
+                    role=role,
+                    error=type(exc).__name__ + ': ' + str(exc)[:500],
+                    diagnostic_error=(type(diagnostic_error).__name__ + ': ' +
+                                      str(diagnostic_error)[:500]),
+                )
             with self.lock:
                 self.errors.append(type(exc).__name__+': '+str(exc))
+                self.callback_errors.append(diagnostic)
 
     def readiness(self):
         from ros.bridge_preflight import validate_bridge
@@ -295,6 +404,7 @@ class RawSubscriptions:
             healths=dict(self.healths)
             clock_history=list(self.clock_history)
             clock_backward_events=list(self.clock_backward_events)
+            callback_errors=list(self.callback_errors)
         expected = (
             ['camera:'+k for k in self.contract['capture']['camera_frame_ids']]
             if self.record_ros_cameras else []
@@ -354,6 +464,7 @@ class RawSubscriptions:
                 motion=e[2]>.5 and min(de,dg)>1 and abs(de-dg)<max(2.,.4*max(de,dg))
         return dict(ready=not failures, failures=failures, streams=streams,motion_consistent=motion,
             clock_backward_events=clock_backward_events,
+            callback_errors=callback_errors,
             definitions=dict(self.definitions), actor_poller=self.poller.status() if self.poller else None)
 
     def stop(self):

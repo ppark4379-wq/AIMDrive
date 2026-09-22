@@ -81,9 +81,10 @@ class MissionExpertTest(unittest.TestCase):
         )
 
     def test_three_reported_crashes_then_real_expert_initializes(self):
-        for name, last_index in (
-            ("full_loop_static", 270), ("full_loop_dynamic", 328),
-            ("full_loop_roundabout", 307),
+        for name, last_index, expected_zone_names in (
+            ("full_loop_static", 270, ()),
+            ("full_loop_dynamic", 328, ("north_crosswalk_pair",)),
+            ("full_loop_roundabout", 307, ()),
         ):
             with self.subTest(mode=name):
                 scenario = self.make_scenario(name)
@@ -103,7 +104,11 @@ class MissionExpertTest(unittest.TestCase):
                 controller = scenario.expert_controller
                 after = json.loads(Path(controller.runtime_config_path).read_text())
                 expected = copy.deepcopy(before)
-                expected["planning"]["velocity_profile"]["speed_limit_zones"] = []
+                zones = expected["planning"]["velocity_profile"]["speed_limit_zones"]
+                expected["planning"]["velocity_profile"]["speed_limit_zones"] = [
+                    zone for zone in zones
+                    if zone["name"] in expected_zone_names
+                ]
                 self.assertEqual(after, expected)
                 extended_route = Path(controller.runtime_path_csv).read_bytes()
                 self.assertTrue(extended_route.startswith(route))
@@ -113,19 +118,49 @@ class MissionExpertTest(unittest.TestCase):
                 expected_points = extended_route.count(bytes([10])) - 1
                 self.assertIn(f"REAL_EXPERT_INIT_OK points={expected_points}", success.stdout)
 
-    def test_normal_and_highway_exports_remain_byte_identical(self):
-        for name in ("full_loop_normal", "full_loop_highway"):
-            with self.subTest(mode=name):
-                scenario = self.make_scenario(name)
-                with redirect_stdout(io.StringIO()):
-                    FullLoopDriveBase.setup_expert_controller(scenario)
-                config_path = Path(scenario.expert_controller.runtime_config_path)
-                expected = config_path.read_bytes()
-                with redirect_stdout(io.StringIO()):
-                    scenario.setup_expert_controller()
-                self.assertEqual(config_path.read_bytes(), expected)
-                result = self.initialize_expert(scenario.expert_controller)
-                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+    def test_normal_export_remains_byte_identical(self):
+        scenario = self.make_scenario("full_loop_normal")
+        with redirect_stdout(io.StringIO()):
+            FullLoopDriveBase.setup_expert_controller(scenario)
+        config_path = Path(scenario.expert_controller.runtime_config_path)
+        expected = config_path.read_bytes()
+        with redirect_stdout(io.StringIO()):
+            scenario.setup_expert_controller()
+        self.assertEqual(config_path.read_bytes(), expected)
+        result = self.initialize_expert(scenario.expert_controller)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_highway_keeps_link_zone_and_excludes_coordinate_zone(self):
+        scenario = self.make_scenario("full_loop_highway")
+        with redirect_stdout(io.StringIO()):
+            scenario.setup_expert_controller()
+        config_path = Path(scenario.expert_controller.runtime_config_path)
+        config = json.loads(config_path.read_text())
+        zones = config["planning"]["velocity_profile"]["speed_limit_zones"]
+        self.assertEqual(
+            [zone["name"] for zone in zones],
+            ["high_speed_to_tollgate"],
+        )
+        result = self.initialize_expert(scenario.expert_controller)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_current_crosswalk_and_signal_settings_survive_dynamic_export(self):
+        scenario = self.make_scenario("full_loop_dynamic")
+        with redirect_stdout(io.StringIO()):
+            scenario.setup_expert_controller()
+        config = json.loads(
+            Path(scenario.expert_controller.runtime_config_path).read_text()
+        )
+        zones = config["planning"]["velocity_profile"]["speed_limit_zones"]
+        crosswalk = next(
+            zone for zone in zones if zone["name"] == "north_crosswalk_pair"
+        )
+        self.assertEqual(crosswalk["max_velocity"], 20.0)
+        self.assertEqual(crosswalk["entry_buffer_m"], 4.635)
+        self.assertEqual(crosswalk["exit_buffer_m"], 4.635)
+        self.assertEqual(
+            config["planning"]["traffic_light_stop"]["stop_margin"], 13.0,
+        )
 
     def test_filter_runs_before_process_start(self):
         scenario = self.make_scenario("full_loop_static")
@@ -155,6 +190,21 @@ class SpeedZoneSelectionTest(unittest.TestCase):
         zone, result = self.select_zone(4, 5)
         self.assertEqual(result, ([zone], []))
 
+    def test_coordinate_zone_is_selected_without_map_lookup(self):
+        zone = {
+            "name": "coordinate",
+            "start_point": self.points[4],
+            "end_point": self.points[5],
+            "entry_buffer_m": 4.635,
+            "exit_buffer_m": 4.635,
+            "max_velocity": 20.0,
+        }
+        result = mission_expert.select_speed_zones(
+            [zone], self.window, self.loader,
+        )
+        self.assertEqual(result, ([zone], []))
+        self.loader.get_link_points.assert_not_called()
+
     def test_closed_route_wrapping_zone_outside_mission(self):
         _, result = self.select_zone(8, 1)
         self.assertEqual(result, ([], ["test"]))
@@ -165,7 +215,7 @@ class SpeedZoneSelectionTest(unittest.TestCase):
                 self.select_zone(*bounds)
 
     def test_other_modes_do_not_access_runtime_config(self):
-        for name in ("full_loop", "full_loop_normal", "full_loop_highway"):
+        for name in ("full_loop", "full_loop_normal"):
             mission_expert.prepare_speed_zones(SimpleNamespace(
                 mission_mode=SimpleNamespace(name=name),
             ))

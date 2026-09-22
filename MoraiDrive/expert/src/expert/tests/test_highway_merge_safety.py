@@ -12,6 +12,32 @@ from expert.src.planning.highway_lane_planning.planner import HighwayLanePlanner
 
 
 class HighwayMergeSafetyTest(unittest.TestCase):
+    def test_second_merge_accepts_smaller_clear_gap_without_changing_default(self):
+        speed = 40./3.6
+        radius = p.CONSERVATIVE_MERGE_ENTRY_RADIUS
+        exit_time = 1. + (2*radius+p.VEHICLE_LENGTH)/speed
+        obj = ObjectInfo(0., 0., 10., 1, size_x=4.5, size_y=2.)
+        touching = [({'object_info': obj}, None, exit_time+1.2)]
+        args = (1., speed, touching, radius)
+        # A clear 1.2 s / 12 m gap remains a yield under the first merge defaults.
+        self.assertTrue(HighwayLanePlanner._merge_arrivals_overlap(*args))
+        self.assertFalse(HighwayLanePlanner._merge_arrivals_overlap(
+            *args, clear_time_margin=p.CONSERVATIVE_MERGE_GO_CLEAR_TIME_MARGIN,
+            clear_distance=p.CONSERVATIVE_MERGE_CLOSE_GAP_YIELD_DISTANCE))
+
+    def test_second_merge_still_requires_both_clear_time_and_distance(self):
+        speed = 40./3.6
+        radius = p.CONSERVATIVE_MERGE_ENTRY_RADIUS
+        exit_time = 1. + (2*radius+p.VEHICLE_LENGTH)/speed
+        for gap_time, other_speed in ((.8, 30.), (1.2, 5.), (-.2, 10.)):
+            with self.subTest(gap_time=gap_time, other_speed=other_speed):
+                obj = ObjectInfo(0., 0., other_speed, 1, size_x=4.5, size_y=2.)
+                touching = [({'object_info': obj}, None, exit_time+gap_time)]
+                self.assertTrue(HighwayLanePlanner._merge_arrivals_overlap(
+                    1., speed, touching, radius,
+                    clear_time_margin=p.CONSERVATIVE_MERGE_GO_CLEAR_TIME_MARGIN,
+                    clear_distance=p.CONSERVATIVE_MERGE_CLOSE_GAP_YIELD_DISTANCE))
+
     @classmethod
     def setUpClass(cls):
         map_dir = Path(__file__).resolve().parents[3] / "map_data" / "R_KR_PG_KATRI_2025"

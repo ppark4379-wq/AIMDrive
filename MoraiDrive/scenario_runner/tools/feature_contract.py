@@ -154,6 +154,29 @@ def verify_feature_contract(package_root, scenario_cfg):
         not any(str(key).startswith("lead_") for key in highway),
         "Scripted highway lead settings must stay removed",
     )
+    merge_static = scenario_cfg.get("highway_merge_static_vehicle", {})
+    merge_static_models = [
+        "DEFAULT_SEDAN",
+        "2014_Kia_K7",
+        "2015_Kia_K5",
+        "2015_Toyota_Prius(HEV)",
+        "2016_Hyundai_Genesis_DH",
+        "2016_Hyundai_Ioniq",
+        "2016_Hyundai_Sonata",
+        "2017_Hyundai_Grandeur",
+        "2019_Toyota_Prius",
+        "2020_Kia_K5",
+        "2020_Kia_Stinger",
+        "2020_hyundai_sonata",
+        "2021_Hyundai_G80",
+    ]
+    require(
+        bool(merge_static.get("enabled"))
+        and merge_static.get("models") == merge_static_models
+        and merge_static.get("route_link") == "A2256W000411"
+        and float(merge_static.get("distance_from_link_start_m", -1.0)) == 70.0,
+        "Highway merge stationary sedan contract changed",
+    )
     require(
         bool(scenario_cfg.get("tunnel_sudden_brake", {}).get("enabled")),
         "Tunnel sudden-brake event must be enabled",

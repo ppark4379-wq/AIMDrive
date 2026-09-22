@@ -1,0 +1,36 @@
+schema: morai_static_obstacle_preset_v1
+name: static_regulation_100_20260920_041536_attempt_060
+map_name: R_KR_PR_K-city_2025
+scenario: full_loop_static
+source: manually_reviewed_static_expert_verified
+generation:
+  batch_seed: 7472814053904834310
+  attempt: 60
+  candidate_only_until_expert_passes: false
+obstacles:
+- model: Bicycle_city
+  position:
+    x: -60.081451
+    y: -141.765266
+    z: 28.379239
+  yaw_deg: -86.122738
+  scale:
+  - 0.915268
+  - 0.915268
+  - 0.915268
+  route_path_index: 669
+  generation:
+    longitudinal_fraction: 0.46269454
+    lateral_offset_m: -0.52549
+    scale_multiplier: 0.915268
+verification:
+  accepted: true
+  automatic_gate_passed: false
+  manual_review:
+    accepted: true
+    reviewer: dydwns
+    note: 기존 static_pilot_10 attempt 3에서 MORAI 화면으로 확인한 합법적 횡단보도 통과 경로와 동일한 Expert
+      recorded-route 조합 및 동일 최대 횡오차 위치; 각 실행의 목표 도달·유효 경로·무충돌 증거를 확인하여 동등 승인
+    reviewed_at_unix: 1789889769.7480476
+    automatic_rejection_reasons:
+    - cross_track_limit_exceeded

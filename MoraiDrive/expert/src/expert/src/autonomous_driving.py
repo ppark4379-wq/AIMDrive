@@ -101,6 +101,7 @@ class AutonomousDriving(PathController):
             vehicle_state, local_path, planning_object_info_dic_list,
             desired_velocity=planned_velocity,
             prediction_path=prediction_path,
+            global_path=self.path,
         )
         planning_path = lattice_result.path
         static_valid = (lattice_result.mode == 'static_obstacle' and lattice_result.active
@@ -171,9 +172,13 @@ class AutonomousDriving(PathController):
             details.setdefault("phase", lattice_result.reason)
             details["speed_limits"] = limits
             details["speed_source"] = min(limits, key=limits.get)
+            if (lattice_result.mode == "static_obstacle" and details.get("error")
+                    and limits["static"] <= limits[details["speed_source"]]):
+                details["speed_source"] = "static"
             details["final_target_velocity"] = max(0.0, target_velocity)
         acc_cmd, raw_steering_rad, front_steer_rad = self._calculate_control(
-            vehicle_state, planning_path, target_velocity, lattice_result)
+            vehicle_state, planning_path, target_velocity, lattice_result,
+            pedestrian_released=self.adaptive_cruise_control.pedestrian_released)
 
         self._debug_counter = getattr(self, "_debug_counter", 0) + 1
         if (
@@ -335,6 +340,7 @@ class AutonomousDriving(PathController):
                 float(self._merge_curvature_floor_speed), planned_velocity
             )
         return float(self._merge_curvature_floor_speed)
+
 
 
 

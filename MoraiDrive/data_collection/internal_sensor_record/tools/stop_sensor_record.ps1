@@ -5,8 +5,15 @@ param([Parameter(Mandatory=$true)][int]$SimulatorProcessId,
       [Parameter(Mandatory=$true)][string]$AllowedRoot,
       [int]$MaxAttempts=3)
 $ErrorActionPreference='Stop'
-$allowedPrefix=(Join-Path $AllowedRoot 'sensor_record_auto_v1')+'\'
-if (-not $OutputDirectory.StartsWith($allowedPrefix,[StringComparison]::OrdinalIgnoreCase)) {throw 'Unexpected output root'}
+function Test-AllowedOutputPath([string]$path) {
+ $full=[IO.Path]::GetFullPath($path)
+ foreach($relativeRoot in @('sensor_record_auto_v1','dataset\.collecting')) {
+  $prefix=[IO.Path]::GetFullPath((Join-Path $AllowedRoot $relativeRoot)).TrimEnd('\')+'\'
+  if ($full.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)) {return $true}
+ }
+ return $false
+}
+if (-not (Test-AllowedOutputPath $OutputDirectory)) {throw 'Unexpected output root'}
 if (Test-Path -LiteralPath $OutputDirectory) {throw 'Output already exists'}
 if ($MaxAttempts -lt 1 -or $MaxAttempts -gt 5) {throw 'Use 1..5 attempts'}
 New-Item -ItemType Directory -Path $OutputDirectory | Out-Null

@@ -37,5 +37,26 @@ class TransferredNativeSessionTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,'no verified local mirror'):
                     recorded_native_root(run,tmp)
 
+    def test_canonical_scenario_campaign_run_is_portable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            run=(root/'dataset/dynamic_obstacle/scenario_campaign_20261001_123456/'
+                 'scenario_campaign_20261001_123456_lap_001')
+            run.mkdir(parents=True)
+            for role in ROLES:(run/role).mkdir()
+            original=('/mnt/c/MoraiDriveData/sensor_record_auto_v1/native_sessions/'
+                      +run.name)
+            (run/'native_setup.json').write_text(json.dumps({'native_root':original}))
+            (run/'SESSION.json').write_text(json.dumps({'plan':{'session':run.name}}))
+            (run/'NATIVE_CAPTURE_RESULT.json').write_text(json.dumps({
+                'error':None,'quick_native_capture':{'passed':True}}))
+            (run/'.LOCAL_DATASET_COMPLETE.json').write_text(json.dumps({
+                'schema':'morai_local_dataset_materialization_v1','kind':'run',
+                'run_name':run.name,'hardlinked':True}))
+            self.assertEqual(recorded_native_root(run,root),run)
+            self.assertEqual(recorded_native_root(run/'episode_000',root),run)
+            self.assertTrue(same_recorded_native_source(
+                run/'episode_000',run,original,root))
+
 
 if __name__=='__main__':unittest.main()

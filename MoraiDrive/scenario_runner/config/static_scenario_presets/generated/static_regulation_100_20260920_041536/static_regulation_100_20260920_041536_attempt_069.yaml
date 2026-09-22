@@ -1,0 +1,49 @@
+schema: morai_static_obstacle_preset_v1
+name: static_regulation_100_20260920_041536_attempt_069
+map_name: R_KR_PR_K-city_2025
+scenario: full_loop_static
+source: automated_static_expert_verified
+generation:
+  batch_seed: 7472814053904834310
+  attempt: 69
+  candidate_only_until_expert_passes: false
+obstacles:
+- model: PE_Drum
+  position:
+    x: -61.172295
+    y: -142.48317
+    z: 28.378737
+  yaw_deg: -90.669466
+  scale:
+  - 2.078457
+  - 3.117686
+  - 2.078457
+  route_path_index: 668
+  generation:
+    longitudinal_fraction: 0.39106794
+    lateral_offset_m: 0.56643
+    scale_multiplier: 1.039229
+- model: ElectricScooter1
+  position:
+    x: -61.154511
+    y: -139.820355
+    z: 28.380601
+  yaw_deg: -94.025087
+  scale:
+  - 1.004521
+  - 1.004521
+  - 1.004521
+  route_path_index: 673
+  generation:
+    longitudinal_fraction: 0.65734618
+    lateral_offset_m: 0.544651
+    scale_multiplier: 1.004521
+verification:
+  expert_completed: true
+  collision_free: true
+  runner_return_code: 0
+  max_cross_track_error_m: 1.35
+  cross_track_limit_m: 3.0
+  valid_plan_samples: 16
+  verified_at_unix: 1789849400.757439
+  log: scenario_runner/.runtime/static_scenario_batch/static_regulation_100_20260920_041536/logs/static_regulation_100_20260920_041536_attempt_069.log

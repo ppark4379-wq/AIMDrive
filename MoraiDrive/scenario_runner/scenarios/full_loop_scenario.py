@@ -5,6 +5,7 @@ import random
 import time
 
 from ..adapters.object_ghost_audit import ObjectGhostAudit
+from ..utils import safe_print as print
 from ..core.full_loop_drive_base import FullLoopDriveBase
 from ..utils.transform_utils import polyline_length
 from .full_loop_parts import (
@@ -51,18 +52,28 @@ class FullLoopScenario(FullLoopDriveBase):
         self.highway_spawn_point_next_retry_at = 0.0
         self.highway_traffic_cleared = False
         self.highway_npc_planned_count = 0
+        self.highway_merge_static_vehicle = None
+        self.highway_merge_static_vehicle_info = None
         self.tunnel_npc = None
         self.tunnel_event_phase = "uninitialized"
         self.tunnel_event_result = {}
         self.tunnel_event_last_print_sec = -1
         self.roundabout_npcs = []
         self.dynamic_obstacle = None
+        self.dynamic_obstacle_catalog = []
+        self.dynamic_obstacle_events = []
+        self.dynamic_obstacle_event_index = 0
+        self.dynamic_obstacle_owned_ids = set()
         self.dynamic_obstacle_phase = "uninitialized"
         self.dynamic_obstacle_started_at = None
         self.dynamic_obstacle_started_scenario_time = None
         self.dynamic_obstacle_min_ego_distance_m = float("inf")
         self.static_obstacle = None
+        self.static_obstacles = []
         self.static_obstacle_expected = None
+        self.static_obstacle_expectations = []
+        self.static_obstacle_models_selected = []
+        self.static_obstacle_scales = []
         self.static_obstacle_route_s = None
         self.static_obstacle_last_verify_elapsed = float("-inf")
         self.static_obstacle_pass_verified = False
@@ -99,6 +110,7 @@ class FullLoopScenario(FullLoopDriveBase):
             self.apply_time()
             if self.clean_road_mode:
                 self.static_obstacle = None
+                self.static_obstacles = []
                 self.static_obstacle_model = None
                 self.static_obstacle_scale = None
                 self.dynamic_obstacle_model = None
@@ -122,7 +134,7 @@ class FullLoopScenario(FullLoopDriveBase):
             f"[FullLoop] ready profile={self.profile['name']}, "
             f"weather={self.profile['weather']}, "
             f"time={self.scenario_hour:02d}:00, "
-            f"static={self.static_obstacle_model}, "
+            f"static={self.static_obstacle_models_selected or self.static_obstacle_model}, "
             f"dynamic={self.dynamic_obstacle_model}, "
             f"roundabout_npcs={len(self.roundabout_npcs)}, "
             f"highway_npcs_planned={self.highway_npc_planned_count}"
@@ -146,7 +158,13 @@ class FullLoopScenario(FullLoopDriveBase):
 
     make_actor_scale = static_obstacle.make_actor_scale
     _read_static_obstacle_state = static_obstacle.read_static_obstacle_state
+    select_static_obstacle_placements = (
+        static_obstacle.select_static_obstacle_placements
+    )
     spawn_static_obstacle = static_obstacle.spawn_static_obstacle
+    maintain_static_obstacles_for_editor = (
+        static_obstacle.maintain_static_obstacles_for_editor
+    )
     verify_static_obstacle = static_obstacle.verify_static_obstacle
 
     spawn_dynamic_obstacle = dynamic_obstacle.spawn_dynamic_obstacle
@@ -158,6 +176,10 @@ class FullLoopScenario(FullLoopDriveBase):
     )
     _finish_dynamic_obstacle = dynamic_obstacle._finish_dynamic_obstacle
     update_dynamic_obstacle = dynamic_obstacle.update_dynamic_obstacle
+    dynamic_obstacle_reports = dynamic_obstacle.dynamic_obstacle_reports
+    verify_dynamic_obstacles_removed = (
+        dynamic_obstacle.verify_dynamic_obstacles_removed
+    )
 
     vehicle_models = vehicle_common.vehicle_models
     spawn_vehicle_with_retry = vehicle_common.spawn_vehicle_with_retry
@@ -169,6 +191,9 @@ class FullLoopScenario(FullLoopDriveBase):
     update_roundabout_npcs = roundabout.update_roundabout_npcs
 
     spawn_highway_npcs = highway.spawn_highway_npcs
+    spawn_highway_merge_static_vehicle = (
+        highway.spawn_highway_merge_static_vehicle
+    )
     _route_geometry = highway._route_geometry
     _nearest_waypoint = staticmethod(vehicle_common._nearest_waypoint)
     _nearest_official_link = highway._nearest_official_link
@@ -227,6 +252,23 @@ class FullLoopScenario(FullLoopDriveBase):
             self.deactivate_highway_npcs(current_s)
         self.update_tunnel_sudden_brake(elapsed, ego_state, current_s)
 
+    def run_timeline(self):
+        try:
+            super().run_timeline()
+            if getattr(self, "dynamic_obstacle_events", []):
+                if self.dynamic_obstacle_event_index != len(self.dynamic_obstacle_events):
+                    raise RuntimeError("Route ended before every dynamic crossing was completed")
+                if self.dynamic_validation.get("corridor_observations", 0) == 0:
+                    raise RuntimeError("Dynamic run has no verified Ego corridor observations")
+                self.dynamic_validation["goal_reached"] = True
+                dynamic_obstacle._persist_progress(self)
+        except BaseException as error:
+            if getattr(self, "dynamic_obstacle_events", []):
+                self.dynamic_validation["safety_validation_passed"] = False
+                self.dynamic_validation["failure_reason"] = str(error) or type(error).__name__
+                dynamic_obstacle._persist_progress(self, during_cleanup=True)
+            raise
+
     def persist_profile_state(self):
         state = {
             "profile_index": self.profile_index,
@@ -235,13 +277,26 @@ class FullLoopScenario(FullLoopDriveBase):
             "time_hour": self.scenario_hour,
             "static_obstacle_model": self.static_obstacle_model,
             "static_obstacle_scale": self.static_obstacle_scale,
+            "static_obstacle_models": self.static_obstacle_models_selected,
+            "static_obstacle_scales": self.static_obstacle_scales,
+            "static_obstacle_count": len(self.static_obstacles),
             "dynamic_obstacle_model": self.dynamic_obstacle_model,
+            "dynamic_obstacle_count": len(self.dynamic_obstacle_events),
+            "dynamic_obstacle_events": self.dynamic_obstacle_reports(),
+            "dynamic_validation": dict(getattr(self, "dynamic_validation", {})),
             "run_seed": self.run_seed,
             "saved_at_unix": time.time(),
         }
         previous = self.previous_profile_state
         for key in ("weather", "time_hour"):
-            if previous.get(key) == state[key]:
+            forced_key = {
+                "weather": "forced_weather",
+                "time_hour": "forced_time_hour",
+            }[key]
+            if (
+                self.cfg.get(forced_key) is None
+                and previous.get(key) == state[key]
+            ):
                 raise RuntimeError(
                     f"Run-scoped profile did not change for {key}: {state[key]}"
                 )
@@ -262,6 +317,10 @@ class FullLoopScenario(FullLoopDriveBase):
         )
 
     def cleanup_spawned_actors(self):
+        # A preflight failure can occur before setup() initializes any
+        # scenario-owned actor state. In that case there is nothing to clean.
+        if not hasattr(self, "scenario_actors"):
+            return
         try:
             self._set_highway_spawn_points_enabled(False)
         except Exception as e:
@@ -272,6 +331,7 @@ class FullLoopScenario(FullLoopDriveBase):
             except Exception as e:
                 print(f"[FullLoop] actor cleanup warning: {e}")
         self.scenario_actors = []
+        reset_result = False
         try:
             # Native SpawnPoints and every vehicle they generated share this
             # client's key. Wait for MORAI to apply run-owned cleanup before
@@ -284,17 +344,55 @@ class FullLoopScenario(FullLoopDriveBase):
                 0.0,
                 float(lifecycle.get('cleanup_settle_sec', 1.5)),
             )
-            self.grpc.reset_actors(settle_sec=cleanup_settle_sec)
+            reset_result = bool(
+                self.grpc.reset_actors(settle_sec=cleanup_settle_sec)
+            )
         except Exception as e:
             print(f'[FullLoop] run-owned SpawnPoint cleanup warning: {e}')
         self.highway_spawn_points = []
         self.highway_spawn_points_active = False
+        if getattr(self, "dynamic_obstacle_owned_ids", set()) or any(
+            event.get("actor") is not None or event.get("spawn_attempts")
+            for event in getattr(self, "dynamic_obstacle_events", [])
+        ):
+            if not reset_result:
+                raise RuntimeError(
+                    "Runner-owned actor reset failed after dynamic scenario"
+                )
+            self.verify_dynamic_obstacles_removed()
 
     def cleanup(self):
+        base_cleanup_ok = False
         try:
             super().cleanup()
+            base_cleanup_ok = True
         finally:
-            self.cleanup_spawned_actors()
+            try:
+                self.cleanup_spawned_actors()
+            except BaseException as error:
+                if getattr(self, "dynamic_obstacle_events", []):
+                    self.dynamic_validation["cleanup_verified"] = False
+                    self.dynamic_validation["safety_validation_passed"] = False
+                    self.dynamic_validation["failure_reason"] = str(error)
+                    dynamic_obstacle._persist_progress(self, during_cleanup=True)
+                raise
+            if getattr(self, "dynamic_obstacle_events", []):
+                self.dynamic_validation["cleanup_verified"] = True
+                # Completing diagnostic collection is not safety approval.
+                # Also include collection contacts outside the dynamic zone.
+                metrics = self.dynamic_validation
+                metrics["safety_validation_passed"] = bool(
+                    base_cleanup_ok
+                    and metrics.get("goal_reached")
+                    and self.dynamic_obstacle_event_index == len(self.dynamic_obstacle_events)
+                    and metrics.get("corridor_observations", 0) > 0
+                    and not metrics.get("collision_objects")
+                    and not getattr(self, "collision_events", 0)
+                    and not metrics.get("failure_reason")
+                    and not metrics.get("assessment_issues")
+                    and not metrics.get("recording_errors")
+                )
+                dynamic_obstacle._persist_progress(self, during_cleanup=True)
 
 class FullLoopAfterStaticScenario(FullLoopScenario):
     """The same full-loop scenario, starting just after the static obstacle."""

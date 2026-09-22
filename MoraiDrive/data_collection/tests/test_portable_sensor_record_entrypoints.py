@@ -56,6 +56,19 @@ class PortableSensorRecordEntrypointTest(unittest.TestCase):
                 self.assertEqual(ros["Topic"], "/unchanged")
                 self.assertEqual(ros["frameID"], "unchanged")
 
+    def test_campaign_default_name_uses_scenario_laps_and_timestamp(self):
+        source = (INTERNAL / "tools/collect_scenario_laps.sh").read_text()
+        self.assertIn(
+            'CAMPAIGN_ID="${SCENARIO_FOLDER}_lap${LAPS}_$(date +%Y%m%d_%H%M%S)"',
+            source,
+        )
+        self.assertIn('full_loop_normal) SCENARIO_FOLDER="basic_driving"', source)
+        self.assertIn('full_loop_static) SCENARIO_FOLDER="static_obstacle"', source)
+        self.assertLess(
+            source.index('full_loop_static) SCENARIO_FOLDER="static_obstacle"'),
+            source.index('CAMPAIGN_ID="${SCENARIO_FOLDER}_lap${LAPS}_'),
+        )
+
     def test_all_shell_entrypoints_have_valid_syntax(self):
         paths = [
             DATA_COLLECTION / "tools/00_prepare_internal_sensor_record.sh",
@@ -106,7 +119,13 @@ class PortableSensorRecordEntrypointTest(unittest.TestCase):
         self.assertIn("MORAI_ASYNC_DEPS", shared)
         self.assertIn("source \"$TOOLS/internal_sensor_record_env.sh\"", preflight)
         self.assertIn("source \"$PUBLIC_TOOLS/internal_sensor_record_env.sh\"", campaign)
-        self.assertIn("morai_prepare_internal_sensor_record_environment sensor-set", preflight)
+        self.assertIn('prepare_mode="sensor-set"', preflight)
+        self.assertIn('prepare_mode="runtime"', preflight)
+        self.assertIn(
+            'morai_prepare_internal_sensor_record_environment "$prepare_mode"',
+            preflight,
+        )
+        self.assertIn("--scenario-only", preflight)
         self.assertIn("morai_prepare_internal_sensor_record_environment runtime", campaign)
         self.assertIn("morai_prepare_internal_sensor_record_environment runtime", validator_shell)
         self.assertIn('capture_python = "/usr/bin/python3"', validator)
@@ -117,6 +136,20 @@ class PortableSensorRecordEntrypointTest(unittest.TestCase):
         self.assertIn("preflight_local_storage.py", preflight)
         self.assertIn("preflight_local_storage.py", campaign)
         self.assertIn("preflight_local_storage.py", validator_shell)
+
+    def test_preflight_retries_only_transient_bridge_startup_checks(self):
+        preflight = (
+            DATA_COLLECTION / "tools/01_internal_sensor_record_preflight.sh"
+        ).read_text()
+        self.assertIn("for localhost_attempt in 1 2 3; do", preflight)
+        self.assertIn("if (( localhost_attempt < 3 )); then", preflight)
+        self.assertIn("bridge_stale_attempts=0", preflight)
+        self.assertIn("((bridge_stale_attempts += 1))", preflight)
+        self.assertIn("if (( bridge_stale_attempts >= 3 )); then", preflight)
+        self.assertLess(
+            preflight.index("if grep -q 'BRIDGE_NOT_PATCHED'"),
+            preflight.index("if grep -q 'BRIDGE_HEALTH_STALE'"),
+        )
 
     def test_readiness_renderer_explains_each_missing_operator_action(self):
         report = {
@@ -354,12 +387,12 @@ class PortableSensorRecordEntrypointTest(unittest.TestCase):
         supervisor = (
             INTERNAL / "tools/run_sensor_record_scenario.py"
         ).read_text()
-        self.assertIn('SCENARIO_RUNTIME="${MORAI_SCENARIO_RUNTIME:-proven}"', campaign)
+        self.assertIn('SCENARIO_RUNTIME="${MORAI_SCENARIO_RUNTIME:-current}"', campaign)
         self.assertIn('runtime=$SCENARIO_RUNTIME', campaign)
         self.assertIn('--scenario-runtime "$SCENARIO_RUNTIME"', campaign)
         self.assertIn("run_proven_three_lap_scenario.py", campaign)
-        self.assertIn("run_async_scenario_review.py", campaign)
-        self.assertIn("'--scenario-runtime', choices=('proven', 'current')", supervisor)
+        self.assertNotIn("run_async_scenario_review.py", campaign)
+        self.assertIn("'--scenario-runtime', choices=('current',)", supervisor)
         self.assertIn("scenario_runtime=a.scenario_runtime", supervisor)
 
     def test_current_runtime_resolves_grpc_only_when_not_explicit(self):

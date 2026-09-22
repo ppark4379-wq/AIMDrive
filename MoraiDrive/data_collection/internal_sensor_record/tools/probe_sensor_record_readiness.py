@@ -5,16 +5,55 @@ import json
 import threading
 import time
 
-import rospy
-from morai_msgs.msg import EgoVehicleStatus, GPSMessage, ObjectStatusList, GetTrafficLightStatus
-from rosgraph_msgs.msg import Clock
-from sensor_msgs.msg import CompressedImage, PointCloud2, Imu
-from std_msgs.msg import String
-
 from bridge.bridge_health import check_bridge
 
 
+def snapshot_observations(rows, lock):
+    # Freeze observations before unregistering subscribers: unregister may let
+    # another callback run, including a heartbeat newer than the cutoff.
+    with lock:
+        snapshot = {key: list(values) for key, values in rows.items()}
+        end = time.monotonic_ns()
+    return snapshot, end
+
+
+def source_status(role, values, end):
+    stamps = [value[1] for value in values]
+    entry = dict(messages=len(values), source_unique=len(set(stamps)),
+        receive_age_s=(end-values[-1][0])/1e9 if values else None,
+        source_first_ns=stamps[0] if stamps else None,
+        source_last_ns=stamps[-1] if stamps else None,
+        source_reversals=sum(b<a for a,b in zip(stamps, stamps[1:])))
+    failures = []
+    if len(values)<2 or entry['receive_age_s']>1.5:
+        failures.append('missing_or_stale:'+role)
+    if len(values)>=2 and role in ('ego','objects','lidar','clock'):
+        if entry['source_reversals']:
+            failures.append('reversing_source:'+role)
+        elif entry['source_unique']<2:
+            failures.append('nonadvancing_source:'+role)
+    return entry, failures
+
+
+def clock_ingress_failure(clock_values, health, bridge_failures):
+    if clock_values:
+        return None
+    # An absent/stale/incompatible heartbeat cannot locate a /clock outage.
+    if not health or any(item.startswith('BRIDGE_') for item in bridge_failures):
+        return 'clock_ingress_unavailable'
+    clock = health.get('streams', {}).get('/clock', {})
+    if clock.get('samples', 0)>=2 and clock.get('receive_age_ms', 1e9)<=500:
+        return 'clock_ingress_not_delivered_to_ros'
+    return 'morai_simulator_network_clock_not_sent'
+
+
 def main():
+    import rospy
+    from morai_msgs.msg import EgoVehicleStatus, GPSMessage, ObjectStatusList, GetTrafficLightStatus
+    from rosgraph_msgs.msg import Clock
+    from sensor_msgs.msg import CompressedImage, PointCloud2, Imu
+    from std_msgs.msg import String
+
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--seconds',type=float,default=4.)
     p.add_argument('--raw-camera-transport',choices=('required','unrecorded','bridge_dropped','absent'),
@@ -43,9 +82,8 @@ def main():
                               ('bridge_health','/stage6e/bridge_health',String)]]
     started=time.monotonic()
     while time.monotonic()-started<a.seconds and not rospy.is_shutdown():time.sleep(.05)
-    end=time.monotonic_ns()
+    snapshot,end=snapshot_observations(rows,lock)
     for s in subscribers:s.unregister()
-    with lock:snapshot={k:list(v) for k,v in rows.items()}
     camera_roles=['camera:Camera-'+str(i) for i in range(1,5)]
     # The local expert fork will hold its brake until fresh ObjectStatusList
     # receipts arrive, including valid empty lists. Traffic-light status is
@@ -56,15 +94,9 @@ def main():
     if not use_sim_time:
         failures.append('use_sim_time_not_true')
     for role in required:
-        values=snapshot.get(role,[]);stamps=[v[1] for v in values]
-        entry=dict(messages=len(values),source_unique=len(set(stamps)),
-            receive_age_s=(end-values[-1][0])/1e9 if values else None,
-            source_reversals=sum(b<a for a,b in zip(stamps,stamps[1:])))
-        report[role]=entry
         # Camera headers are not exposure clocks; only receipt/view presence is required here.
-        if len(values)<2 or entry['receive_age_s']>1.5:failures.append('missing_or_stale:'+role)
-        if role in ('ego','objects','lidar','clock') and (len(set(stamps))<2 or entry['source_reversals']):
-            failures.append('nonadvancing_or_reversing_source:'+role)
+        report[role],source_failures=source_status(role,snapshot.get(role,[]),end)
+        failures.extend(source_failures)
     traffic=snapshot.get('traffic_light',[])
     traffic_stamps=[value[1] for value in traffic]
     report['traffic_light']=dict(messages=len(traffic),required_at_start=False,
@@ -82,15 +114,16 @@ def main():
         bridge_failures=check_bridge(health,now_ns=end,require_streams=True)
         bridge_clock=health.get('streams',{}).get('/clock',{})
         report['bridge_clock_ingress']=dict(bridge_clock)
-        bridge_clock_fresh=(
-            bridge_clock.get('samples',0)>=2
-            and bridge_clock.get('receive_age_ms',1e9)<=500
+        report['bridge_health']=dict(
+            messages=len(health_rows),
+            receive_age_s=(end-health_rows[-1][0])/1e9 if health_rows else None,
+            heartbeat_age_s=(end-health['monotonic_ns'])/1e9 if 'monotonic_ns' in health else None,
+            heartbeat_monotonic_ns=health.get('monotonic_ns'),
+            evaluated_at_monotonic_ns=end,
+            failures=[item for item in bridge_failures if item.startswith('BRIDGE_')],
         )
-        if not snapshot.get('clock'):
-            if bridge_clock_fresh:
-                failures.append('clock_ingress_not_delivered_to_ros')
-            else:
-                failures.append('morai_simulator_network_clock_not_sent')
+        clock_failure=clock_ingress_failure(snapshot.get('clock'),health,bridge_failures)
+        if clock_failure:failures.append(clock_failure)
         report['bridge_camera_ingress']=dict(
             messages=len(health_rows),
             policy=health.get('camera_ingress_policy'),

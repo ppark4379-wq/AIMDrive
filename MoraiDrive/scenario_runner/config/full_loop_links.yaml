@@ -67,18 +67,1032 @@ full_loop:
       position: {x: -60.610000610351563, y: -142.17799377441406, z: 28.374000549316406}
       yaw_deg: -83.219
       scale: [2.0, 3.0, 2.0]
+      # Scenario-only two-object test positions. Both remain inside the
+      # intersection conflict area and retain the same legal escape side.
+      multi_positions:
+        - route_path_index: 660
+          position: {x: -60.600, y: -146.393, z: 28.376}
+          yaw_deg: -83.219
+        - route_path_index: 680
+          position: {x: -60.615, y: -136.393, z: 28.383}
+          yaw_deg: -83.219
 
     dynamic_obstacle:
+      # NPC region only; keep the 160m Ego approach/recovery window unchanged.
+      # Image-registered inset, NOT surveyed curb/paint boundaries.
+      # Changed geometry requires its own live evidence; old hashes do not transfer.
       actor_type: pedestrian
-      route_link: A2256W000599
-      route_path_index: 936
-      start: {x: -56.743999481201172, y: -11.61400032043457, z: 28.561000823974609}
-      end: {x: -70.569000244140625, y: -11.928999900817871, z: 28.433000564575195}
-      speed_mps: 2.5
-      move_distance_m: 20.0
-      trigger_distance_m: 25.0
-      arrival_tolerance_m: 0.2
-      max_crossing_sec: 12.0
+      start_path_index: 753
+      end_path_index: 1081
+      crossing_catalog:
+      - id: legacy_right_to_left
+        route_link: A2256W000599
+        route_path_index: 936
+        start:
+          x: -56.74399948120117
+          y: -11.61400032043457
+          z: 28.56100082397461
+        end:
+          x: -70.56900024414062
+          y: -11.928999900817871
+          z: 28.433000564575195
+        conflict_point:
+          x: -60.28519043553861
+          y: -11.694682
+          z: 28.41630386883513
+        allowed_speeds_mps:
+        - 2.5
+        trigger_distance_m: 25
+        arrival_tolerance_m: 0.2
+        max_crossing_sec: 12
+        status: approved
+        verification:
+          morai_closed_loop: true
+          collision_free: true
+          source: legacy_proven_full_loop_dynamic
+          geometry_sha256: a82493720f6ec0460a6236c9b4c4c7794975de4a031c383f21ad68a93384824b
+      - id: general_south_east_to_west_diagonal
+        candidate_endpoint_offsets_m:
+        - -2
+        - 0
+        - 2
+        reverse_candidate_geometry:
+          start:
+            x: -71
+            y: -40
+            z: 28.38
+          end:
+            x: -49
+            y: -40
+            z: 28.38
+        candidate_geometry_overrides:
+          0_0_reverse:
+            start:
+              x: -70.98876990710382
+              y: -41.99996847100487
+              z: 28.38
+            end:
+              x: -48.988769907103816
+              y: -41.99996847100487
+              z: 28.38
+          0_1_reverse:
+            start:
+              x: -71.0
+              y: -39.5
+              z: 28.38
+            end:
+              x: -48.98191560695931
+              y: -41.99991823701079
+              z: 28.38
+          0_2_reverse:
+            start:
+              x: -71.01123009289618
+              y: -38.00003152899513
+              z: 28.38
+            end:
+              x: -48.988769907103816
+              y: -41.99996847100487
+              z: 28.38
+          1_0_reverse:
+            start:
+              x: -70.98876990710382
+              y: -41.99996847100487
+              z: 28.38
+            end:
+              x: -49.0
+              y: -40.0
+              z: 28.38
+          1_1_reverse:
+            start:
+              x: -71.0
+              y: -40.0
+              z: 28.38
+            end:
+              x: -49.0
+              y: -40.0
+              z: 28.38
+          1_2_reverse:
+            start:
+              x: -71.01123009289618
+              y: -38.00003152899513
+              z: 28.38
+            end:
+              x: -49.0
+              y: -40.0
+              z: 28.38
+          2_0_reverse:
+            start:
+              x: -70.98876990710382
+              y: -41.99996847100487
+              z: 28.38
+            end:
+              x: -49.011230092896184
+              y: -38.00003152899513
+              z: 28.38
+          2_1_reverse:
+            start:
+              x: -71.0
+              y: -40.0
+              z: 28.38
+            end:
+              x: -49.011230092896184
+              y: -38.00003152899513
+              z: 28.38
+          2_2_reverse:
+            start:
+              x: -71.01123009289618
+              y: -38.00003152899513
+              z: 28.38
+            end:
+              x: -49.011230092896184
+              y: -38.00003152899513
+              z: 28.38
+        route_link: A2256W000728
+        route_path_index: 882
+        start:
+          x: -55.8
+          y: -46
+          z: 28.38
+        end:
+          x: -71
+          y: -18
+          z: 28.38
+        conflict_point:
+          x: -60.13638187282736
+          y: -38.01192812900224
+        allowed_speeds_mps:
+        - 2.5
+        - 3
+        trigger_distance_m: 25
+        arrival_tolerance_m: 0.4
+        max_crossing_sec: 20
+        approved_combinations:
+        - model: Man1
+          speed_mps: 2.5
+        status: approved
+        verification:
+          morai_closed_loop: true
+          collision_free: true
+          geometry_sha256: a68132377f30f4ab4af07c8cced0fd79f4366cd87b644cc50741e92ae5438af0
+          source: morai_26r1_20260921_green_box_relocation
+          run_seeds:
+          - 202609210200
+          - 202609210201
+          review_trials:
+          - 200
+          - 201
+          evidence: .runtime/green_box_review_results.jsonl
+        approved_endpoint_variants:
+          1_1_reverse:
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            - model: worker_m_1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: 7e3525de1afc5ec6f143a767e9c1cbb5a52409f552043a7d99f0ca3648cedd69
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210008
+              - 202609210104
+              review_trials:
+              - 8
+              - 104
+              evidence: .runtime/green_box_review_results.jsonl
+          0_0_reverse:
+            approved_combinations:
+            - model: Girl1
+              speed_mps: 2.5
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: 23a7931dccac33660a35ab864e4214f9c887d0cdb1abda1a733bbd9ecda90149
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210100
+              - 202609210301
+              - 202609210419
+              review_trials:
+              - 100
+              - 301
+              - 419
+              evidence: .runtime/green_box_review_results.jsonl
+          0_1_reverse:
+            disabled: true  # deduplicated: same direction/angle family within ~2m
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            - model: Man6
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: 3cbbc572e65d533e1b0b8a4178feb6e54f6e8b4723aa7ffb6f97d438b9283107
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210101
+              - 202609210401
+              review_trials:
+              - 101
+              - 401
+              evidence: .runtime/green_box_review_results.jsonl
+          0_2_reverse:
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: 7f7abe5b69aa3ff089c6c0f376e11df09a18f87b5e88ea81d59c7bd27d166495
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210102
+              review_trials:
+              - 102
+              evidence: .runtime/green_box_review_results.jsonl
+          1_0_reverse:
+            disabled: true  # deduplicated: same direction/angle family within ~2m
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            - model: Woman4
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: 38ceef07d24f7b1f5e699fd8d5a112b71af8f17627b31ffbde120ef20321b5ef
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210103
+              - 202609210413
+              review_trials:
+              - 103
+              - 413
+              evidence: .runtime/green_box_review_results.jsonl
+          1_2_reverse:
+            disabled: true  # deduplicated: same direction/angle family within ~2m
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: 21c898b979f078d300f89265d29d9e8fdcc9a942791c9c74bb8c19dde052ab27
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210105
+              review_trials:
+              - 105
+              evidence: .runtime/green_box_review_results.jsonl
+          2_0_reverse:
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: ad3b6fb63dcb72f71d6e84ab23c2d213ecd6bf2a9074978907abc72ecefef1df
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210106
+              review_trials:
+              - 106
+              evidence: .runtime/green_box_review_results.jsonl
+          2_1_reverse:
+            disabled: true  # deduplicated: same direction/angle family within ~2m
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: 963f5cd0a64f49935beaaca2d9ac60581de645f858e95a247bfb5770e82b5a1a
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210107
+              review_trials:
+              - 107
+              evidence: .runtime/green_box_review_results.jsonl
+          2_2_reverse:
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: e902c8c40e1615fe74bbc26e89f6ce9afcb614906199f4b297d9d2e4411d66e0
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210108
+              review_trials:
+              - 108
+              evidence: .runtime/green_box_review_results.jsonl
+          0_0_forward:
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: 8bbd58913ba3f5c4e4b5b57a731e6aa928202e3d92c1cd766075bc205445c49c
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210202
+              review_trials:
+              - 202
+              evidence: .runtime/green_box_review_results.jsonl
+          0_1_forward:
+            disabled: true  # deduplicated: same direction/angle family within ~2m
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: 8c28a06e468545355058f51e2d214bd1428b9da68666f16d2df5c827424ffead
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210203
+              review_trials:
+              - 203
+              evidence: .runtime/green_box_review_results.jsonl
+          1_0_forward:
+            disabled: true  # deduplicated: same direction/angle family within ~2m
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: fe0b34144724d4741ff4cea671579563065570af5a67173d98fde02582a1f987
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210205
+              review_trials:
+              - 205
+              evidence: .runtime/green_box_review_results.jsonl
+          1_2_forward:
+            disabled: true  # deduplicated: same direction/angle family within ~2m
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: 1db829ac67f705fe5f52bfb8cffcb6b20446ce6a7da4768e0f362495e5fd6e65
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210206
+              review_trials:
+              - 206
+              evidence: .runtime/green_box_review_results.jsonl
+          2_0_forward:
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: 57bbbb1a5610efbc4d3791bd86f2ec013ef0e203634205a5e3852260228da8cd
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210207
+              review_trials:
+              - 207
+              evidence: .runtime/green_box_review_results.jsonl
+          2_1_forward:
+            disabled: true  # deduplicated: same direction/angle family within ~2m
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: 90601c07ec6d3d51af0875b7c7ed1887b2a5eb26e9f589a6347820b27217d1b2
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210208
+              review_trials:
+              - 208
+              evidence: .runtime/green_box_review_results.jsonl
+          2_2_forward:
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: d5e7ada2567d76c4b84c4e51e153eab70e570d724aaa7403944190faa20e3783
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210209
+              review_trials:
+              - 209
+              evidence: .runtime/green_box_review_results.jsonl
+          0_2_forward:
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: 1d248925fb477faf88a1b0a7726061ecb6377e883459a8a04e780fb416e1e303
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210300
+              review_trials:
+              - 300
+              evidence: .runtime/green_box_review_results.jsonl
+      - id: legacy_left_to_right
+        route_link: A2256W000599
+        route_path_index: 936
+        start:
+          x: -70.56900024414062
+          y: -11.928999900817871
+          z: 28.433000564575195
+        end:
+          x: -56.74399948120117
+          y: -11.61400032043457
+          z: 28.56100082397461
+        conflict_point:
+          x: -60.28519043553861
+          y: -11.694682
+          z: 28.41630386883513
+        allowed_speeds_mps:
+        - 2.5
+        - 3
+        trigger_distance_m: 25
+        arrival_tolerance_m: 0.2
+        max_crossing_sec: 12
+        approved_combinations:
+        - model: Man1
+          speed_mps: 2.5
+        - model: Woman1
+          speed_mps: 2.5
+        - model: Woman1
+          speed_mps: 3
+        status: approved
+        verification:
+          morai_closed_loop: true
+          collision_free: true
+          geometry_sha256: c1dfcfd25c017bcff158f7d338260a6ab6c730ac7f2a30282a93241cf8f7daab
+          source: morai_26r1_20260920_live_and_window_review
+          run_seeds:
+          - 2677012890624991347
+          - 8129116162164044887
+          - 8227197669088842687
+      - id: general_north_west_to_east_diagonal
+        candidate_endpoint_offsets_m:
+        - -2
+        - 0
+        - 2
+        route_link: A2256W000205
+        route_path_index: 977
+        start:
+          x: -72.8
+          y: 2
+          z: 28.38
+        end:
+          x: -49
+          y: 12.513592233020802
+          z: 28.38
+        conflict_point:
+          x: -60.39906206322928
+          y: 7.478084234210319
+        allowed_speeds_mps:
+        - 2.5
+        - 3
+        trigger_distance_m: 25
+        arrival_tolerance_m: 0.4
+        max_crossing_sec: 16
+        approved_combinations:
+        - model: Man1
+          speed_mps: 2.5
+        - model: Man1
+          speed_mps: 3.0
+        status: approved
+        verification:
+          morai_closed_loop: true
+          collision_free: true
+          geometry_sha256: 76e3702863f01c8e5d80af1bb779869d22d8842f3def71c061d48ddf38c3fa09
+          source: morai_26r1_20260921_green_box_relocation
+          run_seeds:
+          - 202609210008
+          - 202609210106
+          - 202609210302
+          review_trials:
+          - 8
+          - 106
+          - 302
+          evidence: .runtime/green_box_review_results.jsonl
+        approved_endpoint_variants:
+          0_0_forward:
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: 17bd1b344283adc16ce80b1b5031e4e58271e26e18bda437e99d46d0eba9beed
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210100
+              review_trials:
+              - 100
+              evidence: .runtime/green_box_review_results.jsonl
+          0_0_reverse:
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: a867171691295adb5fde65213c76146d0e1fb10259ce1d9c490a6e4b606eba67
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210101
+              review_trials:
+              - 101
+              evidence: .runtime/green_box_review_results.jsonl
+          0_1_forward:
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: 357fca9225591f5d4afa834fb7ac6ec18725cb69e791038556c4095824eae625
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210102
+              review_trials:
+              - 102
+              evidence: .runtime/green_box_review_results.jsonl
+          0_1_reverse:
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: 4de4d422d39267ec03150cec1ab64a5baa1062a19544a94a56c676b77e8e041a
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210103
+              review_trials:
+              - 103
+              evidence: .runtime/green_box_review_results.jsonl
+          1_0_forward:
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: ee8e1d9435ba4f90df695b171705f482a2687369bc5f6b4ea4826fa77b5a7cd7
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210104
+              review_trials:
+              - 104
+              evidence: .runtime/green_box_review_results.jsonl
+          1_0_reverse:
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: 7829a9adf3506d18ed392176be403c802b5df477a1c6d29458b6398af9795ef4
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210105
+              review_trials:
+              - 105
+              evidence: .runtime/green_box_review_results.jsonl
+          0_2_forward:
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: 4c47712921021800699453642f8ee527b28ee36fb3fe2559a23af7b27e7090cd
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210107
+              review_trials:
+              - 107
+              evidence: .runtime/green_box_review_results.jsonl
+          0_2_reverse:
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: 7136c47bb10684faae972f567a73e07889080f5ddbf45b386b563a5d7015984a
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210108
+              review_trials:
+              - 108
+              evidence: .runtime/green_box_review_results.jsonl
+          2_0_forward:
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: 4c67e7c5ebfaf7473638ecbabaa186f89e2dd02a29d21883dcdb5688d564752f
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210110
+              - 202609210202
+              review_trials:
+              - 110
+              - 202
+              evidence: .runtime/green_box_review_results.jsonl
+          1_2_reverse:
+            disabled: true  # deduplicated: same direction/angle family within ~2m
+            approved_combinations:
+            - model: Girl2
+              speed_mps: 2.5
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: ba0bc6da6763ae68e6d4803a475f753d5151cac057876a03126031ef46a094f0
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210113
+              - 202609210205
+              - 202609210400
+              review_trials:
+              - 113
+              - 205
+              - 400
+              evidence: .runtime/green_box_review_results.jsonl
+          1_1_reverse:
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: 1d8952c7beee5eedd4f987e8828a82a9472abd341937e4028c3d7cf377785807
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210200
+              - 202609210201
+              review_trials:
+              - 200
+              - 201
+              evidence: .runtime/green_box_review_results.jsonl
+          2_0_reverse:
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: 1d6151467e83a2d7981beeb6ecbe8991ed1597249416b9e89594cc30f2750a78
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210203
+              review_trials:
+              - 203
+              evidence: .runtime/green_box_review_results.jsonl
+          2_1_forward:
+            disabled: true  # deduplicated: same direction/angle family within ~2m
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: b44d0dc8520157f9bdb3a1ad076f4eecb6e6a605aaa614158afe8aa48165789d
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210206
+              review_trials:
+              - 206
+              evidence: .runtime/green_box_review_results.jsonl
+          2_1_reverse:
+            disabled: true  # deduplicated: same direction/angle family within ~2m
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: a6c5c016d7c6a24d554df6b7f5192962ea5e46c497a452adab5e1f2dc8bd36e7
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210207
+              review_trials:
+              - 207
+              evidence: .runtime/green_box_review_results.jsonl
+          2_2_forward:
+            approved_combinations:
+            - model: Dog2
+              speed_mps: 2.5
+            - model: Man1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: e360245c1e6d1c7aad7c3f317f6ef926fb445b96991acfa15a08067dcc82f1d7
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210208
+              - 202609210401
+              review_trials:
+              - 208
+              - 401
+              evidence: .runtime/green_box_review_results.jsonl
+          2_2_reverse:
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            - model: NCAP_EBT
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: 7f74cb44397c282e6c8fa55e3a1c70447d396f1019199f978663d42286ffefcb
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210209
+              - 202609210413
+              review_trials:
+              - 209
+              - 413
+              evidence: .runtime/green_box_review_results.jsonl
+          1_2_forward:
+            disabled: true  # deduplicated: same direction/angle family within ~2m
+            approved_combinations:
+            - model: Man1
+              speed_mps: 2.5
+            - model: Woman1
+              speed_mps: 2.5
+            verification:
+              morai_closed_loop: true
+              collision_free: true
+              geometry_sha256: 04748dd1e112258667233940672babcb718038954eba0664952f740e07fb98c4
+              source: morai_26r1_20260921_green_box_relocation
+              run_seeds:
+              - 202609210301
+              - 202609210419
+              review_trials:
+              - 301
+              - 419
+              evidence: .runtime/green_box_review_results.jsonl
+      # New central-intersection candidates. They remain pending until each
+      # geometry passes the asynchronous MORAI closed-loop review. The six
+      # front-crosswalk paths alone hold the preceding signal through Ego's
+      # conflict-point passage; rear/between paths retain normal signal logic.
+      - id: front_crosswalk_straight_left_to_right
+        route_link: A2256W000599
+        route_path_index: 897
+        start: {x: -71.0, y: -31.0, z: 28.42}
+        end: {x: -49.0, y: -31.0, z: 28.42}
+        conflict_point: {x: -60.175755, y: -31.0}
+        signal_guard_mode: through_conflict
+        allowed_speeds_mps: [2.5]
+        trigger_distance_m: 25
+        arrival_tolerance_m: 0.4
+        max_crossing_sec: 16
+        approved_combinations: &central_approved_pairs
+        - model: Man1
+          speed_mps: 2.5
+        status: approved
+        verification: &central_approved_verification
+          morai_closed_loop: true
+          collision_free: true
+          source: morai_26r1_20260922_central_crossing_review
+          evidence: .runtime/dynamic_pending_central_20260922_124121_2273231.jsonl
+          geometry_sha256: 1901d640add29bd701758b183f03fc78295a2b573900b4c8d0104f6a7ff1e8fa
+      - id: front_crosswalk_straight_right_to_left
+        route_link: A2256W000599
+        route_path_index: 897
+        start: {x: -49.0, y: -31.0, z: 28.42}
+        end: {x: -71.0, y: -31.0, z: 28.42}
+        conflict_point: {x: -60.175755, y: -31.0}
+        signal_guard_mode: through_conflict
+        allowed_speeds_mps: [2.5]
+        trigger_distance_m: 25
+        arrival_tolerance_m: 0.4
+        max_crossing_sec: 16
+        approved_combinations: *central_approved_pairs
+        status: approved
+        verification:
+          <<: *central_approved_verification
+          geometry_sha256: a5f19e44e847c0300e1002d67d231f1a8285c2d2127a8424ac1de73c438a5611
+      - id: front_crosswalk_diagonal_left_to_right_north
+        route_link: A2256W000599
+        route_path_index: 897
+        start: {x: -71.0, y: -33.0, z: 28.42}
+        end: {x: -49.0, y: -29.0, z: 28.42}
+        conflict_point: {x: -60.175576, y: -31.031923}
+        signal_guard_mode: through_conflict
+        allowed_speeds_mps: [2.5]
+        trigger_distance_m: 25
+        arrival_tolerance_m: 0.4
+        max_crossing_sec: 16
+        approved_combinations: *central_approved_pairs
+        status: approved
+        verification:
+          <<: *central_approved_verification
+          geometry_sha256: eb678039efadb9fce60b8365d8762d704697a5ab9e854ebd5fa55559efdc81e8
+      - id: front_crosswalk_diagonal_right_to_left_south
+        route_link: A2256W000599
+        route_path_index: 897
+        start: {x: -49.0, y: -29.0, z: 28.42}
+        end: {x: -71.0, y: -33.0, z: 28.42}
+        conflict_point: {x: -60.175576, y: -31.031923}
+        signal_guard_mode: through_conflict
+        allowed_speeds_mps: [2.5]
+        trigger_distance_m: 25
+        arrival_tolerance_m: 0.4
+        max_crossing_sec: 16
+        approved_combinations: *central_approved_pairs
+        status: approved
+        verification:
+          <<: *central_approved_verification
+          geometry_sha256: 286e96c9c2611b222f382b8da6c1d1308b185a698dc8410b5a044cc1259a658e
+      - id: front_crosswalk_diagonal_left_to_right_south
+        route_link: A2256W000599
+        route_path_index: 897
+        start: {x: -71.0, y: -29.0, z: 28.42}
+        end: {x: -49.0, y: -33.0, z: 28.42}
+        conflict_point: {x: -60.175934, y: -30.968012}
+        signal_guard_mode: through_conflict
+        allowed_speeds_mps: [2.5]
+        trigger_distance_m: 25
+        arrival_tolerance_m: 0.4
+        max_crossing_sec: 16
+        approved_combinations: *central_approved_pairs
+        status: approved
+        verification:
+          <<: *central_approved_verification
+          geometry_sha256: f99aafa898a970f6d0b9cb33b13ada42f055e48a32713f4a8a0936d3dab44793
+      - id: front_crosswalk_diagonal_right_to_left_north
+        route_link: A2256W000599
+        route_path_index: 897
+        start: {x: -49.0, y: -33.0, z: 28.42}
+        end: {x: -71.0, y: -29.0, z: 28.42}
+        conflict_point: {x: -60.175934, y: -30.968012}
+        signal_guard_mode: through_conflict
+        allowed_speeds_mps: [2.5]
+        trigger_distance_m: 25
+        arrival_tolerance_m: 0.4
+        max_crossing_sec: 16
+        approved_combinations: *central_approved_pairs
+        status: approved
+        verification:
+          <<: *central_approved_verification
+          geometry_sha256: c8ccbc9e431ecc8c631cb82a8c395f69e50fb57d7e29ec1502dc238c6a45e3e7
+      - id: rear_crosswalk_diagonal_left_to_right_north
+        route_link: A2256W000599
+        route_path_index: 938
+        start: {x: -70.569, y: -14.0, z: 28.43}
+        end: {x: -56.744, y: -9.5, z: 28.43}
+        conflict_point: {x: -60.289999, y: -10.654213}
+        allowed_speeds_mps: [2.5]
+        trigger_distance_m: 25
+        arrival_tolerance_m: 0.4
+        max_crossing_sec: 14
+        approved_combinations: *central_approved_pairs
+        status: approved
+        verification:
+          <<: *central_approved_verification
+          geometry_sha256: 1ba0c3799bc00ee57655567f92138deabb36c1e523a1e65de95ab5a2cba5354e
+      - id: rear_crosswalk_diagonal_right_to_left_south
+        route_link: A2256W000599
+        route_path_index: 938
+        start: {x: -56.744, y: -9.5, z: 28.43}
+        end: {x: -70.569, y: -14.0, z: 28.43}
+        conflict_point: {x: -60.289999, y: -10.654213}
+        allowed_speeds_mps: [2.5]
+        trigger_distance_m: 25
+        arrival_tolerance_m: 0.4
+        max_crossing_sec: 14
+        approved_combinations: *central_approved_pairs
+        status: approved
+        verification:
+          <<: *central_approved_verification
+          geometry_sha256: a190ac3518d256e20d7fb5ed5eb1672f4f98608434ef44ff80f07cfe970fe6ef
+      - id: rear_crosswalk_diagonal_left_to_right_south
+        route_link: A2256W000599
+        route_path_index: 933
+        start: {x: -70.569, y: -9.5, z: 28.43}
+        end: {x: -56.744, y: -14.0, z: 28.43}
+        conflict_point: {x: -60.277671, y: -12.8498}
+        allowed_speeds_mps: [2.5]
+        trigger_distance_m: 25
+        arrival_tolerance_m: 0.4
+        max_crossing_sec: 14
+        approved_combinations: *central_approved_pairs
+        status: approved
+        verification:
+          <<: *central_approved_verification
+          geometry_sha256: 7ff012f587b7a44901ecea79af7f21906329d34db23d81eeb1b36eae1b33f0bf
+      - id: rear_crosswalk_diagonal_right_to_left_north
+        route_link: A2256W000599
+        route_path_index: 932
+        start: {x: -56.744, y: -14.0, z: 28.43}
+        # Keep a northbound diagonal, but stop at the legacy-proven far-side
+        # area instead of remaining ahead of a stopped Ego.
+        end: {x: -70.569, y: -11.9, z: 28.43}
+        conflict_point: {x: -60.273960, y: -13.463851}
+        allowed_speeds_mps: [2.5]
+        trigger_distance_m: 25
+        arrival_tolerance_m: 0.4
+        max_crossing_sec: 14
+        approved_combinations: *central_approved_pairs
+        status: approved
+        verification:
+          <<: *central_approved_verification
+          geometry_sha256: c6d93e7afe7d8f849a868827f4054c992edbe0bf248e4addba67c4f3b8848579
+      - id: between_crosswalks_diagonal_left_to_right_north
+        route_link: A2256W000599
+        route_path_index: 917
+        start: {x: -71.0, y: -25.0, z: 28.43}
+        end: {x: -49.0, y: -17.0, z: 28.43}
+        conflict_point: {x: -60.231434, y: -21.084158}
+        signal_guard_mode: through_conflict
+        allowed_speeds_mps: [2.5]
+        trigger_distance_m: 25
+        arrival_tolerance_m: 0.4
+        max_crossing_sec: 17
+        approved_combinations: *central_approved_pairs
+        status: approved
+        verification:
+          <<: *central_approved_verification
+          geometry_sha256: ecef52c6793f49bcfa3b730706e8f8b56c1750e8e109b74c94fad216c34faa46
+      - id: between_crosswalks_diagonal_right_to_left_south
+        route_link: A2256W000599
+        route_path_index: 917
+        start: {x: -49.0, y: -17.0, z: 28.43}
+        end: {x: -71.0, y: -25.0, z: 28.43}
+        conflict_point: {x: -60.231434, y: -21.084158}
+        signal_guard_mode: through_conflict
+        allowed_speeds_mps: [2.5]
+        trigger_distance_m: 25
+        arrival_tolerance_m: 0.4
+        max_crossing_sec: 17
+        approved_combinations: *central_approved_pairs
+        status: approved
+        verification:
+          <<: *central_approved_verification
+          geometry_sha256: 0848c2b0e36211c00f807378989563821fcbc4f50af7f72257f700050c6fa20d
+      - id: between_crosswalks_diagonal_left_to_right_south
+        route_link: A2256W000599
+        route_path_index: 917
+        start: {x: -71.0, y: -17.0, z: 28.43}
+        end: {x: -49.0, y: -25.0, z: 28.43}
+        conflict_point: {x: -60.232381, y: -20.915498}
+        signal_guard_mode: through_conflict
+        allowed_speeds_mps: [2.5]
+        trigger_distance_m: 25
+        arrival_tolerance_m: 0.4
+        max_crossing_sec: 17
+        approved_combinations: *central_approved_pairs
+        status: approved
+        verification:
+          <<: *central_approved_verification
+          geometry_sha256: f873f64cee57aa6c7ab6e3f01aa1d496e0a61547435d6d058da1cf8e3be81235
+      - id: between_crosswalks_diagonal_right_to_left_north
+        route_link: A2256W000599
+        route_path_index: 917
+        start: {x: -49.0, y: -25.0, z: 28.43}
+        end: {x: -71.0, y: -17.0, z: 28.43}
+        conflict_point: {x: -60.232381, y: -20.915498}
+        signal_guard_mode: through_conflict
+        allowed_speeds_mps: [2.5]
+        trigger_distance_m: 25
+        arrival_tolerance_m: 0.4
+        max_crossing_sec: 17
+        approved_combinations: *central_approved_pairs
+        status: approved
+        verification:
+          <<: *central_approved_verification
+          geometry_sha256: d5b837a27ee0752469dffb478ca1700c646852f6c9d71feb35648cf8e6fb5c5b
+      placement_bounds:
+        min_x: -74.0
+        max_x: -47.9
+        min_y: -49.0
+        max_y: 16.0
+        endpoint_margin_m: 1.0
+        reference: mission_image_registered_inset_20260921
+        surveyed_boundary: false
 
     roundabout:
       ego_entry_checkpoint: 8

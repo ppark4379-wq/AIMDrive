@@ -1247,8 +1247,13 @@ class HighwayLanePlanner:
         return time_value if time_value <= horizon + 1e-9 else float("inf")
 
     @staticmethod
-    def _merge_arrivals_overlap(ego_entry_time, ego_speed, touching, radius):
+    def _merge_arrivals_overlap(ego_entry_time, ego_speed, touching, radius,
+                                *, clear_time_margin=None, clear_distance=None):
         """Yield unless Ego can fully clear with both time and distance margin."""
+        if clear_time_margin is None:
+            clear_time_margin = parameters.MERGE_GO_CLEAR_TIME_MARGIN
+        if clear_distance is None:
+            clear_distance = parameters.MERGE_CLOSE_GAP_YIELD_DISTANCE
         if not touching:
             return False
         winner_entry, _, other_entry_time = min(touching, key=lambda item: item[2])
@@ -1264,9 +1269,9 @@ class HighwayLanePlanner:
         clear_time = other_entry_time - ego_exit_time
         predicted_bumper_gap = max(0.0, clear_time) * other_speed
         return (
-            clear_time < parameters.MERGE_GO_CLEAR_TIME_MARGIN
+            clear_time < clear_time_margin
             or predicted_bumper_gap
-            < parameters.MERGE_CLOSE_GAP_YIELD_DISTANCE
+            < clear_distance
         )
 
     @staticmethod
@@ -1369,6 +1374,8 @@ class HighwayLanePlanner:
                 ego_speed,
                 touching,
                 parameters.CONSERVATIVE_MERGE_ENTRY_RADIUS,
+                clear_time_margin=parameters.CONSERVATIVE_MERGE_GO_CLEAR_TIME_MARGIN,
+                clear_distance=parameters.CONSERVATIVE_MERGE_CLOSE_GAP_YIELD_DISTANCE,
             ):
                 self._merge_zone_priority = "OTHER"
             elif not math.isinf(ego_touch_time):

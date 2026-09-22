@@ -207,6 +207,77 @@ class RecordedStaticTests(unittest.TestCase):
         self.assertEqual(result.acc_target_velocity, 0.)
         np.testing.assert_array_equal(original, self.planner.path)
 
+    def test_editor_preview_replans_after_obstacle_or_ego_move(self):
+        self.planner.set_live_preview(True)
+        self.assertFalse(self.planner.refresh_live_preview(self.ego, []))
+        result = self.start()
+        self.assertEqual(result.reason, 'static_recorded_preview')
+        self.assertTrue(self.planner.active)
+
+        obstacle = ObjectInfo(-59.85, -145., 0., 2, is_static=True,
+                              size_x=1., size_y=1.)
+        self.assertTrue(self.planner.refresh_live_preview(self.ego, [obstacle]))
+        self.assertFalse(self.planner.active)
+
+        # Establish the new scene, then reject tiny pose noise but reset for
+        # an actual operator teleport.
+        self.assertFalse(self.planner.refresh_live_preview(self.ego, [obstacle]))
+        self.planner.path = [Point(-59.85, -162.), Point(-59.85, -161.)]
+        jitter = VehicleState(self.ego.position.x+.05, self.ego.position.y,
+                              self.ego.yaw, 0.)
+        self.assertFalse(self.planner.refresh_live_preview(jitter, [obstacle]))
+        moved = VehicleState(self.ego.position.x+1., self.ego.position.y,
+                             self.ego.yaw, 0.)
+        self.assertTrue(self.planner.refresh_live_preview(moved, [obstacle]))
+        self.assertFalse(self.planner.active)
+
+    def test_editor_drive_commits_preview_and_uses_production_tracking(self):
+        self.planner.set_live_preview(True)
+        self.assertFalse(self.planner.refresh_live_preview(self.ego, []))
+        preview = self.start()
+        self.assertEqual(preview.reason, 'static_recorded_preview')
+
+        original = np.array(self.planner.path)
+        self.planner.set_live_drive(True)
+        moved = VehicleState(self.ego.position.x, self.ego.position.y+.5,
+                             self.ego.yaw, 0.)
+        self.assertFalse(self.planner.refresh_live_preview(moved, []))
+        np.testing.assert_array_equal(original, self.planner.path)
+
+        tracked = self.planner.plan(self.ego, self.route[:80], [], self.route)
+        self.assertEqual(tracked.reason, 'static_recorded_follow')
+        self.assertTrue(tracked.debug_details['static_avoidance']['live_drive_committed'])
+
+        # Browser stop is a command pause. It must not reactivate preview
+        # invalidation while Ego is already away from the editor start pose.
+        self.planner.set_live_drive(False)
+        self.assertFalse(self.planner.interactive_preview)
+
+    def test_editor_drive_uses_global_route_until_avoidance_entry(self):
+        self.planner.set_live_preview(True)
+        self.assertFalse(self.planner.refresh_live_preview(self.ego, []))
+        self.start()
+        avoidance = list(self.planner.path)
+        self.planner.set_live_drive(True)
+
+        far_ego = VehicleState(-59.85, -175., math.pi/2, 0.)
+        approach_route = [Point(-59.85, -180.+.2*i) for i in range(425)]
+        result = self.planner.plan(
+            far_ego, approach_route[:100], [], approach_route
+        )
+        self.assertEqual(result.reason, 'static_recorded_drive_approach')
+        self.assertEqual(result.path, approach_route[:100])
+        self.assertEqual(result.candidates[0].points, avoidance)
+        self.assertGreater(result.acc_target_velocity, 0.)
+
+    def test_production_mode_ignores_editor_refresh_hook(self):
+        self.start()
+        original = np.array(self.planner.path)
+        obstacle = ObjectInfo(-59.85, -145., 0., 2, is_static=True,
+                              size_x=1., size_y=1.)
+        self.assertFalse(self.planner.refresh_live_preview(self.ego, [obstacle]))
+        np.testing.assert_array_equal(original, self.planner.path)
+
     def test_no_global_return_fails_closed(self):
         result = self.planner.plan(self.ego, [], [], [])
         self.assertFalse(result.active)
@@ -240,11 +311,125 @@ class RecordedStaticTests(unittest.TestCase):
         try:
             begin = time.monotonic()
             result = planner.plan(self.ego, self.route, [], self.route)
-            self.assertEqual(result.acc_target_velocity, 0.)
+            self.assertGreater(result.acc_target_velocity, 0.)
             self.assertLess(time.monotonic()-begin, .2)
             planner.pending.result(timeout=10.)
             result = planner.plan(self.ego, self.route, [], self.route)
             self.assertGreater(result.acc_target_velocity, 0.)
+        finally:
+            planner.executor.shutdown(wait=True)
+
+    def test_gt_preplanning_keeps_approach_and_moving_entry_continuous(self):
+        from expert.src.planning.lattice_planning.planning_process import LatticePlanningProcess
+        process = LatticePlanningProcess(highway_zone_points=())
+        route = [Point(-59.85, -220.+.2*i) for i in range(625)]
+        obstacle = ObjectInfo(-59.85, -145., 0., 2, is_static=True, size_x=1., size_y=1.)
+        entries = [{'object_info': obstacle}]
+        approach = VehicleState(-59.85, -205., math.pi/2, 8.)
+        planner = process.recorded_static
+        try:
+            result = process.run(approach, route[:100], entries, prediction_path=route[:100], global_path=route)
+            self.assertIsNotNone(planner.pending)
+            self.assertFalse(result.active)
+            self.assertGreaterEqual(result.acc_target_velocity, approach.velocity)
+            future = planner.pending
+            future.result(timeout=12.)
+            result = process.run(approach, route[:100], entries, global_path=route)
+            self.assertIs(planner.pending, future)
+            self.assertEqual(result.reason, 'static_recorded_approach')
+            self.assertGreater(result.acc_target_velocity, approach.velocity)
+            entry = VehicleState(-59.85, -163.9, math.pi/2, 4.)
+            result = process.run(entry, [v for v in route if v.y >= -164.], entries, global_path=route)
+            self.assertTrue(result.active, result.debug_details)
+            self.assertGreater(result.acc_target_velocity, 0., result.debug_details)
+            self.assertEqual(planner.plan_count, 1)
+        finally:
+            planner.executor.shutdown(wait=True)
+
+    def test_pending_search_keeps_safe_motion_but_stops_for_close_obstacle(self):
+        from concurrent.futures import Future
+        self.planner.pending = Future()
+        ego = VehicleState(-59.85, -162., math.pi/2, 5.)
+        result = self.planner.plan(ego, self.route, [])
+        self.assertGreater(result.acc_target_velocity, 5.)
+        self.assertFalse(result.debug_details['static_avoidance']['path_validated'])
+        obstacle = ObjectInfo(-59.85, -158., 0., 2, is_static=True, size_x=1., size_y=1.)
+        self.assertEqual(self.planner.plan(ego, self.route, [obstacle]).acc_target_velocity, 0.)
+
+    def test_worker_finishing_after_reset_cannot_mutate_live_state(self):
+        from concurrent.futures import Future
+        from unittest.mock import Mock
+        self.planner.executor = Mock()
+        future = Future()
+        future.set_running_or_notify_cancel()
+        self.planner.executor.submit.return_value = future
+        self.planner._submit(self.ego, self.route, [])
+        function, *args = self.planner.executor.submit.call_args.args
+        self.planner.reset()
+        worker = function(*args)
+        self.assertTrue(worker.path)
+        self.assertEqual(self.planner.path, [])
+        self.assertIsNone(self.planner.goal_y)
+        self.assertEqual(self.planner.plan_count, 0)
+
+    def test_preplanned_route_is_rechecked_against_latest_gt(self):
+        planner = RecordedStaticPlanner(LatticePlanner(), background=True)
+        try:
+            planner._submit(self.ego, self.route, [])
+            worker = planner.pending.result(timeout=12.)
+            point = worker.path[80]
+            obstacle = ObjectInfo(point.x, point.y, 0., 2, is_static=True, size_x=2., size_y=2.)
+            result = planner.plan(self.ego, self.route, [obstacle])
+            self.assertEqual(result.acc_target_velocity, 0.)
+            self.assertEqual(result.debug_details['static_avoidance']['error'], 'remaining_path_collision')
+        finally:
+            planner.executor.shutdown(wait=True)
+
+    def test_moving_approach_tracks_preplanned_route_without_zero_target(self):
+        import contextlib
+        import io
+        from expert.src.autonomous_driving import AutonomousDriving
+        from expert.src.control.pure_pursuit import PurePursuit
+        from expert.src.planning.lattice_planning.planning_process import LatticePlanningProcess
+        process = LatticePlanningProcess(highway_zone_points=())
+        route = [Point(-59.85, -220.+.2*i) for i in range(625)]
+        obstacle = ObjectInfo(-59.85, -145., 0., 2, is_static=True, size_x=1., size_y=1.)
+        entries = [{'object_info': obstacle}]
+        ego = VehicleState(-59.85, -195., math.pi/2, 20./3.6)
+        controller = AutonomousDriving.__new__(AutonomousDriving)
+        controller.control_dt = dt = .1
+        controller.previous_target_velocity = ego.velocity
+        controller.pure_pursuit = PurePursuit(.65, 3., 2., 30.)
+        planner = process.recorded_static
+        entered = False
+        try:
+            planner.preplan(ego, route, [obstacle])
+            planner.pending.result(timeout=12.)
+            with contextlib.redirect_stdout(io.StringIO()):
+                for step in range(1200):
+                    reference = [v for v in route if ego.position.y-.25 <= v.y <= ego.position.y+30.]
+                    result = process.run(ego, reference, entries, prediction_path=route, global_path=route)
+                    target = controller._smooth_static_target_speed(min(20./3.6, result.acc_target_velocity), ego, result)
+                    self.assertGreater(target, 0., (step, ego.position, result.debug_details))
+                    if result.active and not entered:
+                        self.assertGreater(ego.velocity, .3)
+                        entered = True
+                    controller.previous_target_velocity = target
+                    pp = controller.pure_pursuit
+                    pp.path, pp.vehicle_state = result.path, ego
+                    steering = float(np.clip(pp.calculate_steering_angle(controller._recorded_lookahead_limits(ego, result)),
+                                             -math.radians(40.), math.radians(40.)))
+                    speed = max(0., ego.velocity+float(np.clip(target-ego.velocity, -2.*dt, 1.2*dt)))
+                    ego = VehicleState(ego.position.x+speed*dt*math.cos(ego.yaw),
+                                       ego.position.y+speed*dt*math.sin(ego.yaw),
+                                       ego.yaw+speed*dt*math.tan(steering)/3., speed)
+                    self.assertTrue(planner.collision_free(np.array([ego.position]), np.array([ego.yaw]), [obstacle]))
+                    if planner.done:
+                        break
+                else:
+                    self.fail('Moving approach did not finish')
+            self.assertTrue(entered)
+            self.assertEqual(planner.plan_count, 1)
         finally:
             planner.executor.shutdown(wait=True)
 

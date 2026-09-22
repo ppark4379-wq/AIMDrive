@@ -1,0 +1,64 @@
+schema: morai_static_obstacle_preset_v1
+name: static_regulation_100_20260920_041536_attempt_067
+map_name: R_KR_PR_K-city_2025
+scenario: full_loop_static
+source: automated_static_expert_verified
+generation:
+  batch_seed: 7472814053904834310
+  attempt: 67
+  candidate_only_until_expert_passes: false
+obstacles:
+- model: TrafficBarrel
+  position:
+    x: -60.763359
+    y: -145.220884
+    z: 28.376821
+  yaw_deg: -91.113174
+  scale:
+  - 2.040895
+  - 3.061343
+  - 2.040895
+  route_path_index: 662
+  generation:
+    longitudinal_fraction: 0.11723588
+    lateral_offset_m: 0.161601
+    scale_multiplier: 1.020448
+- model: Bicycle_city
+  position:
+    x: -61.104267
+    y: -142.176932
+    z: 28.378952
+  yaw_deg: -77.279946
+  scale:
+  - 1.059177
+  - 1.059177
+  - 1.059177
+  route_path_index: 668
+  generation:
+    longitudinal_fraction: 0.42168147
+    lateral_offset_m: 0.497942
+    scale_multiplier: 1.059177
+- model: ElectricScooter2
+  position:
+    x: -60.982455
+    y: -139.185504
+    z: 28.381046
+  yaw_deg: -80.857414
+  scale:
+  - 0.981513
+  - 0.981513
+  - 0.981513
+  route_path_index: 674
+  generation:
+    longitudinal_fraction: 0.72080537
+    lateral_offset_m: 0.371643
+    scale_multiplier: 0.981513
+verification:
+  expert_completed: true
+  collision_free: true
+  runner_return_code: 0
+  max_cross_track_error_m: 2.21
+  cross_track_limit_m: 3.0
+  valid_plan_samples: 20
+  verified_at_unix: 1789849317.1156003
+  log: scenario_runner/.runtime/static_scenario_batch/static_regulation_100_20260920_041536/logs/static_regulation_100_20260920_041536_attempt_067.log

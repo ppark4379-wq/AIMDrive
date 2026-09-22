@@ -8,6 +8,7 @@ the official route, and completion requires an exact-ID readback.
 
 import time
 
+from ...utils import safe_print as print
 from ...utils.transform_utils import polyline_length
 
 
@@ -22,6 +23,39 @@ def initialize(context):
     context.traffic_override_completed = set()
     context.traffic_override_attempts = 0
     context.traffic_override_verified = 0
+    context.dynamic_signal_attempts = {}
+
+
+def _dynamic_stop_margin(context, current_s):
+    if not getattr(context, "dynamic_obstacle_events", []):
+        return 0.0
+    definition = getattr(context, "route_definition", {})
+    zone = definition.get("zones", {}).get("dynamic_obstacle")
+    if zone is not None:
+        start = context.path_s_at_index(int(zone.get("start_path_index", 753)))
+        end = context.path_s_at_index(int(zone.get("end_path_index", 1081)))
+        if not start <= current_s <= end:
+            return 0.0
+    # Centre projection can be slightly past a discrete stop-line waypoint
+    # while the front of the car is still waiting at that same junction.
+    return 2.0
+
+
+def upcoming_stop(context, current_s, maximum_distance):
+    margin = _dynamic_stop_margin(context, current_s)
+    return next((stop for stop in context.traffic_light_stops
+                 if -margin <= float(stop["route_s"]) - float(current_s) <= maximum_distance), None)
+
+
+def _read_signal(context, light_id):
+    try:
+        state = context.grpc.get_traffic_light_state_by_id(light_id)
+        if isinstance(state, dict) and str(state.get("id")) == str(light_id):
+            int(state["color"])
+            return state
+    except Exception as error:
+        print(f"[TRAFFIC OVERRIDE] signal unavailable: {error}")
+    return None
 
 
 def _full_route_points(context):
@@ -95,6 +129,9 @@ def prepare(context):
 
 
 def _emit_collection_event(context, event_name, **fields):
+    # Scenario-only Expert verification has no collection event writer.  Keep
+    # the same intervention evidence visible in its persistent batch log.
+    print("[TRAFFIC OVERRIDE] {} {}".format(event_name, fields))
     writer = getattr(context, "event", None)
     if callable(writer):
         writer(event_name, training_visible=False, **fields)
@@ -133,7 +170,7 @@ def update(context, elapsed, ego_state, current_s):
 
     waiting = context.traffic_wait_state
     if waiting is not None and waiting.get("commanded_wall") is not None:
-        state = context.grpc.get_traffic_light_state_by_id(waiting["stop_key"][0])
+        state = _read_signal(context, waiting["stop_key"][0])
         if (
             state is not None
             and str(state.get("id")) == waiting["stop_key"][0]
@@ -174,6 +211,7 @@ def update(context, elapsed, ego_state, current_s):
             mission_distribution_changed=True,
         )
         reset_wait(context)
+        waiting = None
 
     minimum_distance = max(
         0.0, float(cfg.get("minimum_stopline_distance_m", 0.0))
@@ -181,33 +219,26 @@ def update(context, elapsed, ego_state, current_s):
     maximum_distance = max(
         minimum_distance, float(cfg.get("maximum_stopline_distance_m", 25.0))
     )
-    upcoming = next(
-        (
-            stop
-            for stop in context.traffic_light_stops
-            if float(stop["route_s"]) >= float(current_s)
-            and float(stop["route_s"]) - float(current_s) <= maximum_distance
-        ),
-        None,
-    )
+    dynamic_margin = _dynamic_stop_margin(context, current_s)
+    upcoming = upcoming_stop(context, current_s, maximum_distance)
     if upcoming is None:
         reset_wait(context)
         return
 
     distance = float(upcoming["route_s"]) - float(current_s)
     speed = float(ego_state.get("speed", float("inf")))
-    if distance < minimum_distance or speed > float(
+    if distance < (minimum_distance if not dynamic_margin else -dynamic_margin) or speed > float(
         cfg.get("stopped_speed_mps", 0.5)
     ):
         reset_wait(context)
         return
 
     stop_key = (str(upcoming["light_id"]), round(float(upcoming["route_s"]), 3))
-    if stop_key in context.traffic_override_completed:
+    if stop_key in context.traffic_override_completed and not dynamic_margin:
         reset_wait(context)
         return
 
-    state = context.grpc.get_traffic_light_state_by_id(upcoming["light_id"])
+    state = _read_signal(context, upcoming["light_id"])
     if state is None or str(state.get("id")) != str(upcoming["light_id"]):
         return
     color = int(state["color"])
@@ -242,6 +273,14 @@ def update(context, elapsed, ego_state, current_s):
         return
 
     waiting["last_attempt_wall"] = now
+    if dynamic_margin:
+        attempts = context.dynamic_signal_attempts.get(stop_key, 0)
+        maximum_attempts = max(
+            1, int(cfg.get("dynamic_maximum_attempts", 3))
+        )
+        if attempts >= maximum_attempts:
+            raise RuntimeError("Dynamic signal recovery exhausted for exact light " + stop_key[0])
+        context.dynamic_signal_attempts[stop_key] = attempts + 1
     context.traffic_override_attempts += 1
     target_color = int(cfg.get("target_color", STRAIGHT_GREEN_BIT))
     result = context.grpc.set_traffic_light_color_verified(

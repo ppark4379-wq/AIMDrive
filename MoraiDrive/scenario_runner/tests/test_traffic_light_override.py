@@ -44,6 +44,58 @@ def make_context(color=1):
 
 
 class TrafficLightOverrideTests(unittest.TestCase):
+    def test_dynamic_releases_repeated_red_just_past_stop_projection(self):
+        context = make_context()
+        context.dynamic_obstacle_events = [{"id": "active"}]
+        context.traffic_override_completed.add(("C-test", 100.0))
+        with patch.object(traffic_light_override.time, "monotonic", side_effect=[100.0, 110.1]):
+            traffic_light_override.update(context, 0.0, {"speed": 0.0}, 100.08)
+            traffic_light_override.update(context, 10.1, {"speed": 0.0}, 100.08)
+        context.grpc.set_traffic_light_color_verified.assert_called_once()
+        self.assertEqual(context.dynamic_signal_attempts[("C-test", 100.0)], 1)
+
+    def test_dynamic_recovery_does_not_target_light_after_passing_junction(self):
+        context = make_context()
+        context.dynamic_obstacle_events = [{"id": "active"}]
+        with patch.object(traffic_light_override.time, "monotonic", return_value=100.0):
+            traffic_light_override.update(context, 0.0, {"speed": 0.0}, 103.0)
+        context.grpc.get_traffic_light_state_by_id.assert_not_called()
+
+    def test_other_modes_keep_legacy_completed_stop_behavior(self):
+        context = make_context()
+        context.traffic_override_completed.add(("C-test", 100.0))
+        with patch.object(traffic_light_override.time, "monotonic", return_value=100.0):
+            traffic_light_override.update(context, 0.0, {"speed": 0.0}, 99.0)
+        context.grpc.get_traffic_light_state_by_id.assert_not_called()
+
+    def test_dynamic_signal_recovery_retries_are_bounded(self):
+        context = make_context()
+        context.dynamic_obstacle_events = [{"id": "active"}]
+        context.dynamic_signal_attempts[("C-test", 100.0)] = 3
+        with patch.object(traffic_light_override.time, "monotonic", side_effect=[100.0, 110.1]):
+            traffic_light_override.update(context, 0.0, {"speed": 0.0}, 100.08)
+            with self.assertRaisesRegex(RuntimeError, "signal recovery exhausted"):
+                traffic_light_override.update(context, 10.1, {"speed": 0.0}, 100.08)
+        context.grpc.set_traffic_light_color_verified.assert_not_called()
+
+    def test_dynamic_signal_recovery_uses_configured_attempt_limit(self):
+        context = make_context()
+        context.dynamic_obstacle_events = [{"id": "active"}]
+        context.cfg["traffic_light_wait_override"]["dynamic_maximum_attempts"] = 40
+        context.dynamic_signal_attempts[("C-test", 100.0)] = 3
+        with patch.object(traffic_light_override.time, "monotonic", side_effect=[100.0, 110.1]):
+            traffic_light_override.update(context, 0.0, {"speed": 0.0}, 100.08)
+            traffic_light_override.update(context, 10.1, {"speed": 0.0}, 100.08)
+        context.grpc.set_traffic_light_color_verified.assert_called_once()
+        self.assertEqual(context.dynamic_signal_attempts[("C-test", 100.0)], 4)
+
+    def test_signal_rpc_error_does_not_abort_or_command_green(self):
+        context = make_context()
+        context.grpc.get_traffic_light_state_by_id.side_effect = RuntimeError("RPC unavailable")
+        with patch.object(traffic_light_override.time, "monotonic", return_value=100.0):
+            traffic_light_override.update(context, 0.0, {"speed": 0.0}, 99.0)
+        context.grpc.set_traffic_light_color_verified.assert_not_called()
+
     def test_red_changes_only_after_ten_host_monotonic_seconds(self):
         context = make_context()
         red = {"id": "C-test", "color": 1}

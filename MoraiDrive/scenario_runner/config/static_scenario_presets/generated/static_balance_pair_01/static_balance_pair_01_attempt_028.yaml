@@ -1,0 +1,52 @@
+schema: morai_static_obstacle_preset_v1
+name: static_balance_pair_01_attempt_028
+map_name: R_KR_PR_K-city_2025
+scenario: full_loop_static
+source: automated_static_expert_verified
+generation:
+  batch_seed: 16001622206745496911
+  attempt: 28
+  candidate_only_until_expert_passes: false
+obstacles:
+- model: TrafficBarrel
+  position:
+    x: -60.825756
+    y: -144.597491
+    z: 28.377257
+  yaw_deg: -85.002535
+  scale:
+  - 2.123489
+  - 3.185233
+  - 2.123489
+  route_path_index: 664
+  generation:
+    longitudinal_fraction: 0.17958436
+    lateral_offset_m: 0.223062
+    scale_multiplier: 1.061744
+- model: YellowBarrel
+  position:
+    x: -61.080706
+    y: -141.104448
+    z: 28.379702
+  yaw_deg: -79.946676
+  scale:
+  - 1.809331
+  - 2.713997
+  - 1.809331
+  route_path_index: 671
+  generation:
+    longitudinal_fraction: 0.52892616
+    lateral_offset_m: 0.472773
+    scale_multiplier: 0.904666
+verification:
+  expert_completed: true
+  collision_free: true
+  runner_return_code: 0
+  max_cross_track_error_m: 2.11
+  cross_track_limit_m: 3.0
+  valid_plan_samples: 88
+  selected_routes:
+  - right_03.csv
+  - right_02.csv
+  verified_at_unix: 1789897590.534024
+  log: scenario_runner/.runtime/static_scenario_batch/static_balance_pair_01/logs/static_balance_pair_01_attempt_028.log

@@ -1,5 +1,7 @@
+import json
 import math
 import os
+import threading
 import time
 
 from .base_scenario import BaseScenario
@@ -17,15 +19,164 @@ class FullLoopDriveBase(BaseScenario):
     zone_name = "full_loop"
     scenario_name = "full_loop_base"
 
-    def run(self):
-        self.runtime_bridge = SyncRuntimeBridge(self.cfg.get("sync_runtime", {}))
+    def start_static_editor_session(self):
+        """Attach the long-lived editor trial handshake to ROS."""
+        import rospy
+        from std_msgs.msg import Bool, String
+
+        if not rospy.core.is_initialized():
+            rospy.init_node(
+                "static_scenario_runner", anonymous=True, disable_signals=True,
+            )
+        self._static_editor_lock = threading.RLock()
+        self._static_editor_drive_enabled = False
+        self._static_editor_event_type = String
+        self._static_editor_event_publisher = rospy.Publisher(
+            "/static_scenario_editor/trial_event",
+            String,
+            queue_size=10,
+            latch=True,
+        )
+
+        def on_drive_enabled(message):
+            with self._static_editor_lock:
+                self._static_editor_drive_enabled = bool(message.data)
+
+        self._static_editor_drive_subscriber = rospy.Subscriber(
+            "/static_scenario_editor/drive_enabled",
+            Bool,
+            on_drive_enabled,
+            queue_size=1,
+        )
+
+    def close_static_editor_session(self):
+        subscriber = getattr(self, "_static_editor_drive_subscriber", None)
+        if subscriber is not None:
+            subscriber.unregister()
+            self._static_editor_drive_subscriber = None
+
+    def static_editor_drive_enabled(self):
+        lock = getattr(self, "_static_editor_lock", None)
+        if lock is None:
+            # Direct unit tests do not start the ROS bridge.
+            return bool(getattr(self, "_static_editor_drive_enabled", True))
+        with lock:
+            return bool(self._static_editor_drive_enabled)
+
+    def publish_static_editor_event(self, event, **payload):
+        document = {
+            "event": str(event),
+            "timestamp": time.time(),
+        }
+        document.update(payload)
+        publisher = getattr(self, "_static_editor_event_publisher", None)
+        message_type = getattr(self, "_static_editor_event_type", None)
+        if publisher is not None and message_type is not None:
+            publisher.publish(message_type(data=json.dumps(document)))
+        print("[STATIC EDITOR] " + json.dumps(document, ensure_ascii=False))
+
+    def finish_static_editor_trial(
+        self, trial, outcome, reason, collisions, reset_for_next=True,
+    ):
+        """Brake, report one trial, then rebuild only Ego/Expert state."""
+        if hasattr(self.grpc, "stop_ego_control"):
+            self.grpc.stop_ego_control()
+        self.publish_static_editor_event(
+            "trial_finished",
+            trial=int(trial),
+            outcome=str(outcome),
+            reason=str(reason),
+            collisions=sorted(set(str(value) for value in collisions)),
+        )
+
+        if not reset_for_next:
+            return
+
+        # The editor receives trial_finished, closes its command relay and
+        # publishes drive_enabled=False. Never teleport while commands are
+        # still being forwarded to MORAI.
+        deadline = time.monotonic() + 3.0
+        while self.static_editor_drive_enabled() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        if self.static_editor_drive_enabled():
+            raise RuntimeError(
+                "Static editor did not close the Expert command relay after "
+                "trial completion"
+            )
+
+        self.publish_static_editor_event(
+            "trial_resetting", trial=int(trial), outcome=str(outcome),
+        )
+        self.configure_drive_with_retries()
+        self.publish_static_editor_event(
+            "trial_ready", trial=int(trial), previous_outcome=str(outcome),
+        )
+
+    def require_async_ros_control_path(self):
+        """Fail before actor setup when Expert commands cannot reach MORAI."""
+        import rosgraph
+
+        master = rosgraph.Master("/scenario_runner_async_preflight")
         try:
-            self.runtime_bridge.start()
+            _, subscribers, _ = master.getSystemState()
+        except Exception as error:
+            raise RuntimeError(
+                "Asynchronous scenario mode requires a running ROS master "
+                "and MORAI bridge. Start 01_internal_sensor_record_preflight.sh "
+                "in another terminal; Sensor Record and Synchronization Mode "
+                "may remain OFF."
+            ) from error
+
+        control_topic = str(
+            self.cfg.get("async_control_topic", "/ctrl_cmd")
+        )
+        control_subscribers = next(
+            (nodes for topic, nodes in subscribers if topic == control_topic),
+            [],
+        )
+        if not control_subscribers:
+            raise RuntimeError(
+                "MORAI bridge is not subscribed to {}. Start the 01 bridge "
+                "and connect MORAI vehicle information to its address before "
+                "running the scenario.".format(control_topic)
+            )
+        print(
+            "[KCityRunner] asynchronous ROS control ready: "
+            "{} subscribers={}".format(
+                control_topic, list(control_subscribers)
+            )
+        )
+
+    def run(self):
+        runtime_cfg = self.cfg.get("sync_runtime", {})
+        use_sync_runtime = bool(runtime_cfg.get("enabled", True))
+        self.runtime_bridge = (
+            SyncRuntimeBridge(runtime_cfg) if use_sync_runtime else None
+        )
+        editor_mode = bool(self.cfg.get("static_obstacle_editor_mode", False))
+        try:
+            if editor_mode:
+                self.start_static_editor_session()
+            if self.runtime_bridge is not None:
+                self.runtime_bridge.start()
+            else:
+                print(
+                    "[KCityRunner] asynchronous scenario test mode: "
+                    "Sync Runtime and sensor capture are disabled"
+                )
+                self.require_async_ros_control_path()
             self.setup()
-            self.runtime_bridge.wait_until_ready(self.expert_controller)
+            if editor_mode:
+                self.publish_static_editor_event("session_ready", trial=0)
+            if self.runtime_bridge is not None:
+                self.runtime_bridge.wait_until_ready(self.expert_controller)
             self.run_timeline()
         finally:
-            self.cleanup()
+            try:
+                self.cleanup()
+            finally:
+                if editor_mode:
+                    self.close_static_editor_session()
 
     def get_ego_motion_state(self):
         bridge = getattr(self, "runtime_bridge", None)
@@ -131,14 +282,17 @@ class FullLoopDriveBase(BaseScenario):
         self.route_setup_mode = None
 
         runtime_bridge = getattr(self, "runtime_bridge", None)
-        if runtime_bridge is not None:
+        asynchronous_test_mode = not bool(
+            self.cfg.get("sync_runtime", {}).get("enabled", True)
+        )
+        if runtime_bridge is not None or asynchronous_test_mode:
             self.stop_expert_controller()
             if hasattr(self.grpc, "stop_ego_cruise"):
                 self.grpc.stop_ego_cruise()
 
         self.grpc.set_ego_transform(self.start_tf)
         if (
-            runtime_bridge is not None
+            (runtime_bridge is not None or asynchronous_test_mode)
             and self.cfg.get("reset_ego_motion_on_start", False)
             and hasattr(self.grpc, "reset_ego_motion")
         ):
@@ -147,7 +301,7 @@ class FullLoopDriveBase(BaseScenario):
         else:
             time.sleep(0.2)
 
-        if runtime_bridge is None:
+        if runtime_bridge is None and not asynchronous_test_mode:
             # Preserve the proven collection call order while the adapter owns
             # Sync Runtime and Sensor Record coordination.
             self.stop_expert_controller()
@@ -358,8 +512,17 @@ class FullLoopDriveBase(BaseScenario):
         last_print_time = 0.0
         off_route_enter_time = None
         self.expert_last_s = 0.0
+        editor_collision_signature = None
         progress_anchor_s = None
         last_progress_time = lap_start_time
+        editor_mode = bool(self.cfg.get("static_obstacle_editor_mode", False))
+        editor_trial_active = False
+        editor_trial = 0
+        editor_baseline_remaining = set()
+        editor_trial_collisions = set()
+        editor_max_trials = max(
+            0, int(self.cfg.get("static_editor_max_trials", 0))
+        )
 
         while True:
             elapsed = self.clock.now() - lap_start_time
@@ -367,9 +530,95 @@ class FullLoopDriveBase(BaseScenario):
             if controller is None or not controller.is_running():
                 raise RuntimeError("AIMDrive expert process stopped unexpectedly")
 
+            if editor_mode:
+                maintain_obstacles = getattr(
+                    self, "maintain_static_obstacles_for_editor", None,
+                )
+                if callable(maintain_obstacles):
+                    maintain_obstacles()
+
+            if editor_mode and not self.static_editor_drive_enabled():
+                if editor_trial_active:
+                    should_reset = not (
+                        editor_max_trials > 0
+                        and editor_trial >= editor_max_trials
+                    )
+                    self.finish_static_editor_trial(
+                        editor_trial,
+                        "cancelled",
+                        "operator_stopped",
+                        editor_trial_collisions,
+                        reset_for_next=should_reset,
+                    )
+                    if not should_reset:
+                        break
+                    editor_trial_active = False
+                    lap_start_time = self.clock.now()
+                    last_print_time = 0.0
+                    off_route_enter_time = None
+                    self.expert_last_s = 0.0
+                    progress_anchor_s = None
+                    last_progress_time = lap_start_time
+                time.sleep(check_period_sec)
+                continue
+
             ego_state = self.get_ego_motion_state()
             ego_x = ego_state["x"]
             ego_y = ego_state["y"]
+            collision_objects = sorted(set(
+                str(value).strip()
+                for value in ego_state.get("collision_objects", [])
+                if str(value).strip()
+            ))
+            if editor_mode and not editor_trial_active:
+                editor_trial += 1
+                lap = editor_trial - 1
+                editor_trial_active = True
+                editor_baseline_remaining = set(collision_objects)
+                editor_trial_collisions = set()
+                lap_start_time = self.clock.now()
+                elapsed = 0.0
+                last_print_time = 0.0
+                off_route_enter_time = None
+                self.expert_last_s = 0.0
+                progress_anchor_s = None
+                last_progress_time = lap_start_time
+                self.publish_static_editor_event(
+                    "trial_started", trial=editor_trial,
+                )
+            if editor_mode:
+                current_collisions = set(collision_objects)
+                editor_baseline_remaining.intersection_update(
+                    current_collisions
+                )
+                editor_trial_collisions.update(
+                    current_collisions - editor_baseline_remaining
+                )
+            # The interactive editor must stay alive so the operator can see
+            # the actual contact and driven trace in MORAI/the browser. The
+            # separate replay verifier remains fail-closed on every contact.
+            if bool(self.cfg.get("static_obstacle_editor_mode", False)):
+                signature = tuple(collision_objects)
+                if signature != editor_collision_signature:
+                    if signature:
+                        print(
+                            "[STATIC EDITOR] MORAI collision currently reported: "
+                            + str(list(signature))
+                        )
+                    elif editor_collision_signature:
+                        print("[STATIC EDITOR] MORAI collision report cleared")
+                    editor_collision_signature = signature
+            # Collection subclasses own a richer collision policy and event
+            # journal through observe_collision(). Plain replay verification
+            # fails immediately instead of accepting a touched obstacle.
+            elif collision_objects and not callable(
+                getattr(self, "observe_collision", None)
+            ):
+                self.stop_drive_control()
+                raise RuntimeError(
+                    "AIMDrive expert collision during scenario verification: "
+                    + str(collision_objects)
+                )
             distance_to_goal = dist_xy(
                 ego_x,
                 ego_y,
@@ -450,6 +699,28 @@ class FullLoopDriveBase(BaseScenario):
                 and self.clock.now() - off_route_enter_time
                 >= off_route_timeout_sec
             ):
+                if editor_mode:
+                    should_reset = not (
+                        editor_max_trials > 0
+                        and editor_trial >= editor_max_trials
+                    )
+                    self.finish_static_editor_trial(
+                        editor_trial,
+                        "failed",
+                        "off_route",
+                        editor_trial_collisions,
+                        reset_for_next=should_reset,
+                    )
+                    if not should_reset:
+                        break
+                    editor_trial_active = False
+                    lap_start_time = self.clock.now()
+                    last_print_time = 0.0
+                    off_route_enter_time = None
+                    self.expert_last_s = 0.0
+                    progress_anchor_s = None
+                    last_progress_time = lap_start_time
+                    continue
                 self.stop_drive_control()
                 raise RuntimeError(
                     "AIMDrive expert left the official route: "
@@ -491,6 +762,28 @@ class FullLoopDriveBase(BaseScenario):
                     f"[KCityFullLoop] FATAL_STALL {reason}",
                     flush=True,
                 )
+                if editor_mode:
+                    should_reset = not (
+                        editor_max_trials > 0
+                        and editor_trial >= editor_max_trials
+                    )
+                    self.finish_static_editor_trial(
+                        editor_trial,
+                        "failed",
+                        "no_route_progress",
+                        editor_trial_collisions,
+                        reset_for_next=should_reset,
+                    )
+                    if not should_reset:
+                        break
+                    editor_trial_active = False
+                    lap_start_time = self.clock.now()
+                    last_print_time = 0.0
+                    off_route_enter_time = None
+                    self.expert_last_s = 0.0
+                    progress_anchor_s = None
+                    last_progress_time = lap_start_time
+                    continue
                 self.stop_drive_control()
                 raise RuntimeError(f"EGO progress watchdog abort: {reason}")
 
@@ -503,6 +796,36 @@ class FullLoopDriveBase(BaseScenario):
                     f"s={current_s:.1f}/{self.route_length_m:.1f}, "
                     f"elapsed={elapsed:.1f}s"
                 )
+                if editor_mode:
+                    outcome = (
+                        "passed" if not editor_trial_collisions else "failed"
+                    )
+                    reason = (
+                        "goal_reached"
+                        if outcome == "passed"
+                        else "goal_reached_with_collision"
+                    )
+                    should_reset = not (
+                        editor_max_trials > 0
+                        and editor_trial >= editor_max_trials
+                    )
+                    self.finish_static_editor_trial(
+                        editor_trial,
+                        outcome,
+                        reason,
+                        editor_trial_collisions,
+                        reset_for_next=should_reset,
+                    )
+                    if not should_reset:
+                        break
+                    editor_trial_active = False
+                    lap_start_time = self.clock.now()
+                    last_print_time = 0.0
+                    off_route_enter_time = None
+                    self.expert_last_s = 0.0
+                    progress_anchor_s = None
+                    last_progress_time = lap_start_time
+                    continue
                 self.stop_drive_control()
                 if max_laps > 0 and lap >= max_laps:
                     break
@@ -517,6 +840,28 @@ class FullLoopDriveBase(BaseScenario):
                 continue
 
             if use_timeout and elapsed >= float(timeout_sec):
+                if editor_mode:
+                    should_reset = not (
+                        editor_max_trials > 0
+                        and editor_trial >= editor_max_trials
+                    )
+                    self.finish_static_editor_trial(
+                        editor_trial,
+                        "failed",
+                        "timeout",
+                        editor_trial_collisions,
+                        reset_for_next=should_reset,
+                    )
+                    if not should_reset:
+                        break
+                    editor_trial_active = False
+                    lap_start_time = self.clock.now()
+                    last_print_time = 0.0
+                    off_route_enter_time = None
+                    self.expert_last_s = 0.0
+                    progress_anchor_s = None
+                    last_progress_time = lap_start_time
+                    continue
                 self.stop_drive_control()
                 raise TimeoutError(
                     "K-City full-loop timeout: "

@@ -50,6 +50,16 @@ Pedestrian ACC uses the original safety corridor (10 m lateral, 35 m forward)
 so a crossing pedestrian is handled before entering the lane, rather than only
 after its center is within 2 m of the route.
 
+Permitted roundabout entry acceleration uses `ROUNDABOUT_ENTRY_ACCEL_P_GAIN = 0.30`
+in `src/expert/src/planning/lattice_planning/parameters.py`. It applies at the hold
+point and during entry/cruising when there is no lead vehicle or lower external
+speed limit. Approach, following, yielding and braking retain the configured PID
+gain (`0.075` by default); the override does not persist outside the roundabout.
+Approach/entry speed caps remain 15/30 km/h, with lower path and traffic limits
+still taking priority. This is a pedal-command gain, not a physical acceleration
+setting. At a 26 km/h target from rest, it requests the maximum pedal value 1.0.
+Actual acceleration and rear-gap behavior still need a MORAI driving check.
+
 The gRPC host defaults to the WSL Windows-host gateway and port `7789`. Override
 discovery when necessary with `MORAI_GRPC_HOST` and `MORAI_GRPC_PORT`. The
 generated MORAI Python protocol is loaded read-only from
