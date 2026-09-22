@@ -5,6 +5,7 @@ import signal
 import subprocess
 import sys
 import time
+from ..utils import safe_print as print
 
 
 class ExpertController:

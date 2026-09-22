@@ -197,6 +197,12 @@ def build_parser():
         ),
     )
     parser.add_argument(
+        "--dynamic-review",
+        action="append",
+        metavar="CROSSING:MODEL:SPEED_MPS",
+        help="Trial one catalogue crossing (repeat up to three times); never approves it.",
+    )
+    parser.add_argument(
         "--static-obstacle-count",
         type=int,
         choices=(1, 2),
@@ -271,6 +277,20 @@ def main():
         ]
     if args.no_sync_runtime:
         base_scenario_cfg.setdefault("sync_runtime", {})["enabled"] = False
+    if args.dynamic_review:
+        if args.scenario != "full_loop_dynamic" or not args.once or not args.no_sync_runtime:
+            parser.error("--dynamic-review requires full_loop_dynamic --once --no-sync-runtime")
+        if len(args.dynamic_review) > 3:
+            parser.error("--dynamic-review supports at most three sequential events")
+        review = []
+        for selection in args.dynamic_review:
+            try:
+                crossing, model, speed = selection.rsplit(":", 2)
+                review.append({"id": crossing, "model": model, "speed_mps": float(speed)})
+            except ValueError:
+                parser.error("--dynamic-review must be CROSSING:MODEL:SPEED_MPS")
+        base_scenario_cfg["dynamic_obstacle_review"] = review
+        base_scenario_cfg["route_debug_enabled"] = False
     if args.static_obstacle_count != 1:
         if args.scenario != "full_loop_static":
             parser.error(

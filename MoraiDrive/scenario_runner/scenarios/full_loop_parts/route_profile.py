@@ -273,15 +273,18 @@ def resolve_profile_models(self):
     self.random.shuffle(self.static_obstacle_models)
     self.random.shuffle(self.dynamic_obstacle_models)
 
-    # Preserve every candidate as a fallback while preventing a silent repeat
-    # of the previous successful model when alternatives are available.
-    for models, key in (
-        (self.static_obstacle_models, "static_obstacle_model"),
-        (self.dynamic_obstacle_models, "dynamic_obstacle_model"),
-    ):
-        previous = self.previous_profile_state.get(key)
-        if previous in models and len(models) > 1:
-            models.append(models.pop(models.index(previous)))
+    # Keep the existing static-model rotation. Dynamic scenes intentionally do
+    # not read the previous scene: every pedestrian/model/path combination is
+    # selected only from this run's seed and may repeat on consecutive runs.
+    previous_static = self.previous_profile_state.get("static_obstacle_model")
+    if previous_static in self.static_obstacle_models and len(
+        self.static_obstacle_models
+    ) > 1:
+        self.static_obstacle_models.append(
+            self.static_obstacle_models.pop(
+                self.static_obstacle_models.index(previous_static)
+            )
+        )
 
     self.static_obstacle_model = self.static_obstacle_models[0]
     self.dynamic_obstacle_model = self.dynamic_obstacle_models[0]

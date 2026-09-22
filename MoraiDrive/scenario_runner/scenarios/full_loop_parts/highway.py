@@ -1,10 +1,194 @@
 """Highway native-SpawnPoint functions for the full-loop scenario."""
 
 import math
+import random
 import time
 
-from ...utils.transform_utils import polyline_length
+from ...utils.transform_utils import interpolate_on_polyline, polyline_length
 from . import actor_lifecycle
+
+
+_MERGE_STATIC_MODEL_SEED_XOR = 0x48574D45524745
+
+
+def _merge_static_vehicle_model_candidates(self):
+    """Return one reproducibly shuffled, fully available passenger-car pool."""
+    cfg = dict(self.cfg.get("highway_merge_static_vehicle", {}))
+    models = [str(value).strip() for value in cfg.get("models", [])]
+    if not models or any(not value for value in models):
+        raise RuntimeError(
+            "Highway merge static vehicle requires a non-empty model pool"
+        )
+    if len(models) != len(set(models)):
+        raise RuntimeError(
+            "Highway merge static vehicle model pool contains duplicates"
+        )
+
+    available = set(self.vehicle_models())
+    missing = [model for model in models if model not in available]
+    if missing:
+        raise RuntimeError(
+            "Configured highway merge static vehicle models are unavailable: "
+            + ", ".join(missing)
+        )
+
+    model_random = random.Random(
+        int(self.run_seed) ^ _MERGE_STATIC_MODEL_SEED_XOR
+    )
+    candidates = list(models)
+    model_random.shuffle(candidates)
+    return candidates
+
+
+def _merge_static_vehicle_pose(self):
+    """Validate and resolve the configured merge-ramp stationary pose."""
+    cfg = dict(self.cfg.get("highway_merge_static_vehicle", {}))
+    if not bool(cfg.get("enabled", False)):
+        return None
+
+    model_candidates = _merge_static_vehicle_model_candidates(self)
+
+    link_id = str(cfg.get("route_link", "")).strip()
+    if link_id not in self.route_links:
+        raise RuntimeError(
+            f"Highway merge static vehicle link is outside this route: {link_id}"
+        )
+    link = self.map_loader.get_link(link_id)
+    if not bool(link.get("can_move_left_lane")) or not link.get(
+        "left_lane_change_dst_link_idx"
+    ):
+        raise RuntimeError(
+            "Highway merge static vehicle must be placed only after a legal "
+            f"left lane change becomes available: {link_id}"
+        )
+
+    points = list(link.get("points", []))
+    link_length = polyline_length(points)
+    offset = float(cfg.get("distance_from_link_start_m", -1.0))
+    minimum_start = max(
+        0.0, float(cfg.get("minimum_distance_from_link_start_m", 0.0))
+    )
+    minimum_end = max(
+        0.0, float(cfg.get("minimum_distance_to_link_end_m", 0.0))
+    )
+    if offset < minimum_start or link_length - offset < minimum_end:
+        raise RuntimeError(
+            "Unsafe highway merge static vehicle offset: "
+            f"offset={offset:.3f}m, link_length={link_length:.3f}m, "
+            f"minimum_start={minimum_start:.3f}m, minimum_end={minimum_end:.3f}m"
+        )
+
+    x, y, z, yaw = interpolate_on_polyline(points, offset)
+    return {
+        "model_candidates": model_candidates,
+        "route_link": link_id,
+        "distance_from_link_start_m": offset,
+        "left_lane_change_dst_link": str(
+            link["left_lane_change_dst_link_idx"]
+        ),
+        "x": float(x),
+        "y": float(y),
+        "z": float(z),
+        "yaw_deg": float(yaw),
+        "waypoint": int(self._nearest_waypoint(points, x, y)),
+    }
+
+
+def spawn_highway_merge_static_vehicle(self):
+    """Spawn one stopped sedan when native highway SpawnPoints are active."""
+    existing = getattr(self, "highway_merge_static_vehicle", None)
+    if existing is not None:
+        return existing
+    if not getattr(self, "highway_spawn_points_active", False):
+        raise RuntimeError(
+            "Highway merge static vehicle cannot spawn before native "
+            "SpawnPoint activation"
+        )
+
+    pose = _merge_static_vehicle_pose(self)
+    if pose is None:
+        self.highway_merge_static_vehicle = None
+        self.highway_merge_static_vehicle_info = None
+        print("[FullLoop] highway merge static vehicle OFF")
+        return None
+
+    label = "highway_merge_static_vehicle"
+    actor = None
+    selected_model = None
+    spawn_attempts = []
+    transform = self.grpc.make_transform(
+        pose["x"], pose["y"], pose["z"], pose["yaw_deg"]
+    )
+    for attempt, model in enumerate(pose["model_candidates"], 1):
+        actor = self.grpc.spawn_vehicle(
+            transform=transform,
+            model_name=model,
+            label=label,
+            velocity=0.0,
+            multi_ego=False,
+            request_id=f"{label}_{self.run_instance_id}_{attempt}",
+            recover_ambiguous=True,
+        )
+        spawn_attempts.append(
+            {"attempt": attempt, "model": model, "spawned": actor is not None}
+        )
+        if actor is not None:
+            selected_model = model
+            break
+        print(
+            "[FullLoop] highway merge static vehicle model retry: "
+            f"failed={model}, next_attempt={attempt + 1}"
+        )
+    if actor is None:
+        raise RuntimeError(
+            "Failed to spawn highway merge static vehicle with every "
+            "configured model"
+        )
+
+    speed_limit_ok = self.grpc.set_vehicle_speed_limit(
+        actor, 0.0, enabled=True
+    )
+    velocity_ok = self.grpc.set_vehicle_velocity(actor, 0.0)
+    route_start = self.route_links.index(pose["route_link"])
+    actor_route = list(self.route_links[route_start:])
+    route_ok = self.grpc.set_vehicle_route(
+        actor,
+        actor_route,
+        decision_range=float(self.cfg.get("npc_decision_range_m", 30.0)),
+        route_waypoint_indices={pose["route_link"]: pose["waypoint"]},
+        label=label,
+    )
+    if not (speed_limit_ok and velocity_ok and route_ok):
+        actor.destroy()
+        raise RuntimeError(
+            "Failed to establish highway merge stationary contract: "
+            f"velocity_zero={velocity_ok}, speed_limit_zero={speed_limit_ok}, "
+            f"route={route_ok}"
+        )
+
+    self.highway_merge_static_vehicle = actor
+    self.highway_merge_static_vehicle_info = dict(
+        pose,
+        model=selected_model,
+        spawn_attempts=spawn_attempts,
+        actor_id=str(actor.get_id()),
+        stationary_contract={
+            "default_ai_unchanged": True,
+            "velocity_mps": 0.0,
+            "speed_limit_mps": 0.0,
+            "physics_enabled": True,
+        },
+        actor_route=actor_route,
+    )
+    self.scenario_actors.append(actor)
+    print(
+        "[FullLoop] highway merge static vehicle ready: "
+        f"model={selected_model}, link={pose['route_link']}, "
+        f"offset={pose['distance_from_link_start_m']:.1f}m, "
+        f"position=({pose['x']:.3f}, {pose['y']:.3f}, {pose['z']:.3f}), "
+        f"yaw={pose['yaw_deg']:.2f}deg"
+    )
+    return actor
 
 
 def spawn_highway_npcs(self):
@@ -138,8 +322,11 @@ def activate_highway_spawn_points(self, elapsed, current_s):
         for point in self.highway_spawn_points
         if not point.get("retired", False)
     ]
-    if self.highway_spawn_points_active or not active_points:
-        return self.highway_spawn_points_active
+    if not active_points:
+        return False
+    if self.highway_spawn_points_active:
+        self.spawn_highway_merge_static_vehicle()
+        return True
 
     cfg = self.cfg["highway_npc"]
     lifecycle = dict(cfg.get("spawn_point_lifecycle", {}))
@@ -242,6 +429,7 @@ def activate_highway_spawn_points(self, elapsed, current_s):
     ]
     self.highway_spawn_points_active = bool(active_points) and not pending
     if self.highway_spawn_points_active:
+        self.spawn_highway_merge_static_vehicle()
         print(
             f"[FullLoop] native highway SpawnPoints ACTIVE: "
             f"count={len(active_points)}, "
@@ -367,6 +555,8 @@ def deactivate_highway_npcs(self, current_s):
     self.scenario_actors = []
     self.roundabout_npcs = []
     self.highway_npcs = []
+    self.highway_merge_static_vehicle = None
+    self.highway_merge_static_vehicle_info = None
     self.static_obstacle = None
     self.dynamic_obstacle = None
     self.highway_spawn_points = []

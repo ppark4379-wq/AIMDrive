@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from ..adapters import morai_grpc
 from ..adapters.morai_grpc import MoraiGrpcClient
 from ..adapters.object_ghost_audit import ObjectGhostAudit
 from ..adapters.expert_controller import ExpertController
@@ -19,6 +20,58 @@ from ..tools.verify_separation import verify_package
 
 
 class SeparatedPackageTest(unittest.TestCase):
+    def test_strict_pedestrian_inventory_cannot_treat_missing_response_as_empty(self):
+        client = MoraiGrpcClient.__new__(MoraiGrpcClient)
+        client.world = unittest.mock.Mock()
+        for response in (None, SimpleNamespace()):
+            with self.subTest(response=response):
+                client.world.get_all_actors_state.return_value = response
+                with self.assertRaisesRegex(RuntimeError, "inventory response is unavailable"):
+                    client.get_all_pedestrian_states(strict=True)
+                self.assertEqual(client.get_all_pedestrian_states(), [])
+        client.world.get_all_actors_state.return_value = SimpleNamespace(states=[])
+        self.assertEqual(client.get_all_pedestrian_states(strict=True), [])
+
+    def test_closed_console_cannot_prevent_expert_process_cleanup(self):
+        controller = ExpertController.__new__(ExpertController)
+        process = unittest.mock.Mock(pid=12345)
+        process.poll.return_value = None
+        controller.process = process
+        controller._terminate_process_group = unittest.mock.Mock()
+        controller._clear_owned_ros_registrations = unittest.mock.Mock()
+        with patch("builtins.print", side_effect=BrokenPipeError("closed terminal")):
+            controller.stop_process()
+        controller._terminate_process_group.assert_called_once()
+        process.wait.assert_called_once_with(timeout=10.0)
+        controller._clear_owned_ros_registrations.assert_called_once_with(12345)
+        self.assertIsNone(controller.process)
+
+    def test_closed_console_cannot_prevent_kill_fallback(self):
+        import signal
+        controller = ExpertController.__new__(ExpertController)
+        controller.process = unittest.mock.Mock(pid=12345)
+        with patch("os.getpgid", side_effect=OSError("missing group")), patch(
+            "builtins.print", side_effect=BrokenPipeError("closed terminal")
+        ):
+            controller._terminate_process_group(signal.SIGTERM)
+        controller.process.terminate.assert_called_once_with()
+
+    def test_grpc_auto_host_falls_back_to_windows_wsl_adapter(self):
+        completed = SimpleNamespace(
+            returncode=0,
+            stdout="\r\n172.19.0.1\r\n",
+        )
+        with patch("builtins.open", side_effect=OSError("no route")), patch(
+            "scenario_runner.adapters.morai_grpc.subprocess.run",
+            return_value=completed,
+        ) as run:
+            host = morai_grpc._windows_host_gateway()
+
+        self.assertEqual(host, "172.19.0.1")
+        command = run.call_args.args[0]
+        self.assertIn("powershell.exe", command)
+        self.assertIn("*WSL*", command[-1])
+
     def test_parser_accepts_finite_run_limit(self):
         args = build_parser().parse_args(
             ["--scenario", "full_loop", "--max-runs", "50"]
@@ -204,6 +257,22 @@ class SeparatedPackageTest(unittest.TestCase):
         self.assertTrue(enabled)
         self.assertEqual(vehicle.calls, 3)
         self.assertEqual(sleep.call_count, 2)
+
+    def test_strict_pedestrian_inventory_never_treats_query_failure_as_empty(self):
+        global_cfg, _, _ = load_configuration()
+
+        class BrokenWorld:
+            def get_all_actors_state(self, **_kwargs):
+                raise RuntimeError("MORAI actor query unavailable")
+
+        client = MoraiGrpcClient(global_cfg)
+        with self.assertRaisesRegex(RuntimeError, "before world start"):
+            client.get_all_pedestrian_states(strict=True)
+
+        client.world = BrokenWorld()
+        self.assertEqual(client.get_all_pedestrian_states(), [])
+        with self.assertRaisesRegex(RuntimeError, "pedestrian actor inventory"):
+            client.get_all_pedestrian_states(strict=True)
 
     def test_spawn_point_enable_retries_transient_morai_failure(self):
         global_cfg, _, _ = load_configuration()
@@ -463,28 +532,12 @@ class SeparatedPackageTest(unittest.TestCase):
         self.assertEqual(remaining_ids, {"unrelated-far-away"})
 
     def test_dynamic_obstacle_spawns_active_with_checkpoint_b_to_a_heading(self):
-        scenario_class = SUPPORTED_SCENARIOS["full_loop"]
-        scenario = scenario_class.__new__(scenario_class)
-        scenario.dynamic_obstacle_start = {
-            "x": -56.74,
-            "y": -11.61,
-            "z": 28.56,
-        }
-        scenario.dynamic_obstacle_end = {
-            "x": -70.57,
-            "y": -11.93,
-            "z": 28.43,
-        }
-        scenario.dynamic_obstacle_path_length_m = 13.8337
-        scenario.dynamic_obstacle_yaw_deg = -178.7
-        scenario.dynamic_obstacle_speed_mps = 2.5
-        scenario.dynamic_obstacle_api_speed_kph = 9.0
-        scenario.dynamic_obstacle_model = "Man1"
+        scenario = self._make_crossing_scenario(None)
+        event = scenario.dynamic_obstacle_events[0]
+        event["phase"] = "armed"
+        event["actor"] = None
+        scenario.dynamic_obstacle = None
         scenario.dynamic_obstacle_models = ["Man1"]
-        scenario.dynamic_obstacle_min_ego_distance_m = float("inf")
-        scenario.dynamic_obstacle_direction_checked = False
-        scenario.dynamic_obstacle_direction_respawned = False
-        scenario.dynamic_obstacle_last_print_sec = -1
         scenario.profile_index = 0
         scenario.scenario_actors = []
 
@@ -497,6 +550,7 @@ class SeparatedPackageTest(unittest.TestCase):
                 return True
 
         actor = Actor()
+        actor.get_id = lambda: "test-dynamic-owned"
 
         class FakeGrpc:
             def __init__(self):
@@ -525,6 +579,7 @@ class SeparatedPackageTest(unittest.TestCase):
     def _make_crossing_scenario(self, actor, started_at=100.0):
         scenario_class = SUPPORTED_SCENARIOS["full_loop"]
         scenario = scenario_class.__new__(scenario_class)
+        scenario.cfg = {"dynamic_obstacle": {"require_ego_response": False}}
         scenario.dynamic_obstacle_phase = "crossing"
         scenario.dynamic_obstacle = actor
         scenario.dynamic_obstacle_start = {
@@ -546,12 +601,52 @@ class SeparatedPackageTest(unittest.TestCase):
         scenario.dynamic_obstacle_arrival_tolerance_m = 1.5
         scenario.dynamic_obstacle_max_crossing_sec = 30.0
         scenario.scenario_actors = [actor]
+        scenario.grpc = SimpleNamespace(get_all_pedestrian_states=unittest.mock.Mock(return_value=[]))
+        scenario.dynamic_obstacle_owned_ids = set()
+        scenario.dynamic_obstacle_event_index = 0
+        scenario.dynamic_obstacle_events = [{
+            "id": "legacy_right_to_left",
+            "sequence": 1,
+            "phase": "crossing",
+            "actor": actor,
+            "actor_id": "test-dynamic-owned",
+            "model": "Man1",
+            "allowed_models": ["Man1"],
+            "allowed_speeds_mps": [2.5],
+            "speed_mps": 2.5,
+            "start": dict(scenario.dynamic_obstacle_start),
+            "end": dict(scenario.dynamic_obstacle_end),
+            "conflict_point": {"x": -60.28, "y": -11.69, "z": 28.4},
+            "route_path_index": 936,
+            "route_s": 90.0,
+            "path_length_m": 13.8337,
+            "start_to_conflict_m": 3.5,
+            "yaw_deg": -178.7,
+            "trigger_distance_m": 25.0,
+            "arrival_tolerance_m": 1.5,
+            "max_crossing_sec": 30.0,
+            "trigger": {"ego_speed_mps": 5.0},
+            "response_observed": True,
+            "response_kind": "stop",
+            "resumed_after_clear": False,
+            "min_ego_distance_m": float("inf"),
+            "min_ego_speed_mps": float("inf"),
+            "max_lateral_error_m": 0.0,
+            "failure_reason": None,
+            "completion_reason": None,
+            "started_scenario_time": started_at,
+            "last_print_sec": -1,
+        }]
+        scenario.profile_state_path = lambda: "/path/that/does/not/exist"
         return scenario
 
     def test_dynamic_obstacle_stops_at_endpoint_without_pause_reset(self):
         class Actor:
             def __init__(self):
                 self.pause_calls = []
+
+            def get_id(self):
+                return "test-dynamic-owned"
 
             def set_pause(self, value):
                 self.pause_calls.append(value)
@@ -603,14 +698,11 @@ class SeparatedPackageTest(unittest.TestCase):
 
         actor = Actor()
         scenario = self._make_crossing_scenario(actor)
-        with patch(
-            "scenario_runner.scenarios.full_loop_scenario.time.time",
-            return_value=103.0,
-        ):
-            with self.assertRaisesRegex(RuntimeError, "did not leave spawn B"):
-                scenario.update_dynamic_obstacle(
-                    {"x": -50.0, "y": -11.0, "speed": 0.0}, 0.0
-                )
+        scenario._scenario_now = lambda: 103.0
+        with self.assertRaisesRegex(RuntimeError, "did not leave spawn"):
+            scenario.update_dynamic_obstacle(
+                {"x": -50.0, "y": -11.0, "speed": 0.0}, 0.0
+            )
         self.assertTrue(actor.destroyed)
         self.assertIsNone(scenario.dynamic_obstacle)
 
@@ -633,14 +725,11 @@ class SeparatedPackageTest(unittest.TestCase):
         actor = Actor()
         scenario = self._make_crossing_scenario(actor)
         scenario._spawn_active_dynamic_obstacle = unittest.mock.Mock()
-        with patch(
-            "scenario_runner.scenarios.full_loop_scenario.time.time",
-            return_value=100.5,
-        ):
-            with self.assertRaisesRegex(RuntimeError, "required B->A crossing"):
-                scenario.update_dynamic_obstacle(
-                    {"x": -50.0, "y": -11.0, "speed": 0.0}, 0.0
-                )
+        scenario._scenario_now = lambda: 100.5
+        with self.assertRaisesRegex(RuntimeError, "left approved crossing"):
+            scenario.update_dynamic_obstacle(
+                {"x": -50.0, "y": -11.0, "speed": 0.0}, 0.0
+            )
         self.assertTrue(actor.destroyed)
         self.assertIsNone(scenario.dynamic_obstacle)
         scenario._spawn_active_dynamic_obstacle.assert_not_called()

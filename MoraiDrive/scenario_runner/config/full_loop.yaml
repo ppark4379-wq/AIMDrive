@@ -128,6 +128,90 @@ scenarios:
       - Ped_Pet1
     # npc_vehicle_models: [VEHICLE_1, VEHICLE_2]
 
+    # Dynamic crossings are selected only from the approved catalogue in
+    # full_loop_links.yaml.  Count is chosen from the valid route-ordered
+    # schedules; three pedestrians are never forced when spacing is unsafe.
+    dynamic_obstacle:
+      max_count: 3
+      # Independently sample each NPC from the active, available YAML models.
+      # Keep route approval and reviewed speed limits; this does not certify
+      # untested model/path pairs. Use approved_pairs for pair-only selection.
+      model_selection_policy: yaml_pool
+      # Inset mission-box crossings need recovery room after the first stop.
+      # Tight pairs (including a 47m long-diagonal pair) missed the next ETA.
+      minimum_event_spacing_m: 50.0
+      minimum_crossing_path_m: 6.0
+      minimum_side_clearance_m: 2.5
+      minimum_crossing_sine: 0.35
+      maximum_conflict_route_error_m: 1.0
+      maximum_path_deviation_m: 1.0
+      movement_check_sec: 2.0
+      minimum_movement_m: 0.4
+
+      # Trigger distance is recomputed for every crossing from pedestrian ETA,
+      # Ego speed and stopping distance.  A left-side start naturally arms
+      # earlier because start_to_conflict_m is longer.
+      interaction_lead_sec: 1.5
+      minimum_trigger_distance_m: 12.0
+      maximum_trigger_distance_m: 60.0
+      minimum_eta_delta_sec: 0.0
+      # A short crossing must not finish while Ego is still recovering from
+      # the preceding stop. Keep the stop-distance gate; wait for closer ETA.
+      maximum_eta_delta_sec: 3.0
+      reaction_time_sec: 1.0
+      comfortable_deceleration_mps2: 3.5
+      stopping_safety_margin_m: 3.0
+      minimum_ego_speed_mps: 2.0
+      missed_trigger_tolerance_m: 1.0
+
+      # Crossings immediately before the route stop-line would otherwise be
+      # confounded by a red light.  Guard only those crossings: verify and
+      # refresh straight green before spawning and until Ego crosses that
+      # exact stop line. Crossings after the signal are untouched.
+      pre_signal_guard:
+        enabled: true
+        maximum_conflict_to_stopline_m: 10.0
+        # Only catalogue entries explicitly marked through_conflict may use a
+        # stop line just behind their conflict point (the front crosswalk).
+        # Explicit central candidates may cross between the two marked
+        # crosswalks, about 13.5m after this stop line. This limit is consulted
+        # only by entries opting into signal_guard_mode: through_conflict.
+        maximum_stopline_to_conflict_m: 15.0
+        activation_distance_m: 60.0
+        query_period_wall_sec: 0.25
+        retry_period_wall_sec: 0.5
+        hold_refresh_wall_sec: 1.0
+        settle_wall_sec: 0.3
+        unknown_grace_wall_sec: 1.0
+        red_grace_wall_sec: 1.0
+        maximum_command_attempts: 40
+        target_color: 16
+        impulse: true
+        set_sibling: true
+
+      # A valid event must cause a non-signal slowdown/stop, clear the lane,
+      # and allow Ego to move again before the next event is armed.
+      require_ego_response: true
+      # Ordinary standalone runs report conservative assessment failures;
+      # --dynamic-review and collection retain strict acceptance. Warnings
+      # never count as safety approval. Collision/motion/ETA rules unchanged.
+      assessment_policy: report
+      response_observation_distance_m: 30.0
+      meaningful_slowdown_mps: 1.0
+      stopped_speed_mps: 0.5
+      resume_speed_mps: 1.0
+      resume_timeout_sec: 20.0
+      resume_failure_timeout_sec: 40.0
+      resume_signal_wait_limit_sec: 60.0
+      retire_after_conflict_m: 3.0
+      # Conservative lane-centred body envelope, not a substitute for surveyed
+      # curb/paint geometry when approving a new crossing site.
+      ego_lane_half_width_m: 1.75
+      # MORAI Ego GT bounding box: 2*extent.x=2.160835m, 2*extent.y=4.635008m.
+      ego_body_width_m: 2.17
+      ego_body_length_m: 4.64
+      ego_lane_margin_m: 0.15
+
     # Sensor Record can make Simulation Time advance much slower than wall
     # time. If Ego remains stopped by an exact red route light for 10 host
     # seconds, release straight movement and preserve the intervention in the
@@ -141,6 +225,10 @@ scenarios:
       query_period_wall_sec: 0.25
       retry_period_wall_sec: 1.0
       verification_timeout_wall_sec: 2.0
+      # MORAI can reject several consecutive impulse commands transiently.
+      # Keep this bounded, but do not abort a valid dynamic run after only
+      # three attempts while the Ego is still stopped at the guarded light.
+      dynamic_maximum_attempts: 40
       target_color: 16
       impulse: true
       set_sibling: true
@@ -164,6 +252,31 @@ scenarios:
       roundabout_mutation_quarantine_s: 1.0
       highway_stop_after_entry_m: 220.0
       highway_spawn_distance_m: 220.0
+
+    # One independent, scenario-owned stopped vehicle on the merge ramp.
+    # This is deliberately separate from highway_npc so the three native
+    # SpawnPoints and all of their population/lifecycle settings stay intact.
+    # It is spawned only when those SpawnPoints become active.
+    highway_merge_static_vehicle:
+      enabled: true
+      models:
+        - DEFAULT_SEDAN
+        - 2014_Kia_K7
+        - 2015_Kia_K5
+        - 2015_Toyota_Prius(HEV)
+        - 2016_Hyundai_Genesis_DH
+        - 2016_Hyundai_Ioniq
+        - 2016_Hyundai_Sonata
+        - 2017_Hyundai_Grandeur
+        - 2019_Toyota_Prius
+        - 2020_Kia_K5
+        - 2020_Kia_Stinger
+        - 2020_hyundai_sonata
+        - 2021_Hyundai_G80
+      route_link: A2256W000411
+      distance_from_link_start_m: 70.0
+      minimum_distance_from_link_start_m: 40.0
+      minimum_distance_to_link_end_m: 40.0
 
     highway_npc:
       # Fixed to a model already verified to spawn on this map via 26.R1 gRPC.

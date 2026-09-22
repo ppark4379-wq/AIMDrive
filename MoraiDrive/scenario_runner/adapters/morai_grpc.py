@@ -1,8 +1,10 @@
 import os
 import socket
 import struct
+import subprocess
 import sys
 import time
+from ..utils import safe_print as print
 
 
 def _windows_host_gateway():
@@ -15,6 +17,39 @@ def _windows_host_gateway():
                 if len(fields) >= 3 and fields[1] == "00000000":
                     return socket.inet_ntoa(struct.pack("<L", int(fields[2], 16)))
     except (OSError, ValueError, StopIteration, struct.error):
+        pass
+
+    # WSL mirrored networking can expose an empty /proc/net/route even though
+    # Windows services are reachable through the Hyper-V WSL adapter.  Query
+    # that adapter rather than persisting its restart-dependent address.
+    try:
+        result = subprocess.run(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                (
+                    "Get-NetIPAddress -AddressFamily IPv4 | "
+                    "Where-Object { $_.InterfaceAlias -like '*WSL*' -and "
+                    "$_.IPAddress -notlike '169.254*' } | "
+                    "Select-Object -First 1 -ExpandProperty IPAddress"
+                ),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5.0,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                candidate = line.strip()
+                try:
+                    socket.inet_aton(candidate)
+                except OSError:
+                    continue
+                return candidate
+    except (OSError, subprocess.SubprocessError):
         pass
     raise RuntimeError(
         "Windows MORAI gRPC host could not be discovered; set "
@@ -842,8 +877,10 @@ class MoraiGrpcClient:
         print(f"[Spawn] pedestrian_with_waypoints {label} dest=({dest_x:.2f},{dest_y:.2f}): ok")
         return ped
 
-    def get_all_pedestrian_states(self):
+    def get_all_pedestrian_states(self, strict=False):
         if self.world is None:
+            if strict:
+                raise RuntimeError("Cannot query pedestrians before world start")
             return []
         try:
             response = self.world.get_all_actors_state(
@@ -853,7 +890,13 @@ class MoraiGrpcClient:
             )
         except Exception as exc:
             print(f"[Spawn] pedestrian actor search failed: {exc}")
+            if strict:
+                raise RuntimeError(
+                    "Failed to verify live pedestrian actor inventory"
+                ) from exc
             return []
+        if strict and (response is None or not hasattr(response, "states")):
+            raise RuntimeError("Live pedestrian inventory response is unavailable")
         return list(getattr(response, "states", []))
 
     def find_spawned_pedestrian_near(
@@ -1504,6 +1547,9 @@ def _morai_get_ego_motion_state(self):
         "z": float(state.transform.location.z),
         "yaw_deg": float(state.transform.rotation.z),
         "speed": speed,
+        # MORAI gRPC ActorState.velocity is km/h. Keep the legacy field for
+        # existing consumers and expose SI explicitly for crossing timing.
+        "speed_mps": speed / 3.6,
         "current_link": vehicle_state.current_link_info.id.value,
         "front_wheel_angle": float(vehicle_state.front_wheel_angle),
         "collision_objects": [
