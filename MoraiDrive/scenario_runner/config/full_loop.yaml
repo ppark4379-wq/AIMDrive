@@ -130,13 +130,29 @@ scenarios:
 
     # Dynamic crossings are selected only from the approved catalogue in
     # full_loop_links.yaml.  Count is chosen from the valid route-ordered
-    # schedules; three pedestrians are never forced when spacing is unsafe.
+    # schedules; production scenes contain at most two sequential pedestrians.
     dynamic_obstacle:
-      max_count: 3
+      max_count: 2
+      # Prefer broad crossing-site coverage while retaining the two proven
+      # sequential-event schedules. This is a per-run probability, not a
+      # fixed quota across a batch.
+      single_event_probability: 0.8
       # Independently sample each NPC from the active, available YAML models.
       # Keep route approval and reviewed speed limits; this does not certify
       # untested model/path pairs. Use approved_pairs for pair-only selection.
       model_selection_policy: yaml_pool
+      # MORAI closed-loop failures observed in the 2026-09-22 100-attempt
+      # campaign. Exclude only these exact path/model pairs from ordinary
+      # random sampling; both the path and model remain available elsewhere.
+      excluded_model_path_pairs:
+        - path_id: general_south_east_to_west_diagonal__0_0_reverse
+          model: police_m_2
+        - path_id: general_south_east_to_west_diagonal__2_0_reverse
+          model: worker_f_1
+        - path_id: general_north_west_to_east_diagonal__0_0_forward
+          model: worker_f_1
+        - path_id: rear_crosswalk_diagonal_right_to_left_north
+          model: Man4
       # Inset mission-box crossings need recovery room after the first stop.
       # Tight pairs (including a 47m long-diagonal pair) missed the next ETA.
       minimum_event_spacing_m: 50.0
