@@ -35,7 +35,7 @@ def search_recordings(owner, ego, obstacles, connector):
     levels = np.unique(np.r_[np.arange(start, goal, 3.), goal])
     source = (-1, 0)
     queue, costs, previous = [(goal-start, 0., source)], {source: 0.}, {}
-    while queue and time.monotonic()-begin < 2.:
+    while queue and time.monotonic()-begin < getattr(owner, 'recording_search_timeout', 2.):
         _, cost, node = heapq.heappop(queue)
         if cost != costs[node]:
             continue
@@ -61,6 +61,10 @@ def search_recordings(owner, ego, obstacles, connector):
             if target_level >= len(levels):
                 continue
             for target_id, curve in enumerate(owner.curves):
+                if (target_level == len(levels)-1 and getattr(owner, 'require_goal_alignment', False)
+                        and any(abs(a-b) > 1e-5 for a, b in zip(
+                            owner._state(curve, goal)[1:], owner._state(owner.global_curve, goal)[1:]))):
+                    continue
                 if route_id == target_id and advance != 1:
                     continue
                 target = (target_id, target_level)
@@ -86,17 +90,23 @@ def search_corridor(owner, ego, obstacles, connector, max_curvature):
     start, goal = float(ego.position.y), owner.rejoin_y
     if goal <= start:
         return None
-    levels = np.r_[start, np.arange(start+LONGITUDINAL_STEP, goal-1., LONGITUDINAL_STEP), goal]
+    longitudinal_step = getattr(owner, 'longitudinal_step', LONGITUDINAL_STEP)
+    lateral_step = getattr(owner, 'lateral_step', LATERAL_STEP)
+    heading_slopes = getattr(owner, 'heading_slopes', HEADING_SLOPES)
+    levels = np.r_[start, np.arange(start+longitudinal_step, goal-1., longitudinal_step), goal]
     nodes = [np.array([[start, ego.position.x, math.cos(ego.yaw)/max(.5, math.sin(ego.yaw)), 0.]])]
     for y in levels[1:]:
+        if time.monotonic()-begin > getattr(owner, 'corridor_search_timeout', SEARCH_TIMEOUT):
+            owner.search_details = dict(method='corridor_astar', status='timeout')
+            return None
         base = owner._state(owner.global_curve, y)
         if y == goal:
             states = np.array([base])
         else:
             recorded = [owner._state(c, y) for c in owner.curves]
             low, high = min(v[1] for v in recorded+[base]), max(v[1] for v in recorded+[base])
-            xs = np.unique(np.r_[np.arange(low, high, LATERAL_STEP), high, base[1], [v[1] for v in recorded]])
-            states = np.array([(y, x, base[2]+slope, base[3]) for x in xs for slope in HEADING_SLOPES] + recorded)
+            xs = np.unique(np.r_[np.arange(low, high, lateral_step), high, base[1], [v[1] for v in recorded]])
+            states = np.array([(y, x, base[2]+slope, base[3]) for x in xs for slope in heading_slopes] + recorded)
         xy, yaw = states[:, [1, 0]], np.arctan2(1., states[:, 2])
         valid = owner._envelope_mask(xy, yaw, BODY_TRACKING_RESERVE) & owner._collision_mask(xy, yaw, obstacles, .12)
         nodes.append(states[valid])
@@ -106,7 +116,7 @@ def search_corridor(owner, ego, obstacles, connector, max_curvature):
     expanded = checked = 0
     end = None
     while queue:
-        if time.monotonic()-begin > SEARCH_TIMEOUT:
+        if time.monotonic()-begin > getattr(owner, 'corridor_search_timeout', SEARCH_TIMEOUT):
             break
         _, cost, node = heapq.heappop(queue)
         if cost != costs[node]:

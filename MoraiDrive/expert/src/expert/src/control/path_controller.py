@@ -77,9 +77,11 @@ class PathController:
         acc_cmd = self.pid.get_output(
             target_velocity, vehicle_state.velocity,
             derivative_on_measurement=(lattice_result.mode == "roundabout_entry" or fast_pedestrian_release),
-            acceleration_p_gain=self._roundabout_entry_acceleration_gain(
+            acceleration_p_gain=(self._highway_escape_acceleration_gain(
                 target_velocity, vehicle_state, lattice_result
-            ),
+            ) or self._roundabout_entry_acceleration_gain(
+                target_velocity, vehicle_state, lattice_result
+            )),
         )
         # 합류 양보/충돌 예측이 정지를 요구하면 현재 속도와 무관하게 즉시 제동합니다.
         if target_velocity <= 0.05:
@@ -112,8 +114,11 @@ class PathController:
             "CHANGE_RIGHT",
         )
         if highway_lane_change:
+            compact_escape = (lattice_result.debug_details.get("highway_static_escape", {}).get("compact", False)
+                              and vehicle_state.velocity <= highway_parameters.STATIC_CHANGE_MAX_SPEED)
             lane_change_limit = np.deg2rad(
-                highway_parameters.LANE_CHANGE_STEERING_LIMIT_DEG
+                highway_parameters.STATIC_CHANGE_STEERING_DEG if compact_escape
+                else highway_parameters.LANE_CHANGE_STEERING_LIMIT_DEG
             )
             requested_steer_rad = np.clip(
                 requested_steer_rad,
@@ -122,7 +127,8 @@ class PathController:
             )
 
             max_steer_step = np.deg2rad(
-                highway_parameters.STEERING_RATE_LIMIT_DEG_PER_SEC
+                highway_parameters.STATIC_CHANGE_STEERING_RATE if compact_escape
+                else highway_parameters.STEERING_RATE_LIMIT_DEG_PER_SEC
             ) * self.control_dt
             requested_steer_rad = np.clip(
                 requested_steer_rad,
@@ -241,6 +247,18 @@ class PathController:
             "roundabout_entry_cruise",
             "roundabout_entry_follow_lead",
         )
+
+    @staticmethod
+    def _highway_escape_acceleration_gain(target_velocity, vehicle_state, lattice_result):
+        details = getattr(lattice_result, "debug_details", {}).get("highway_static_escape", {})
+        if (getattr(lattice_result, "highway_state", "") not in ("CHANGE_LEFT", "CHANGE_RIGHT")
+                or not details.get("compact") or not details.get("verified")
+                or target_velocity <= max(0.05, vehicle_state.velocity)
+                or target_velocity < details.get("speed_limit", float("inf")) - 1e-6):
+            return None
+        # Only boost an approved escape target. A lower ACC/signal limit and
+        # every braking command retain the ordinary controller response.
+        return highway_parameters.STATIC_CHANGE_ACCEL_P_GAIN
 
     @staticmethod
     def _roundabout_entry_acceleration_gain(target_velocity, vehicle_state, lattice_result):

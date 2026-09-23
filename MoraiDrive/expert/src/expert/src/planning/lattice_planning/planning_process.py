@@ -216,8 +216,8 @@ class LatticePlanningProcess:
         vehicle_entries = [
             item
             for item in object_info_list
-            if not getattr(item["object_info"], "is_static", False)
-            and getattr(item["object_info"], "type", -1) in (1, 2)
+            if getattr(item["object_info"], "is_static", False)
+            or getattr(item["object_info"], "type", -1) in (1, 2)
         ]
         if self._is_inside_highway_right_turn_zone(vehicle_state):
             self._highway_acc_override = False
@@ -226,6 +226,7 @@ class LatticePlanningProcess:
                 safety_result = self.highway_lane_planner.plan(
                     vehicle_state, reference_path, vehicle_entries,
                     desired_velocity=desired_velocity, prediction_path=prediction_path,
+                    allow_lane_change=False,
                 )
                 self.highway_lane_planner.reset_lateral_state()
                 if safety_result.acc_override:

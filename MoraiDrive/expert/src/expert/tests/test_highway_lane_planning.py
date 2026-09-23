@@ -228,12 +228,14 @@ class HighwayLanePlanningTest(unittest.TestCase):
             [lead],
         )
 
-        self.assertTrue(prepare.acc_override)
-        self.assertEqual("highway_lane_acc_prepare", prepare.reason)
+        # The full maneuver check permits this gap without first braking to
+        # satisfy the old three-second TTC preparation threshold.
+        self.assertFalse(prepare.acc_override)
+        self.assertEqual("highway_lane_safe_change", prepare.reason)
         self.assertTrue(result.active)
         self.assertTrue(math.isinf(result.acc_target_velocity))
         self.assertFalse(result.acc_override)
-        self.assertEqual("highway_lane_safe_change", result.reason)
+        self.assertEqual("highway_lane_change_in_progress", result.reason)
         self.assertNotEqual("A2256W000408", result.target_link_id)
         self.assertFalse(self.lane_map.links[result.target_link_id].excluded)
 
@@ -1169,7 +1171,7 @@ class HighwayLanePlanningTest(unittest.TestCase):
             entries,
         )
 
-        self.assertEqual("highway_lane_acc_prepare", prepare.reason)
+        self.assertEqual("highway_lane_no_safe_change", prepare.reason)
         self.assertTrue(result.acc_override)
         self.assertEqual("ACC_FOLLOW", result.highway_state)
         self.assertEqual("highway_lane_no_safe_change", result.reason)

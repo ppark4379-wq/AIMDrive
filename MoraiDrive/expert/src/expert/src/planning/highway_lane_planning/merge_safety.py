@@ -113,8 +113,10 @@ class MergeSafety:
                     dx, dy = center.x - point.x, center.y - point.y
                     longitudinal = dx * math.cos(yaw) + dy * math.sin(yaw)
                     lateral = abs(-dx * math.sin(yaw) + dy * math.cos(yaw))
-                    if (index == 0 and key in self.following_ids and longitudinal < -3.0
-                            and lateral < 1.0 and math.cos(angle - yaw) > 0.95):
+                    rear_along = dx * math.cos(angle) + dy * math.sin(angle)
+                    rear_lateral = abs(-dx * math.sin(angle) + dy * math.cos(angle))
+                    if (index == 0 and key in self.following_ids and rear_along < -3.0
+                            and rear_lateral < 1.0 and math.cos(angle - yaw) > 0.95):
                         initial_rear.add(track_index)
                     if track_index in initial_rear:
                         continue
@@ -139,9 +141,13 @@ class MergeSafety:
             self.zone = zone
         tracks = self._update_tracks(ego, entries, matches)
         self.following_ids = {
-            key for key, (_, match, _) in tracks if match is not None
-            and match.lane_link.id == ego_match.lane_link.id and match.s < ego_match.s
+            key for key, (_, match, _) in tracks
+            if (match is None or self.lane_map.forward_distance(match, ego_match) is not None)
         }
+        # Link boundaries / unmatched upstream cars must not turn an actual
+        # same-lane follower into a request to brake in front of it. _conflict
+        # still requires measured rear position, <1 m lateral offset and
+        # aligned headings; vehicles on a converging lane remain checked.
         requested = max(0.0, ego.velocity) if desired_velocity is None else max(0.0, desired_velocity)
         if desired_velocity is None and requested < 1.0:
             requested = p.MERGE_MIN_YIELD_SPEED
