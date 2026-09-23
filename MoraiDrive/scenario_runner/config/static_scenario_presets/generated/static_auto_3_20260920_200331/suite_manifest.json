@@ -1,0 +1,184 @@
+{
+  "schema": "morai_static_obstacle_suite_v1",
+  "name": "static_auto_3_20260920_200331",
+  "seed": 10558203598455778403,
+  "requested_attempts": 3,
+  "accepted_count": 0,
+  "rejected_count": 3,
+  "interrupted": false,
+  "created_at_unix": 1789902211.0973794,
+  "generation_policy": {
+    "min_obstacles": 1,
+    "max_obstacles": 3,
+    "lateral_margin_m": 0.6,
+    "yaw_margin_deg": 12.0,
+    "scale_jitter": 0.1,
+    "trial_timeout_sec": 240.0,
+    "invalid_plan_timeout_sec": 15.0,
+    "signal_stop_timeout_sec": 30.0,
+    "max_cross_track_error_m": 3.0,
+    "models": [
+      "WoodBox",
+      "CargoBox",
+      "YellowBarrel",
+      "TrafficBarrel",
+      "PE_Drum",
+      "Scooter_02",
+      "ElectricScooter1",
+      "ElectricScooter2",
+      "Bicycle_city",
+      "Bicycle_mountain",
+      "Steel_Barricade",
+      "Lane_Separation_Bar"
+    ]
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "accepted": false,
+      "obstacle_count": 1,
+      "models": [
+        "ElectricScooter2"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_auto_3_20260920_200331/candidates/static_auto_3_20260920_200331_attempt_001.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_auto_3_20260920_200331/logs/static_auto_3_20260920_200331_attempt_001.log",
+      "closed_loop_evidence": {
+        "goal_reached": false,
+        "valid_plan_samples": 0,
+        "cross_track_samples": 0,
+        "max_cross_track_error_m": null
+      },
+      "rejection_reasons": [
+        "runner_return_code",
+        "goal_not_proven",
+        "no_valid_expert_plan_sample",
+        "cross_track_evidence_missing"
+      ],
+      "return_code": 1,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 1.011,
+      "failure_tail": [
+        "[KCityRunner] connecting MORAI gRPC",
+        "[MORAI] skip disabling third_party MGeo fetch: No module named 'google'",
+        "Traceback (most recent call last):",
+        "  File \"/usr/lib/python3.8/runpy.py\", line 194, in _run_module_as_main",
+        "    return _run_code(code, main_globals, None,",
+        "  File \"/usr/lib/python3.8/runpy.py\", line 87, in _run_code",
+        "    exec(code, run_globals)",
+        "  File \"/mnt/c/Users/alswo/Desktop/AIMDrive/MoraiDrive/scenario_runner/main_runner.py\", line 361, in <module>",
+        "    main()",
+        "  File \"/mnt/c/Users/alswo/Desktop/AIMDrive/MoraiDrive/scenario_runner/main_runner.py\", line 312, in main",
+        "    grpc_client = MoraiGrpcClient(global_cfg)",
+        "  File \"/mnt/c/Users/alswo/Desktop/AIMDrive/MoraiDrive/scenario_runner/adapters/morai_grpc.py\", line 63, in __init__",
+        "    from api.morai_sim_client import MoraiSimClient",
+        "  File \"/mnt/c/Users/alswo/Desktop/AIMDrive/MoraiDrive/data_collection/third_party/grpc_inha_univ/src/api/morai_sim_client.py\", line 3, in <module>",
+        "    from proto.morai.simulator.category_obstacles_pb2 import CategoryObstacles",
+        "  File \"/mnt/c/Users/alswo/Desktop/AIMDrive/MoraiDrive/data_collection/third_party/grpc_inha_univ/src/proto/morai/simulator/category_obstacles_pb2.py\", line 5, in <module>",
+        "    from google.protobuf import descriptor as _descriptor",
+        "ModuleNotFoundError: No module named 'google'"
+      ]
+    },
+    {
+      "attempt": 2,
+      "accepted": false,
+      "obstacle_count": 1,
+      "models": [
+        "PE_Drum"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_auto_3_20260920_200331/candidates/static_auto_3_20260920_200331_attempt_002.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_auto_3_20260920_200331/logs/static_auto_3_20260920_200331_attempt_002.log",
+      "closed_loop_evidence": {
+        "goal_reached": false,
+        "valid_plan_samples": 0,
+        "cross_track_samples": 0,
+        "max_cross_track_error_m": null
+      },
+      "rejection_reasons": [
+        "runner_return_code",
+        "goal_not_proven",
+        "no_valid_expert_plan_sample",
+        "cross_track_evidence_missing"
+      ],
+      "return_code": 1,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 1.012,
+      "failure_tail": [
+        "[KCityRunner] connecting MORAI gRPC",
+        "[MORAI] skip disabling third_party MGeo fetch: No module named 'google'",
+        "Traceback (most recent call last):",
+        "  File \"/usr/lib/python3.8/runpy.py\", line 194, in _run_module_as_main",
+        "    return _run_code(code, main_globals, None,",
+        "  File \"/usr/lib/python3.8/runpy.py\", line 87, in _run_code",
+        "    exec(code, run_globals)",
+        "  File \"/mnt/c/Users/alswo/Desktop/AIMDrive/MoraiDrive/scenario_runner/main_runner.py\", line 361, in <module>",
+        "    main()",
+        "  File \"/mnt/c/Users/alswo/Desktop/AIMDrive/MoraiDrive/scenario_runner/main_runner.py\", line 312, in main",
+        "    grpc_client = MoraiGrpcClient(global_cfg)",
+        "  File \"/mnt/c/Users/alswo/Desktop/AIMDrive/MoraiDrive/scenario_runner/adapters/morai_grpc.py\", line 63, in __init__",
+        "    from api.morai_sim_client import MoraiSimClient",
+        "  File \"/mnt/c/Users/alswo/Desktop/AIMDrive/MoraiDrive/data_collection/third_party/grpc_inha_univ/src/api/morai_sim_client.py\", line 3, in <module>",
+        "    from proto.morai.simulator.category_obstacles_pb2 import CategoryObstacles",
+        "  File \"/mnt/c/Users/alswo/Desktop/AIMDrive/MoraiDrive/data_collection/third_party/grpc_inha_univ/src/proto/morai/simulator/category_obstacles_pb2.py\", line 5, in <module>",
+        "    from google.protobuf import descriptor as _descriptor",
+        "ModuleNotFoundError: No module named 'google'"
+      ]
+    },
+    {
+      "attempt": 3,
+      "accepted": false,
+      "obstacle_count": 1,
+      "models": [
+        "TrafficBarrel"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_auto_3_20260920_200331/candidates/static_auto_3_20260920_200331_attempt_003.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_auto_3_20260920_200331/logs/static_auto_3_20260920_200331_attempt_003.log",
+      "closed_loop_evidence": {
+        "goal_reached": false,
+        "valid_plan_samples": 0,
+        "cross_track_samples": 0,
+        "max_cross_track_error_m": null
+      },
+      "rejection_reasons": [
+        "runner_return_code",
+        "goal_not_proven",
+        "no_valid_expert_plan_sample",
+        "cross_track_evidence_missing"
+      ],
+      "return_code": 1,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 1.012,
+      "failure_tail": [
+        "[KCityRunner] connecting MORAI gRPC",
+        "[MORAI] skip disabling third_party MGeo fetch: No module named 'google'",
+        "Traceback (most recent call last):",
+        "  File \"/usr/lib/python3.8/runpy.py\", line 194, in _run_module_as_main",
+        "    return _run_code(code, main_globals, None,",
+        "  File \"/usr/lib/python3.8/runpy.py\", line 87, in _run_code",
+        "    exec(code, run_globals)",
+        "  File \"/mnt/c/Users/alswo/Desktop/AIMDrive/MoraiDrive/scenario_runner/main_runner.py\", line 361, in <module>",
+        "    main()",
+        "  File \"/mnt/c/Users/alswo/Desktop/AIMDrive/MoraiDrive/scenario_runner/main_runner.py\", line 312, in main",
+        "    grpc_client = MoraiGrpcClient(global_cfg)",
+        "  File \"/mnt/c/Users/alswo/Desktop/AIMDrive/MoraiDrive/scenario_runner/adapters/morai_grpc.py\", line 63, in __init__",
+        "    from api.morai_sim_client import MoraiSimClient",
+        "  File \"/mnt/c/Users/alswo/Desktop/AIMDrive/MoraiDrive/data_collection/third_party/grpc_inha_univ/src/api/morai_sim_client.py\", line 3, in <module>",
+        "    from proto.morai.simulator.category_obstacles_pb2 import CategoryObstacles",
+        "  File \"/mnt/c/Users/alswo/Desktop/AIMDrive/MoraiDrive/data_collection/third_party/grpc_inha_univ/src/proto/morai/simulator/category_obstacles_pb2.py\", line 5, in <module>",
+        "    from google.protobuf import descriptor as _descriptor",
+        "ModuleNotFoundError: No module named 'google'"
+      ]
+    }
+  ],
+  "accepted_presets": [],
+  "completed_attempts": 3,
+  "finished_at_unix": 1789902214.2720299
+}

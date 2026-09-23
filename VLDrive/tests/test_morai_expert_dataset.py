@@ -116,27 +116,6 @@ def test_actual_ego_targets_and_global_path_instructions_are_separate(tmp_path):
     assert dataset.describe()["trajectory_source"] == "future synchronized ego positions"
 
 
-def test_notice_entry_and_exit_keep_history_but_mask_old_condition(tmp_path):
-    from utils.notice_policy import NOTICE_SCHEMA
-    root, cache, split, instructions = _build_fixture(tmp_path)
-    notices = tmp_path / "notices.jsonl"
-    common = dict(schema_version=NOTICE_SCHEMA, route_id="route_a", source="current_ego_snapped_global_path",
-                  route_sha256=_sha(root / "data/route_a/route.json"),
-                  zones_sha256="zones", global_path_sha256="global-path")
-    _jsonl(notices, [dict(common, start_frame=0, stop_frame=2, text="", zone_ids=[]),
-                     dict(common, start_frame=3, stop_frame=5, text="Watch obstacles.", zone_ids=["static"]),
-                     dict(common, start_frame=6, stop_frame=65, text="", zone_ids=[])])
-    dataset = MoraiExpertVLDriveDataset(root, cache_root=cache, split_file=split, split="train",
-        sequence_length=3, instructions=instructions, notices=notices)
-    entry = dataset[1]  # [1, 2, 3]
-    assert entry["model_inputs"]["notice_text"] == "Watch obstacles."
-    assert entry["training_targets"]["frame_loss_mask"].tolist() == [False, False, True]
-    assert dataset[2]["training_targets"]["frame_loss_mask"].tolist() == [False, True, True]
-    exit_sample = dataset[4]  # [4, 5, 6]: both a nav transition and notice exit
-    assert exit_sample["model_inputs"]["notice_text"] == ""
-    assert exit_sample["training_targets"]["frame_loss_mask"].tolist() == [False, False, True]
-
-
 def test_validation_never_uses_purged_boundary_frames(tmp_path):
     dataset_root, cache_root, split, instructions = _build_fixture(tmp_path)
     dataset = MoraiExpertVLDriveDataset(
@@ -242,3 +221,32 @@ def test_v2_instruction_policy_has_explicit_provenance(tmp_path):
     _jsonl(instructions, records)
     with pytest.raises(ValueError, match="consistent policy"):
         load_instruction_ranges(instructions)
+
+
+@pytest.mark.parametrize('split,frames', [('train',[0,2,4]),('validation',[35,37,39])])
+def test_paper_sampling_interval_uses_matching_features_and_targets(tmp_path, split, frames):
+    root,cache,split_path,instructions=_build_fixture(tmp_path)
+    dataset=MoraiExpertVLDriveDataset(root,cache_root=cache,split_file=split_path,split=split,
+        sequence_length=3,instructions=instructions,frame_sampling_interval=2)
+    assert len(dataset)==2
+    sample=dataset[0]
+    assert sample['metadata']['frame_ids'].tolist()==frames
+    assert sample['model_inputs']['visual_feature'][:,0,0].tolist()==frames
+    np.testing.assert_allclose(sample['training_targets']['future_trajectory'][:,0,0],np.array(frames)/10)
+    assert dataset.describe()['frame_sampling_interval']==2
+
+
+def test_sample_interval_cannot_hide_intervening_instruction_change(tmp_path):
+    root,cache,split,instructions=_build_fixture(tmp_path)
+    original=[json.loads(line) for line in instructions.read_text().splitlines()]
+    _jsonl(instructions,[dict(original[0],stop_frame=0),
+                         dict(original[1],start_frame=1,stop_frame=1),
+                         dict(original[0],start_frame=2,stop_frame=65)])
+    dataset=MoraiExpertVLDriveDataset(root,cache_root=cache,split_file=split,split='train',
+        sequence_length=3,instructions=instructions,frame_sampling_interval=2,
+        instruction_boundary_policy='current_with_history')
+    assert dataset[0]['metadata']['frame_ids'].tolist()==[0,2,4]
+    assert dataset[0]['training_targets']['frame_loss_mask'].tolist()==[False,True,True]
+    excluded=MoraiExpertVLDriveDataset(root,cache_root=cache,split_file=split,split='train',
+        sequence_length=3,instructions=instructions,frame_sampling_interval=2)
+    assert excluded[0]['metadata']['frame_ids'].tolist()==[2,4,6]

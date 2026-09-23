@@ -1,0 +1,800 @@
+{
+  "log": "C:\\Users\\autonav009\\Desktop\\AIMDrive\\VLDrive\\outputs\\logs\\navigation_manual\\20260917_225901_564649",
+  "rows": 10219,
+  "changes": [
+    {
+      "frame": 0,
+      "progress": 2173.696109227969,
+      "text": "Do not deviate from your current course until the next intersection.",
+      "rule": "Follow-03-s2",
+      "event": "until:turn:147",
+      "target_progress": 2257.240692032841,
+      "end_progress": 2257.240692032841
+    },
+    {
+      "frame": 117,
+      "progress": 0.14387782715535372,
+      "text": "Preserve your current trajectory until the forthcoming intersection.",
+      "rule": "Follow-03-s2",
+      "event": "until:turn:147",
+      "target_progress": 72.62896869677363,
+      "end_progress": 72.62896869677363
+    },
+    {
+      "frame": 201,
+      "progress": 42.76936120280904,
+      "text": "Upon executing a left turn at the current intersection, remain on a straight course at the subsequent intersection.",
+      "rule": "Turn-06-L-S",
+      "event": "turn:147+turn:325",
+      "target_progress": 72.62896869677363,
+      "end_progress": 186.28573174794164
+    },
+    {
+      "frame": 750,
+      "progress": 188.50238696847595,
+      "text": "Just keep on going straight through the next T-junction, sound good?",
+      "rule": "Turn-04-S",
+      "event": "turn:425",
+      "target_progress": 208.4589412270318,
+      "end_progress": 237.42279020784048
+    },
+    {
+      "frame": 896,
+      "progress": 239.5603284676429,
+      "text": "Do not deviate from your current course until the next intersection.",
+      "rule": "Follow-03-s2",
+      "event": "until:turn:642",
+      "target_progress": 315.9060981416605,
+      "end_progress": 315.9060981416605
+    },
+    {
+      "frame": 1000,
+      "progress": 286.0544520706379,
+      "text": "It's critical to keep straight at the forthcoming T-intersection.",
+      "rule": "Turn-04-S",
+      "event": "turn:642",
+      "target_progress": 315.9060981416605,
+      "end_progress": 346.7418235400054
+    },
+    {
+      "frame": 1132,
+      "progress": 349.0475546286956,
+      "text": "Preserve your current trajectory until the forthcoming intersection.",
+      "rule": "Follow-03-s2",
+      "event": "until:turn:890",
+      "target_progress": 436.79756644158005,
+      "end_progress": 436.79756644158005
+    },
+    {
+      "frame": 1272,
+      "progress": 407.25086563545153,
+      "text": "Just keep on going straight at the next light, okay?",
+      "rule": "Turn-03-S",
+      "event": "turn:890",
+      "target_progress": 436.79756644158005,
+      "end_progress": 462.9416125173797
+    },
+    {
+      "frame": 1414,
+      "progress": 465.2643828197791,
+      "text": "Keep on rolling straight till you get to the next junction.",
+      "rule": "Follow-03-s2",
+      "event": "until:turn:1124",
+      "target_progress": 550.6187353754732,
+      "end_progress": 550.6187353754732
+    },
+    {
+      "frame": 1551,
+      "progress": 520.7924011371847,
+      "text": "Once you've turned right at this one, swing a left at the next one.",
+      "rule": "Turn-06-R-L",
+      "event": "turn:1124+turn:1246",
+      "target_progress": 550.6187353754732,
+      "end_progress": 635.1126073415751
+    },
+    {
+      "frame": 1863,
+      "progress": 637.497048680397,
+      "text": "Do not deviate from your current course until the next intersection.",
+      "rule": "Follow-03-s2",
+      "event": "until:roundabout:1745",
+      "target_progress": 858.5023964183979,
+      "end_progress": 858.5023964183979
+    },
+    {
+      "frame": 2074,
+      "progress": 745.1498599191493,
+      "text": "Maintain your course along this route.",
+      "rule": "Follow-02-s1",
+      "event": "follow:14",
+      "target_progress": 750.0,
+      "end_progress": 750.0
+    },
+    {
+      "frame": 2078,
+      "progress": 747.6123828926396,
+      "text": "Do not deviate from your current course until the next intersection.",
+      "rule": "Follow-03-s2",
+      "event": "until:roundabout:1745",
+      "target_progress": 858.5023964183979,
+      "end_progress": 858.5023964183979
+    },
+    {
+      "frame": 2250,
+      "progress": 828.8189426033478,
+      "text": "Find your way out at the first exit on the roundabout, please.",
+      "rule": "Turn-05-1",
+      "event": "roundabout:1745",
+      "target_progress": 858.5023964183979,
+      "end_progress": 930.6019068794656
+    },
+    {
+      "frame": 2504,
+      "progress": 932.7467905283949,
+      "text": "Maintaining a straight course is imperative at the forthcoming T-intersection.",
+      "rule": "Turn-04-S",
+      "event": "turn:1896",
+      "target_progress": 930.6019068794656,
+      "end_progress": 984.711781716934
+    },
+    {
+      "frame": 2612,
+      "progress": 986.9246249868332,
+      "text": "Keep going straight until you reach the next junction, you're on the right track!",
+      "rule": "Follow-03-s2",
+      "event": "until:turn:4274",
+      "target_progress": 2109.847527156329,
+      "end_progress": 2109.847527156329
+    },
+    {
+      "frame": 2640,
+      "progress": 1001.1182126586086,
+      "text": "Keep cruising down this road.",
+      "rule": "Follow-02-s1",
+      "event": "follow:20",
+      "target_progress": 1050.0,
+      "end_progress": 1050.0
+    },
+    {
+      "frame": 2655,
+      "progress": 1008.6456022741693,
+      "text": "Continue in a straight line along your current path until you reach the upcoming intersection.",
+      "rule": "Follow-03-s2",
+      "event": "until:turn:4274",
+      "target_progress": 2109.847527156329,
+      "end_progress": 2109.847527156329
+    },
+    {
+      "frame": 3096,
+      "progress": 1119.1905483893206,
+      "text": "Do not deviate from the highway.",
+      "rule": "Follow-02-s2",
+      "event": "follow:22",
+      "target_progress": 1150.0,
+      "end_progress": 1150.0
+    },
+    {
+      "frame": 3441,
+      "progress": 1150.2757845077326,
+      "text": "Just keep on rolling down the highway.",
+      "rule": "Follow-02-s2",
+      "event": "follow:23",
+      "target_progress": 1200.0,
+      "end_progress": 1200.0
+    },
+    {
+      "frame": 3561,
+      "progress": 1200.4279495548124,
+      "text": "Proceed along the highway.",
+      "rule": "Follow-02-s2",
+      "event": "follow:24",
+      "target_progress": 1250.0,
+      "end_progress": 1250.0
+    },
+    {
+      "frame": 3690,
+      "progress": 1250.1604190089856,
+      "text": "Maintain your course along the highway.",
+      "rule": "Follow-02-s2",
+      "event": "follow:25",
+      "target_progress": 1300.0,
+      "end_progress": 1300.0
+    },
+    {
+      "frame": 3797,
+      "progress": 1300.365673446448,
+      "text": "Keep cruising down the highway.",
+      "rule": "Follow-02-s2",
+      "event": "follow:26",
+      "target_progress": 1350.0,
+      "end_progress": 1350.0
+    },
+    {
+      "frame": 3889,
+      "progress": 1350.521357510414,
+      "text": "Do not deviate from the highway.",
+      "rule": "Follow-02-s2",
+      "event": "follow:27",
+      "target_progress": 1400.0,
+      "end_progress": 1400.0
+    },
+    {
+      "frame": 3984,
+      "progress": 1400.8566515418265,
+      "text": "Keep cruising down the highway.",
+      "rule": "Follow-02-s2",
+      "event": "follow:28",
+      "target_progress": 1450.0,
+      "end_progress": 1450.0
+    },
+    {
+      "frame": 4069,
+      "progress": 1450.0885205671457,
+      "text": "Continue driving straight on the designated highway.",
+      "rule": "Follow-02-s2",
+      "event": "follow:29",
+      "target_progress": 1500.0,
+      "end_progress": 1500.0
+    },
+    {
+      "frame": 4150,
+      "progress": 1500.2279113954366,
+      "text": "Maintain your course along the highway.",
+      "rule": "Follow-02-s2",
+      "event": "follow:30",
+      "target_progress": 1550.0,
+      "end_progress": 1550.0
+    },
+    {
+      "frame": 4242,
+      "progress": 1550.2396895059496,
+      "text": "Do not deviate from the highway.",
+      "rule": "Follow-02-s2",
+      "event": "follow:31",
+      "target_progress": 1600.0,
+      "end_progress": 1600.0
+    },
+    {
+      "frame": 4332,
+      "progress": 1600.7458034621734,
+      "text": "Keep going on the highway, you're on the right track!",
+      "rule": "Follow-02-s2",
+      "event": "follow:32",
+      "target_progress": 1650.0,
+      "end_progress": 1650.0
+    },
+    {
+      "frame": 4413,
+      "progress": 1650.4202761749127,
+      "text": "Do not deviate from the highway.",
+      "rule": "Follow-02-s2",
+      "event": "follow:33",
+      "target_progress": 1700.0,
+      "end_progress": 1700.0
+    },
+    {
+      "frame": 4491,
+      "progress": 1700.7451918613112,
+      "text": "Do not deviate from the highway.",
+      "rule": "Follow-02-s2",
+      "event": "follow:34",
+      "target_progress": 1750.0,
+      "end_progress": 1750.0
+    },
+    {
+      "frame": 4558,
+      "progress": 1742.1962581093583,
+      "text": "Continue in a straight line along your current path until you reach the upcoming intersection.",
+      "rule": "Follow-03-s2",
+      "event": "until:turn:4274",
+      "target_progress": 2109.847527156329,
+      "end_progress": 2109.847527156329
+    },
+    {
+      "frame": 6359,
+      "progress": 2007.7307763296894,
+      "text": "Do not deviate from this route.",
+      "rule": "Follow-02-s1",
+      "event": "follow:40",
+      "target_progress": 2050.0,
+      "end_progress": 2050.0
+    },
+    {
+      "frame": 6373,
+      "progress": 2013.6687037521424,
+      "text": "Keep on going straight till you hit the next intersection.",
+      "rule": "Follow-03-s2",
+      "event": "until:turn:4274",
+      "target_progress": 2109.847527156329,
+      "end_progress": 2109.847527156329
+    },
+    {
+      "frame": 6511,
+      "progress": 2069.8265935885706,
+      "text": "Do not deviate from this route.",
+      "rule": "Follow-02-s1",
+      "event": "follow:41",
+      "target_progress": 2100.0,
+      "end_progress": 2100.0
+    },
+    {
+      "frame": 6512,
+      "progress": 2070.2960627702096,
+      "text": "Keep going straight until you reach the next junction, you're on the right track!",
+      "rule": "Follow-03-s2",
+      "event": "until:turn:4274",
+      "target_progress": 2109.847527156329,
+      "end_progress": 2109.847527156329
+    },
+    {
+      "frame": 6536,
+      "progress": 2080.23068885423,
+      "text": "Continue straight at the subsequent traffic signal.",
+      "rule": "Turn-03-S",
+      "event": "turn:4274",
+      "target_progress": 2109.847527156329,
+      "end_progress": 2120.982191954861
+    },
+    {
+      "frame": 6639,
+      "progress": 2123.2943150989236,
+      "text": "At the next light, just keep heading straight.",
+      "rule": "Turn-03-S",
+      "event": "turn:4298",
+      "target_progress": 2120.982191954861,
+      "end_progress": 2132.2309878620263
+    },
+    {
+      "frame": 6661,
+      "progress": 2135.288617664396,
+      "text": "Keep on rolling straight till you get to the next junction.",
+      "rule": "Follow-03-s2",
+      "event": "until:turn:147",
+      "target_progress": 2257.240692032841,
+      "end_progress": 2257.240692032841
+    },
+    {
+      "frame": 6738,
+      "progress": 19.89813670207962,
+      "text": "Preserve your current trajectory until the forthcoming intersection.",
+      "rule": "Follow-03-s2",
+      "event": "until:turn:147",
+      "target_progress": 72.62896869677363,
+      "end_progress": 72.62896869677363
+    }
+  ],
+  "route_links": [
+    {
+      "idx": "A2256W000182",
+      "link_type": "1",
+      "road_type": "1",
+      "road_id": "4000293",
+      "related_signal": "straight",
+      "is_entrance": false,
+      "is_exit": false,
+      "start_m": 72.62896869677363,
+      "end_m": 94.95424590476594,
+      "cumulative_turn_deg": 84.42660137171326,
+      "from_node": {
+        "idx": "A1256W000736",
+        "node_type": "1",
+        "point": [
+          -96.34194502758328,
+          -364.8851077128202,
+          28.53881740888334
+        ],
+        "on_stop_line": true,
+        "traffic_light_id": null
+      },
+      "to_node": {
+        "idx": "A1256W000693",
+        "node_type": "1",
+        "point": [
+          -102.07214088900946,
+          -345.8742532655597,
+          28.519238107414708
+        ],
+        "on_stop_line": false,
+        "traffic_light_id": null
+      },
+      "incoming_to_start": [
+        "A2256W000748"
+      ],
+      "outgoing_from_start": [
+        "A2256W000338",
+        "A2256W000182",
+        "A2256W000078"
+      ],
+      "incoming_to_end": [
+        "A2256W000325",
+        "A2256W000182",
+        "A2256W000187"
+      ],
+      "outgoing_from_end": [
+        "A2256W000329"
+      ]
+    },
+    {
+      "idx": "A2256W000329",
+      "link_type": "6",
+      "road_type": "1",
+      "road_id": "4000135",
+      "related_signal": null,
+      "is_entrance": false,
+      "is_exit": false,
+      "start_m": 94.95424590476594,
+      "end_m": 160.00916727063552,
+      "cumulative_turn_deg": -91.46755418181283,
+      "from_node": {
+        "idx": "A1256W000693",
+        "node_type": "1",
+        "point": [
+          -102.07214088900946,
+          -345.8742532655597,
+          28.519238107414708
+        ],
+        "on_stop_line": false,
+        "traffic_light_id": null
+      },
+      "to_node": {
+        "idx": "A1256W000749",
+        "node_type": "1",
+        "point": [
+          -117.46220726403408,
+          -298.12224265327677,
+          28.435463653342698
+        ],
+        "on_stop_line": true,
+        "traffic_light_id": null
+      },
+      "incoming_to_start": [
+        "A2256W000325",
+        "A2256W000182",
+        "A2256W000187"
+      ],
+      "outgoing_from_start": [
+        "A2256W000329"
+      ],
+      "incoming_to_end": [
+        "A2256W000329"
+      ],
+      "outgoing_from_end": [
+        "A2256W000236",
+        "A2256W000073"
+      ]
+    },
+    {
+      "idx": "A2256W000236",
+      "link_type": "1",
+      "road_type": "1",
+      "road_id": "4000243",
+      "related_signal": "straight",
+      "is_entrance": false,
+      "is_exit": false,
+      "start_m": 160.00916727063552,
+      "end_m": 186.28573174794164,
+      "cumulative_turn_deg": -0.3076836608005946,
+      "from_node": {
+        "idx": "A1256W000749",
+        "node_type": "1",
+        "point": [
+          -117.46220726403408,
+          -298.12224265327677,
+          28.435463653342698
+        ],
+        "on_stop_line": true,
+        "traffic_light_id": null
+      },
+      "to_node": {
+        "idx": "A1256W000739",
+        "node_type": "1",
+        "point": [
+          -104.71588468790287,
+          -275.14425209118053,
+          28.48829083410744
+        ],
+        "on_stop_line": false,
+        "traffic_light_id": null
+      },
+      "incoming_to_start": [
+        "A2256W000329"
+      ],
+      "outgoing_from_start": [
+        "A2256W000236",
+        "A2256W000073"
+      ],
+      "incoming_to_end": [
+        "A2256W000236",
+        "A2256W000072"
+      ],
+      "outgoing_from_end": [
+        "A2256W000219"
+      ]
+    },
+    {
+      "idx": "A2256W000599",
+      "link_type": "1",
+      "road_type": "1",
+      "road_id": "4000750",
+      "related_signal": "straight",
+      "is_entrance": false,
+      "is_exit": false,
+      "start_m": 436.79756644158005,
+      "end_m": 462.9416125173797,
+      "cumulative_turn_deg": -1.6770127207837028e-07,
+      "from_node": {
+        "idx": "A1256W000208",
+        "node_type": "1",
+        "point": [
+          -60.15604465093929,
+          -34.51018160348758,
+          28.41479381805757
+        ],
+        "on_stop_line": true,
+        "traffic_light_id": "C1256W000016"
+      },
+      "to_node": {
+        "idx": "A1256W000158",
+        "node_type": "1",
+        "point": [
+          -60.30284466617741,
+          -8.366547675337642,
+          28.404813058827386
+        ],
+        "on_stop_line": false,
+        "traffic_light_id": null
+      },
+      "incoming_to_start": [
+        "A2256W000728"
+      ],
+      "outgoing_from_start": [
+        "A2256W001125",
+        "A2256W000599"
+      ],
+      "incoming_to_end": [
+        "A2256W000066",
+        "A2256W000599"
+      ],
+      "outgoing_from_end": [
+        "A2256W000207"
+      ]
+    },
+    {
+      "idx": "A2256W000445",
+      "link_type": "6",
+      "road_type": "1",
+      "road_id": "4000112",
+      "related_signal": null,
+      "is_entrance": false,
+      "is_exit": false,
+      "start_m": 1518.2468855207765,
+      "end_m": 1593.5863873852531,
+      "cumulative_turn_deg": 4.990451180606395,
+      "from_node": {
+        "idx": "A1256W000463",
+        "node_type": "99",
+        "point": [
+          68.04642465594225,
+          -142.88929166039452,
+          28.329685166707357
+        ],
+        "on_stop_line": false,
+        "traffic_light_id": null
+      },
+      "to_node": {
+        "idx": "A1256W000638",
+        "node_type": "8",
+        "point": [
+          75.41420370276319,
+          -217.855053961277,
+          28.382283640697267
+        ],
+        "on_stop_line": false,
+        "traffic_light_id": null
+      },
+      "incoming_to_start": [
+        "A2256W000408"
+      ],
+      "outgoing_from_start": [
+        "A2256W000445"
+      ],
+      "incoming_to_end": [
+        "A2256W000423",
+        "A2256W000422",
+        "A2256W000445"
+      ],
+      "outgoing_from_end": [
+        "A2256W000432",
+        "A2256W000153"
+      ]
+    },
+    {
+      "idx": "A2256W000153",
+      "link_type": "3",
+      "road_type": "1",
+      "road_id": "4000111",
+      "related_signal": null,
+      "is_entrance": false,
+      "is_exit": false,
+      "start_m": 1593.5863873852531,
+      "end_m": 1741.7209885112272,
+      "cumulative_turn_deg": 4.5716604657125615,
+      "from_node": {
+        "idx": "A1256W000638",
+        "node_type": "8",
+        "point": [
+          75.41420370276319,
+          -217.855053961277,
+          28.382283640697267
+        ],
+        "on_stop_line": false,
+        "traffic_light_id": null
+      },
+      "to_node": {
+        "idx": "A1256W000611",
+        "node_type": "9",
+        "point": [
+          70.21414883446414,
+          -365.74847655789927,
+          28.301585314776467
+        ],
+        "on_stop_line": false,
+        "traffic_light_id": null
+      },
+      "incoming_to_start": [
+        "A2256W000423",
+        "A2256W000422",
+        "A2256W000445"
+      ],
+      "outgoing_from_start": [
+        "A2256W000432",
+        "A2256W000153"
+      ],
+      "incoming_to_end": [
+        "A2256W000153"
+      ],
+      "outgoing_from_end": [
+        "A2256W000451"
+      ]
+    },
+    {
+      "idx": "A2256W000451",
+      "link_type": "3",
+      "road_type": "1",
+      "road_id": "4000113",
+      "related_signal": null,
+      "is_entrance": false,
+      "is_exit": false,
+      "start_m": 1741.7209885112272,
+      "end_m": 1781.5573293005823,
+      "cumulative_turn_deg": 0.47956484148118594,
+      "from_node": {
+        "idx": "A1256W000611",
+        "node_type": "9",
+        "point": [
+          70.21414883446414,
+          -365.74847655789927,
+          28.301585314776467
+        ],
+        "on_stop_line": false,
+        "traffic_light_id": null
+      },
+      "to_node": {
+        "idx": "A1256W000477",
+        "node_type": "8",
+        "point": [
+          70.75676356762415,
+          -405.578488108702,
+          28.133
+        ],
+        "on_stop_line": false,
+        "traffic_light_id": null
+      },
+      "incoming_to_start": [
+        "A2256W000153"
+      ],
+      "outgoing_from_start": [
+        "A2256W000451"
+      ],
+      "incoming_to_end": [
+        "A2256W000451"
+      ],
+      "outgoing_from_end": [
+        "A2256W000446"
+      ]
+    },
+    {
+      "idx": "A2256W000446",
+      "link_type": "6",
+      "road_type": "1",
+      "road_id": "4000140",
+      "related_signal": null,
+      "is_entrance": false,
+      "is_exit": false,
+      "start_m": 1781.5573293005823,
+      "end_m": 1859.6415782400395,
+      "cumulative_turn_deg": -46.31176641938932,
+      "from_node": {
+        "idx": "A1256W000477",
+        "node_type": "8",
+        "point": [
+          70.75676356762415,
+          -405.578488108702,
+          28.133
+        ],
+        "on_stop_line": false,
+        "traffic_light_id": null
+      },
+      "to_node": {
+        "idx": "A1256W000456",
+        "node_type": "99",
+        "point": [
+          43.761510782991536,
+          -476.41094469698146,
+          28.294397987369784
+        ],
+        "on_stop_line": false,
+        "traffic_light_id": null
+      },
+      "incoming_to_start": [
+        "A2256W000451"
+      ],
+      "outgoing_from_start": [
+        "A2256W000446"
+      ],
+      "incoming_to_end": [
+        "A2256W000446"
+      ],
+      "outgoing_from_end": [
+        "A2256W000448"
+      ]
+    },
+    {
+      "idx": "A2256W000448",
+      "link_type": "6",
+      "road_type": "1",
+      "road_id": "4000028",
+      "related_signal": null,
+      "is_entrance": false,
+      "is_exit": false,
+      "start_m": 1859.6415782400395,
+      "end_m": 1877.7447989655957,
+      "cumulative_turn_deg": -6.987640188449854,
+      "from_node": {
+        "idx": "A1256W000456",
+        "node_type": "99",
+        "point": [
+          43.761510782991536,
+          -476.41094469698146,
+          28.294397987369784
+        ],
+        "on_stop_line": false,
+        "traffic_light_id": null
+      },
+      "to_node": {
+        "idx": "A1256W000831",
+        "node_type": "3",
+        "point": [
+          29.589355843083467,
+          -487.65027253562585,
+          28.30125123465416
+        ],
+        "on_stop_line": true,
+        "traffic_light_id": "LCS01"
+      },
+      "incoming_to_start": [
+        "A2256W000446"
+      ],
+      "outgoing_from_start": [
+        "A2256W000448"
+      ],
+      "incoming_to_end": [
+        "A2256W000448"
+      ],
+      "outgoing_from_end": [
+        "A2256W000126"
+      ]
+    }
+  ],
+  "highway_exit_events": []
+}

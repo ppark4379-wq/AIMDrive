@@ -68,8 +68,18 @@ def summarize_traffic_interventions(events):
 
 
 def summarize_roundabout_observation(events, configured):
-    """Validate the three-car nearby lifecycle from its explicit event ledger."""
-    expected_count = int(configured.get("count", 0) or 0)
+    """Validate the configured nearby lifecycle from its explicit event ledger."""
+    legacy_count = configured.get("count")
+    minimum_count = int(
+        configured.get(
+            "min_count", legacy_count if legacy_count is not None else 0
+        ) or 0
+    )
+    maximum_count = int(
+        configured.get(
+            "max_count", legacy_count if legacy_count is not None else 0
+        ) or 0
+    )
     expected_speed = float(configured.get("speed_mps", 0.0) or 0.0)
     spawns = [
         row for row in events
@@ -98,7 +108,7 @@ def summarize_roundabout_observation(events, configured):
     motion = list(spawn.get("actor_motion_contracts", []))
     motion_ids = {str(row.get("actor_id")) for row in motion}
     motion_acknowledged = (
-        len(motion) == expected_count
+        len(motion) == len(actor_ids)
         and motion_ids == actor_ids
         and all(
             row.get("speed_limit_acknowledged") is True
@@ -112,7 +122,11 @@ def summarize_roundabout_observation(events, configured):
         for actor_id in row.get("actor_ids", [])
     }
     return {
-        "configured_count": expected_count,
+        "configured_count": (
+            minimum_count if minimum_count == maximum_count else None
+        ),
+        "configured_min_count": minimum_count,
+        "configured_max_count": maximum_count,
         "configured_speed_mps": expected_speed,
         "observed_counts": observed_counts,
         "spawn_events": len(spawns),
@@ -122,8 +136,8 @@ def summarize_roundabout_observation(events, configured):
         "motion_acknowledged": motion_acknowledged,
         "spawn_matches_config": (
             len(spawns) == 1
-            and expected_count > 0
-            and len(actor_ids) == expected_count
+            and minimum_count > 0
+            and minimum_count <= len(actor_ids) <= maximum_count
             and abs(float(spawn.get("target_speed_mps", -1.0)) - expected_speed)
                 < 1e-9
             and motion_acknowledged
@@ -318,9 +332,21 @@ def main():
             and traffic_interventions["all_events_disclosed"]
         ),
         "roundabout_team_contract": (
-            int(roundabout.get("count", 0)) == 3
+            int(roundabout.get("min_count", 0)) == 3
+            and int(roundabout.get("max_count", 0)) == 5
             and float(roundabout.get("speed_mps", 0.0)) == 4.0
-            and roundabout.get("model") == "DEFAULT_SEDAN"
+            and bool(roundabout.get("models"))
+            and "DEFAULT_SEDAN" in roundabout.get("models", [])
+            and float(
+                roundabout.get("nonuniform_position", {}).get(
+                    "min_spawn_gap_m", 0.0
+                )
+            ) == 10.0
+            and float(
+                roundabout.get("speed_randomization", {}).get(
+                    "emergency_gap_m", 0.0
+                )
+            ) == 6.0
         ),
         "native_files": native.get("files_valid") is True,
         "actor_transport": actor.get("structural_valid") is True,

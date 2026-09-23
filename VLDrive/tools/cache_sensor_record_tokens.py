@@ -1,296 +1,171 @@
 #!/usr/bin/env python3
-"""Cache final visual-encoder tokens for sealed Sensor Record publications."""
-from __future__ import annotations
-
+"""Resumable native Sensor Record -> frozen visual features and Stage 2 manifest."""
 import argparse
-from contextlib import nullcontext
+from collections import Counter
+import hashlib
 import json
-import math
-import sys
 from pathlib import Path
-
+import sys
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-
-from utils.runtime import configure_runtime
+from utils.runtime import configure_runtime, deterministic_pointpillar_reductions, sha256
 configure_runtime()
-
-import numpy as np
-import torch
-from torch.utils.data import DataLoader, Subset
-
-from datasets.morai_sensor_record_dataset import (
-    PathResolver, SensorRecordDataset, digest, load_publications)
-from datasets.morai_sensor_record_clip_dataset import (
-    CACHE_SCHEMA, FEATURE_SHAPE, TRAJECTORY_SHAPE,
-    publication_set_sha256, sha256_file)
-from models.vision_encoder import create_vision_encoder
-
-
-FEATURE_MODEL = "memfuser_baseline_e1d3_return_feature"
 
 
 def write_json(path, value):
-    path = Path(path)
-    pending = path.with_suffix(path.suffix + ".pending")
-    pending.write_text(json.dumps(value, sort_keys=True, indent=2,
-                                  allow_nan=False, default=str) + "\n", encoding="utf-8")
+    pending = path.with_suffix(path.suffix+'.pending')
+    pending.write_text(json.dumps(value, indent=2, allow_nan=False)+'\n', encoding='utf-8')
     pending.replace(path)
 
 
-def write_jsonl(path, rows):
-    path = Path(path)
-    pending = path.with_suffix(path.suffix + ".pending")
-    with pending.open("w", encoding="utf-8", newline="\n") as stream:
-        for row in rows:
-            stream.write(json.dumps(row, sort_keys=True, allow_nan=False) + "\n")
-    pending.replace(path)
-
-
-def write_npy(path, value):
-    path = Path(path)
+def tensor_ref(output, name, value):
+    import numpy as np
+    path = output/name
     path.parent.mkdir(parents=True, exist_ok=True)
-    pending = path.with_suffix(path.suffix + ".pending")
-    with pending.open("wb") as stream:
+    pending = path.with_suffix('.pending')
+    with pending.open('wb') as stream:
         np.save(stream, value, allow_pickle=False)
     pending.replace(path)
+    return dict(path=name, shape=list(value.shape), dtype=str(value.dtype), sha256=sha256(path))
 
 
-def relative(path, root):
-    return Path(path).resolve().relative_to(Path(root).resolve()).as_posix()
-
-
-def resolve_inputs(args):
-    config_path = args.config or ROOT / "configs/morai_transfer.local.json"
-    config = json.loads(config_path.read_text()) if config_path.is_file() else {}
-    manifests = list(args.manifest_index or config.get("manifest_indices", []))
-    if not manifests and config.get("manifest_index"):
-        manifests.append(config["manifest_index"])
-    campaigns = list(config.get("manifest_campaigns", [])) if args.manifest_index is None else []
-    campaigns += list(args.manifest_campaign)
-    for campaign in campaigns:
-        campaign = Path(campaign).expanduser()
-        candidates = sorted(campaign.glob("validation_*/training_dataset*/manifest_index.json"),
-                            key=lambda path: (path.stat().st_mtime_ns, str(path)))
-        if not candidates:
-            raise ValueError("Campaign has no sealed training publication: {}".format(campaign))
-        manifests.append(candidates[-1])
-    checkpoint = args.checkpoint or config.get("checkpoint")
-    checkpoint_sha = args.checkpoint_sha256 or config.get("checkpoint_sha256")
-    if not manifests or not checkpoint or not checkpoint_sha:
-        raise ValueError("Set publications and the final visual checkpoint with SHA256")
-    resolver = PathResolver(config.get("path_mappings", []))
-    return ([Path(path).expanduser().resolve() for path in manifests], resolver,
-            Path(checkpoint).expanduser().resolve(), str(checkpoint_sha))
-
-
-def load_feature_model(path, expected_sha256, device):
-    if digest(path) != expected_sha256:
-        raise ValueError("Visual checkpoint SHA256 mismatch")
-    checkpoint = torch.load(str(path), map_location="cpu", weights_only=True)
-    if (checkpoint.get("feature_model_name") != FEATURE_MODEL
-            or checkpoint.get("token_shape") != list(FEATURE_SHAPE)
-            or not isinstance(checkpoint.get("state_dict"), dict)):
-        raise ValueError("Checkpoint does not declare the trained [106,256] feature contract")
-    model = create_vision_encoder({"name": FEATURE_MODEL}, pretrained_backbone=False)
-    model.load_state_dict(checkpoint["state_dict"], strict=True)
-    return model.to(device).eval()
-
-
-def record_valid(path, output, expected=None):
+def valid_record(path, output):
+    import numpy as np
     if not path.is_file():
-        return False
-    try:
-        row = json.loads(path.read_text(encoding="utf-8"))
-        if row.get("schema_version") != CACHE_SCHEMA:
-            return False
-        if expected is not None:
-            episode_id, frame_id, sensor_time_ns, split = expected
-            if (str(row.get("episode_id")) != str(episode_id)
-                    or int(row.get("frame_id", -1)) != int(frame_id)
-                    or int(row.get("sensor_time_ns", -1)) != int(sensor_time_ns)
-                    or row.get("split") != split):
-                return False
-        for key, shape in (("visual_feature", FEATURE_SHAPE),
-                           ("future_trajectory", TRAJECTORY_SHAPE)):
-            ref = row[key]
-            artifact = (output / ref["path"]).resolve()
-            if output.resolve() not in artifact.parents or not artifact.is_file():
-                return False
-            if sha256_file(artifact) != ref["sha256"]:
-                return False
-            array = np.load(artifact, allow_pickle=False, mmap_mode="r")
-            if tuple(array.shape) != shape or not np.isfinite(array).all():
-                return False
-        return True
-    except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
-        return False
-
-
-def cache_split(args, split, manifests, resolver, model, device, completed):
-    dataset = SensorRecordDataset(manifests, resolver, velocity_source="gps")
-    identity_by_native = {}
-    for manifest_path, document in manifests:
-        native = str(resolver(document["native_root"], manifest_path.parent))
-        episode = resolver(document["episode"], manifest_path.parent)
-        episode_id = "{}_{}".format(Path(episode).parent.name,
-                                     digest(manifest_path)[:12])
-        if native in identity_by_native:
-            raise ValueError("Duplicate native root in publication split")
-        identity_by_native[native] = episode_id
-    identities = []
-    for native, entry, _, _ in dataset.rows:
-        episode_id = identity_by_native.get(str(Path(native).resolve()))
-        if episode_id is None:
-            raise ValueError("Dataset row has no source episode identity")
-        identities.append((episode_id, int(entry["frame_id"]), int(entry["sensor_time_ns"])))
-    missing_indices = []
-    for index, (episode_id, frame_id, _) in enumerate(identities):
-        record = args.output / "records" / episode_id / ("{:06d}.json".format(frame_id))
-        if record_valid(record, args.output,
-                        (episode_id, frame_id, identities[index][2], split)):
-            completed.add((episode_id, frame_id))
-        else:
-            missing_indices.append(index)
-    if not missing_indices:
-        return len(dataset)
-    loader = DataLoader(Subset(dataset, missing_indices),
-                        batch_size=args.batch_size, shuffle=False,
-                        num_workers=args.workers, pin_memory=device.type == "cuda",
-                        persistent_workers=args.workers > 0)
-    cursor = 0
-    for inputs, targets in loader:
-        count = int(inputs["rgb_front"].shape[0])
-        source_indices = missing_indices[cursor:cursor + count]
-        batch_identities = [identities[index] for index in source_indices]
-        cursor += count
-        model_inputs = {key: value.to(device, non_blocking=True)
-                        for key, value in inputs.items()}
-        autocast = (torch.autocast(device_type="cuda", dtype=torch.float16)
-                    if device.type == "cuda" else nullcontext())
-        with torch.inference_mode(), autocast:
-            features = model(model_inputs)
-        features = features.float().cpu().numpy()
-        trajectories = targets["waypoints"].numpy()
-        if tuple(features.shape[1:]) != FEATURE_SHAPE or not np.isfinite(features).all():
-            raise RuntimeError("Invalid frozen visual token output")
-        for result_index, (episode_id, frame_id, sensor_time_ns) in enumerate(batch_identities):
-            feature = features[result_index].astype(np.float16)
-            trajectory = np.asarray(trajectories[result_index], dtype=np.float32)
-            if tuple(trajectory.shape) != TRAJECTORY_SHAPE or not np.isfinite(trajectory).all():
-                raise RuntimeError("Invalid future trajectory cache target")
-            feature_path = args.output / "features" / episode_id / ("{:06d}.npy".format(frame_id))
-            target_path = args.output / "targets" / episode_id / ("{:06d}.npy".format(frame_id))
-            write_npy(feature_path, feature)
-            write_npy(target_path, trajectory)
-            row = {
-                "schema_version": CACHE_SCHEMA,
-                "episode_id": episode_id,
-                "frame_id": frame_id,
-                "sensor_time_ns": sensor_time_ns,
-                "split": split,
-                "visual_feature": {
-                    "path": relative(feature_path, args.output),
-                    "shape": list(FEATURE_SHAPE), "dtype": "float16",
-                    "sha256": sha256_file(feature_path),
-                },
-                "future_trajectory": {
-                    "path": relative(target_path, args.output),
-                    "shape": list(TRAJECTORY_SHAPE), "dtype": "float32",
-                    "horizons_s": [0.5, 1.0, 1.5, 2.0, 2.5],
-                    "source": "sealed_future_ego_positions",
-                    "sha256": sha256_file(target_path),
-                },
-            }
-            record = args.output / "records" / episode_id / ("{:06d}.json".format(frame_id))
-            record.parent.mkdir(parents=True, exist_ok=True)
-            write_json(record, row)
-            completed.add((episode_id, frame_id))
-            if len(completed) == 1 or len(completed) % args.log_interval == 0:
-                print("cached frames={}".format(len(completed)), flush=True)
-    if cursor != len(missing_indices):
-        raise RuntimeError("Token cache loader skipped missing Sensor Record frames")
-    return len(dataset)
+        return None
+    record = json.loads(path.read_text())
+    ref = record['visual_feature']
+    asset = (output/ref['path']).resolve()
+    if output not in asset.parents:
+        raise ValueError('Unsafe cached feature path')
+    if asset.is_file() and sha256(asset) == ref['sha256']:
+        feature = np.load(asset, allow_pickle=False)
+        if feature.shape == (106,256) and np.isfinite(feature).all():
+            return record
+    return None
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", type=Path)
-    parser.add_argument("--manifest-index", action="append", type=Path)
-    parser.add_argument("--manifest-campaign", action="append", type=Path, default=[])
-    parser.add_argument("--checkpoint", type=Path)
-    parser.add_argument("--checkpoint-sha256")
-    parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--batch-size", type=int, default=1)
-    parser.add_argument("--workers", type=int, default=0)
-    parser.add_argument("--log-interval", type=int, default=100)
-    parser.add_argument("--device", choices=("cuda", "cpu"), default="cuda")
+    parser.add_argument('--config', type=Path, required=True)
     args = parser.parse_args()
-    if min(args.batch_size, args.log_interval) < 1 or args.workers < 0:
-        raise ValueError("Invalid batch/worker/log settings")
-    indexes, resolver, checkpoint, checkpoint_sha = resolve_inputs(args)
-    publication_info, manifests = load_publications(indexes, resolver)
-    args.output = args.output.expanduser().resolve()
-    if args.output.exists() and (args.output / "cache_meta.json").exists():
-        raise FileExistsError("Completed token cache already exists: {}".format(args.output))
-    args.output.mkdir(parents=True, exist_ok=True)
-    identity = {
-        "schema_version": CACHE_SCHEMA,
-        "status": "partial",
-        "publication_set_sha256": publication_set_sha256(publication_info["publications"]),
-        "publications": publication_info["publications"],
-        "checkpoint_sha256": checkpoint_sha,
-        "feature_model": FEATURE_MODEL,
-        "feature_shape": list(FEATURE_SHAPE),
-        "trajectory_shape": list(TRAJECTORY_SHAPE),
-        "velocity_source": "causal_gps_interval",
-        "target_point_source": "sealed_official_route_25m_lookahead",
-        "source_clock": "sensor_record_simulation_time",
-        "implementation_sha256": {
-            "tools/cache_sensor_record_tokens.py": digest(Path(__file__)),
-            "datasets/morai_sensor_record_dataset.py": digest(
-                ROOT / "datasets/morai_sensor_record_dataset.py"),
-            "datasets/morai_sensor_record_clip_dataset.py": digest(
-                ROOT / "datasets/morai_sensor_record_clip_dataset.py"),
-            "models/vision_encoder.py": digest(ROOT / "models/vision_encoder.py"),
-        },
-    }
-    partial = args.output / "cache_meta.partial.json"
-    if partial.is_file():
-        existing = json.loads(partial.read_text(encoding="utf-8"))
-        if existing != identity:
-            raise ValueError("Partial cache belongs to different inputs/checkpoint/code")
-    else:
-        write_json(partial, identity)
-    if args.device == "cuda" and not torch.cuda.is_available():
-        raise RuntimeError("CUDA is unavailable")
-    device = torch.device(args.device)
-    model = load_feature_model(checkpoint, checkpoint_sha, device)
-    completed, expected = set(), 0
-    for split in ("train", "val"):
-        expected += cache_split(args, split, manifests[split], resolver,
-                                model, device, completed)
-    rows = []
-    for path in sorted((args.output / "records").glob("*/*.json")):
-        row = json.loads(path.read_text(encoding="utf-8"))
-        if (str(row["episode_id"]), int(row["frame_id"])) in completed:
-            rows.append(row)
-    rows.sort(key=lambda row: (row["split"], row["episode_id"], int(row["frame_id"])))
-    if len(rows) != expected or len(completed) != expected:
-        raise RuntimeError("Token cache completeness mismatch: rows={} completed={} expected={}".format(
-            len(rows), len(completed), expected))
-    manifest = args.output / "manifest.jsonl"
-    write_jsonl(manifest, rows)
-    final = dict(identity)
-    final.update(status="complete", frames=expected,
-                 manifest_sha256=sha256_file(manifest))
-    write_json(args.output / "cache_meta.json", final)
-    partial.unlink()
-    print(json.dumps({"output": str(args.output), "frames": expected,
-                      "checkpoint_sha256": checkpoint_sha}, indent=2))
+    cfg = json.loads(args.config.read_text())
+    fields = {'schema','dataset_root','namespace','instructions','checkpoint','checkpoint_sha256',
+              'output','device','cpu_threads','train_fraction','max_sensor_gap_ms','log_interval'}
+    if set(cfg) != fields or cfg['schema'] != 'native-navigation-token-cache-config-v1':
+        raise ValueError('Invalid native cache config')
+    if not 0 < cfg['train_fraction'] < 1 or min(cfg['cpu_threads'],cfg['log_interval'],cfg['max_sensor_gap_ms']) <= 0:
+        raise ValueError('Invalid split/thread/gap configuration')
+    import numpy as np
+    import torch
+    from datasets.navigation_sensor_record import NativeNavigationSensors, temporal_split
+    from navigation.sampling import NavigationLabels
+    from models.vision_encoder import create_vision_encoder
+    torch.set_num_threads(cfg['cpu_threads'])
+    torch.manual_seed(42)
+    checkpoint = (ROOT/cfg['checkpoint']).resolve()
+    if sha256(checkpoint) != cfg['checkpoint_sha256']:
+        raise ValueError('Checkpoint SHA256 mismatch')
+    blob = torch.load(checkpoint, map_location='cpu', weights_only=True)
+    recipe = blob['morai_encoder_contract']
+    labels = NavigationLabels(ROOT/cfg['instructions'])
+    raw = (ROOT/cfg['dataset_root']).resolve()
+    episodes = sorted(p.parent for p in raw.rglob('episode.json'))
+    if not episodes:
+        raise ValueError('No Sensor Record episodes')
+    datasets = []
+    for episode in episodes:
+        print('Checking native sources:', episode, flush=True)
+        dataset = NativeNavigationSensors(episode, recipe, cfg['namespace'], cfg['max_sensor_gap_ms'])
+        if dataset.identity not in labels.routes:
+            raise ValueError('No matching navigation episode: '+dataset.identity)
+        datasets.append(dataset)
+    identity = dict(schema='native-visual-cache-source-v1',checkpoint_sha256=cfg['checkpoint_sha256'],
+        encoder_contract=recipe, source={d.identity:d.provenance for d in datasets},
+        sources_sha256={name:sha256(ROOT/name) for name in (
+            'datasets/navigation_sensor_record.py','datasets/morai_transfer_adapter.py',
+            'models/vision_encoder.py','models/pointpillars.py','models/resnet.py','models/transformer.py')},
+        inference_precision='float32',storage_precision='float16')
+    output = (ROOT/cfg['output']).resolve()
+    output.mkdir(parents=True, exist_ok=True)
+    identity_path = output/'visual_source.json'
+    if identity_path.exists() and json.loads(identity_path.read_text()) != identity:
+        raise ValueError('Existing cache has different source/encoder/implementation')
+    write_json(identity_path, identity)
+    model = create_vision_encoder({'name':'memfuser_baseline_e1d3_return_feature'}, pretrained_backbone=False)
+    strict = str(model.load_state_dict(blob['state_dict'], strict=True))
+    del blob
+    model.to(cfg['device']).eval()
+    records, features, counts, splits = [], [], Counter(), {}
+    started = time.monotonic()
+    for dataset in datasets:
+        boundary = dataset.times[int(len(dataset)*cfg['train_fraction'])]
+        splits[dataset.identity] = dict(validation_start_ns=boundary,policy='chronological_with_future_horizon_purge',
+            evaluation_scope='same-drive held-out time segment, not independent-drive generalization')
+        for i, stamp in enumerate(dataset.times):
+            key = hashlib.sha256(f'{dataset.identity}|{stamp}'.encode()).hexdigest()[:24]
+            record_path = output/'records'/(key+'.json')
+            record = valid_record(record_path, output)
+            if record is None:
+                inputs = dataset.inputs(i)
+                with torch.inference_mode(), deterministic_pointpillar_reductions():
+                    feature = model({k:v.unsqueeze(0).to(cfg['device']) for k,v in inputs.items()})[0].float().cpu().numpy()
+                if feature.shape != (106,256) or not np.isfinite(feature).all():
+                    raise ValueError('Invalid encoder output')
+                feature = feature.astype(np.float16)
+                if not np.isfinite(feature).all():
+                    raise ValueError('Float16 feature overflow')
+                record = dict(episode_id=dataset.identity, sensor_source_ns=stamp, frame_index=i,
+                    visual_feature=tensor_ref(output,'visual_feature/'+key+'.npy',feature))
+                record_path.parent.mkdir(exist_ok=True)
+                write_json(record_path, record)
+                counts['inferred'] += 1
+            else:
+                if record['episode_id'] != dataset.identity or record['sensor_source_ns'] != stamp:
+                    raise ValueError('Cached scene identity mismatch')
+                counts['reused'] += 1
+            features.append(record)
+            scene = labels.frames.get((dataset.identity, stamp))
+            target = dataset.target(i)
+            split = temporal_split(stamp, boundary)
+            if scene is None or not scene['valid']:
+                counts['excluded_navigation'] += 1
+            elif target is None:
+                counts['excluded_future_or_heading'] += 1
+            elif split is None:
+                counts['excluded_split_purge'] += 1
+            else:
+                if not np.allclose([scene['frame']['x'],scene['frame']['y']],dataset.positions[i],atol=1e-5):
+                    raise ValueError('Navigation and sensor ego pose differ')
+                ref = tensor_ref(output,'future_trajectory/'+key+'.npy',target)
+                ref.update(source='future_synchronized_ego_positions', horizons_s=[.5,1,1.5,2,2.5])
+                records.append(dict(record,split=split,future_trajectory=ref))
+                counts[split] += 1
+            if len(features) % cfg['log_interval'] == 0 or i == len(dataset)-1:
+                print(json.dumps(dict(frames=len(features),counts=counts,elapsed_s=round(time.monotonic()-started,1))),flush=True)
+    if not counts['train'] or not counts['validation']:
+        raise ValueError('Both train and validation require valid targets and language')
+    for name, rows in [('features.jsonl',features),('manifest.jsonl',records)]:
+        path=output/name
+        pending=path.with_suffix('.pending')
+        pending.write_text(''.join(json.dumps(row,sort_keys=True)+'\n' for row in rows),encoding='utf-8')
+        pending.replace(path)
+    write_json(output/'split.json',splits)
+    meta = dict(schema='navigation-token-cache-v1',checkpoint_sha256=cfg['checkpoint_sha256'],
+        trajectory_coordinate_convention='lmdrive_left_negative_forward',
+        manifest_sha256=sha256(output/'manifest.jsonl'),features_manifest_sha256=sha256(output/'features.jsonl'),
+        labels_manifest_sha256=sha256(labels.root/'manifest.json'),config_sha256=sha256(args.config),
+        visual_source_sha256=sha256(identity_path),strict_load=strict,encoder_contract=recipe,
+        visual_frames=len(features),training_frames=len(records),counts=counts,split=splits,
+        known_label_limitations='navigation v2: unresolved roundabout/highway-exit/traffic-light semantics; see navigation_full_lap_audit_20260917',
+        target_heading_source='latest causal ego yaw, age <=50ms; actual GT timeline positions',
+        publication='derived Stage 2 native export; original raw admission/publication flags unchanged')
+    write_json(output/'cache_meta.json',meta)
+    print(json.dumps(meta,indent=2),flush=True)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

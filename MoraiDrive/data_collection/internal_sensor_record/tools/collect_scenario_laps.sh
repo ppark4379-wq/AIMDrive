@@ -41,7 +41,9 @@ usage() {
     echo "      $0 3 campaign_static --scenario full_loop_static"
     echo "campaign_id를 생략하면 <시나리오_폴더>_lap<회차>_<생성일시>로 자동 생성합니다."
     echo "시나리오: full_loop, full_loop_normal, full_loop_static, full_loop_dynamic,"
-    echo "          full_loop_roundabout, full_loop_highway"
+    echo "          full_loop_roundabout, full_loop_roundabout_nonuniform,"
+    echo "          full_loop_roundabout_speed_random, full_loop_roundabout_brake,"
+    echo "          full_loop_highway"
     echo "선택 환경변수: MORAI_STORAGE_ROOT, MORAI_BASE_SEED, MORAI_LAP_WALL_SECONDS, MORAI_SIMULATOR_PID"
     echo "                MORAI_SCENARIO_RUNTIME=current (기본 current)"
 }
@@ -112,7 +114,7 @@ while (( $# > 0 )); do
     esac
 done
 case "$SCENARIO" in
-    full_loop|full_loop_normal|full_loop_static|full_loop_dynamic|full_loop_roundabout|full_loop_highway)
+    full_loop|full_loop_normal|full_loop_static|full_loop_dynamic|full_loop_roundabout|full_loop_roundabout_nonuniform|full_loop_roundabout_speed_random|full_loop_roundabout_brake|full_loop_highway)
         ;;
     *)
         echo "[FAIL] 지원하지 않는 시나리오입니다: $SCENARIO" >&2
@@ -138,6 +140,9 @@ case "$SCENARIO" in
     full_loop_static) SCENARIO_FOLDER="static_obstacle" ;;
     full_loop_dynamic) SCENARIO_FOLDER="dynamic_obstacle" ;;
     full_loop_roundabout) SCENARIO_FOLDER="roundabout" ;;
+    full_loop_roundabout_nonuniform) SCENARIO_FOLDER="roundabout_nonuniform" ;;
+    full_loop_roundabout_speed_random) SCENARIO_FOLDER="roundabout_speed_random" ;;
+    full_loop_roundabout_brake) SCENARIO_FOLDER="roundabout_brake" ;;
     full_loop_highway) SCENARIO_FOLDER="highway" ;;
 esac
 BASE_SEED="${MORAI_BASE_SEED:-26091200}"

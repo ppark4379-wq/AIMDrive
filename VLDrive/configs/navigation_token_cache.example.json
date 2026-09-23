@@ -1,0 +1,10 @@
+{
+  "schema": "navigation-token-cache-config-v1",
+  "manifest_indices": [],
+  "path_mappings": [],
+  "instructions": "data/processed/instructions/basic_drive_lmdrive_v2",
+  "checkpoint": "outputs/checkpoints/vision_encoder/morai-full-loop-v1.pth.tar",
+  "checkpoint_sha256": "SET_TO_VERIFIED_STAGE1_CHECKPOINT_SHA256",
+  "output": "data/processed/vision_tokens/navigation_v2",
+  "device": "cuda"
+}

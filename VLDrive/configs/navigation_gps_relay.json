@@ -1,0 +1,8 @@
+{
+  "schema": "morai-udp-relay-v1",
+  "to": "172.18.254.59",
+  "ports": "10506",
+  "demux": "",
+  "listen": "127.0.0.1",
+  "report": 5.0
+}

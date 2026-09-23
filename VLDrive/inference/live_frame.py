@@ -18,6 +18,10 @@ GPS fix and heading from the status yaw, exactly as
 :mod:`datasets.morai_native_capture` does for a recorded capture.
 
 Nothing here transmits: every socket is receive-only.
+
+For native Stage-2 caches, pass encoder_recipe explicitly. That opt-in delegates
+all image/LiDAR transforms to MoraiLMDriveVisionAdapter and uses the checkpoint's
+constant-zero velocity recipe. The legacy stage-1 display path stays unchanged.
 """
 from __future__ import annotations
 
@@ -81,19 +85,33 @@ class LiveFrameSource:
     """Receivers for every stream, plus the assembly into encoder inputs."""
 
     def __init__(self, ports, route_csv=None, lidar_elevations=None,
-                 lidar_axis_policy="morai_flu_to_lmdrive_fru", bind="0.0.0.0"):
+                 lidar_axis_policy="morai_flu_to_lmdrive_fru", bind="0.0.0.0",
+                 encoder_recipe=None, open_receivers=True):
         self.ports = dict(ports)
         self.lidar_axis_policy = lidar_axis_policy
+        self.adapter = None
+        if encoder_recipe is not None:
+            from datasets.morai_transfer_adapter import MoraiLMDriveVisionAdapter, MoraiVisionAdapterConfig
+            if (encoder_recipe.get('schema') != 'morai_encoder_recipe_v1'
+                    or encoder_recipe.get('feature_shape') != [106, 256]
+                    or encoder_recipe.get('token_order') != 'bev100_light1_waypoint5'
+                    or encoder_recipe.get('velocity_input') != 'constant_zero'
+                    or encoder_recipe.get('target_point_input') != 'constant_zero'
+                    or encoder_recipe.get('pillar_decoration') != 'legacy_lmdrive'
+                    or encoder_recipe['adapter']['use_previous_lidar_sweep']
+                    or encoder_recipe['adapter']['lidar_axis_policy'] != lidar_axis_policy):
+                raise ValueError('Unsupported live encoder recipe')
+            self.adapter = MoraiLMDriveVisionAdapter(MoraiVisionAdapterConfig(**encoder_recipe['adapter']))
         self.cameras = {
             key: CameraReceiver(self.ports[key], bind=bind, name=key)
-            for key in CAMERA_KEYS if key in self.ports
+            for key in CAMERA_KEYS if key in self.ports and open_receivers
         }
         self.lidar = LidarReceiver(self.ports["lidar"], bind=bind,
-                                   elevations=lidar_elevations, name="lidar")
+                                   elevations=lidar_elevations, name="lidar") if open_receivers else None
         self.status = VehicleStatusReceiver(self.ports["vehicle_status"], bind=bind,
-                                            name="vehicle_status")
-        self.gps = GpsReceiver(self.ports["gps"], bind=bind, name="gps") if "gps" in self.ports else None
-        self.imu = ImuReceiver(self.ports["imu"], bind=bind, name="imu") if "imu" in self.ports else None
+                                            name="vehicle_status") if open_receivers else None
+        self.gps = GpsReceiver(self.ports["gps"], bind=bind, name="gps") if open_receivers and "gps" in self.ports else None
+        self.imu = ImuReceiver(self.ports["imu"], bind=bind, name="imu") if open_receivers and "imu" in self.ports else None
 
         # Evaluation transforms: no augmentation, matching the offline loader.
         self.front_transform = create_camera_transform((3, 224, 224), is_training=False)
@@ -122,8 +140,10 @@ class LiveFrameSource:
     def _receivers(self):
         for key, receiver in self.cameras.items():
             yield key, receiver
-        yield "lidar", self.lidar
-        yield "vehicle_status", self.status
+        if self.lidar is not None:
+            yield "lidar", self.lidar
+        if self.status is not None:
+            yield "vehicle_status", self.status
         if self.gps:
             yield "gps", self.gps
         if self.imu:
@@ -165,17 +185,58 @@ class LiveFrameSource:
 
     # ------------------------------------------------------------------ frame
 
+    def prepare_encoder_frame(self, images, sweep, *, device='cpu', rng_seed=0):
+        """Native cache recipe shared by live UDP and recorded regression frames.
+
+        Images are RGB uint8; sweep is unmodified sensor-local FLU XYZI. The
+        existing adapter owns cropping, extrinsics, axis and intensity changes.
+        This checkpoint was trained with zero velocity and zero route input.
+        """
+        if self.adapter is None:
+            raise ValueError('An explicit cache encoder_recipe is required')
+        if set(images) != set(CAMERA_KEYS):
+            raise ValueError('Four camera images are required')
+        inputs = self.adapter.camera_tensors(**{
+            key.removeprefix('rgb_') + '_rgb': value for key, value in images.items()})
+        points = np.asarray(sweep, dtype=np.float32)
+        if points.ndim != 2 or points.shape[1] != 4 or not np.isfinite(points).all():
+            raise ValueError('Expected finite sensor-local XYZI')
+        lidar, count = self.adapter.lidar_to_raw_features(points, rng_seed=rng_seed)
+        if count == 0:
+            raise ValueError('Empty LiDAR after preprocessing')
+        inputs.update(lidar=torch.from_numpy(lidar), num_points=torch.tensor(count),
+                      velocity=torch.zeros(1))
+        return {key: value.unsqueeze(0).to(device) for key, value in inputs.items()}
+
     def build(self, device, utm_offsets=(0.0, 0.0), max_age=1.0):
         """Newest sample of every stream -> (inputs, meta), or (None, meta) if stale."""
         import cv2
 
-        meta = {"ages": {}, "missing": []}
+        meta = {"ages": {}, "missing": [], "sample_ids": {}, "received_at": {}}
+        def read(name, receiver):
+            payload, age, sequence, stamp = receiver.snapshot()
+            meta['ages'][name] = age
+            meta['sample_ids'][name] = sequence
+            meta['received_at'][name] = stamp
+            return payload, age
         images = {}
+        camera_bytes = {}
+        meta['missing'].extend(key for key in CAMERA_KEYS if key not in self.cameras)
         for key, receiver in self.cameras.items():
-            payload, age = receiver.latest()
+            payload, age = read(key, receiver)
             meta["ages"][key] = age
             if payload is None or age > max_age:
                 meta["missing"].append(key)
+                continue
+            if self.adapter is not None:
+                camera_bytes[key] = payload
+                import io
+                from PIL import Image
+                try:
+                    with Image.open(io.BytesIO(payload)) as im:
+                        images[key] = np.asarray(im.convert('RGB')).copy()
+                except (OSError, ValueError):
+                    meta['missing'].append(key + '(undecodable)')
                 continue
             decoded = cv2.imdecode(np.frombuffer(payload, dtype=np.uint8), cv2.IMREAD_COLOR)
             if decoded is None:
@@ -183,18 +244,30 @@ class LiveFrameSource:
                 continue
             images[key] = cv2.cvtColor(decoded, cv2.COLOR_BGR2RGB)
 
-        sweep, lidar_age = self.lidar.latest()
+        sweep, lidar_age = read('lidar', self.lidar)
         meta["ages"]["lidar"] = lidar_age
         if sweep is None or lidar_age > max_age:
             meta["missing"].append("lidar")
 
-        status, status_age = self.status.latest()
+        status, status_age = read('vehicle_status', self.status)
         meta["ages"]["vehicle_status"] = status_age
         if status is None or status_age > max_age:
             meta["missing"].append("vehicle_status")
 
         if meta["missing"]:
             return None, meta
+
+        if self.adapter is not None:
+            inputs = self.prepare_encoder_frame(images, sweep, device=device,
+                                                rng_seed=meta['sample_ids']['lidar'] - 1)
+            meta.update(speed=float(status['speed']), yaw_degrees=float(status['yaw_degrees']),
+                        lidar_points=int(inputs['num_points'].item()), sim_time=status.get('sim_time'))
+            meta['front_jpeg'] = camera_bytes['rgb_front']
+            meta['status_snapshot'] = (status, status_age, meta['sample_ids']['vehicle_status'],
+                                       meta['received_at']['vehicle_status'])
+            meta['gps_snapshot'] = self.gps.snapshot() if self.gps else (None, float('inf'), 0, None)
+            self.frames += 1
+            return inputs, meta
 
         from PIL import Image
 

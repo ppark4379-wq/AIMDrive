@@ -5,8 +5,10 @@
       python train.py vision-encoder --config configs/vision_encoder_train.json
 
   stage 2, VLDrive (frozen encoder -> CCDP -> MEFA -> TinyLlama -> waypoints)
-      python train.py vldrive --config configs/vldrive_train.json \
-          --output outputs/logs/vldrive-run1
+      python train.py --config vldrive_train.json
+
+Stage 2 is the default. A bare config filename is also searched in configs/.
+Its output directory defaults to outputs/logs/vldrive_<timestamp>.
 
 Both stages take every training parameter from their config file.  Stage 1
 accepts no other option, so nothing on the command line or in another module
@@ -23,7 +25,9 @@ never runs during training.  --mode preflight stops after the gradient and
 causality checks; --mode evaluate scores a checkpoint without training.
 """
 import argparse
+from datetime import datetime
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -60,15 +64,12 @@ def run_vision_encoder(parser, args):
 def add_vldrive_arguments(parser):
     parser.add_argument('--config', type=Path, required=True,
                         help='training config, e.g. configs/vldrive_train.json')
-    parser.add_argument('--output', type=Path, required=True,
-                        help='new run directory, e.g. outputs/logs/vldrive-run1')
+    parser.add_argument('--output', type=Path,
+                        help='new run directory; default: outputs/logs/vldrive_<timestamp>')
     parser.add_argument('--mode', choices=('train', 'preflight', 'evaluate'), default='train')
     parser.add_argument('--checkpoint', type=Path, help='resume from checkpoint.pt, or score model-best.pt')
-    parser.add_argument('--instructions', type=Path, help='verified global-path navigation instruction JSONL')
-    parser.add_argument('--notices', type=Path, help='route notice JSONL for morai_expert_cache_v1')
+    parser.add_argument('--instructions', type=Path, help='verified instruction JSONL or LMDrive navigation bundle directory')
     parser.add_argument('--feature-cache', type=Path, help='completed frozen [106,256] token cache')
-    parser.add_argument('--clip-index', type=Path,
-                        help='completed Sensor Record semantic clip index')
     parser.add_argument('--split-file', type=Path, help='chronological MORAI train/purge/validation split')
     parser.add_argument('--updates', type=int,
                         help='stop after this many total updates; keeps the configured cosine schedule')
@@ -78,14 +79,31 @@ def add_vldrive_arguments(parser):
 
 def run_vldrive(args):
     settings = resolve_settings(json.loads(args.config.read_text()), args)
-    for key in ('instructions', 'notices', 'feature_cache', 'split_file', 'clip_index'):
+    for key in ('instructions', 'feature_cache', 'split_file'):
         override = getattr(args, key)
         if override:
             settings[key] = str(override.expanduser().resolve())
-    dataset_format = settings.get('dataset_format', 'morai_expert_cache_v1')
-    if (dataset_format == 'morai_expert_cache_v1'
-            and (not settings.get('instructions')
-                 or not Path(settings['instructions']).is_file())):
+    batch_size = settings.get('batch_size', 1)
+    if type(batch_size) is not int or batch_size < 1:
+        raise ValueError('batch_size must be a positive integer')
+    validation_enabled = settings.get('validation_enabled', True)
+    if type(validation_enabled) is not bool:
+        raise ValueError('validation_enabled must be boolean')
+    full_route = settings.get('include_validation_in_train', False)
+    if type(full_route) is not bool or (full_route and validation_enabled):
+        raise ValueError('Full-route training requires validation_enabled=false')
+    if full_route and settings.get('dataset_format') != 'navigation_token_cache_v1':
+        raise ValueError('Full-route training requires navigation_token_cache_v1')
+    splits = ('train', 'val') if validation_enabled else ('train',)
+    warm_start_path = settings.get('warm_start_checkpoint')
+    if warm_start_path and not args.checkpoint and args.mode != 'evaluate':
+        if not Path(warm_start_path).is_file():
+            raise ValueError('Warm-start checkpoint is missing: ' + str(warm_start_path))
+    instruction_path = Path(settings.get('instructions') or '')
+    valid_instructions = ((instruction_path / 'manifest.json').is_file()
+                          if settings.get('dataset_format') == 'navigation_token_cache_v1'
+                          else instruction_path.is_file())
+    if not settings.get('instructions') or not valid_instructions:
         raise ValueError('VLDrive requires verified navigation instructions generated from the recorded global path.')
     if settings['sequence_length'] < settings['model'].get('memory_size', 10) + 1:
         raise ValueError('Paper preflight requires at least memory_size+1 real frames to exercise Z=10')
@@ -101,7 +119,10 @@ def run_vldrive(args):
     from models.vldrive import VLDriveTrainingConfig, VLDriveTrainingModel
     from utils.trainer import (seed_all, subset_indices, stride_indices, source_hashes, parameter_hash,
         preflight, evaluate, make_optimizer, train, save_checkpoint, restore_checkpoint,
-        save_model_checkpoint, restore_model_checkpoint, periodic_checkpoint_path)
+        save_model_checkpoint, restore_model_checkpoint, periodic_checkpoint_path,
+        warm_start_model_checkpoint)
+    from functools import partial
+    evaluate = partial(evaluate, seed=settings.get('evaluation_seed', settings['seed']))
     torch.set_num_threads(settings.get('cpu_threads', 4))
     seed_all(settings['seed'])
     device = settings.get('device', 'cuda')
@@ -111,37 +132,34 @@ def run_vldrive(args):
     config.validate()
     root = Path(settings['dataset'])
     print('Validating actual artifacts, teacher labels, independent splits and instruction availability...', flush=True)
-    if dataset_format not in ('morai_expert_cache_v1', 'morai_sensor_record_clip_v1'):
+    dataset_format = settings.get('dataset_format', 'morai_expert_cache_v1')
+    if dataset_format not in ('morai_expert_cache_v1', 'navigation_token_cache_v1'):
         raise ValueError('Unknown VLDrive dataset_format: ' + str(dataset_format))
     if config.input_mode != 'cached':
         raise ValueError('MORAI expert cache path requires model.input_mode=cached')
+    from datasets.morai_expert_dataset import MoraiExpertVLDriveDataset
+    split_path = Path(settings['split_file'])
+    if not split_path.is_absolute():
+        split_path = (ROOT / split_path).resolve()
     cache = Path(settings.get('feature_cache', ''))
     if not cache.is_dir():
         raise ValueError('Completed MORAI feature cache is missing: ' + str(cache))
-    if dataset_format == 'morai_expert_cache_v1':
-        from datasets.morai_expert_dataset import MoraiExpertVLDriveDataset
-        split_path = Path(settings['split_file'])
-        if not split_path.is_absolute():
-            split_path = (ROOT / split_path).resolve()
+    if dataset_format == 'navigation_token_cache_v1':
+        from datasets.navigation_cache_dataset import NavigationCacheDataset
+        language = settings.get('navigation_sampling', {})
+        datasets = {split: NavigationCacheDataset(
+            cache, settings['instructions'], split, settings['sequence_length'], settings['seed'],
+            train_variants=language.get('train_variants', list(range(8))),
+            validation_variants=language.get('validation_variants', list(range(8))),
+            include_validation_in_train=full_route,
+            frame_sampling_interval=settings.get('frame_sampling_interval', 1),
+        ) for split in splits}
+    else:
         datasets = {split: MoraiExpertVLDriveDataset(
             root, cache_root=cache, split_file=split_path, split=split,
             sequence_length=settings['sequence_length'], instructions=settings['instructions'],
-            notices=settings.get('notices'),
-            instruction_boundary_policy=settings.get('instruction_boundary_policy', 'exclude'),
-        ) for split in ('train', 'val')}
-    else:
-        if settings.get('notices'):
-            raise ValueError('Sensor Record notices must be built into clips with --notice-zones')
-        from datasets.morai_sensor_record_clip_dataset import SensorRecordVLDriveDataset
-        clip_index = Path(settings.get('clip_index', ''))
-        if not clip_index.is_absolute():
-            clip_index = (ROOT / clip_index).resolve()
-        if not clip_index.is_dir():
-            raise ValueError('Completed Sensor Record semantic clip index is missing: '
-                             + str(clip_index))
-        datasets = {split: SensorRecordVLDriveDataset(
-            cache_root=cache, clip_index=clip_index, split=split,
-            sequence_length=settings['sequence_length']) for split in ('train', 'val')}
+            frame_sampling_interval=settings.get('frame_sampling_interval', 1),
+        ) for split in splits}
 
     digest = datasets['train'].checkpoint_sha256
     visual_asset = Path(config.visual_checkpoint)
@@ -159,12 +177,25 @@ def run_vldrive(args):
             indices[split] = subset_indices(len(dataset), settings[split + '_windows'])
     provenance = dict(backend=backend, source=source_hashes(ROOT),
                       datasets={k: v.describe() for k, v in datasets.items()})
+    token_folder = settings.get('navigation_sampling', {}).get('token_cache')
+    if token_folder:
+        token_meta = Path(token_folder) / 'token_meta.json'
+        provenance['instruction_tokens'] = dict(meta_sha256=sha256(token_meta),
+                                                meta=json.loads(token_meta.read_text()))
     write(output / 'provenance.json', provenance)
     write(output / 'window_indices.json', indices)
     print('Loading cached frozen visual tokens and full trainable pretrained TinyLlama/DDIA...', flush=True)
     model = VLDriveTrainingModel(config, device=device)
+    if token_folder:
+        if dataset_format != 'navigation_token_cache_v1':
+            raise ValueError('Navigation token cache requires the navigation dataset')
+        from navigation.token_cache import CachedNavigationTokenizer
+        model.language_model.tokenizer = CachedNavigationTokenizer(
+            model.language_model.tokenizer, ROOT / token_folder,
+            sha256(instruction_path / 'manifest.json'), sha256(cache / 'manifest.jsonl'))
     write(output / 'model.json', model.describe())
-    schedule_updates = settings.get('epochs', 15) * len(indices['train'])
+    steps_per_epoch = math.ceil(len(indices['train']) / batch_size)
+    schedule_updates = settings.get('epochs', 15) * steps_per_epoch
     updates = schedule_updates if args.updates is None else args.updates
     start_update = 0
     optimizer = None
@@ -177,21 +208,40 @@ def run_vldrive(args):
         del state
     report = dict(training_path='frozen_encoder_dynamic_ccdp_mefa_tinyllama_ddia_l1',
                   start_update=start_update, semantic_annotations=True, schedule_updates=schedule_updates)
+    if warm_start_path and not args.checkpoint and args.mode != 'evaluate':
+        print('Loading previous model weights; starting a fresh optimizer and learning-rate schedule...', flush=True)
+        transfer = warm_start_model_checkpoint(
+            warm_start_path, model, provenance=provenance,
+            transfer_reason=f'Continue from saved weights with batch_size={batch_size}, include_validation_in_train={full_route}; fresh optimizer and additional configured epochs.')
+        write(output / 'warm_start.json', transfer)
+        report['warm_start'] = dict(source_checkpoint=transfer['source_checkpoint'],
+            source_updates=transfer['source_updates'], optimizer_restored=False,
+            additional_epochs=settings.get('epochs', 15))
+        print(json.dumps(dict(event='warm_start', **report['warm_start'])), flush=True)
     if args.mode == 'evaluate':
         if not args.checkpoint:
             raise ValueError('Evaluation requires --checkpoint')
-        restore_model_checkpoint(args.checkpoint, model, provenance=provenance)
-        report['validation'] = evaluate(model, datasets['val'], indices['val'], device,
-                                        save_predictions=output / 'val_predictions.json')
+        restored = restore_model_checkpoint(args.checkpoint, model, provenance=provenance,
+                                            evaluation_source_compatibility=True)
+        report['evaluation_source_compatibility'] = restored['evaluation_source_compatibility']
+        del restored
+        evaluation_split = 'val' if validation_enabled else 'train'
+        report['validation' if validation_enabled else 'training'] = evaluate(
+            model, datasets[evaluation_split], indices[evaluation_split], device,
+            save_predictions=output / (evaluation_split + '_predictions.json'))
     else:
         if not start_update <= updates <= schedule_updates:
             raise ValueError('Update limit must be within the configured schedule')
         print('Checking gradients, temporal causality and forbidden teacher inputs...', flush=True)
         report['preflight'] = preflight(model, datasets['train'][indices['train'][0]], device)
+        if token_folder:
+            report['preflight']['instruction_token_cache'] = model.language_model.tokenizer.describe()
         write(output / 'preflight.json', report['preflight'])
         if not report['preflight']['passed']:
             raise RuntimeError('VLDrive preflight failed; inspect preflight.json')
         if args.mode == 'train':
+            from utils.training_dashboard.launcher import launch_dashboard
+            launch_dashboard(output, settings.get('dashboard'))
             if optimizer is None:
                 optimizer = make_optimizer(model, **settings.get('optimizer', {}))
             frozen = parameter_hash(model, trainable=False)
@@ -207,17 +257,19 @@ def run_vldrive(args):
                                     updates=step, provenance=provenance, settings=settings)
                     print(json.dumps(dict(event='checkpoint_complete', updates=step, path=str(path))), flush=True)
 
-            baseline_row = dict(epoch=start_update // len(indices['train']), updates=start_update,
-                                validation=report['before']['val'])
-            best = dict(fde_m=report['before']['val']['fde_m'], epoch=baseline_row['epoch'],
-                        metrics=baseline_row, scope='current_invocation_including_starting_weights')
+            score_split = 'val' if validation_enabled else 'train'
+            score_name = 'validation' if validation_enabled else 'training'
+            baseline_row = dict(epoch=start_update // steps_per_epoch, updates=start_update,
+                                **{score_name: report['before'][score_split]})
+            best = dict(fde_m=report['before'][score_split]['fde_m'], epoch=baseline_row['epoch'],
+                        metrics=baseline_row, scope=score_name + '_current_invocation_including_starting_weights')
             save_model_checkpoint(output / 'model-best.pt', model, updates=start_update,
                 provenance=provenance, settings=settings, metrics=baseline_row)
             epoch_metrics = output / 'epoch_metrics.jsonl'
 
             def end_epoch(epoch, step):
-                validation = evaluate(model, datasets['val'], indices['val'], device)
-                row = dict(epoch=int(epoch) + 1, updates=int(step), validation=validation)
+                validation = evaluate(model, datasets[score_split], indices[score_split], device)
+                row = dict(epoch=int(epoch) + 1, updates=int(step), **{score_name: validation})
                 with epoch_metrics.open('a', encoding='utf-8') as stream:
                     stream.write(json.dumps(row, allow_nan=False, sort_keys=True) + '\n')
                 save_model_checkpoint(output / 'model-last.pt', model, updates=step,
@@ -226,20 +278,22 @@ def run_vldrive(args):
                     best.update(fde_m=validation['fde_m'], epoch=int(epoch) + 1, metrics=row)
                     save_model_checkpoint(output / 'model-best.pt', model, updates=step,
                         provenance=provenance, settings=settings, metrics=row)
-                print(json.dumps(dict(event='epoch_validation', **row), allow_nan=False), flush=True)
+                print(json.dumps(dict(event='epoch_' + score_name, **row), allow_nan=False), flush=True)
 
             train(model, optimizer, datasets['train'], indices['train'], start_update=start_update,
                 updates=updates, schedule_updates=schedule_updates, seed=settings['seed'], device=device,
                 log_path=output / 'training.jsonl', lr=settings.get('optimizer', {}).get('lr', 1e-5),
-                on_update=periodic, on_epoch=end_epoch)
+                on_update=periodic, on_epoch=end_epoch, batch_size=batch_size,
+                telemetry_enabled=settings.get('logging', {}).get('telemetry_enabled', True),
+                gradient_log_interval=settings.get('logging', {}).get('gradient_interval', 100))
             report['after'] = {k: evaluate(model, datasets[k], indices[k], device,
                 save_predictions=output / (k + '_predictions.json')) for k in datasets}
-            final_row = dict(epoch=updates // len(indices['train']), updates=updates,
-                             validation=report['after']['val'])
+            final_row = dict(epoch=updates // steps_per_epoch, updates=updates,
+                             **{score_name: report['after'][score_split]})
             save_model_checkpoint(output / 'model-last.pt', model, updates=updates,
                 provenance=provenance, settings=settings, metrics=final_row)
-            if best['epoch'] is None or report['after']['val']['fde_m'] < best['fde_m']:
-                best.update(fde_m=report['after']['val']['fde_m'], epoch=final_row['epoch'], metrics=final_row)
+            if best['epoch'] is None or report['after'][score_split]['fde_m'] < best['fde_m']:
+                best.update(fde_m=report['after'][score_split]['fde_m'], epoch=final_row['epoch'], metrics=final_row)
                 save_model_checkpoint(output / 'model-best.pt', model, updates=updates,
                     provenance=provenance, settings=settings, metrics=final_row)
             save_checkpoint(output / 'checkpoint.pt', model, optimizer, updates=updates,
@@ -258,7 +312,16 @@ def run_vldrive(args):
 
 # --------------------------------------------------------------------------- entry
 
-def main():
+def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if not argv or argv[0].startswith('-'):
+        argv.insert(0, 'vldrive')
+    if argv[0] == 'vldrive':
+        # The prepared WSL packages were previously supplied via PYTHONPATH.
+        # Load them before parser imports pull in model backends.
+        dependencies = ROOT / '.runtime/stage2_wsl_deps'
+        if sys.platform == 'linux' and dependencies.is_dir() and str(dependencies) not in sys.path:
+            sys.path.insert(1, str(dependencies))
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     stages = parser.add_subparsers(dest='stage', required=True, metavar='stage')
     stage1 = stages.add_parser('vision-encoder', help='stage 1: MORAI vision encoder pre-training')
@@ -268,12 +331,16 @@ def main():
     morai_transfer_training.add_arguments(morai)
     stage2 = stages.add_parser('vldrive', help='stage 2: VLDrive training on cached visual tokens')
     add_vldrive_arguments(stage2)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.stage == 'vision-encoder':
         run_vision_encoder(stage1, args)
     elif args.stage == 'vision-encoder-morai':
         morai_transfer_training.run(args)
     else:
+        if not args.config.is_file() and args.config.parent == Path('.'):
+            args.config = ROOT / 'configs' / args.config.name
+        if args.output is None:
+            args.output = ROOT / 'outputs/logs' / ('vldrive_' + datetime.now().strftime('%Y%m%d_%H%M%S_%f'))
         run_vldrive(args)
 
 

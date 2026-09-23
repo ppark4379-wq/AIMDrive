@@ -18,12 +18,6 @@ from .morai_transfer_targets import render_object_target
 from .morai_gps_speed import parse_native_gps, causal_gps_speed
 
 
-CAMPAIGN_VALIDATION_SCHEMAS = {
-    'morai_sensor_record_campaign_validation_v1',
-    'morai_sensor_record_campaign_validation_subset_v1',
-}
-
-
 def digest(path):
     h = hashlib.sha256()
     with Path(path).open('rb') as f:
@@ -163,53 +157,7 @@ def verify_admission_recovery(episode, evidence):
         and corrected.get('training_visible') is False
     ):
         raise ValueError('Changed corrected admission evidence')
-    geometry_expected = evidence.get('effective_object_geometry')
-    if geometry_expected is not None:
-        geometry_path = child(
-            run, recovery.get('corrected_object_geometry', {}).get('path', ''))
-        if geometry_path.name != 'report.json':
-            raise ValueError('Invalid corrected object geometry path')
-        geometry_dir = geometry_path.parent
-        verify_seal(geometry_dir)
-        geometry = read_json(geometry_path)
-        geometry_seal = digest(geometry_dir / 'COMPLETE.json')
-        if not (
-            recovery['corrected_object_geometry'].get('sha256') == digest(geometry_path)
-            and recovery['corrected_object_geometry'].get('seal_sha256') == geometry_seal
-            and geometry_expected == geometry_seal
-            and geometry.get('schema') == 'morai_sensor_record_object_geometry_audit_v2'
-            and geometry.get('raw_manifest_sha256') == original.get('raw_manifest_sha256')
-            and geometry.get('structural_valid') is True
-            and corrected.get('input_seals', {}).get('object_geometry_audit')
-                == geometry_seal
-        ):
-            raise ValueError('Changed corrected object geometry evidence')
     return corrected_dir
-
-
-def verify_publication_source(index, source_report, source_seal):
-    """Accept strict or fail-closed whole-lap-subset validation evidence."""
-    schema = index.get('source_schema')
-    if schema not in CAMPAIGN_VALIDATION_SCHEMAS:
-        raise ValueError('Unsupported Sensor Record validation schema')
-    if not (
-        source_report.get('schema') == schema
-        and source_seal.get('schema') == schema
-        and source_report.get('valid') is True
-        and source_seal.get('status') == 'passed'
-    ):
-        raise ValueError('Source validation schema or status mismatch')
-    if schema == 'morai_sensor_record_campaign_validation_subset_v1':
-        if not (
-            source_report.get('subset_coverage_preserved') is True
-            and source_report.get('subset_policy')
-                == 'whole_lap_fail_closed_exclusion_with_full_variation_preservation_v1'
-            and isinstance(source_report.get('selected_laps'), int)
-            and source_report['selected_laps'] >= 2
-            and len(source_report.get('laps', [])) == source_report['selected_laps']
-            and bool(source_report.get('excluded_laps'))
-        ):
-            raise ValueError('Invalid fail-closed validation subset')
 
 
 def load_publication(path, resolver):
@@ -217,20 +165,18 @@ def load_publication(path, resolver):
     index = read_json(path)
     if (index.get('schema') != 'morai_visual_manifest_index_v1'
             or index.get('training_ready') is not True
-            or index.get('source_schema') not in CAMPAIGN_VALIDATION_SCHEMAS):
+            or index.get('source_schema') != 'morai_sensor_record_campaign_validation_v1'):
         raise ValueError('Requires a published Sensor Record train/val index')
     seal = verify_seal(path.parent)
     if (seal.get('status') != 'passed' or seal.get('training_visible') is not True
             or seal.get('schema') != 'morai_sensor_record_training_publication_v1'
             or seal['files'].get(path.name) != digest(path)):
         raise ValueError('Training index is not covered by publication seal')
-    source = resolver(index['source_validation'], path.parent)
+    source = resolver(index['source_validation'])
     if digest(source) != index['source_validation_sha256']:
         raise ValueError('Source validation changed')
     source_seal = verify_seal(source.parent)
-    source_report = read_json(source)
-    verify_publication_source(index, source_report, source_seal)
-    if source_seal['files'].get(source.name) != digest(source):
+    if read_json(source).get('valid') is not True or source_seal.get('status') != 'passed' or source_seal['files'].get(source.name) != digest(source):
         raise ValueError('Source validation is not a sealed passed report')
     result = {}
     for split in ('train', 'val'):
@@ -248,8 +194,8 @@ def load_publication(path, resolver):
             result[split].append((p, doc))
         if not result[split]:
             raise ValueError('Empty split: ' + split)
-    train_episodes = {str(resolver(d['episode'], p.parent)) for p,d in result['train']}
-    val_episodes = {str(resolver(d['episode'], p.parent)) for p,d in result['val']}
+    train_episodes = {str(resolver(d['episode'])) for _,d in result['train']}
+    val_episodes = {str(resolver(d['episode'])) for _,d in result['val']}
     if train_episodes & val_episodes:
         raise ValueError('Train/validation episodes overlap')
     def assets(split):
@@ -274,7 +220,7 @@ def load_publications(paths, resolver):
         publications.append({'path': str(resolver(path)), 'sha256': digest(resolver(path))})
         for split in combined:
             for p, doc in rows[split]:
-                episode = str(resolver(doc['episode'], p.parent))
+                episode = str(resolver(doc['episode']))
                 identity = (split, digest(p))
                 if episode in episodes:
                     if episodes[episode] != identity:
@@ -309,8 +255,7 @@ class SensorRecordDataset(Dataset):
                     or doc.get('training_visible') is not True):
                 raise ValueError('Requires visible Sensor Record v2 manifest')
             self.manifest_hashes[str(path)] = digest(path)
-            episode = resolver(doc['episode'], path.parent)
-            native = resolver(doc['native_root'], path.parent)
+            episode, native = resolver(doc['episode']), resolver(doc['native_root'])
             contract = doc['contract']
             contract_path = episode.parent/'sensor_contract.json'
             if digest(contract_path) != doc['contract_sha256'] or read_json(contract_path) != contract:

@@ -38,7 +38,11 @@ def move(value, device):
 
 
 def batch(sample, device):
-    return move(default_collate([sample]), device)
+    return batch_samples([sample], device)
+
+
+def batch_samples(samples, device):
+    return move(default_collate(samples), device)
 
 
 def subset_indices(length, count):
@@ -85,8 +89,11 @@ def source_hashes(root):
     """Hash every source file a run depends on, for the checkpoint provenance."""
     from .runtime import sha256
     root = Path(root).resolve()
-    paths = {p for d in ('models', 'datasets', 'utils') for p in (root / d).glob('*.py')}
+    paths = {p for d in ('models', 'datasets', 'utils', 'navigation') for p in (root / d).glob('*.py')}
     paths.update(root / p for p in ('train.py', 'evaluate.py'))
+    # Only the training-side observer belongs in checkpoint provenance.
+    # UI/export/plot changes must not invalidate an otherwise identical resume.
+    paths.update(root / 'utils/training_dashboard' / p for p in ('__init__.py', 'telemetry.py'))
     return {str(p.relative_to(root)): sha256(p) for p in sorted(paths)}
 
 

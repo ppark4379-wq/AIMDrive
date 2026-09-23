@@ -22,6 +22,11 @@ VLDrive/outputs/checkpoints/
 VLDrive/outputs/logs/
 VLDrive/.runtime/
 
+# Generated inference recordings and analysis remain local, not source commits.
+VLDrive/outputs/inference/
+VLDrive/outputs/analysis/
+VLDrive/data/processed/instructions/
+
 # Per-frame capture logs from data collection. Older runs are already tracked;
 # new runs stay local because a single manifest can exceed 70 MB.
 MoraiDrive/.runtime/sync_runtime/

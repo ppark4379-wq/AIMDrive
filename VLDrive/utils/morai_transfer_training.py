@@ -49,16 +49,6 @@ def add_arguments(parser):
     parser.add_argument('--frame-sampling', choices=('all','object_balanced'), default='all')
     parser.add_argument('--object-negative-ratio', type=float, default=1.0,
                         help='Verified empty object-valid frames per object-positive frame')
-    parser.add_argument('--long-stop-sampling', choices=('keep','thin'), default='keep',
-                        help='Thin repeated training frames from long teacher stops; validation remains unchanged')
-    parser.add_argument('--long-stop-speed-threshold', type=float, default=0.2,
-                        help='Teacher speed in m/s at or below which a frame is stationary')
-    parser.add_argument('--long-stop-min-seconds', type=float, default=5.0,
-                        help='Minimum continuous stationary duration eligible for thinning')
-    parser.add_argument('--long-stop-edge-seconds', type=float, default=1.0,
-                        help='Keep this duration at both edges of each thinned stop')
-    parser.add_argument('--long-stop-stride-seconds', type=float, default=1.0,
-                        help='Retain one interior stationary frame at this interval')
     parser.add_argument('--detection-loss-policy', choices=DETECTION_LOSS_POLICIES,
                         default='lmdrive_lav_v1')
     parser.add_argument('--skip-baseline', action='store_true',
@@ -79,15 +69,8 @@ def resolve_args(args):
     campaigns += list(args.manifest_campaign)
     for campaign in campaigns:
         campaign = Path(campaign).expanduser()
-        candidates = {
-            candidate.resolve()
-            for pattern in (
-                'validation_*/training_dataset*/manifest_index.json',
-                '_campaign/validations/validation_*/training_dataset*/manifest_index.json',
-            )
-            for candidate in campaign.glob(pattern)
-        }
-        candidates = sorted(candidates, key=lambda p: (p.stat().st_mtime_ns, str(p)))
+        candidates = sorted(campaign.glob('validation_*/training_dataset*/manifest_index.json'),
+                            key=lambda p: (p.stat().st_mtime_ns, str(p)))
         if not candidates:
             raise ValueError('Additional campaign is not ready; finish 03 validation first: '+str(campaign))
         # Never silently omit the requested new campaign. Full seal and
@@ -103,17 +86,9 @@ def resolve_args(args):
         output_root = Path(cfg.get('output_root', ROOT/'outputs/checkpoints/vision_encoder_morai'))
         args.output = output_root / ('morai_transfer_'+time.strftime('%Y%m%d_%H%M%S')+'_'+str(time.time_ns()%1000000))
     args.output = args.output.expanduser().resolve()
-    long_stop_values = (
-        args.long_stop_speed_threshold, args.long_stop_min_seconds,
-        args.long_stop_edge_seconds, args.long_stop_stride_seconds)
     if (min(args.epochs,args.threads,args.log_interval)<1 or args.workers<0 or args.diagnostic_limit<0
             or not math.isfinite(args.learning_rate) or args.learning_rate<=0
-            or not math.isfinite(args.object_negative_ratio) or args.object_negative_ratio<=0
-            or not all(math.isfinite(value) for value in long_stop_values)
-            or args.long_stop_speed_threshold < 0
-            or args.long_stop_min_seconds <= 0
-            or args.long_stop_edge_seconds < 0
-            or args.long_stop_stride_seconds <= 0):
+            or not math.isfinite(args.object_negative_ratio) or args.object_negative_ratio<=0):
         raise ValueError('Invalid epoch/thread/worker/LR/limit settings')
     return PathResolver(cfg.get('path_mappings', []))
 
@@ -144,121 +119,13 @@ def configure_trainable_scope(model, scope):
     return ('traffic_pred_head.',)
 
 
-def long_stationary_duplicate_indices(rows, *, speed_threshold=0.2,
-                                      min_seconds=5.0, edge_seconds=1.0,
-                                      stride_seconds=1.0):
-    """Select only redundant interiors of long teacher-stationary segments.
-
-    This is a training sampler.  Teacher speed never becomes a model input.
-    Episode changes, nonadvancing time and gaps over 250 ms end a segment, so
-    independent runs can never be joined accidentally.  Short stops are kept
-    intact; long stops retain both transitions and a deterministic 1 Hz-style
-    interior sample by default.
-    """
-    parameters = (speed_threshold, min_seconds, edge_seconds, stride_seconds)
-    if (not all(math.isfinite(float(value)) for value in parameters)
-            or speed_threshold < 0 or min_seconds <= 0
-            or edge_seconds < 0 or stride_seconds <= 0):
-        raise ValueError('Invalid long-stop sampling settings')
-    min_ns = int(round(float(min_seconds) * 1e9))
-    edge_ns = int(round(float(edge_seconds) * 1e9))
-    stride_ns = int(round(float(stride_seconds) * 1e9))
-    max_gap_ns = 250_000_000
-    segments = []
-    active = []
-    previous_native = None
-    previous_stamp = None
-
-    def close_segment():
-        nonlocal active
-        if active:
-            first = int(rows[active[0]][1]['sensor_time_ns'])
-            last = int(rows[active[-1]][1]['sensor_time_ns'])
-            if last - first >= min_ns:
-                segments.append(tuple(active))
-        active = []
-
-    for index, row in enumerate(rows):
-        native, entry = row[0], row[1]
-        stamp = int(entry['sensor_time_ns'])
-        ego = entry.get('ego_pose', {})
-        speed = ego.get('speed')
-        if (not isinstance(speed, (int, float)) or isinstance(speed, bool)
-                or not math.isfinite(float(speed))):
-            raise ValueError('Invalid teacher speed for long-stop sampling')
-        same_episode = previous_native is not None and str(native) == previous_native
-        continuous = (same_episode and previous_stamp is not None
-                      and 0 < stamp - previous_stamp <= max_gap_ns)
-        stationary = float(speed) <= float(speed_threshold)
-        if active and (not continuous or not stationary):
-            close_segment()
-        if stationary:
-            active.append(index)
-        previous_native, previous_stamp = str(native), stamp
-    close_segment()
-
-    removed = set()
-    traffic_counts = {-1: 0, 0: 0, 1: 0}
-    retained = 0
-    affected_episodes = set()
-    durations = []
-    for segment in segments:
-        begin = int(rows[segment[0]][1]['sensor_time_ns'])
-        end = int(rows[segment[-1]][1]['sensor_time_ns'])
-        last_interior = None
-        affected_episodes.add(str(rows[segment[0]][0]))
-        durations.append((end - begin) / 1e9)
-        for index in segment:
-            entry = rows[index][1]
-            label = int(entry.get('traffic_light', -1))
-            if label in traffic_counts:
-                traffic_counts[label] += 1
-            stamp = int(entry['sensor_time_ns'])
-            edge = stamp - begin <= edge_ns or end - stamp <= edge_ns
-            spaced = last_interior is None or stamp - last_interior >= stride_ns
-            if edge or spaced:
-                retained += 1
-                if not edge:
-                    last_interior = stamp
-            else:
-                removed.add(index)
-    summary = {
-        'long_stop_segments': len(segments),
-        'long_stop_episodes': len(affected_episodes),
-        'long_stop_frames': sum(len(segment) for segment in segments),
-        'long_stop_retained_frames': retained,
-        'long_stop_removed_frames': len(removed),
-        'long_stop_duration_seconds': sum(durations),
-        'long_stop_max_duration_seconds': max(durations) if durations else 0.0,
-        'long_stop_traffic_light_counts': traffic_counts,
-    }
-    return removed, summary
-
-
 def selected_training_indices(dataset, args):
     indices = list(range(len(dataset)))
     selection = {'policy': args.frame_sampling, 'available_frames': len(indices)}
-    long_stop_policy = getattr(args, 'long_stop_sampling', 'keep')
-    selection['long_stop_sampling'] = long_stop_policy
-    if long_stop_policy == 'thin':
-        settings = {
-            'speed_threshold': getattr(args, 'long_stop_speed_threshold', 0.2),
-            'min_seconds': getattr(args, 'long_stop_min_seconds', 5.0),
-            'edge_seconds': getattr(args, 'long_stop_edge_seconds', 1.0),
-            'stride_seconds': getattr(args, 'long_stop_stride_seconds', 1.0),
-        }
-        removed, summary = long_stationary_duplicate_indices(dataset.rows, **settings)
-        indices = [index for index in indices if index not in removed]
-        selection.update(summary)
-        selection.update({'long_stop_speed_threshold_mps': settings['speed_threshold'],
-                          'long_stop_min_seconds': settings['min_seconds'],
-                          'long_stop_edge_seconds': settings['edge_seconds'],
-                          'long_stop_stride_seconds': settings['stride_seconds'],
-                          'frames_after_long_stop_sampling': len(indices)})
     if args.frame_sampling == 'object_balanced':
-        positives = [i for i in indices for row in (dataset.rows[i],)
+        positives = [i for i, row in enumerate(dataset.rows)
                      if row[1]['object_valid'] and row[1]['object_positive']]
-        negatives = [i for i in indices for row in (dataset.rows[i],)
+        negatives = [i for i, row in enumerate(dataset.rows)
                      if row[1]['object_valid'] and not row[1]['object_positive']]
         if not positives or not negatives:
             raise ValueError('Object-balanced sampling requires positive and verified empty frames')

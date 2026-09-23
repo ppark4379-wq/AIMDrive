@@ -18,8 +18,11 @@ packages installed.  Run it in its own terminal and leave it going.
 from __future__ import annotations
 
 import argparse
+import json
+from pathlib import Path
 import selectors
 import socket
+import struct
 import sys
 import time
 
@@ -32,6 +35,56 @@ DEFAULT_PORTS = "909:10909,2368"
 # that, because forwarding replaces the source port, so those streams are split
 # onto a port each on the way out.  Measured on a running simulator:
 DEFAULT_DEMUX = "9090:7501=10501,7502=10502,7503=10503,7504=10504,7506=10506,7507=10507"
+
+
+def camera_datagrams(payload, max_bytes=0):
+    """Preserve JPEG bytes and timestamps while avoiding IP fragmentation.
+
+    MORAI intermediate chunks are exactly 64979 bytes. Split each into a fixed
+    number of smaller indexed MOR chunks; the final chunk alone may be shorter.
+    Non-camera datagrams and the legacy max_bytes=0 path are unchanged.
+    """
+    if not max_bytes or not payload.startswith(b'MOR'):
+        yield payload
+        return
+    prefix=struct.Struct('<3sIIII')
+    if not 256<=max_bytes<=65000:
+        raise ValueError('camera_datagram_bytes must be 0 or 256..65000')
+    if len(payload)<prefix.size+2:
+        return
+    header,sec,nsec,index,size=prefix.unpack_from(payload)
+    body=payload[prefix.size:-2]
+    take=size if size else len(body)
+    if take>len(body) or take>64979 or payload[-2:] not in (b'AI',b'EI'):
+        return
+    if payload[-2:]==b'AI' and take!=64979:
+        return  # Cannot assign continuous indices for an unknown source layout.
+    capacity=max_bytes-prefix.size-2
+    parts_per_full=(64979+capacity-1)//capacity
+    body=body[:take]
+    for j,start in enumerate(range(0,len(body),capacity)):
+        chunk=body[start:start+capacity]
+        tail=b'EI' if start+len(chunk)==len(body) and payload[-2:]==b'EI' else b'AI'
+        yield prefix.pack(header,sec,nsec,index*parts_per_full+j,len(chunk))+chunk+tail
+
+
+def read_relay_config(path):
+    config=json.loads(Path(path).read_text(encoding='utf-8-sig'))
+    if set(config)-{'camera_datagram_bytes'}!={'schema','to','ports','demux','listen','report'} or config['schema']!='morai-udp-relay-v1':
+        raise ValueError('Expected morai-udp-relay-v1 config')
+    for name in ('to','ports','listen'):
+        if not isinstance(config[name],str) or not config[name].strip():
+            raise ValueError(name+' must be a nonempty string')
+    if not isinstance(config['demux'],str): raise ValueError('demux must be a string')
+    if type(config['report']) not in (int,float) or not 0<=config['report']<float('inf'):
+        raise ValueError('report must be finite and nonnegative')
+    size=config.get('camera_datagram_bytes',0)
+    if type(size) is not int or (size!=0 and not 256<=size<=65000):
+        raise ValueError('camera_datagram_bytes must be 0 or 256..65000')
+    for source,target in parse_ports(config['ports']):
+        if not 1<=source<=65535 or not 1<=target<=65535:
+            raise ValueError('UDP ports must be in 1..65535')
+    return {key:value for key,value in config.items() if key!='schema'}
 
 
 def parse_ports(text):
@@ -58,7 +111,8 @@ def parse_ports(text):
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--to", required=True,
+    parser.add_argument("--config", type=Path, help="JSON relay config; use without other options")
+    parser.add_argument("--to",
                         help="encoder host, e.g. the WSL address from `ip addr show eth0`")
     parser.add_argument("--ports", default=DEFAULT_PORTS)
     parser.add_argument("--demux", default=DEFAULT_DEMUX,
@@ -67,7 +121,16 @@ def main():
                         help="where the simulator publishes (default: localhost)")
     parser.add_argument("--report", type=float, default=5.0,
                         help="seconds between throughput lines; 0 to stay quiet")
+    parser.add_argument('--camera-datagram-bytes',type=int,default=0,
+                        help='Refragment MORAI camera packets for Windows-to-WSL UDP; 0 preserves legacy packets')
     args = parser.parse_args()
+    if args.config:
+        if any(token.split('=',1)[0] in ('--to','--ports','--demux','--listen','--report','--camera-datagram-bytes') for token in sys.argv[1:]):
+            parser.error('--config cannot be combined with relay overrides')
+        for key,value in read_relay_config(args.config).items(): setattr(args,key,value)
+    if not args.to: parser.error('--to or --config is required')
+    if args.camera_datagram_bytes!=0 and not 256<=args.camera_datagram_bytes<=65000:
+        parser.error('--camera-datagram-bytes must be 0 or 256..65000')
 
     mapping = parse_ports(args.ports)
     demux = {}
@@ -146,7 +209,8 @@ def main():
                 else:
                     target = targets[port]
                 try:
-                    out.sendto(payload, (args.to, target))
+                    for datagram in camera_datagrams(payload,args.camera_datagram_bytes):
+                        out.sendto(datagram, (args.to, target))
                 except OSError:
                     pass
             now = time.time()

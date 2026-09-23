@@ -26,6 +26,7 @@ class MissionMode:
     zones: ZoneSelection
     start: Optional[RouteBoundary] = None
     end: Optional[RouteBoundary] = None
+    roundabout_variant: str = "uniform"
 
 
 STATIC_START = RouteBoundary(
@@ -64,6 +65,18 @@ MISSION_MODES = {
     "full_loop_roundabout": MissionMode(
         "full_loop_roundabout", ZoneSelection(roundabout=True),
         ROUNDABOUT_START, ROUNDABOUT_END,
+    ),
+    "full_loop_roundabout_nonuniform": MissionMode(
+        "full_loop_roundabout_nonuniform", ZoneSelection(roundabout=True),
+        ROUNDABOUT_START, ROUNDABOUT_END, "nonuniform",
+    ),
+    "full_loop_roundabout_speed_random": MissionMode(
+        "full_loop_roundabout_speed_random", ZoneSelection(roundabout=True),
+        ROUNDABOUT_START, ROUNDABOUT_END, "speed_random",
+    ),
+    "full_loop_roundabout_brake": MissionMode(
+        "full_loop_roundabout_brake", ZoneSelection(roundabout=True),
+        ROUNDABOUT_START, ROUNDABOUT_END, "brake_event",
     ),
     "full_loop_highway": MissionMode(
         "full_loop_highway", ZoneSelection(highway=True),

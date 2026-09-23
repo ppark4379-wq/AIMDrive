@@ -156,9 +156,12 @@ def resolve_settings(settings, args):
     def resolve(path):
         return str((root / Path(path).expanduser()).resolve())
     value['dataset'] = str(args.dataset_root.expanduser().resolve()) if args.dataset_root else resolve(value['dataset'])
-    for key in ('instructions', 'notices', 'feature_cache'):
+    for key in ('instructions', 'feature_cache', 'warm_start_checkpoint'):
         if value.get(key):
             value[key] = resolve(value[key])
+    navigation = value.get('navigation_sampling', {})
+    if navigation.get('token_cache'):
+        navigation['token_cache'] = resolve(navigation['token_cache'])
     model = value.get('model', value)
     for key, suffix in [('visual_checkpoint', 'vision_encoder/vision-encoder-r50.pth.tar'),
                         ('language_checkpoint', 'TinyLlama-1.1B-3T'),

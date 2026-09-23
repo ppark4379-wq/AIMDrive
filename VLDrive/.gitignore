@@ -4,6 +4,7 @@
 /data/external/
 /data/raw/
 /data/processed/vision_tokens/
+/data/processed/navigation_tokens/
 
 # Training runs: checkpoints, logs, metrics, predictions.
 /outputs/checkpoints/

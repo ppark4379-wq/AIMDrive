@@ -1,0 +1,65 @@
+{
+  "schema": "morai-vldrive-realtime-v1",
+  "navigation_token_config": "configs/navigation_inference_tokens.json",
+  "stage1_checkpoint": "outputs/checkpoints/morai_visual_encoder.pth.tar",
+  "stage2_checkpoint": "outputs/logs/vldrive_20260921_172411_715080/model-best.pt",
+  "visual_cache": "data/processed/vision_tokens/basic_drive_morai",
+  "navigation_instruction": "Continue straight along the current road.",
+  "control": {
+    "enabled": true,
+    "config": "configs/vldrive_control.json"
+  },
+  "navigation": {
+    "mode": "route",
+    "config": "configs/navigation_observer.json",
+    "max_anchor_skew_s": 0.15
+  },
+  "visualization": {
+    "enabled": true,
+    "open_browser": true,
+    "port": 8502,
+    "refresh_hz": 5.0,
+    "max_prediction_age_s": 3.0
+  },
+  "seed": 607,
+  "ports": {
+    "rgb_front": 10501,
+    "rgb_left": 10502,
+    "rgb_right": 10503,
+    "rgb_rear": 10504,
+    "lidar": 2368,
+    "vehicle_status": 10909,
+    "gps": 10506,
+    "imu": 10507
+  },
+  "lidar": {
+    "axis_policy": "morai_flu_to_lmdrive_fru",
+    "elevations": null
+  },
+  "route": {
+    "csv": null,
+    "utm_east_offset": 302595.0,
+    "utm_north_offset": 4124145.0
+  },
+  "runtime": {
+    "device": "cuda",
+    "bind": "0.0.0.0",
+    "target_hz": 5.0,
+    "prediction_hz": null,
+    "separate_encoder_stream": true,
+    "encoder_queue_size": 3,
+    "max_age_s": 0.3,
+    "max_stream_skew_s": 0.15,
+    "history_tolerance_s": 0.06,
+    "startup_timeout_s": 30.0,
+    "cpu_threads": 2
+  },
+  "output_dir": "outputs/inference",
+  "offline": {
+    "validation_window_index": 0,
+    "token_atol": 0.002,
+    "token_rtol": 0.002,
+    "waypoint_atol_m": 0.05,
+    "waypoint_rtol": 0.01
+  }
+}

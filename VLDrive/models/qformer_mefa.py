@@ -81,6 +81,9 @@ class QFormerMEFAConfig:
     # Legacy MORAI experiments opt into their original graph and mean loss.
     reconstruction_formulation: str = "eq8"
     reconstruction_reduction: str = "sum"
+    # Eq. (8)/(13) refer to the frozen encoder's Fi, not a trainable
+    # normalization target. The old normalized space is an explicit ablation.
+    reconstruction_feature_space: str = "encoder"
     # Experimental MORAI stabilization. Detach only the reconstruction-loss
     # weighting mask, never Eq. 8 or the retained-query straight-through mask.
     # False preserves the original objective and checkpoint tensor shapes.
@@ -148,8 +151,10 @@ class QFormerMEFAConfig:
 
         if self.reconstruction_formulation not in ("eq8", "legacy"):
             raise ValueError("reconstruction_formulation must be eq8 or legacy")
-        if self.reconstruction_reduction not in ("sum", "mean"):
-            raise ValueError("reconstruction_reduction must be sum or mean")
+        if self.reconstruction_reduction not in ("sum", "mean", "fixed_nc", "pruned_mean"):
+            raise ValueError("reconstruction_reduction must be sum, mean, fixed_nc or pruned_mean")
+        if self.reconstruction_feature_space not in ("encoder", "normalized"):
+            raise ValueError("reconstruction_feature_space must be encoder or normalized")
         if not isinstance(self.detach_reconstruction_loss_mask, bool):
             raise ValueError("detach_reconstruction_loss_mask must be a boolean")
         if self.inference_selection_mode not in ("argmax", "topk"):
@@ -1023,7 +1028,7 @@ class QFormerMEFAConnector(nn.Module):
 
     def _reconstruct(
         self,
-        normalized_features: torch.Tensor,
+        reconstruction_features: torch.Tensor,
         language_tokens_flat: torch.Tensor,
         selected_indices_flat: torch.Tensor,
         selected_valid_flat: torch.Tensor,
@@ -1037,13 +1042,13 @@ class QFormerMEFAConnector(nn.Module):
         learnable mask embeddings. Loss is evaluated only on dropped positions.
         """
         batch_frames = int(
-            normalized_features.shape[0]
+            reconstruction_features.shape[0]
         )
         num_tokens = int(
-            normalized_features.shape[1]
+            reconstruction_features.shape[1]
         )
         visual_dim = int(
-            normalized_features.shape[2]
+            reconstruction_features.shape[2]
         )
 
         aligned = self.reconstruction_align(
@@ -1071,7 +1076,7 @@ class QFormerMEFAConnector(nn.Module):
         )
 
         dense_selected = (
-            normalized_features.new_zeros(
+            reconstruction_features.new_zeros(
                 batch_frames,
                 num_tokens,
                 visual_dim,
@@ -1100,7 +1105,7 @@ class QFormerMEFAConnector(nn.Module):
             # retain original features at dropped positions, then apply Eq. 8.
             # Packing is discrete; detach only that placement decision. The
             # explicit M below retains the straight-through selector gradient.
-            filled = dense_selected + normalized_features * (1.0 - mask_3d.detach())
+            filled = dense_selected + reconstruction_features * (1.0 - mask_3d.detach())
             reconstruction_base = filled * mask_3d + mask_embeddings * (1.0 - mask_3d)
         else:
             reconstruction_base = dense_selected + mask_embeddings * (1.0 - mask_3d)
@@ -1139,7 +1144,7 @@ class QFormerMEFAConnector(nn.Module):
             if reconstructed.dtype in (torch.float16, torch.bfloat16)
             else reconstructed
         )
-        target = normalized_features.detach().to(reconstructed_for_loss.dtype)
+        target = reconstruction_features.detach().to(reconstructed_for_loss.dtype)
         dropped = (
             1.0
             - full_selection_mask_flat.to(reconstructed_for_loss.dtype)
@@ -1166,10 +1171,23 @@ class QFormerMEFAConnector(nn.Module):
         # batching averages frames. The legacy mean is an explicit ablation.
         if self.config.reconstruction_reduction == "sum":
             loss_per_frame = numerator
+        elif self.config.reconstruction_reduction == "fixed_nc":
+            # Debug ablation: full token capacity, independent of the mask.
+            # N=106, C=256 in MORAI gives a fixed denominator of 27136.
+            loss_per_frame = numerator / (num_tokens * visual_dim)
+        elif self.config.reconstruction_reduction == "pruned_mean":
+            # Diagnostic: numerator and denominator share the frame scope.
+            # Keep the denominator's mask gradient; guard only exact zero.
+            denominator = loss_weights.sum(dim=1) * visual_dim
+            safe_denominator = torch.where(denominator > 0, denominator,
+                                           torch.ones_like(denominator))
+            loss_per_frame = numerator / safe_denominator
         else:
             denominator = (loss_weights.sum(dim=1) * visual_dim).clamp_min(1.0)
             loss_per_frame = numerator / denominator
-        loss = loss_per_frame.mean()
+        loss = (numerator.mean() / (num_tokens * visual_dim)
+                if self.config.reconstruction_reduction == "fixed_nc"
+                else loss_per_frame.mean())
 
         return {
             "aligned_sparse_tokens": aligned,
@@ -1186,6 +1204,7 @@ class QFormerMEFAConnector(nn.Module):
                 loss_per_frame
             ),
             "reconstruction_loss": loss,
+            "reconstruction_target": target,
             "dropped_mask": dropped,
         }
 
@@ -1561,8 +1580,10 @@ class QFormerMEFAConnector(nn.Module):
                 )
 
             reconstruction = self._reconstruct(
-                normalized_features=(
-                    normalized_flat
+                reconstruction_features=(
+                    self._flatten_frames(features)
+                    if cfg.reconstruction_feature_space == "encoder"
+                    else normalized_flat
                 ),
                 language_tokens_flat=(
                     language_tokens_flat
