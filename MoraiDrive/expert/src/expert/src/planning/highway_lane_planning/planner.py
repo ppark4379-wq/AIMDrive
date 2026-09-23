@@ -3,6 +3,7 @@
 """Lane-link based highway behavior and trajectory planner."""
 
 import math
+import time
 
 import numpy as np
 
@@ -13,6 +14,7 @@ from .merge_safety import MergeSafety
 from .lane_change_safety import LaneChangeSafety
 from .obstacle_motion import ObstacleMotion
 from .multi_lane_planning import MultiLanePlanning
+from .static_corridor import HighwayStaticCorridor
 from .structures import HighwayCandidatePath, HighwayPlanningResult
 
 
@@ -54,6 +56,8 @@ class HighwayLanePlanner:
         self.multi_lane_planning = MultiLanePlanning(self)
         self.static_corridor = None
         self._requested_speed = 0.0
+        self.search_time_budget = None
+        self._search_deadline = None
 
     def set_control_dt(self, control_dt):
         control_dt = float(control_dt)
@@ -61,12 +65,19 @@ class HighwayLanePlanner:
             raise ValueError("control_dt must be positive")
         self.control_dt = control_dt
 
+    def search_timed_out(self):
+        return self._search_deadline is not None and time.monotonic() >= self._search_deadline
+
     def _cycles_for_reference_count(self, reference_cycles):
         duration = float(reference_cycles) / parameters.PLANNER_UPDATE_RATE
         return max(1, int(math.ceil(duration / self.control_dt - 1e-9)))
 
     def plan(self, vehicle_state, reference_path, vehicle_entries, desired_velocity=None,
              prediction_path=None, allow_lane_change=True):
+        # Reuse NPC trajectories across candidate speeds/lanes within this
+        # observation only; never retain stale predictions into the next tick.
+        self.lane_change_safety.predictions.clear()
+        self._search_deadline = None
         ego_match = self._resolve_ego_lane(vehicle_state)
         if ego_match is None:
             self._reset()
@@ -81,6 +92,9 @@ class HighwayLanePlanner:
         self._requested_speed = max(0.0, float(desired_velocity)) if desired_velocity is not None else max(
             vehicle_state.velocity, parameters.LANE_CHANGE_LAUNCH_SPEED
         )
+        remaining_active_candidate = None
+        if self.state in (self.CHANGE_LEFT, self.CHANGE_RIGHT) and self.active_candidate is not None:
+            remaining_active_candidate = self._remaining_active_candidate(vehicle_state)
         self.obstacle_motion.update(vehicle_entries, self.control_dt)
         object_matches = self._match_objects(vehicle_entries)
         predicted_paths = self._prediction_paths(object_matches)
@@ -125,6 +139,7 @@ class HighwayLanePlanner:
             reference_path=merge_reference,
             desired_velocity=(min(desired_velocity, front_acc_target_velocity)
                               if desired_velocity is not None else None),
+            forward_speed_limit=front_acc_target_velocity,
         )
         merge_acc_target_velocity = self._stabilize_merge_speed_limit(
             raw_merge_acc_target_velocity, vehicle_state.velocity
@@ -135,7 +150,31 @@ class HighwayLanePlanner:
         merge_source_lead = self._merge_conflict_is_source_lead(ego_match, object_matches)
         merge_allows_overtake = (math.isinf(merge_acc_target_velocity) or merge_source_lead
                                 or (self._merge_guard_active and self.merge_safety.details.get("decision") == "GO"))
-        source_path_escape = (static_avoidance or (proactive_overtake and merge_allows_overtake)) and allow_lane_change
+        second_merge_distance = vehicle_state.position.distance(
+            Point(*parameters.CONSERVATIVE_MERGE_POINT)
+        )
+        second_merge_lane_preference = (
+            parameters.CONSERVATIVE_MERGE_ENTRY_RADIUS
+            < second_merge_distance
+            <= parameters.SECOND_MERGE_LANE_PREFERENCE_RADIUS
+            and current_link.section_index in parameters.SECOND_MERGE_LANE_PREFERENCE_SECTIONS
+            and current_link.lane_number in (2, 3, 4)
+        )
+        second_merge_middle_lane = (
+            second_merge_lane_preference
+            and current_link.lane_number == 3
+        )
+
+        second_merge_leave_right = (
+            second_merge_lane_preference
+            and current_link.lane_number
+            not in parameters.SECOND_MERGE_PREFERRED_LANE_NUMBERS
+        )
+        preference_merge_go = (second_merge_leave_right and self._merge_guard_active
+                               and self.merge_safety.details.get("decision") == "GO"
+                               and self.merge_safety.details.get("conflict") is None)
+        source_path_escape = (static_avoidance or (proactive_overtake and merge_allows_overtake)
+                              or preference_merge_go) and allow_lane_change
         acc_target_velocity = min(
             acc_target_velocity, merge_acc_target_velocity
         )
@@ -235,7 +274,7 @@ class HighwayLanePlanner:
             heading_aligned = abs(self.lane_map._angle_difference(vehicle_state.yaw, ego_match.yaw)) < math.radians(5.0)
             corridor_complete = (not getattr(self.active_candidate, 'static_corridor', False)
                                  or vehicle_state.position.distance(self.active_candidate.transition_end) < 1.0)
-            if ego_match.distance <= parameters.MANEUVER_COMPLETE_DISTANCE and (not compact or heading_aligned) and corridor_complete:
+            if ego_match.distance <= parameters.MANEUVER_COMPLETE_DISTANCE and heading_aligned and corridor_complete:
                 completed_direction = self.state
                 self.state = self.KEEP
                 self.source_link_id = None
@@ -246,7 +285,7 @@ class HighwayLanePlanner:
                     vehicle_state.position.x, vehicle_state.position.y
                 )
             else:
-                active_candidate = self._remaining_active_candidate(vehicle_state)
+                active_candidate = remaining_active_candidate
                 if active_candidate is None:
                     active_candidate = keep_candidate
                 else:
@@ -256,6 +295,8 @@ class HighwayLanePlanner:
                     self._evaluate_lane_change(active_candidate, vehicle_state,
                                                change_entries, change_matches, committed=True)
                     conflict = getattr(active_candidate, "prediction_conflict", None)
+                    if (conflict is None and getattr(active_candidate, "lane_change_count", 1) == 2):
+                        conflict = getattr(active_candidate, "requested_conflict", None)
                     if conflict:
                         intermediate = self.multi_lane_planning.hold_intermediate(
                             vehicle_state, active_candidate, change_entries, change_matches)
@@ -264,7 +305,7 @@ class HighwayLanePlanner:
                             conflict = None
                             common["target_link_id"] = self.target_link_id
                             debug_details["multi_lane_held_intermediate"] = True
-                    if conflict and conflict.get("rear"):
+                    if getattr(active_candidate, "prediction_conflict", None) and conflict and conflict.get("rear"):
                         aborted = self._safe_return_to_source(vehicle_state, change_entries, change_matches)
                         if aborted is not None:
                             active_candidate = aborted
@@ -311,20 +352,6 @@ class HighwayLanePlanner:
             else 0.0
         )
 
-        second_merge_distance = vehicle_state.position.distance(
-            Point(*parameters.CONSERVATIVE_MERGE_POINT)
-        )
-        second_merge_lane_preference = (
-            parameters.CONSERVATIVE_MERGE_ENTRY_RADIUS
-            < second_merge_distance
-            <= parameters.SECOND_MERGE_LANE_PREFERENCE_RADIUS
-            and current_link.lane_number in (2, 3, 4)
-        )
-        second_merge_protect_middle = (
-            second_merge_lane_preference
-            and current_link.lane_number == 3
-        )
-
         keep_collision_time = getattr(
             keep_candidate, "collision_time", float("inf")
         )
@@ -332,7 +359,7 @@ class HighwayLanePlanner:
             (
                 (merge_conflict and not source_path_escape)
                 or self._merge_zone_priority == "OTHER"
-                or second_merge_protect_middle
+                or second_merge_middle_lane
             )
             and
             not keep_candidate.valid
@@ -381,11 +408,6 @@ class HighwayLanePlanner:
         )
         safety_avoidance_needed = (
             proactive_lane_change or merge_conflict or not keep_candidate.valid
-        )
-        second_merge_leave_right = (
-            second_merge_lane_preference
-            and current_link.lane_number
-            not in parameters.SECOND_MERGE_PREFERRED_LANE_NUMBERS
         )
         avoidance_needed = (
             safety_avoidance_needed or second_merge_leave_right
@@ -472,6 +494,11 @@ class HighwayLanePlanner:
                     **common
                 )
 
+        # Optional new-maneuver search must not hold an old driving command
+        # for seconds. Mandatory current-path/committed-maneuver checks above
+        # stay complete; an unverified timed-out candidate is never selected.
+        self._search_deadline = (None if self.search_time_budget is None else
+                                 time.monotonic() + self.search_time_budget)
         candidates = [keep_candidate]
         valid_changes = []
         cooldown_blocked = False
@@ -490,6 +517,8 @@ class HighwayLanePlanner:
             if static_avoidance:
                 distances += parameters.STATIC_CHANGE_DISTANCES
             for distance in distances:
+                if self.search_timed_out():
+                    break
                 candidate = self._build_candidate(
                     vehicle_state, target_link, self.lane_map.project(vehicle_state.position, target_link),
                     direction=direction, source_link=current_link, transition_distance=distance,
@@ -519,17 +548,6 @@ class HighwayLanePlanner:
                     # the source obstruction makes the normal path infeasible.
                     break
 
-        if second_merge_protect_middle:
-            # In this section lane 3 is already a preferred lane. Never escape
-            # from it into lane 4. If lane 2 is unavailable, stay in lane 3 and
-            # let longitudinal ACC handle the obstacle instead.
-            valid_changes = [
-                candidate
-                for candidate in valid_changes
-                if candidate.target_lane
-                in parameters.SECOND_MERGE_PREFERRED_LANE_NUMBERS
-            ]
-
         # Preserve the existing adjacent-lane choice. Look two lanes away only
         # when neither legal adjacent lane supplies a safe maneuver.
         if not valid_changes:
@@ -538,31 +556,30 @@ class HighwayLanePlanner:
                 if (lane_change_cooldown_active and not static_avoidance
                         and change_state != self._last_lane_change_direction):
                     continue
-                if (second_merge_protect_middle and target_link.lane_number
-                        not in parameters.SECOND_MERGE_PREFERRED_LANE_NUMBERS):
-                    continue
+                if self.search_timed_out():
+                    break
                 extensions = self.multi_lane_planning.candidates(
                     vehicle_state, current_link, target_link, direction,
                     change_entries, change_matches, static_avoidance)
                 candidates.extend(extensions)
-                valid_changes.extend(candidate for candidate in extensions if candidate.valid
-                    and (not second_merge_protect_middle or candidate.target_lane
-                         in parameters.SECOND_MERGE_PREFERRED_LANE_NUMBERS))
+                valid_changes.extend(candidate for candidate in extensions if candidate.valid)
 
-        if not valid_changes and static_avoidance:
+        if not valid_changes and static_avoidance and not self.search_timed_out():
             # The ordinary highway choices above retain priority. Only a
             # confirmed static obstruction enables the static-zone search.
             if self.static_corridor is None:
-                from .static_corridor import HighwayStaticCorridor
                 self.static_corridor = HighwayStaticCorridor(self)
             extensions = self.static_corridor.candidates(
-                vehicle_state, current_link, change_entries, change_matches,
-                parameters.SECOND_MERGE_PREFERRED_LANE_NUMBERS if second_merge_protect_middle else None)
+                vehicle_state, current_link, change_entries, change_matches)
             candidates.extend(extensions)
             valid_changes.extend(candidate for candidate in extensions if candidate.valid)
             debug_details['static_corridor_search'] = self.static_corridor.status
 
+        debug_details['lane_search_budget_exhausted'] = self.search_timed_out()
         if not valid_changes:
+            if self.search_timed_out() and static_avoidance:
+                acc_target_velocity = min(acc_target_velocity, max(0.0, vehicle_state.velocity))
+                self._last_lane_checks.append("search budget exhausted; keep current-lane braking/ACC")
             if second_merge_leave_right and not safety_avoidance_needed:
                 self.state = self.KEEP
                 return HighwayPlanningResult(
@@ -590,22 +607,19 @@ class HighwayLanePlanner:
             )
 
         if second_merge_lane_preference:
-            # This is a soft lane ranking, not a prohibited-lane rule. Prefer
-            # lanes 2/3 when safe, while retaining lane 4 as an escape option.
-            best = min(
-                valid_changes,
-                key=lambda candidate: (
-                    candidate.cost
-                    + (
-                        0.0
-                        if candidate.target_lane
-                        in parameters.SECOND_MERGE_PREFERRED_LANE_NUMBERS
-                        else parameters.SECOND_MERGE_RIGHT_LANE_COST_PENALTY
-                    )
-                ),
-            )
-        else:
-            best = min(valid_changes, key=lambda candidate: candidate.cost)
+            # Safety/legality are checked above. Rank all remaining options,
+            # including a safe right-lane escape if the preferred lanes are busy.
+            # Store the actual selection cost so candidate logs show the bias.
+            for candidate in candidates:
+                candidate.lane_preference_cost = (
+                    0.0 if candidate.target_lane in parameters.SECOND_MERGE_PREFERRED_LANE_NUMBERS
+                    else parameters.SECOND_MERGE_RIGHT_LANE_COST_PENALTY)
+                candidate.cost += candidate.lane_preference_cost
+            debug_details["lane_preference"] = {
+                "preferred_lanes": parameters.SECOND_MERGE_PREFERRED_LANE_NUMBERS,
+                "right_lane_penalty": parameters.SECOND_MERGE_RIGHT_LANE_COST_PENALTY,
+            }
+        best = min(valid_changes, key=lambda candidate: candidate.cost)
         self.source_link_id = current_link.id
         self.target_link_id = best.target_link_id
         self.active_candidate = best
@@ -618,8 +632,7 @@ class HighwayLanePlanner:
             best.points,
             active=True,
             obstacle_detected=safety_avoidance_needed,
-            # A safe lane change keeps the route planner's requested speed.
-            # Dynamic collision/clearance checks above remain the safety gate.
+            # Apply the verified gap speed throughout the lateral maneuver.
             acc_override=math.isfinite(speed_limit),
             acc_target_velocity=speed_limit,
             highway_state=self.state,
@@ -682,6 +695,24 @@ class HighwayLanePlanner:
                 + max(0.0, object_speed - ego_speed)
                 * parameters.TARGET_LANE_REAR_TIME_GAP
             )
+            if (self.lane_change_safety.first_merge_static_escape(candidate)
+                    and getattr(candidate, "lane_change_verified", False)):
+                front_clearance = (
+                    parameters.FIRST_MERGE_STATIC_FRONT_BUMPER_GAP
+                    + parameters.VEHICLE_LENGTH
+                    + 0.5 * max(1.0, entry["object_info"].size_x)
+                    + max(0.0, ego_speed - object_speed) * parameters.TARGET_LANE_FRONT_TIME_GAP
+                )
+                rear_clearance = (
+                    parameters.FIRST_MERGE_STATIC_REAR_BUMPER_GAP
+                    + 0.5 * max(1.0, entry["object_info"].size_x)
+                    + max(0.0, object_speed - ego_speed)
+                    * parameters.FIRST_MERGE_STATIC_REAR_TIME_GAP
+                )
+                if signed_distance < 0.0:
+                    self._last_lane_checks.append(
+                        "first-static rear-gap={:.1f} required={:.1f} closing={:.1f}".format(
+                            -signed_distance, rear_clearance, max(0.0, object_speed-ego_speed)))
             if 0.0 <= signed_distance < front_clearance:
                 self._last_lane_checks.append(
                     "{} blocked-front link={} gap={:.1f} required={:.1f} speed={:.1f}".format(
@@ -724,7 +755,7 @@ class HighwayLanePlanner:
 
     def _merge_acc_speed_limit(
         self, vehicle_state, ego_match, object_matches, vehicle_entries=(),
-        reference_path=None, desired_velocity=None,
+        reference_path=None, desired_velocity=None, forward_speed_limit=float("inf"),
     ):
         """Return a speed ceiling when two different links reach one merge."""
         ego_link = ego_match.lane_link
@@ -733,6 +764,7 @@ class HighwayLanePlanner:
         limit = self.merge_safety.limit(
             vehicle_state, ego_match, object_matches, vehicle_entries,
             reference_path=reference_path, desired_velocity=desired_velocity,
+            forward_speed_limit=forward_speed_limit,
         )
         self._merge_guard_active = limit is not None
         if self._merge_guard_active:
@@ -747,7 +779,8 @@ class HighwayLanePlanner:
             self._last_merge_debug.append(
                 "{} {} conflict={} target={:.2f}m/s".format(
                     details["zone"], details["decision"], details.get("conflict"), limit
-                )
+                ) + " cause={} stop_conflict={}".format(
+                    details.get("cause", "none"), details.get("stop_conflict"))
             )
             return limit
         ego_distance = max(0.0, ego_link.length - ego_match.s)
@@ -1847,10 +1880,26 @@ class HighwayLanePlanner:
             return None
         nearest_index = min(
             range(len(candidate.points)),
-            key=lambda index: candidate.points[index].distance(vehicle_state.position),
+            key=lambda index: ((candidate.points[index].x - vehicle_state.position.x)**2
+                               + (candidate.points[index].y - vehicle_state.position.y)**2),
         )
         start_index = max(0, nearest_index - 1)
         candidate.points = candidate.points[start_index:]
+        # Preserve the verified lateral transition, but replenish its lane-follow
+        # tail before safety prediction or Pure Pursuit can run out of points.
+        needed = max(parameters.PATH_LOOKAHEAD_MIN,
+                     max(vehicle_state.velocity, self._requested_speed)
+                     * max(parameters.MERGE_SAFETY_HORIZON, parameters.LANE_CHANGE_SETTLE_TIME) + 20.0)
+        remaining = self._cumulative_distance(candidate.points)[-1]
+        if remaining < needed:
+            endpoint = self._project_maneuver_route(candidate.points[-1], candidate.target_link_id)
+            if endpoint is not None and endpoint.distance <= parameters.LANE_MATCH_MAX_DISTANCE:
+                extension = self.lane_map.route_points(
+                    endpoint, needed - remaining, parameters.PATH_SAMPLE_SPACING)
+                for point, _, _ in extension[1:]:
+                    if math.hypot(point.x-candidate.points[-1].x,
+                                  point.y-candidate.points[-1].y) > .1:
+                        candidate.points.append(point)
         if getattr(candidate, "compact_static", False):
             # Release the cap from bends already passed. Remaining bends still
             # limit speed and the full traffic prediction runs again below.
@@ -1859,7 +1908,34 @@ class HighwayLanePlanner:
         candidate.collision_time = float("inf")
         return candidate
 
+    def _project_maneuver_route(self, position, link_id):
+        """Project only onto the committed lane and its actual route successors."""
+        matches, visited = [], set()
+        for _ in range(9):
+            if link_id not in self.lane_map.links or link_id in visited:
+                break
+            visited.add(link_id)
+            matches.append(self.lane_map.project(position, self.lane_map.links[link_id]))
+            link_id = self.lane_map.default_successor(link_id)
+        return min(matches, key=lambda match: match.distance) if matches else None
+
     def _resolve_ego_lane(self, vehicle_state):
+        if (self.state in (self.CHANGE_LEFT, self.CHANGE_RIGHT)
+                and self.active_candidate is not None):
+            candidate = self.active_candidate
+            # A new road section is not a new lateral target. In particular,
+            # 420 -> 408 must not fall back to source successor 434 merely
+            # because Ego is still more than 2.4 m from its target centerline.
+            match = self._project_maneuver_route(vehicle_state.position, candidate.target_link_id)
+            maximum = max(parameters.MANEUVER_TARGET_MAX_DISTANCE,
+                          abs(candidate.offset) + 1.0)
+            if match is None or match.distance > maximum:
+                return None
+            self.target_link_id = match.lane_link.id
+            candidate.target_link_id = match.lane_link.id
+            candidate.target_lane = match.lane_link.lane_number
+            return match
+
         global_match = self.lane_map.match(
             vehicle_state.position,
             heading=vehicle_state.yaw,
@@ -2157,7 +2233,12 @@ class HighwayLanePlanner:
 
     def _safe_return_to_source(self, vehicle_state, entries, matches):
         source = self.lane_map.links.get(self.source_link_id)
-        if source is None:
+        target = self.lane_map.links.get(self.target_link_id)
+        if source is None or target is None:
+            return None
+        # An abort is also a lane change: do not cross a one-way boundary
+        # back into the entrance lane, or jump over an intermediate lane.
+        if source.id not in {link.id for _, link in self.lane_map.legal_neighbors(target)}:
             return None
         projection = self.lane_map.project(vehicle_state.position, source)
         if projection.distance > parameters.LANE_CHANGE_ABORT_MAX_LATERAL:
@@ -2179,16 +2260,62 @@ class HighwayLanePlanner:
     def _evaluate_lane_change(self, candidate, vehicle_state, entries, matches, committed=False):
         if not candidate.valid or len(candidate.points) < 2:
             return
-        target_speed = min(self._requested_speed, getattr(candidate, "speed_limit", float("inf")))
+        if (not committed and getattr(candidate, "static_escape", False)
+                and vehicle_state.velocity >= parameters.STATIC_CHANGE_MAX_SPEED
+                and not hasattr(candidate, "maneuver_speed_limit")):
+            # Keep the entry speed through lateral motion instead of suddenly
+            # accelerating toward a 100 km/h global-route request. Slower
+            # starts use the existing path ceiling and acceleration checks.
+            candidate.maneuver_speed_limit = min(
+                self._requested_speed,
+                max(vehicle_state.velocity, parameters.STATIC_CHANGE_MAX_SPEED))
+        target_speed = min(self._requested_speed,
+                           getattr(candidate, "speed_limit", float("inf")),
+                           getattr(candidate, "maneuver_speed_limit", float("inf")))
         conflict = self.lane_change_safety.check(candidate, vehicle_state, entries, matches, target_speed,
                                                   committed=committed)
         candidate.prediction_conflict = conflict
+        candidate.requested_conflict = conflict
         candidate.safety_speed = float("inf")
         candidate.lane_change_verified = conflict is None
         if conflict is None:
-            candidate.safety_speed = getattr(candidate, "speed_limit", float("inf"))
+            held_limit = getattr(candidate, "maneuver_speed_limit", float("inf"))
+            candidate.safety_speed = min(
+                getattr(candidate, "speed_limit", float("inf")),
+                held_limit if held_limit < self._requested_speed else float("inf"))
             candidate.collision_time = float("inf")
             return
+        source_lead_conflict = any(
+            match.lane_link.id == getattr(candidate, "source_link_id", None)
+            and getattr(entry["object_info"], "unique_id", None) == conflict.get("object_id")
+            and not self.obstacle_motion.is_static(entry["object_info"])
+            for entry, match in matches)
+        if (not committed and (getattr(candidate, "static_escape", False) or source_lead_conflict)
+                and (not conflict.get("rear", False) or vehicle_state.velocity <= 2.0)
+                and conflict["kind"] in ("collision", "gap", "turn_speed") and conflict["time"] > 0.0):
+            # A cruise-speed conflict need not invalidate the lateral path.
+            # Search bounded positive speeds before commitment, always checking
+            # the complete maneuver, acceleration, front traffic AND rear traffic.
+            # Keep the selected cap until completion so the next tick cannot
+            # accelerate back to the profile that was rejected here.
+            speeds = {2.0, max(0.0, vehicle_state.velocity)}
+            speeds.update(max(0.0, float(entry["object_info"].velocity))
+                          for entry in entries)
+            speeds.update(target_speed - 2.0 * step
+                          for step in range(1, int(target_speed / 2.0) + 1))
+            for speed in sorted((v for v in speeds if 2.0 <= v < target_speed), reverse=True):
+                if self.lane_change_safety.check(
+                        candidate, vehicle_state, entries, matches, speed,
+                        require_completion=True, committed=False) is None:
+                    candidate.maneuver_speed_limit = speed
+                    candidate.safety_speed = speed
+                    candidate.prediction_conflict = None
+                    candidate.lane_change_verified = True
+                    candidate.collision_time = float("inf")
+                    self._last_lane_checks.append(
+                        "{} gap-speed={:.1f}km/h cruise={:.1f}km/h".format(
+                            candidate.direction, speed * 3.6, target_speed * 3.6))
+                    return
         if committed:
             # Any speed reduction must also pass the rear-vehicle check. Never
             # assume an instantaneous slowdown when predicting a following car.
@@ -2197,6 +2324,7 @@ class HighwayLanePlanner:
                 if self.lane_change_safety.check(candidate, vehicle_state, entries, matches,
                                                  target, require_completion=False, committed=True) is None:
                     candidate.safety_speed = target
+                    candidate.prediction_conflict = None
                     candidate.lane_change_verified = True
                     candidate.collision_time = float("inf")
                     return
@@ -2284,7 +2412,9 @@ class HighwayLanePlanner:
         if rear_conflict and not math.isfinite(checked_limit) and not merge_acc and not urgent_front_acc:
             # Slowing on the committed path would increase this rear conflict;
             # retain the maneuver speed, including its curvature ceiling.
-            lane_change_speed_limit = getattr(candidate, "speed_limit", float("inf"))
+            lane_change_speed_limit = min(
+                getattr(candidate, "speed_limit", float("inf")),
+                getattr(candidate, "maneuver_speed_limit", float("inf")))
             safety_acc = math.isfinite(lane_change_speed_limit)
         elif emergency_stop:
             lane_change_speed_limit = 0.0
@@ -2356,7 +2486,7 @@ class HighwayLanePlanner:
     def _cumulative_distance(points):
         values = [0.0]
         for start, end in zip(points[:-1], points[1:]):
-            values.append(values[-1] + start.distance(end))
+            values.append(values[-1] + math.hypot(end.x-start.x, end.y-start.y))
         return values
 
     @staticmethod
@@ -2421,9 +2551,9 @@ class HighwayLanePlanner:
         maximum = 0.0
         for index in range(1, len(points) - 1):
             first, middle, last = points[index - 1], points[index], points[index + 1]
-            a = middle.distance(first)
-            b = last.distance(middle)
-            c = last.distance(first)
+            a = math.hypot(middle.x-first.x, middle.y-first.y)
+            b = math.hypot(last.x-middle.x, last.y-middle.y)
+            c = math.hypot(last.x-first.x, last.y-first.y)
             denominator = a * b * c
             if denominator < 1e-9:
                 continue

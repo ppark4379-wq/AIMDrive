@@ -241,6 +241,7 @@ class HighwayLaneMap:
                 target is None
                 or not allowed
                 or target.excluded
+                or (lane_link.id, target.id) in parameters.PROHIBITED_LATERAL_TRANSITIONS
             ):
                 continue
             if target.section_index != lane_link.section_index:

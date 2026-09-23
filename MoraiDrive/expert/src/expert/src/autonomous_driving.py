@@ -69,6 +69,14 @@ class AutonomousDriving(PathController):
         # 현재 위치 기반으로 local path과 planned velocity 추출
         local_path, planned_velocity = self.path_manager.get_local_path(vehicle_state)
         profile_planned_velocity = planned_velocity
+        curvature_bypass = self._second_merge_curvature_bypass(vehicle_state)
+        curvature_free_limit = float("inf")
+        if curvature_bypass:
+            curvature_free_limit = self.path_manager.get_velocity_without_curvature()
+            # Apply before planning: collision prediction and control must see
+            # the same requested speed. Only route curvature is removed.
+            planned_velocity = min(curvature_free_limit,
+                self._second_merge_slowdown_band(curvature_free_limit, vehicle_state))
 
         # 전방 장애물 인지
         self.forward_object_detector._dynamic_object_list = dynamic_object_list
@@ -131,6 +139,9 @@ class AutonomousDriving(PathController):
         )
 
         # adaptive cruise control를 활용한 속도 계획
+        if curvature_bypass:
+            planned_velocity = min(planned_velocity, curvature_free_limit)
+
         legacy_acc_entries = self._legacy_acc_entries(
             vehicle_state, lattice_result, forward_object_info_dic_list
         )
@@ -176,6 +187,24 @@ class AutonomousDriving(PathController):
                     and limits["static"] <= limits[details["speed_source"]]):
                 details["speed_source"] = "static"
             details["final_target_velocity"] = max(0.0, target_velocity)
+        if lattice_result.mode == "highway_lane":
+            state = (lattice_result.reason, target_velocity <= 0.05,
+                     getattr(lattice_result, "highway_state", ""))
+            previous = getattr(self, "_last_highway_control_state", None)
+            changed_from_lane_change = (previous is not None
+                and previous[2] in ("CHANGE_LEFT", "CHANGE_RIGHT") and previous[2] != state[2])
+            if state != previous and (state[1] or (previous is not None and previous[1])
+                                       or changed_from_lane_change):
+                details = lattice_result.debug_details
+                print("[HighwayDecision] pos=({:.2f},{:.2f}) yaw={:.2f} speed={:.2f} target={:.2f} "
+                      "reason={} lane_conflict={} merge={}".format(
+                          vehicle_state.position.x, vehicle_state.position.y,
+                          np.degrees(vehicle_state.yaw), vehicle_state.velocity, target_velocity,
+                          lattice_result.reason, details.get("lane_change_conflict"),
+                          details.get("merge_safety")))
+            self._last_highway_control_state = state
+        else:
+            self._last_highway_control_state = None
         acc_cmd, raw_steering_rad, front_steer_rad = self._calculate_control(
             vehicle_state, planning_path, target_velocity, lattice_result,
             pedestrian_released=self.adaptive_cruise_control.pedestrian_released)
@@ -195,7 +224,12 @@ class AutonomousDriving(PathController):
                 f"profile_v={profile_planned_velocity:.2f} "
                 f"cur_v={vehicle_state.velocity:.2f}"
             )
+            if curvature_bypass:
+                print("[PLAN] curvature=off zone=second_merge reference_v={:.2f} base_v={:.2f}".format(
+                    profile_planned_velocity, planned_velocity))
             details = getattr(lattice_result, "debug_details", {})
+            if details.get("lane_change_conflict"):
+                print("[PLAN] lane_change_conflict={}".format(details["lane_change_conflict"]))
             if "static_avoidance" in details:
                 print("[STATIC] {}".format(details["static_avoidance"]))
             if details:
@@ -276,6 +310,21 @@ class AutonomousDriving(PathController):
         return target
 
     @staticmethod
+    def _second_merge_curvature_bypass(vehicle_state):
+        start = np.asarray(highway_parameters.SECOND_MERGE_SLOWDOWN_POINT)
+        end = np.asarray(highway_parameters.SECOND_MERGE_CURVATURE_BYPASS_END)
+        direction = end - start
+        length = np.linalg.norm(direction)
+        unit = direction / length
+        relative = np.asarray((vehicle_state.position.x, vehicle_state.position.y)) - start
+        progress = np.dot(relative, unit)
+        lateral = abs(relative[0] * unit[1] - relative[1] * unit[0])
+        heading = np.asarray((np.cos(vehicle_state.yaw), np.sin(vehicle_state.yaw)))
+        return bool(0.0 <= progress <= length
+                    and lateral <= highway_parameters.SECOND_MERGE_CURVATURE_BYPASS_HALF_WIDTH
+                    and np.dot(heading, unit) > 0.5)
+
+    @staticmethod
     def _second_merge_slowdown_band(planned_velocity, vehicle_state):
         """두 번째 합류를 지정 좌표 이후부터 35~45km/h 로 통과한다.
 
@@ -305,6 +354,11 @@ class AutonomousDriving(PathController):
     ):
         """Do not let route curvature brake either Ego-first merge."""
         details = getattr(lattice_result, "debug_details", {}) or {}
+        safety = details.get("merge_safety", {}) or {}
+        if safety.get("zone") == "SECOND_ENTRY" and "speed_floor" in safety:
+            # This exact speed was checked on the current path. Signals, front
+            # ACC and the final planner ceiling still take precedence below.
+            planned_velocity = max(float(planned_velocity), float(safety["speed_floor"]))
         priorities = details.get("merge_zone_priorities", {}) or {}
         first_merge_ego = (
             highway_parameters.PREDICTIVE_MERGE_EGO_CURVATURE_SPEED_FLOOR

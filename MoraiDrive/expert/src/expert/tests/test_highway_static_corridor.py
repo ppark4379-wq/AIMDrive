@@ -52,6 +52,9 @@ class HighwayStaticCorridorTests(unittest.TestCase):
         lanes = [SimpleNamespace(id=str(i), points=[Point(x,-20.), Point(x,100.)])
                  for i, x in enumerate((0., -3.5))]
         owner = HighwayCorridorSearch(VehicleState(0.,0.,math.pi/2,0.), lanes, [])
+        # This checks geometry, not the runtime deadline. Concurrent background
+        # searches in the suite must not turn CPU contention into a false failure.
+        owner.corridor_search_timeout = 10.0
         path = owner.run_search()
         self.assertIsNotNone(path)
         self.assertAlmostEqual(-3.5, path[-1,0], places=5)

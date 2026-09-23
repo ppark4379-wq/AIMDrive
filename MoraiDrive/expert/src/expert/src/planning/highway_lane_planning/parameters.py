@@ -22,6 +22,9 @@ VEHICLE_LENGTH = 4.635               # 자차 미래 충돌 검사 사각형 길
 VEHICLE_WIDTH = 2.0                  # 자차 미래 충돌 검사 사각형 폭 [m]
 COLLISION_MARGIN = 0.25              # 미래 충돌 검사 사각형에 추가하는 안전 여유 [m]
 PREDICTION_HORIZON = 0.4             # 차로 유지·변경 후보의 미래 충돌 예측 시간 범위 [s]
+# Physical yaw-change bound: 3 m wheelbase, 40-degree steering (config.json).
+# A stationary car cannot rotate to the first path segment's heading.
+PREDICTION_MAX_YAW_PER_METER = _math.tan(_math.radians(40.0)) / 3.0
 PREDICTION_TIME_STEP = 0.1            # 미래 충돌 검사 시간 간격 [s]
 PREDICTION_MIN_SPEED = 2.0            # 정지 중에도 후보 경로를 검사할 최소 가상 속도 [m/s]
 
@@ -29,6 +32,8 @@ PREDICTION_MIN_SPEED = 2.0            # 정지 중에도 후보 경로를 검사
 # =============================================================================
 # 2. 차선변경: 시작 조건·완료 조건·목표 차선 여유
 # =============================================================================
+# Wall-clock budget for optional new maneuvers in asynchronous driving [s].
+LANE_CHANGE_SEARCH_TIME_BUDGET = 0.08
 LANE_CHANGE_DISTANCE = 55.0          # 고속 차선변경을 완만하게 완료할 종방향 거리 [m]
 LANE_CHANGE_TRIGGER_DISTANCE = 85.0  # 느린 선행차를 따라 감속하기 전에 추월 검토할 범퍼 간격 [m]
 LANE_CHANGE_TRIGGER_TTC = 7.0        # 예상 충돌 시간이 이 값 이하이면 옆 차선 회피 검토 [s]
@@ -38,6 +43,7 @@ LANE_CHANGE_CHECK_STEP = 0.1         # 변경 완료까지 별도로 검사하�
 LANE_CHANGE_SETTLE_TIME = 1.0        # 변경 완료 후에도 검사할 시간 여유 [s]
 LANE_CHANGE_CONTROL_DELAY = 0.3     # 종방향 명령 반영 지연 [s]
 LANE_CHANGE_PREDICT_ACCEL = 1.5      # 변경 중 속도 예측 가속도 [m/s^2]
+LANE_CHANGE_PREDICT_ACCEL_MAX = 3.0  # Also check faster-than-nominal acceleration toward a front vehicle.
 LANE_CHANGE_PREDICT_DECEL = 3.0      # 변경 중 속도 예측 감속도 [m/s^2]
 LANE_CHANGE_LAUNCH_SPEED = 8.0       # 요청 속도 없는 정지 상태 호환 호출의 예측 목표 [m/s]
 LANE_CHANGE_BUMPER_MARGIN = 5.0      # 미래 목표 차선 앞뒤 최소 범퍼 여유 [m]
@@ -68,6 +74,10 @@ TARGET_LANE_REAR_CLEARANCE = 12.0     # 전 구간 충돌 예측과 함께 적�
 TARGET_LANE_FRONT_TIME_GAP = 1.5     # 목표 차선 앞차가 느릴 때 상대속도에 곱할 추가 여유 [s]
 TARGET_LANE_REAR_TIME_GAP = 1.5      # 목표 차선 뒤차가 빠를 때 상대속도에 곱할 추가 여유 [s]
 TARGET_LANE_COMMITTED_REAR_TIME_GAP = 1.0 # 변경 도중 재검사 여유; 차체 충돌·최소 간격 검사는 동일 [s]
+# Only the first merge's static escape (411 -> 409); swept collision checks remain mandatory.
+FIRST_MERGE_STATIC_FRONT_BUMPER_GAP = 8.0  # Only after full escape trajectory validation.
+FIRST_MERGE_STATIC_REAR_BUMPER_GAP = 8.0  # Initial rear bumper clearance [m]
+FIRST_MERGE_STATIC_REAR_TIME_GAP = 1.0    # Additional clearance per closing speed [s]
 
 
 # =============================================================================
@@ -176,6 +186,10 @@ CONSERVATIVE_MERGE_EGO_CURVATURE_SPEED_FLOOR = True # 자차 우선이면 곡률
 # 접근 감속 원: 아래 시작점에서 합류점 뒤 여유거리까지 포함한다.
 # 중심/반경은 파일 끝에서 자동 계산한다. 다른 위험에 따른 감속은 이 영역 밖에서도 가능하다.
 SECOND_MERGE_SLOWDOWN_POINT = (71.22, -121.62) # 접근 감속 영역 시작점 전역 (x, y) [m]
+# Disable route-curvature slowdown only from the second-merge approach to
+# the measured merge end / official-route handoff (A2256W000153 start).
+SECOND_MERGE_CURVATURE_BYPASS_END = (75.41420370276319, -217.855053961277)
+SECOND_MERGE_CURVATURE_BYPASS_HALF_WIDTH = 12.0
 SECOND_MERGE_SLOWDOWN_POINT_Z = 29.87 # 시작점 높이 기록; 현재 판단/표시에서 미사용 [m]
 SECOND_MERGE_SLOWDOWN_EXIT_MARGIN = 5.0 # 감속 영역이 합류점을 지나 더 포함할 거리 [m]
 SECOND_MERGE_SLOWDOWN_MIN_SPEED_KPH = 35.0 # 접근 속도 범위 하한; 위험 감속은 별도 적용 [km/h]
@@ -184,9 +198,22 @@ SECOND_MERGE_SLOWDOWN_MIN_SPEED = SECOND_MERGE_SLOWDOWN_MIN_SPEED_KPH / 3.6 # �
 SECOND_MERGE_SLOWDOWN_MAX_SPEED = SECOND_MERGE_SLOWDOWN_MAX_SPEED_KPH / 3.6 # 접근 상한의 제어용 환산값 [m/s]
 
 # 합류 전 선호 차선
+# Three through lanes after the first merge, through the second approach.
+# Verified acceleration from rest only on the two second-merge approach lanes.
+SECOND_MERGE_LAUNCH_LINK_IDS = ("A2256W000408", "A2256W000434", "A2256W000445", "A2256W000422")
+SECOND_MERGE_LAUNCH_RADIUS = 60.0
+SECOND_MERGE_LAUNCH_START_SPEED = 3.0  # Revalidate a briefly interrupted launch too [m/s]
+SECOND_MERGE_LAUNCH_MIN_TARGET = 8.0
+# Full-throttle launch model: nominal 3 m/s^2, also validate a slower 2.5
+# m/s^2 response and the midpoint. The 0.25 s actuator delay still applies.
+SECOND_MERGE_LAUNCH_ACCEL_MIN = 2.5
+SECOND_MERGE_LAUNCH_ACCEL_MAX = 3.0
+SECOND_MERGE_LAUNCH_P_GAIN = 0.8
+
+SECOND_MERGE_LANE_PREFERENCE_SECTIONS = (2, 3, 4)
 SECOND_MERGE_PREFERRED_LANE_NUMBERS = (2, 3) # 주행 가능한 세 차선 중 왼쪽·가운데 차선 번호
-SECOND_MERGE_RIGHT_LANE_COST_PENALTY = 10.0 # 오른쪽 차선 선택에 더할 비용; 차선 진입 금지는 아님
-SECOND_MERGE_LANE_PREFERENCE_RADIUS = 160.0 # 합류점 주변에서 선호 차선 정책을 적용할 반경 [m]
+SECOND_MERGE_RIGHT_LANE_COST_PENALTY = 1.0 # 오른쪽 차선 선택에 더할 비용; 차선 진입 금지는 아님
+SECOND_MERGE_LANE_PREFERENCE_RADIUS = 280.0 # 합류점 주변에서 선호 차선 정책을 적용할 반경 [m]
 
 # 현재 미사용: 이전 합류 로직의 설정으로, 현재 속도 하한은 MERGE_MIN_YIELD_SPEED를 사용한다.
 CONSERVATIVE_MERGE_PRIORITY_TIME_MARGIN = -0.2 # 이전 상대차 선진입 판단용 도착시간 차이 [s]
@@ -219,6 +246,11 @@ SECTION_ROADS = (                    # (주행 섹션 번호, MGeo 도로 ID)의
     (5, "4000111"),
 )
 ENTRY_LINK_ID = "A2256W000846"        # 다차선 진입 전 단일 링크; 왼쪽 차선 제외 정책 미적용
+# B2256W000038: lane 5 (411) may exit left into lane 4 (409),
+# but lane 4 may not cross the solid side back into the entrance lane.
+# The shipped link_set incorrectly advertises both lateral directions.
+PROHIBITED_LATERAL_TRANSITIONS = frozenset({("A2256W000409", "A2256W000411")})
+
 PROHIBITED_LINK_IDS = ("A2256W000179",) # (65.16, -28.69)부터 시작하는 실선 우측 경계의 금지 링크
 
 # 다음 링크가 두 개이면 실제 분기이며, 빈 튜플이면 다음 주행 섹션으로 연결하지 않는다.

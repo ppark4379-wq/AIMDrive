@@ -37,7 +37,7 @@ class HighwayLanePlanningTest(unittest.TestCase):
             ),
         )
         self.assertEqual(
-            50,
+            17,  # Ten reference cycles at 30 Hz: 0.333 s, rounded up at 50 Hz.
             self.planner._cycles_for_reference_count(
                 parameters.CONSERVATIVE_MERGE_CLEAR_CYCLES
             ),
@@ -413,9 +413,9 @@ class HighwayLanePlanningTest(unittest.TestCase):
         self.assertEqual("A2256W000434", result.target_link_id)
         self.assertEqual("highway_lane_second_merge_prefer_left", result.reason)
 
-    def test_no_obstacle_keeps_global_reference_path(self):
-        ego = self._vehicle_state("A2256W000408", 20.0, 20.0)
-        reference_path = self._reference_path("A2256W000408", 20.0)
+    def test_no_obstacle_keeps_global_reference_path_outside_preference_section(self):
+        ego = self._vehicle_state("A2256W000410", 20.0, 20.0)
+        reference_path = self._reference_path("A2256W000410", 20.0)
         result = self.planner.plan(
             ego,
             reference_path,
@@ -449,10 +449,10 @@ class HighwayLanePlanningTest(unittest.TestCase):
 
         self.assertTrue(result.acc_override)
         self.assertEqual("highway_lane_acc_prepare", result.reason)
-        self.assertLessEqual(
-            result.acc_target_velocity,
-            parameters.ACC_UNMATCHED_HAZARD_SPEED,
-        )
+        # A measured local lead supplies a closing-speed ACC target even
+        # without a map match. The fixed unknown-hazard cap is not this case.
+        self.assertGreater(result.acc_target_velocity, object_info.velocity)
+        self.assertLess(result.acc_target_velocity, ego.velocity)
 
     def test_fast_rear_vehicle_blocks_that_target_lane(self):
         ego = self._vehicle_state("A2256W000408", 50.0, 20.0)
@@ -805,7 +805,7 @@ class HighwayLanePlanningTest(unittest.TestCase):
         self.assertEqual("KEEP_LANE", result.highway_state)
         self.assertEqual(source_link.id, result.target_link_id)
 
-    def test_second_merge_middle_uses_acc_when_left_is_unavailable(self):
+    def test_second_merge_middle_can_use_safe_right_when_left_is_unavailable(self):
         middle_link = self.lane_map.links["A2256W000434"]
         ego_s = 130.0
         ego = self._vehicle_state(middle_link.id, ego_s, 20.0)
@@ -827,10 +827,49 @@ class HighwayLanePlanningTest(unittest.TestCase):
         finally:
             self.planner._target_lane_has_clearance = original_clearance
 
+        self.assertEqual("CHANGE_RIGHT", result.highway_state)
+        self.assertEqual("A2256W000408", result.target_link_id)
+        self.assertTrue(self.planner.active_candidate.lane_change_verified)
+        self.assertEqual(parameters.SECOND_MERGE_RIGHT_LANE_COST_PENALTY,
+                         self.planner.active_candidate.lane_preference_cost)
+
+    def test_second_merge_soft_cost_prefers_left_when_both_changes_are_safe(self):
+        ego = self._vehicle_state("A2256W000434", 130.0, 20.0)
+        result = self.planner.plan(ego, self._reference_path("A2256W000434", 130.0),
+                                  [self._object_entry("A2256W000422", 10.0, 18.0)])
+        self.assertEqual("CHANGE_LEFT", result.highway_state)
+        self.assertEqual("A2256W000435", result.target_link_id)
+        right = next(c for c in result.candidates if c.direction == "right")
+        self.assertTrue(right.valid)
+        self.assertLess(self.planner.active_candidate.cost, right.cost)
+        self.assertEqual(0.0, self.planner.active_candidate.lane_preference_cost)
+
+    def test_second_merge_soft_preference_never_allows_an_occupied_right_lane(self):
+        ego = self._vehicle_state("A2256W000434", 130.0, 20.0)
+        entries = [self._object_entry("A2256W000422", 10.0, 18.0),
+                   self._object_entry("A2256W000435", 130.0, 20.0),
+                   self._object_entry("A2256W000408", 130.0, 20.0)]
+        result = self.planner.plan(ego, self._reference_path("A2256W000434", 130.0), entries)
         self.assertEqual("ACC_FOLLOW", result.highway_state)
-        self.assertNotEqual("CHANGE_RIGHT", result.highway_state)
-        self.assertEqual(middle_link.id, result.target_link_id)
-        self.assertTrue(result.acc_override)
+        self.assertEqual("A2256W000434", result.target_link_id)
+        self.assertFalse(any(c.valid for c in result.candidates if c.direction != "keep"))
+
+    def test_three_lane_straight_prefers_middle_before_old_radius(self):
+        ego = self._vehicle_state("A2256W000420", 10.0, 15.0)
+        self.assertGreater(ego.position.distance(Point(*parameters.CONSERVATIVE_MERGE_POINT)), 160.0)
+        result = self.planner.plan(ego, self._reference_path("A2256W000420", 10.0), [],
+                                   desired_velocity=15.0)
+        self.assertEqual("CHANGE_LEFT", result.highway_state)
+        self.assertEqual("A2256W000430", result.target_link_id)
+        self.assertTrue(self.planner.active_candidate.lane_change_verified)
+
+    def test_three_lane_straight_keeps_safe_right_when_middle_is_occupied(self):
+        ego = self._vehicle_state("A2256W000420", 10.0, 15.0)
+        result = self.planner.plan(ego, self._reference_path("A2256W000420", 10.0),
+            [self._object_entry("A2256W000430", 10.0, 15.0)], desired_velocity=15.0)
+        self.assertIn(result.highway_state, ("KEEP_LANE", "ACC_FOLLOW"))
+        self.assertEqual("A2256W000420", result.target_link_id)
+        self.assertGreaterEqual(result.acc_target_velocity, ego.velocity)
 
     def test_second_merge_rightmost_lane_moves_toward_middle(self):
         source_link = self.lane_map.links["A2256W000408"]
@@ -906,7 +945,7 @@ class HighwayLanePlanningTest(unittest.TestCase):
         self.assertFalse(result.acc_override)
         self.assertEqual("EGO", self.planner._merge_zone_priority)
 
-    def test_second_merge_actual_ego_entry_overrides_early_other_prediction(self):
+    def test_second_merge_clear_ahead_vehicle_and_entered_ego_keep_priority(self):
         ego_link = self.lane_map.links["A2256W000422"]
         other_link = self.lane_map.links["A2256W000445"]
         merge_point = Point(*parameters.CONSERVATIVE_MERGE_POINT)
@@ -928,7 +967,10 @@ class HighwayLanePlanningTest(unittest.TestCase):
             ),
             [predicted_winner],
         )
-        self.assertEqual("OTHER", self.planner._merge_zone_priority)
+        # The first vehicle is ahead and pulling away at 30 versus 20 m/s.
+        # A lateral spacing margin alone must not manufacture a merge conflict.
+        self.assertEqual("EGO", self.planner._merge_zone_priority)
+        self.assertIsNone(self.planner.merge_safety.details["conflict"])
 
         still_approaching = self._object_entry(
             other_link.id,
@@ -1064,10 +1106,11 @@ class HighwayLanePlanningTest(unittest.TestCase):
 
         self.assertTrue(result.acc_override)
         self.assertEqual("highway_lane_merge_acc", result.reason)
-        self.assertLessEqual(
-            result.acc_target_velocity,
-            parameters.CONSERVATIVE_MERGE_MAX_SPEED,
-        )
+        # Predictive merge control selects a collision-free speed; the legacy
+        # fixed 14 m/s ceiling must not reintroduce an unnecessary slowdown.
+        self.assertEqual("YIELD", result.debug_details["merge_safety"]["decision"])
+        self.assertGreater(result.acc_target_velocity, 0.0)
+        self.assertLess(result.acc_target_velocity, ego.velocity)
 
     def test_merge_acc_one_frame_dropout_recovers_without_toggle(self):
         first_limit = self.planner._stabilize_merge_speed_limit(5.0, 20.0)

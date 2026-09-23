@@ -70,14 +70,20 @@ class PathController:
             and self.previous_target_velocity is not None
             and self.previous_target_velocity <= .05 and target_velocity > .05
         )
-        fast_stop_release = fast_roundabout_release or fast_pedestrian_release
+        second_merge_launch_gain = self._second_merge_launch_acceleration_gain(
+            target_velocity, vehicle_state, lattice_result)
+        second_merge_release = (second_merge_launch_gain is not None
+                                and self.previous_target_velocity is not None
+                                and self.previous_target_velocity <= .05)
+        fast_stop_release = fast_roundabout_release or fast_pedestrian_release or second_merge_release
         if fast_stop_release:
             self.pid.reset()
         # 속도 제어를 위한 PID control
         acc_cmd = self.pid.get_output(
             target_velocity, vehicle_state.velocity,
-            derivative_on_measurement=(lattice_result.mode == "roundabout_entry" or fast_pedestrian_release),
-            acceleration_p_gain=(self._highway_escape_acceleration_gain(
+            derivative_on_measurement=(lattice_result.mode in ("roundabout_entry", "highway_lane")
+                                       or fast_pedestrian_release),
+            acceleration_p_gain=(second_merge_launch_gain or self._highway_escape_acceleration_gain(
                 target_velocity, vehicle_state, lattice_result
             ) or self._roundabout_entry_acceleration_gain(
                 target_velocity, vehicle_state, lattice_result
@@ -181,6 +187,8 @@ class PathController:
         )
         if highway_planner is not None:
             highway_planner.set_control_dt(selected_dt)
+            highway_planner.search_time_budget = (None if sync_mode else
+                highway_parameters.LANE_CHANGE_SEARCH_TIME_BUDGET)
 
         if mode_changed:
             self.pid.reset()
@@ -247,6 +255,18 @@ class PathController:
             "roundabout_entry_cruise",
             "roundabout_entry_follow_lead",
         )
+
+    @staticmethod
+    def _second_merge_launch_acceleration_gain(target_velocity, vehicle_state, lattice_result):
+        safety = getattr(lattice_result, "debug_details", {}).get("merge_safety", {})
+        if (getattr(lattice_result, "mode", "") != "highway_lane"
+                or safety.get("zone") != "SECOND_ENTRY"
+                or safety.get("decision") != "GO" or not safety.get("launch_verified")
+                or target_velocity <= max(.05, vehicle_state.velocity)
+                or target_velocity < safety.get("launch_target", float("inf")) - 1e-6):
+            return None
+        # Lower ACC, pedestrian/signal limits and every STOP retain normal braking.
+        return highway_parameters.SECOND_MERGE_LAUNCH_P_GAIN
 
     @staticmethod
     def _highway_escape_acceleration_gain(target_velocity, vehicle_state, lattice_result):

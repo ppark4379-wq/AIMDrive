@@ -139,8 +139,19 @@ class PathManager:
             float(speed_limit_deceleration),
         )
         self.speed_limit_profile = speed_limits.tolist()
+        # Keep legal-zone braking independent of the route's curvature profile.
+        self.regulatory_velocity_profile = self._apply_deceleration_limit(
+            speed_limits, float(speed_limit_deceleration))
 
         self.velocity_profile = velocity_profile.tolist()
+
+    def get_velocity_without_curvature(self):
+        """Current route speed with legal-zone and terminal braking only."""
+        index = self.current_waypoint
+        limit = float(self.regulatory_velocity_profile[index])
+        if not self.is_closed_path:
+            limit = min(limit, sqrt(2.0 * self.terminal_deceleration * self._distance_to_end[index]))
+        return max(0.0, limit)
 
     def _nearest_path_index(self, point):
         px, py = float(point[0]), float(point[1])

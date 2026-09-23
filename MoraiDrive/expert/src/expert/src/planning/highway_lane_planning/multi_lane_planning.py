@@ -20,6 +20,8 @@ class MultiLanePlanning:
         candidates = []
         distances = (p.LANE_CHANGE_DISTANCE,) + (p.STATIC_CHANGE_DISTANCES if static else ())
         for distance in distances:
+            if planner.search_timed_out():
+                break
             first = planner._build_candidate(ego, via, lane_map.project(ego.position, via),
                                               direction, source, distance,
                                               prediction_horizon=p.MERGE_SAFETY_HORIZON)

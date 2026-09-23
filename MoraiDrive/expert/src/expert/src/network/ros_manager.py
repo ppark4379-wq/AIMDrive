@@ -146,6 +146,7 @@ class RosManager:
                 ego_seq=status_sequence, object_count=len(object_info_list),
                 object_delta_s=object_delta, control_dt_s=control_dt, source=input_source,
                 sync_mode=sync_mode, grpc_tick=grpc_tick, grpc_tick_delta=grpc_tick_delta)
+            control_started = time.monotonic()
             control_input, local_path = self.autonomous_driving.execute(
                 vehicle_state,
                 object_info_list,
@@ -153,6 +154,11 @@ class RosManager:
                 sync_mode=sync_mode,
                 control_dt=control_dt,
             )
+            control_elapsed = time.monotonic() - control_started
+            if control_elapsed > 0.1:
+                rospy.logwarn_throttle(1.0,
+                    "[ExpertTiming] planning/control took %.3fs; ego_seq=%s objects=%s",
+                    control_elapsed, status_sequence, len(object_info_list))
             self._send_data(
                 control_input, local_path, vehicle_state, object_info_list
             )

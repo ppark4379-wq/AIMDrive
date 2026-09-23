@@ -40,6 +40,41 @@ class StaticMergeEscapeTest(unittest.TestCase):
         return self.planner.plan(self.ego, path, entries, desired_velocity=27.78,
                                  prediction_path=prediction_path)
 
+    def test_first_static_gap_uses_distance_and_closing_speed(self):
+        from types import SimpleNamespace
+        target = self.map.links['A2256W000409']
+        point, yaw, _ = self.map.point_at_s(target, 60.)
+        candidate = SimpleNamespace(points=[point], static_escape=True,
+            source_link_id='A2256W000411', target_link_id=target.id,
+            direction='left', lane_change_verified=True)
+        for distance, rear_speed, permitted in ((11.,10.,True),(9.,10.,False),(20.,25.,False)):
+            with self.subTest(distance=distance, speed=rear_speed):
+                rear_point, rear_yaw, _ = self.map.point_at_s(target, 60.-distance)
+                rear = ObjectInfo(rear_point.x,rear_point.y,rear_speed,1,size_x=4.5,size_y=2.,
+                                  heading_deg=math.degrees(rear_yaw),unique_id=90)
+                entry={'object_info':rear}
+                match=self.map.project(rear_point,target)
+                self.assertEqual(permitted,self.planner._target_lane_has_clearance(
+                    target,candidate,[(entry,match)],10.))
+        # Neither a normal overtake nor a second-merge candidate inherits it.
+        rear_point, rear_yaw, _ = self.map.point_at_s(target,49.)
+        rear=ObjectInfo(rear_point.x,rear_point.y,10.,1,size_x=4.5,size_y=2.,heading_deg=math.degrees(rear_yaw))
+        matches=[({'object_info':rear},self.map.project(rear_point,target))]
+        candidate.static_escape=False
+        self.assertFalse(self.planner._target_lane_has_clearance(target,candidate,matches,10.))
+        candidate.static_escape=True
+        candidate.source_link_id='A2256W000422'
+        self.assertFalse(self.planner._target_lane_has_clearance(target,candidate,matches,10.))
+
+    def test_first_static_can_change_before_distant_rear_passes(self):
+        self.ego=VehicleState(62.17,244.68,math.radians(-89.7),0.)
+        self.blocker=ObjectInfo(62.2,186.,0.,2,is_static=True,size_x=4.69,size_y=2.2,
+                                heading_deg=-90.,unique_id=41)
+        rear=ObjectInfo(66.,304.68,11.11,1,size_x=4.5,size_y=2.,heading_deg=-90.,unique_id=29)
+        result=self.plan([rear])
+        self.assertEqual('CHANGE_LEFT',result.highway_state)
+        self.assertTrue(self.planner.active_candidate.lane_change_verified)
+
     def test_completed_escape_accelerates_with_global_route_still_in_source_lane(self):
         self.assertEqual('CHANGE_LEFT', self.plan().highway_state)
         # Logged pose where the maneuver finished, followed by the stopped pose.
@@ -174,7 +209,7 @@ class StaticMergeEscapeTest(unittest.TestCase):
         result = self.plan([rear])
         self.assertEqual(27.78, result.acc_target_velocity, result.debug_details)
 
-    def test_distant_static_in_merge_does_not_force_a_slow_escape(self):
+    def test_distant_static_in_merge_preserves_entry_speed_through_escape(self):
         self.ego.velocity = 20.0
         lane = self.map.links['A2256W000411']
         origin = self.map.project(self.ego.position, lane)
@@ -183,8 +218,8 @@ class StaticMergeEscapeTest(unittest.TestCase):
                                   size_x=4.69, size_y=2.2, heading_deg=math.degrees(yaw), unique_id=41)
         result = self.plan()
         self.assertEqual('CHANGE_LEFT', result.highway_state)
-        self.assertFalse(result.acc_override)
-        self.assertTrue(math.isinf(result.acc_target_velocity))
+        self.assertTrue(result.acc_override)
+        self.assertAlmostEqual(self.ego.velocity, result.acc_target_velocity)
         self.assertFalse(result.debug_details['highway_static_escape']['compact'])
 
     def test_steering_exception_is_only_for_verified_low_speed_escape(self):

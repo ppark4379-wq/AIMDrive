@@ -63,17 +63,19 @@ class HighwayMultiLaneTest(unittest.TestCase):
         self.assertGreaterEqual(result.acc_target_velocity, 22.0)
 
     def test_safe_right_neighbor_wins_over_a_two_lane_left_escape(self):
+        # 409 -> 411 crosses the solid boundary. Use a legal right change
+        # from 410 -> 409 while an obstacle blocks the adjacent left lane.
         planner, _, _, _ = self.scene()
-        lane = planner.lane_map.links['A2256W000409']
+        lane = planner.lane_map.links['A2256W000410']
         pos, yaw, _ = planner.lane_map.point_at_s(lane, 10.0)
         ego = VehicleState(pos.x, pos.y, yaw, 20.0)
         origin = planner.lane_map.project(pos, lane)
         path = [row[0] for row in planner.lane_map.route_points(origin, 260.0, 0.5)]
         entries = [self.object(planner, ego, lane.id, 55.0, 15.0, 1),
-                   self.object(planner, ego, 'A2256W000410', 110.0, 0.0, 2)]
+                   self.object(planner, ego, 'A2256W000418', 75.0, 0.0, 2)]
         result = planner.plan(ego, path, entries, desired_velocity=22.0)
         self.assertEqual('CHANGE_RIGHT', result.highway_state)
-        self.assertEqual('A2256W000411', result.target_link_id)
+        self.assertEqual('A2256W000409', result.target_link_id)
         self.assertFalse(any(getattr(c, 'lane_change_count', 1) == 2 for c in result.candidates))
 
     def test_occupied_intermediate_lane_is_not_skipped(self):
