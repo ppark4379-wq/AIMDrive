@@ -907,7 +907,10 @@ def _persist_progress(self, during_cleanup=False):
 def _emit_event(self, name, event, **fields):
     payload = {
         "crossing_id": event["id"],
-        "sequence": int(event["sequence"]),
+        # ``RawScenario.event`` owns the generic ``sequence`` field for the
+        # collection-wide event order.  Keep the pedestrian's order in its
+        # own namespace so multi-event evidence cannot collide with it.
+        "dynamic_sequence": int(event["sequence"]),
         "model": event["model"],
         "route_s": float(event["route_s"]),
     }
@@ -1319,7 +1322,7 @@ def _emit_signal_guard(self, name, event, **fields):
     guard = event["signal_guard"]
     payload = {
         "crossing_id": event["id"],
-        "sequence": int(event["sequence"]),
+        "dynamic_sequence": int(event["sequence"]),
         "light_id": guard["light_id"],
         "stopline_route_s": float(guard["stopline_route_s"]),
         "release_route_s": float(guard["release_route_s"]),

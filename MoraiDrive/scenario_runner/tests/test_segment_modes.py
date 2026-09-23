@@ -1444,6 +1444,40 @@ class MissionModesTest(unittest.TestCase):
             scenario.update_dynamic_obstacle(ego, event["route_s"] - 20)
         self.assertEqual(scenario.grpc.spawn_pedestrian.call_count, 1)
 
+    def test_dynamic_collection_event_keeps_npc_and_log_sequences_distinct(self):
+        rows = []
+
+        def collection_writer(event_name, **fields):
+            row = dict(event=event_name, sequence=len(rows), **fields)
+            rows.append(row)
+
+        scenario = SimpleNamespace(
+            cfg={"dynamic_obstacle_review": None},
+            event=collection_writer,
+        )
+        event = {
+            "id": "crossing-test",
+            "sequence": 2,
+            "model": "Man1",
+            "route_s": 90.0,
+            "signal_guard": {
+                "light_id": "C-test",
+                "stopline_route_s": 67.0,
+                "release_route_s": 95.0,
+                "mode": "auto",
+            },
+        }
+
+        dynamic_obstacle._emit_event(
+            scenario, "dynamic_obstacle_started", event, actor_id="actor-1"
+        )
+        dynamic_obstacle._emit_signal_guard(
+            scenario, "dynamic_signal_guard_command", event, verified=True
+        )
+
+        self.assertEqual([row["sequence"] for row in rows], [0, 1])
+        self.assertEqual([row["dynamic_sequence"] for row in rows], [2, 2])
+
     def enable_collection_actor_observation(self, scenario, time_mode="simulation_free_run"):
         # Exercise the actual unchanged collection hook/reader without
         # importing ROS, starting recording, or constructing its output dir.
