@@ -1,0 +1,23 @@
+/pretrained/*
+/YOLOX_outputs/
+/runs/
+/build
+/.idea/
+*.pyc
+/tools/private
+wandb/
+*egg-info*
+fast_reid/datasets/MOT17-ReID
+*/__pycache__
+*.so
+
+# Local environments, credentials and model binaries
+.venv/
+venv/
+.env
+.env.*
+*.pt
+*.pth
+*.onnx
+!pretrained/*.source.json
+!pretrained/README.md

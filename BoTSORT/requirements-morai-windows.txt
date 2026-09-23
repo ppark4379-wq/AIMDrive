@@ -1,0 +1,14 @@
+# Install torch==2.7.1 torchvision==0.22.1 from the official cu128 index first.
+# Python 3.10; camera-only YOLOv7 + BoT-SORT, ReID disabled.
+numpy==1.26.4
+opencv-python==4.11.0.86
+scipy==1.15.3
+pandas==2.2.3
+matplotlib==3.10.3
+seaborn==0.13.2
+PyYAML==6.0.2
+requests==2.32.5
+tqdm==4.67.1
+lap==0.5.12
+setuptools<81
+ultralytics==8.4.160
