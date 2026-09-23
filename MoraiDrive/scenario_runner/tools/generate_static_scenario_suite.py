@@ -59,10 +59,11 @@ def parse_args(argv=None):
     parser.add_argument("--min-obstacles", type=int, default=1)
     parser.add_argument("--max-obstacles", type=int, default=3)
     parser.add_argument("--lateral-margin-m", type=float, default=0.60)
-    parser.add_argument("--yaw-margin-deg", type=float, default=12.0)
+    parser.add_argument("--yaw-margin-deg", type=float, default=0.0,
+                        help="Default keeps the configured obstacle orientation")
     parser.add_argument(
-        "--scale-jitter", type=float, default=0.10,
-        help="Uniform model-scale multiplier range is 1±this value",
+        "--scale-jitter", type=float, default=0.0,
+        help="Compatibility option: only 0 is accepted; MORAI native model size [1, 1, 1] is used",
     )
     parser.add_argument("--trial-timeout-sec", type=float, default=240.0)
     parser.add_argument(
@@ -94,6 +95,10 @@ def parse_args(argv=None):
         help="Stop early after this many accepted layouts",
     )
     parser.add_argument(
+        "--accepted-model-minimum", type=int, default=0,
+        help="Require every configured static model in at least this many accepted layouts",
+    )
+    parser.add_argument(
         "--accepted-route-targets",
         metavar="SHORT,ALTERNATE,WIDE",
         help=(
@@ -102,10 +107,6 @@ def parse_args(argv=None):
         ),
     )
     return parser.parse_args(argv)
-
-
-def _finite_positive(values):
-    return all(math.isfinite(float(value)) and float(value) > 0 for value in values)
 
 
 def load_generation_policy(config_path=CONFIG_PATH, route_path=ROUTE_PATH):
@@ -120,13 +121,10 @@ def load_generation_policy(config_path=CONFIG_PATH, route_path=ROUTE_PATH):
     models = [str(value) for value in scenario.get("static_obstacle_models", [])]
     if not models:
         raise ValueError("static_obstacle_models is empty")
-    scale_overrides = {
-        str(key): [float(item) for item in values]
-        for key, values in scenario.get("static_obstacle_model_scales", {}).items()
-    }
-    fallback_scale = [float(value) for value in spec.get("scale", [1, 1, 1])]
-    if not _finite_positive(fallback_scale):
-        raise ValueError("Static obstacle fallback scale is invalid")
+    # Legacy route/model scales belong to old recorded layouts. New layouts
+    # always use each MORAI asset at its native size.
+    scale_overrides = {model: [1.0, 1.0, 1.0] for model in models}
+    fallback_scale = [1.0, 1.0, 1.0]
     return {
         "models": models,
         "scale_overrides": scale_overrides,
@@ -151,13 +149,13 @@ def _stratified_positions(rng, count):
 
 
 def generate_layout(policy, rng, count, lateral_margin_m, yaw_margin_deg,
-                    scale_jitter):
+                    scale_jitter=0.0, required_model=None):
     if count < 1:
         raise ValueError("Obstacle count must be positive")
     if count > len(policy["models"]):
         raise ValueError("Obstacle count exceeds available unique models")
-    if not 0.0 <= scale_jitter <= 0.25:
-        raise ValueError("scale_jitter must be between 0 and 0.25")
+    if scale_jitter != 0.0:
+        raise ValueError("Random obstacle scale is disabled; use --scale-jitter 0")
 
     first = policy["anchor_start"]
     last = policy["anchor_end"]
@@ -179,7 +177,14 @@ def generate_layout(policy, rng, count, lateral_margin_m, yaw_margin_deg,
     )
     route_start = int(first.get("route_path_index", 0))
     route_end = int(last.get("route_path_index", route_start))
-    models = rng.sample(policy["models"], count)
+    if required_model is not None:
+        if required_model not in policy["models"]:
+            raise ValueError("Required model is outside the generation policy")
+        remaining = [model for model in policy["models"] if model != required_model]
+        models = [required_model] + rng.sample(remaining, count - 1)
+        rng.shuffle(models)
+    else:
+        models = rng.sample(policy["models"], count)
     obstacles = []
     for fraction, model in zip(_stratified_positions(rng, count), models):
         lateral = rng.uniform(-lateral_margin_m, lateral_margin_m)
@@ -187,11 +192,8 @@ def generate_layout(policy, rng, count, lateral_margin_m, yaw_margin_deg,
         y = ay + fraction * dy + lateral * ny
         z = az + fraction * (bz - az)
         yaw = base_yaw + rng.uniform(-yaw_margin_deg, yaw_margin_deg)
-        base_scale = policy["scale_overrides"].get(
-            model, policy["fallback_scale"]
-        )
-        multiplier = rng.uniform(1.0 - scale_jitter, 1.0 + scale_jitter)
-        scale = [round(float(value) * multiplier, 6) for value in base_scale]
+        # Do not inherit enlargement from an old/injected generation policy.
+        scale = [1.0, 1.0, 1.0]
         obstacles.append({
             "model": model,
             "position": {
@@ -205,7 +207,8 @@ def generate_layout(policy, rng, count, lateral_margin_m, yaw_margin_deg,
             "generation": {
                 "longitudinal_fraction": round(fraction, 8),
                 "lateral_offset_m": round(lateral, 6),
-                "scale_multiplier": round(multiplier, 6),
+                "scale_multiplier": 1.0,
+                "scale_policy": "morai_native_model_scale_v1",
             },
         })
     return obstacles
@@ -486,6 +489,7 @@ def build_candidate_document(name, seed, attempt, obstacles, policy):
             "batch_seed": int(seed),
             "attempt": int(attempt),
             "candidate_only_until_expert_passes": True,
+            "scale_policy": "morai_native_model_scale_v1",
         },
         "obstacles": obstacles,
     }
@@ -493,6 +497,8 @@ def build_candidate_document(name, seed, attempt, obstacles, policy):
 
 def main(argv=None):
     args = parse_args(argv)
+    if args.scale_jitter != 0.0:
+        raise SystemExit("Random obstacle scale is disabled; use --scale-jitter 0")
     try:
         route_targets = parse_route_targets(args.accepted_route_targets)
     except ValueError as error:
@@ -511,6 +517,8 @@ def main(argv=None):
         raise SystemExit("--signal-stop-timeout-sec must be positive")
     if args.keep_going_after is not None and args.keep_going_after < 1:
         raise SystemExit("--keep-going-after must be positive")
+    if args.accepted_model_minimum < 0:
+        raise SystemExit("--accepted-model-minimum cannot be negative")
     if args.keep_going_after is not None and route_targets is not None:
         raise SystemExit(
             "--keep-going-after and --accepted-route-targets are mutually exclusive"
@@ -545,6 +553,9 @@ def main(argv=None):
         "seed": seed,
         "requested_attempts": int(args.attempts),
         "accepted_count": 0,
+        "attempted_model_counts": {model: 0 for model in policy["models"]},
+        "accepted_model_counts": {model: 0 for model in policy["models"]},
+        "accepted_model_minimum": int(args.accepted_model_minimum),
         "accepted_route_counts": {
             "short": 0, "alternate": 0, "wide": 0,
         },
@@ -557,6 +568,7 @@ def main(argv=None):
             "lateral_margin_m": float(args.lateral_margin_m),
             "yaw_margin_deg": float(args.yaw_margin_deg),
             "scale_jitter": float(args.scale_jitter),
+            "scale_policy": "morai_native_model_scale_v1",
             "trial_timeout_sec": float(args.trial_timeout_sec),
             "invalid_plan_timeout_sec": float(
                 args.invalid_plan_timeout_sec
@@ -574,21 +586,26 @@ def main(argv=None):
     write_json_atomic(manifest_path, manifest)
 
     signatures = set()
+    coverage_order = list(policy["models"])
+    rng.shuffle(coverage_order)
     print("[STATIC BATCH] suite={} seed={} attempts={}".format(
         suite_name, seed, args.attempts
     ))
     print("[STATIC BATCH] Sensor Record/Synchronization Mode are not used")
+    print("[STATIC BATCH] MORAI native model size [1, 1, 1] is used; no random size multiplier")
     print("[STATIC BATCH] accepted presets: {}".format(output_dir))
 
     try:
         for attempt in range(1, args.attempts + 1):
             for _ in range(1000):
                 count = rng.randint(args.min_obstacles, args.max_obstacles)
+                required_model = coverage_order[(attempt - 1) % len(coverage_order)]
                 obstacles = generate_layout(
                     policy, rng, count,
                     args.lateral_margin_m,
                     args.yaw_margin_deg,
                     args.scale_jitter,
+                    required_model=required_model,
                 )
                 signature = layout_signature(obstacles)
                 if signature not in signatures:
@@ -612,8 +629,10 @@ def main(argv=None):
                 "--static-preset", str(candidate_path),
             ]
             models = [item["model"] for item in obstacles]
-            print("\n[STATIC BATCH {}/{}] count={} models={}".format(
-                attempt, args.attempts, count, ",".join(models)
+            for model in models:
+                manifest["attempted_model_counts"][model] += 1
+            print("\n[STATIC BATCH {}/{}] count={} required={} models={}".format(
+                attempt, args.attempts, count, required_model, ",".join(models)
             ))
             print("[STATIC BATCH] log={}".format(log_path))
             result = run_candidate(
@@ -683,6 +702,8 @@ def main(argv=None):
                 row["route_class"] = route_class
                 row["sha256"] = sha256_file(accepted_path)
                 manifest["accepted_count"] += 1
+                for model in models:
+                    manifest["accepted_model_counts"][model] += 1
                 manifest["accepted_route_counts"][route_class] += 1
                 manifest["accepted_presets"].append(
                     portable_path(accepted_path)
@@ -702,13 +723,19 @@ def main(argv=None):
             manifest["completed_attempts"] = attempt
             write_json_atomic(manifest_path, manifest)
 
+            model_coverage_met = all(
+                count >= args.accepted_model_minimum
+                for count in manifest["accepted_model_counts"].values()
+            )
             if (
                 args.keep_going_after is not None
                 and manifest["accepted_count"] >= args.keep_going_after
+                and model_coverage_met
             ):
                 break
             if (
                 route_targets is not None
+                and model_coverage_met
                 and all(
                     manifest["accepted_route_counts"][key] >= target
                     for key, target in route_targets.items()
@@ -724,13 +751,17 @@ def main(argv=None):
         manifest["interrupted"] = True
         print("\n[STATIC BATCH] interrupted; completed results are preserved")
     finally:
+        manifest["accepted_model_minimum_met"] = all(
+            count >= args.accepted_model_minimum
+            for count in manifest["accepted_model_counts"].values()
+        )
+        manifest["finished_at_unix"] = time.time()
         manifest["accepted_route_targets_met"] = (
             all(
                 manifest["accepted_route_counts"][key] >= target
                 for key, target in route_targets.items()
             ) if route_targets is not None else None
         )
-        manifest["finished_at_unix"] = time.time()
         write_json_atomic(manifest_path, manifest)
 
     print("\n[STATIC BATCH DONE] attempts={} accepted={} rejected={}".format(
@@ -741,6 +772,17 @@ def main(argv=None):
     print("[STATIC BATCH DONE] manifest={}".format(manifest_path))
     if manifest["interrupted"]:
         raise SystemExit(130)
+    if not manifest["accepted_model_minimum_met"]:
+        missing = {
+            model: count for model, count in manifest["accepted_model_counts"].items()
+            if count < args.accepted_model_minimum
+        }
+        print(
+            "[STATIC BATCH INCOMPLETE] accepted model coverage was not met: "
+            "minimum={} actual={}".format(args.accepted_model_minimum, missing),
+            file=sys.stderr,
+        )
+        raise SystemExit(3)
     if route_targets is not None and not manifest["accepted_route_targets_met"]:
         print(
             "[STATIC BATCH INCOMPLETE] accepted route targets were not met: "

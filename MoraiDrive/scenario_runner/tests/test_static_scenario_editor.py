@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import yaml
 
@@ -9,7 +10,9 @@ from ..tools.static_scenario_editor import (
     ExpertCommandRelay,
     LiveState,
     MoraiObstacleReader,
+    load_editor_policy,
 )
+from ..tools import static_scenario_editor as editor_module
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -60,7 +63,51 @@ class StaticScenarioEditorTest(unittest.TestCase):
         obstacle = document["obstacles"][0]
         self.assertEqual(obstacle["position"]["x"], 8.2)
         self.assertEqual(obstacle["route_path_index"], 8)
-        self.assertEqual(obstacle["scale"], [2.0, 3.0, 2.0])
+        # Even a stale editor model-override map cannot enlarge a new preset.
+        self.assertEqual(obstacle["scale"], [1.0, 1.0, 1.0])
+        self.assertEqual(document["scale_policy"], "morai_native_model_scale_v1")
+
+    def test_new_policy_ignores_legacy_enlargement_and_route_zone_defaults(self):
+        root = Path(self.tmp.name) / "legacy_configuration"
+        path = root / "scenario_runner/config/full_loop.yaml"
+        path.parent.mkdir(parents=True)
+        path.write_text(yaml.safe_dump({"scenarios": {"full_loop": {
+            "static_obstacle_models": ["CargoBox", "WoodBox"],
+            "static_obstacle_model_scales": {"CargoBox": [2, 3, 2]},
+            "static_obstacle_default_scale": [2, 3, 2],
+            "route_definition_path": "must_not_read_legacy_zone.yaml",
+        }}}), encoding="utf-8")
+        with patch.object(editor_module, "ROOT", root):
+            models, scales, fallback = load_editor_policy()
+        self.assertEqual(models, ["CargoBox", "WoodBox"])
+        self.assertEqual(scales, {"CargoBox": [1, 1, 1], "WoodBox": [1, 1, 1]})
+        self.assertEqual(fallback, [1, 1, 1])
+
+    def test_new_save_rejects_non_native_and_invalid_scale_without_creating_preset(self):
+        for scale in ([2, 3, 2], [1, 1, .9], [float("nan"), 1, 1],
+                      [float("inf"), 1, 1], [True, 1, 1], [], None):
+            with self.subTest(scale=scale):
+                with self.assertRaisesRegex(ValueError, "Only MORAI native scale"):
+                    self.state.save({"name": "must_not_resize", "obstacles": [{
+                        "actor_id": "obstacle-1", "model": "CargoBox", "scale": scale,
+                    }]})
+                self.assertFalse((Path(self.tmp.name) / "must_not_resize.yaml").exists())
+
+    def test_supplied_actual_non_native_scale_is_not_silently_rewritten(self):
+        observed = dict(self.state.obstacles[0], scale=[2, 3, 2])
+        self.state.update_obstacles([observed])
+        self.mark_passed()
+        with self.assertRaisesRegex(ValueError, "Only MORAI native scale"):
+            self.state.save({"name": "actual_enlarged", "obstacles": [{
+                "actor_id": "obstacle-1", "model": "CargoBox", "scale": [1, 1, 1],
+            }]})
+        self.assertFalse((Path(self.tmp.name) / "actual_enlarged.yaml").exists())
+
+    def test_saved_model_must_match_the_model_that_passed_the_drive(self):
+        with self.assertRaisesRegex(ValueError, "differs from the verified model"):
+            self.state.save({"name": "changed_model", "obstacles": [{
+                "actor_id": "obstacle-1", "model": "WoodBox", "scale": [1, 1, 1],
+            }]})
 
     def test_physical_box_rotation_is_separate_from_replay_actor_heading(self):
         vector = lambda x, y, z: SimpleNamespace(x=x, y=y, z=z)

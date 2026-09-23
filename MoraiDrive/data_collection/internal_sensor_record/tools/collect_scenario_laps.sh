@@ -189,7 +189,8 @@ if [[ -n "$STATIC_PLAN" ]]; then
         exit 2
     fi
     if ! /usr/bin/python3 "$STATIC_PLAN_TOOL" check \
-            --plan "$STATIC_PLAN" --laps "$LAPS" >"$integration_log" 2>&1; then
+            --plan "$STATIC_PLAN" --laps "$LAPS" --require-native-scale \
+            >"$integration_log" 2>&1; then
         echo "[FAIL] 정적 장애물 collection plan이 실행 가능한 상태가 아닙니다." >&2
         cat "$integration_log" >&2 || true
         exit 2

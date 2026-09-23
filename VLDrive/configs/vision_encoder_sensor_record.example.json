@@ -1,0 +1,72 @@
+{
+  "schema": "morai-vision-encoder-realtime-v2",
+  "checkpoint": "outputs/checkpoints/checkpoint-best-object.pth.tar",
+  "encoder": {},
+  "ports": {
+    "rgb_front": 10501,
+    "rgb_left": 10502,
+    "rgb_right": 10503,
+    "rgb_rear": 10504,
+    "gps": 10506,
+    "imu": 10507,
+    "lidar": 2368,
+    "vehicle_status": 10909
+  },
+  "lidar": {
+    "axis_policy": "morai_flu_to_lmdrive_fru",
+    "elevations": null,
+    "frame": "sensor_flu",
+    "lidar_to_base": {
+      "translation_xyz": [
+        1.0,
+        0.0,
+        1.4800000190734863
+      ],
+      "rotation_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  },
+  "route": {
+    "csv": "../MoraiDrive/scenario_runner/data/R_KR_PR_K-city_2025/2026_molit_comp_global_path.txt",
+    "utm_east_offset": 302595.0,
+    "utm_north_offset": 4124145.0,
+    "map_root": "../MoraiDrive/scenario_runner/data/R_KR_PR_K-city_2025",
+    "definition": "../MoraiDrive/scenario_runner/config/full_loop_links.yaml"
+  },
+  "runtime": {
+    "device": "cuda",
+    "bind": "0.0.0.0",
+    "target_hz": 20.0,
+    "max_age_s": 1.0,
+    "startup_timeout_s": 30.0,
+    "cpu_threads": 4,
+    "velocity_source": "vehicle_status",
+    "allow_velocity_mismatch": true
+  },
+  "output": {
+    "window": true,
+    "panels": [
+      "camera",
+      "traffic_light",
+      "bev_detection",
+      "waypoints"
+    ],
+    "window_columns": 2,
+    "window_scale": 1.0,
+    "write_files": false,
+    "dir": "outputs/logs/realtime_sensor_record",
+    "dpi": 130,
+    "render_hz": 4.0
+  },
+  "visualization": {
+    "bev_source": "both",
+    "detection_threshold": 0.5,
+    "show_camera": true,
+    "lidar_overlay": true
+  },
+  "contract_sidecar": "outputs/checkpoints/encoder_contract.json"
+}

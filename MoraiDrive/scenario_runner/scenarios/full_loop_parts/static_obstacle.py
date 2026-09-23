@@ -327,7 +327,6 @@ def _spawn_one_static_obstacle(
         preserved_nearby = []
 
     actor = None
-    scale_overrides = self.cfg.get("static_obstacle_model_scales", {})
     if requested_model is not None:
         if requested_model not in self.static_obstacle_models:
             raise RuntimeError(
@@ -341,9 +340,13 @@ def _spawn_one_static_obstacle(
         models = models[model_offset:] + models[:model_offset]
     selected_scale = None
     for model in models:
-        scale_values = placement.get("scale") or scale_overrides.get(
-            model, spec.get("scale", [1.0, 1.0, 1.0])
-        )
+        if requested_model is not None:
+            # Explicit historical presets replay exactly as verified.
+            scale_values = placement.get("scale") or [1.0, 1.0, 1.0]
+        else:
+            # Fresh layouts use native asset size, including the single-object
+            # path whose route placement can still contain a legacy scale.
+            scale_values = [1.0, 1.0, 1.0]
         actor = self.grpc.spawn_obstacle(
             transform=transform,
             model_name=model,

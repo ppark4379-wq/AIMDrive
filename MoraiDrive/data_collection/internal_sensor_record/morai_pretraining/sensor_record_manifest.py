@@ -141,15 +141,29 @@ def _verify_seal(folder, seal_name="COMPLETE.json"):
     return verify_sealed_directory(folder, seal_name)
 
 
-def effective_admission_directory(episode):
+def recovery_record_path(episode, recovery_name="ADMISSION_RECOVERY.json"):
+    """Resolve an immutable recovery selected by a sealed manifest."""
+    name = Path(str(recovery_name))
+    if name.name != str(recovery_name) or name.suffix != ".json":
+        raise ValueError("Admission recovery must be a run-local JSON filename")
+    run = Path(episode).resolve().parent
+    path = (run / name).resolve()
+    if path.parent != run:
+        raise ValueError("Admission recovery path escapes its run")
+    return path
+
+
+def effective_admission_directory(episode, recovery_name="ADMISSION_RECOVERY.json"):
     """Select an additive corrected admission while preserving admission_v1."""
     from async_capture.journal import digest
     episode = Path(episode).resolve()
     run = episode.parent
     original_dir = episode / "admission_v1"
     _verify_seal(original_dir)
-    recovery_path = run / "ADMISSION_RECOVERY.json"
+    recovery_path = recovery_record_path(episode, recovery_name)
     if not recovery_path.is_file():
+        if recovery_name != "ADMISSION_RECOVERY.json":
+            raise ValueError("Selected admission recovery record is missing")
         return original_dir, {}
 
     load = lambda path: json.loads(Path(path).read_text(encoding="utf-8"))
@@ -204,7 +218,9 @@ def effective_admission_directory(episode):
             geometry_record.get("sha256") == digest(geometry_path)
             and geometry_record.get("seal_sha256")
                 == digest(geometry_dir / "COMPLETE.json")
-            and geometry.get("schema") == "morai_sensor_record_object_geometry_audit_v2"
+            and geometry.get("schema") in (
+                "morai_sensor_record_object_geometry_audit_v2",
+                "morai_sensor_record_object_geometry_audit_v3")
             and geometry.get("raw_manifest_sha256") == original.get("raw_manifest_sha256")
             and geometry.get("structural_valid") is True
             and corrected.get("input_seals", {}).get("object_geometry_audit")
@@ -215,16 +231,18 @@ def effective_admission_directory(episode):
     return corrected_dir, seals
 
 
-def effective_object_geometry_directory(episode):
+def effective_object_geometry_directory(episode, recovery_name="ADMISSION_RECOVERY.json"):
     """Select the geometry ledger linked by the additive admission recovery."""
     episode = Path(episode).resolve()
-    recovery_path = episode.parent / "ADMISSION_RECOVERY.json"
+    recovery_path = recovery_record_path(episode, recovery_name)
     if not recovery_path.is_file():
+        if recovery_name != "ADMISSION_RECOVERY.json":
+            raise ValueError("Selected admission recovery record is missing")
         directory = episode / "object_geometry_audit_v1"
         _verify_seal(directory)
         return directory
     # This validates the full recovery chain before returning its geometry.
-    effective_admission_directory(episode)
+    effective_admission_directory(episode, recovery_name)
     recovery = json.loads(recovery_path.read_text(encoding="utf-8"))
     if recovery.get("corrected_object_geometry") is None:
         directory = episode / "object_geometry_audit_v1"
@@ -234,7 +252,7 @@ def effective_object_geometry_directory(episode):
     return path.parent
 
 
-def verify_episode_evidence(episode, expected):
+def verify_episode_evidence(episode, expected, recovery_name="ADMISSION_RECOVERY.json"):
     episode = Path(episode).resolve()
     stage_dirs = {
         "quality": ("quality", "QUALITY_COMPLETE.json"),
@@ -255,7 +273,7 @@ def verify_episode_evidence(episode, expected):
         "admission_recovery" in expected or "effective_admission" in expected
     )
     if recovery_expected:
-        _, recovery_seals = effective_admission_directory(episode)
+        _, recovery_seals = effective_admission_directory(episode, recovery_name)
         keys = ["admission_recovery", "effective_admission"]
         if "effective_object_geometry" in expected:
             keys.append("effective_object_geometry")
@@ -303,7 +321,9 @@ def official_route_tracker(contract, route_report, episode):
 
 
 def build_episode_manifest(episode, *, campaign_validation_sha256, split,
-                           expected_evidence=None):
+                           expected_evidence=None,
+                           recovery_name="ADMISSION_RECOVERY.json",
+                           published_native_root=None):
     """Build one lightweight manifest from an already admitted episode."""
     from async_capture.journal import digest
     episode = Path(episode).resolve()
@@ -324,8 +344,10 @@ def build_episode_manifest(episode, *, campaign_validation_sha256, split,
 
     if expected_evidence is not None:
         verify_episode_evidence(episode, expected_evidence)
-    admission_dir, recovery_seals = effective_admission_directory(episode)
-    geometry_dir = effective_object_geometry_directory(episode)
+    # The source campaign still pins its original recovery. Verify it above,
+    # then bind the new publication explicitly to the requested additive one.
+    admission_dir, recovery_seals = effective_admission_directory(episode, recovery_name)
+    geometry_dir = effective_object_geometry_directory(episode, recovery_name)
     evidence.update(recovery_seals)
 
     load = lambda path: json.loads(Path(path).read_text(encoding="utf-8"))
@@ -342,7 +364,9 @@ def build_episode_manifest(episode, *, campaign_validation_sha256, split,
         raise ValueError("Sensor Record target timelines have different lengths")
     times, ego_values = dense_ego_timeline(active)
     route_tracker, navigation_contract = official_route_tracker(contract, route_report, episode)
-    source_root = Path(native["source_root"]).resolve()
+    # An already sealed portable publication can pin a promoted native root;
+    # the original audit deliberately retains its capture-time staging path.
+    source_root = Path(published_native_root or native["source_root"]).resolve()
     if not source_root.is_dir():
         raise ValueError("Native Sensor Record source root is unavailable")
 
@@ -439,6 +463,7 @@ def build_episode_manifest(episode, *, campaign_validation_sha256, split,
         "contract": contract,
         "contract_sha256": digest(contract_path),
         "evidence_seal_sha256": evidence,
+        "admission_recovery_path": recovery_name,
         "campaign_validation_sha256": campaign_validation_sha256,
         "object_exclusion_policy": None,
         "excluded_light_ids": [],

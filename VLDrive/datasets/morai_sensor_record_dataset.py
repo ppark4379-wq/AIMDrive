@@ -14,6 +14,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 from .morai_transfer_adapter import MoraiLMDriveVisionAdapter, MoraiVisionAdapterConfig
+from .morai_encoder_contract import world_target_to_local
 from .morai_transfer_targets import render_object_target
 from .morai_gps_speed import parse_native_gps, causal_gps_speed
 
@@ -112,16 +113,21 @@ def verify_seal(folder, seal_name='COMPLETE.json'):
     return seal
 
 
-def verify_admission_recovery(episode, evidence):
+def verify_admission_recovery(episode, evidence, recovery_name='ADMISSION_RECOVERY.json'):
     """Verify the additive admission selected by the publication builder."""
     episode = Path(episode).resolve()
     run = episode.parent
+    name = Path(str(recovery_name))
+    if name.name != str(recovery_name) or name.suffix != '.json':
+        raise ValueError('Admission recovery must be a run-local JSON filename')
     keys = ('admission_recovery', 'effective_admission')
     if not any(key in evidence for key in keys):
+        if recovery_name != 'ADMISSION_RECOVERY.json':
+            raise ValueError('Selected admission recovery lacks sealed evidence')
         return episode / 'admission_v1'
     if not all(key in evidence for key in keys):
         raise ValueError('Incomplete admission recovery evidence')
-    recovery_path = run / 'ADMISSION_RECOVERY.json'
+    recovery_path = child(run, str(recovery_name))
     if (not recovery_path.is_file()
             or digest(recovery_path) != evidence['admission_recovery']):
         raise ValueError('Changed admission recovery record')
@@ -157,6 +163,30 @@ def verify_admission_recovery(episode, evidence):
         and corrected.get('training_visible') is False
     ):
         raise ValueError('Changed corrected admission evidence')
+    geometry_expected = evidence.get('effective_object_geometry')
+    if geometry_expected is not None:
+        geometry_path = child(
+            run, recovery.get('corrected_object_geometry', {}).get('path', ''))
+        if geometry_path.name != 'report.json':
+            raise ValueError('Invalid corrected object geometry path')
+        geometry_dir = geometry_path.parent
+        verify_seal(geometry_dir)
+        geometry = read_json(geometry_path)
+        geometry_seal = digest(geometry_dir / 'COMPLETE.json')
+        if not (
+            recovery['corrected_object_geometry'].get('sha256') == digest(geometry_path)
+            and recovery['corrected_object_geometry'].get('seal_sha256') == geometry_seal
+            and geometry_expected == geometry_seal
+            and geometry.get('schema') in (
+                'morai_sensor_record_object_geometry_audit_v2',
+                'morai_sensor_record_object_geometry_audit_v3')
+            and geometry.get('raw_manifest_sha256') == original.get('raw_manifest_sha256')
+            and geometry.get('structural_valid') is True
+            and corrected.get('input_seals', {}).get('object_geometry_audit')
+                == geometry_seal
+        ):
+            raise ValueError('Changed corrected object geometry evidence')
+
     return corrected_dir
 
 
@@ -273,7 +303,8 @@ class SensorRecordDataset(Dataset):
                     if digest(episode/folder/seal) != doc['evidence_seal_sha256'][key]:
                         raise ValueError('Changed episode evidence: ' + key)
                 verify_admission_recovery(
-                    episode, doc.get('evidence_seal_sha256', {}))
+                    episode, doc.get('evidence_seal_sha256', {}),
+                    doc.get('admission_recovery_path', 'ADMISSION_RECOVERY.json'))
             if (contract.get('raw_lidar_axes') != 'FLU' or contract.get('lidar_sweeps') != 1
                     or contract.get('preprocessing') != 'lmdrive_compat'):
                 raise ValueError('Unsupported LiDAR input contract')
@@ -357,9 +388,8 @@ class SensorRecordDataset(Dataset):
         if num == 0:
             raise ValueError('Empty LiDAR after preprocessing')
         ego,nav = entry['ego_pose'],entry['navigation']
-        dx,dy=nav['target_x']-ego['x'],nav['target_y']-ego['y']
-        c,s=math.cos(ego['yaw']),math.sin(ego['yaw'])
-        target = np.asarray([dx*s-dy*c, -dx*c-dy*s],dtype=np.float32)
+        target = world_target_to_local((nav['target_x'], nav['target_y']),
+                                      (ego['x'], ego['y']), ego['yaw'])
         if not np.isfinite(target).all() or np.linalg.norm(target)>100:
             raise ValueError('Invalid local route target')
         inputs.update(lidar=torch.from_numpy(lidar), num_points=torch.tensor(num),

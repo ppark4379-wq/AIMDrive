@@ -189,6 +189,18 @@ def promote_candidate(manifest_path, attempt, reviewer, note):
     manifest["accepted_presets"] = [
         item["accepted_preset"] for item in accepted_rows
     ]
+    if "accepted_model_counts" in manifest:
+        model_counts = {
+            model: 0 for model in manifest["accepted_model_counts"]
+        }
+        for item in accepted_rows:
+            for model in item.get("models", []):
+                model_counts[model] = model_counts.get(model, 0) + 1
+        manifest["accepted_model_counts"] = model_counts
+        minimum = int(manifest.get("accepted_model_minimum", 0))
+        manifest["accepted_model_minimum_met"] = all(
+            count >= minimum for count in model_counts.values()
+        )
     write_json_atomic(manifest_path, manifest)
     return output
 

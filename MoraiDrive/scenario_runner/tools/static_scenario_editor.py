@@ -4,6 +4,10 @@
 Operators move obstacles in MORAI while Expert commands are held by a brake
 relay. The browser can then release the real Expert commands to ``/ctrl_cmd``
 so the planned path and the driven Ego trace remain visible in one view.
+
+New presets use MORAI native model scale [1, 1, 1]. The live inventory reports
+physical bbox dimensions, not an actor scale field, so unit replay scale alone
+does not prove a manually resized actor was tested at its native dimensions.
 """
 
 import argparse
@@ -27,6 +31,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PRESET_DIR = ROOT / "scenario_runner" / "config" / "static_scenario_presets"
 WEB_PATH = Path(__file__).with_name("static_scenario_editor_web.html")
 SCHEMA = "morai_static_obstacle_preset_v1"
+NATIVE_SCALE = (1.0, 1.0, 1.0)
 NAME_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
 
 
@@ -48,26 +53,22 @@ def load_editor_policy():
     with config_path.open("r", encoding="utf-8") as source:
         config = yaml.safe_load(source)["scenarios"]["full_loop"]
     models = [str(value) for value in config.get("static_obstacle_models", [])]
-    scales = {
-        str(key): [float(item) for item in value]
-        for key, value in config.get("static_obstacle_model_scales", {}).items()
-    }
-    default_scale = [
-        float(value)
-        for value in config.get("static_obstacle_default_scale", [2.0, 3.0, 2.0])
-    ]
-    # Preserve the established route-zone default when the explicit key is absent.
-    if "static_obstacle_default_scale" not in config:
-        route_path = Path(config["route_definition_path"])
-        if not route_path.is_absolute():
-            route_path = ROOT / "scenario_runner" / route_path
-        with route_path.open("r", encoding="utf-8") as source:
-            route = yaml.safe_load(source)["full_loop"]
-        default_scale = [
-            float(value)
-            for value in route["zones"]["static_obstacle"].get("scale", default_scale)
-        ]
+    # Historical model overrides and route-zone defaults describe old captures.
+    # They must not enlarge new editor presets. Existing preset files are unchanged.
+    scales = {model: list(NATIVE_SCALE) for model in models}
+    default_scale = list(NATIVE_SCALE)
     return models, scales, default_scale
+
+
+def require_native_scale(scale, actor_id):
+    if (not isinstance(scale, (list, tuple)) or len(scale) != 3
+            or any(isinstance(value, bool) or not isinstance(value, (int, float))
+                   or not math.isfinite(value) or value != 1.0 for value in scale)):
+        raise ValueError(
+            "Only MORAI native scale [1, 1, 1] can be saved for actor {}. "
+            "Restore native size in MORAI and pass the layout again; "
+            "the editor will not resize a verified layout.".format(actor_id))
+    return list(NATIVE_SCALE)
 
 
 class LiveState:
@@ -463,9 +464,16 @@ class LiveState:
             model = str(selected_item.get("model") or item.get("model") or "").strip()
             if model not in self.models:
                 raise ValueError("Choose an allowed replay model for actor {}".format(actor_id))
-            scale = selected_item.get("scale") or self.model_scales.get(model) or self.default_scale
-            if not isinstance(scale, list) or len(scale) != 3 or any(float(v) <= 0 for v in scale):
-                raise ValueError("Scale for actor {} must contain three positive values".format(actor_id))
+            known_model = str(item.get("model") or "").strip()
+            if known_model and model != known_model:
+                raise ValueError("Replay model for actor {} differs from the verified model {}. "
+                                 "Change the actor in MORAI and pass the layout again.".format(actor_id, known_model))
+            scale = require_native_scale(selected_item.get("scale", list(NATIVE_SCALE)), actor_id)
+            # Preserve any explicit actor-scale evidence supplied by an inventory.
+            # Current GetAllActorsState payload has only physical bbox dimensions;
+            # absence of this field is not a claim of physical native-size proof.
+            if "scale" in item:
+                require_native_scale(item["scale"], actor_id)
             nearest_index = min(
                 range(len(route)),
                 key=lambda index: math.hypot(
@@ -497,6 +505,7 @@ class LiveState:
             "scenario": "full_loop_static",
             "saved_at_unix": time.time(),
             "source": "live_morai_static_scenario_editor",
+            "scale_policy": "morai_native_model_scale_v1",
             "obstacles": output_obstacles,
         }
         self.preset_dir.mkdir(parents=True, exist_ok=True)

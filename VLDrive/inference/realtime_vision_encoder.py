@@ -58,6 +58,7 @@ import numpy as np
 import torch
 
 from inference.live_frame import LiveFrameSource
+from datasets.morai_encoder_contract import checkpoint_encoder_contract
 from inference.live_view import DisplayUnavailable, LiveView, camera_panel
 from models.vision_encoder import create_vision_encoder
 from utils import vision_encoder_visualization as viz
@@ -80,7 +81,7 @@ def _stop(_signum, _frame):
     RUNNING = False
 
 
-def load_encoder(checkpoint):
+def load_encoder(checkpoint, contract_sidecar=None):
     """Load a checkpoint into the head-bearing encoder and freeze it."""
     path = Path(checkpoint)
     if not path.is_file():
@@ -93,10 +94,12 @@ def load_encoder(checkpoint):
     model.eval()
     for parameter in model.parameters():
         parameter.requires_grad_(False)
-    contract = blob.get("morai_encoder_contract") or {}
+    checkpoint_hash = sha256_file(path)
+    sidecar = json.loads(Path(contract_sidecar).read_text(encoding="utf-8")) if contract_sidecar else None
+    contract = checkpoint_encoder_contract(blob, checkpoint_hash, sidecar)
     return model, contract, {
         "checkpoint": str(path),
-        "checkpoint_sha256": sha256_file(path),
+        "checkpoint_sha256": checkpoint_hash,
         "strict_load": str(result),
         "steps": blob.get("steps"),
         "encoder_contract": contract or None,
@@ -104,44 +107,14 @@ def load_encoder(checkpoint):
 
 
 def resolve_adapter(contract, override):
-    """What preprocessing this checkpoint wants, and who decided it.
-
-    A checkpoint saved with a ``morai_encoder_contract`` states its own recipe.
-    One saved without has to be told: ``checkpoint-best-object.pth.tar`` carries
-    no contract, so ``encoder`` in the config supplies the fields and this says
-    so on startup, rather than the code quietly guessing a default.
-    """
-    adapter = dict(contract.get("adapter") or {})
-    # "note" is there for whoever reads the config, not for the encoder.
-    override = {key: value for key, value in (override or {}).items()
-                if value is not None and key != "note"}
-    decided_by = dict.fromkeys(adapter, "checkpoint")
-    decided_by.update(dict.fromkeys(override, "config"))
-    adapter.update(override)
-    return adapter, decided_by
-
-
-def apply_contract(inputs, adapter):
-    """The one adapter field measurement supports: scale LiDAR intensity.
-
-    Measured on the eight recorded obstacle frames, dividing the channel by 255
-    is what the trained detection head responds to: peak objectness 0.162
-    against 0.038 raw for checkpoint-best-object, and 0.493 against 0.398 for
-    morai_visual_encoder.
-
-    The old contract's ``lidar_translation_xyz`` = [1.0, 0.0, 1.48] is NOT
-    applied, and the same measurement is why: translating the cloud by it drops
-    checkpoint-best-object's peak objectness from 0.162 to 0.031 and leaves
-    morai_visual_encoder unchanged, so whatever that field records, it is not a
-    shift to apply at inference.
-    """
-    forced = []
-    if adapter.get("lidar_intensity_policy") == "reflectance_uint8_unit":
-        lidar = inputs["lidar"].clone()
-        lidar[:, :, 3] = lidar[:, :, 3] / 255.0
-        inputs["lidar"] = lidar
-        forced.append("lidar_intensity/=255")
-    return forced
+    """Reject overrides that would silently change checkpoint preprocessing."""
+    adapter = dict(contract["adapter"])
+    for key, value in (override or {}).items():
+        if key == "note" or value is None:
+            continue
+        if key not in adapter or json.dumps(value) != json.dumps(adapter[key]):
+            raise ValueError("encoder.{} contradicts the checkpoint contract".format(key))
+    return adapter, dict.fromkeys(adapter, "checkpoint contract")
 
 
 # What the live window shows, left to right, top to bottom.  "camera" is the
@@ -173,13 +146,16 @@ def build_figures(config, snapshot, names):
     """
     detection, waypoints, traffic_light, bev_features, meta = snapshot
     subtitle = "live  {:.1f} m/s   yaw {:.1f} deg".format(meta["speed"], meta["yaw_degrees"])
+    if meta.get("velocity_contract_mismatch"):
+        subtitle += " | DIAGNOSTIC: status speed != training GPS"
     visualization = config["visualization"]
     overlay = meta.get("lidar_xy") if visualization.get("lidar_overlay", True) else None
 
     makers = {
         "bev_detection": lambda: viz.render_bev_detection(
             detection, threshold=visualization["detection_threshold"],
-            lidar_points=overlay, subtitle=subtitle),
+            lidar_points=overlay, subtitle=subtitle,
+            detection_axes=meta["detection_output_axes"]),
         "bev_features": lambda: viz.render_bev_features(bev_features, subtitle=subtitle),
         "traffic_light": lambda: viz.render_traffic_light(
             traffic_light,
@@ -188,7 +164,7 @@ def build_figures(config, snapshot, names):
         "waypoints": lambda: viz.render_waypoints(
             waypoints, speed=meta["speed"],
             target_point=np.asarray(meta["target_point"]) if any(meta["target_point"]) else None,
-            subtitle=subtitle),
+            subtitle=subtitle, waypoint_axes=meta["waypoint_output_axes"]),
     }
     return [(name, makers[name]()) for name in names if name in makers]
 
@@ -319,7 +295,10 @@ class FigureWriter:
             bev_features[0].float().cpu().numpy(),
             {"speed": meta["speed"], "yaw_degrees": meta["yaw_degrees"],
              "target_point": meta["target_point"], "front_image": meta["front_image"],
-             "lidar_xy": meta.get("lidar_xy"), "lidar_points": meta.get("lidar_points", 0)},
+             "lidar_xy": meta.get("lidar_xy"), "lidar_points": meta.get("lidar_points", 0),
+             "velocity_contract_mismatch": meta.get("velocity_contract_mismatch", False),
+             "waypoint_output_axes": meta["waypoint_output_axes"],
+             "detection_output_axes": meta["detection_output_axes"]},
         )
         try:
             self._channel.put_nowait(snapshot)
@@ -344,6 +323,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config", type=Path, required=True)
+    parser.add_argument("--contract", type=Path,
+                        help="SHA-pinned contract JSON exported for older SensorRecord checkpoints")
     parser.add_argument("--seconds", type=float, default=0.0,
                         help="stop after this long; 0 runs until Ctrl+C")
     parser.add_argument("--history", action="store_true",
@@ -363,7 +344,21 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
     if args.history:
         (output_dir / "history").mkdir(exist_ok=True)
-    # Forked before the model loads, so the child is a small CUDA-free process.
+    sidecar = args.contract or config.get("contract_sidecar")
+    model, contract, provenance = load_encoder(ROOT / config["checkpoint"],
+                                               (ROOT / sidecar) if sidecar else None)
+    adapter, decided_by = resolve_adapter(contract, config.get("encoder"))
+    provenance["adapter"] = adapter
+    provenance["adapter_decided_by"] = decided_by
+    print("checkpoint : {}".format(provenance["checkpoint"]))
+    print("contract   : {} steps, {}".format(
+        provenance.get("steps"),
+        "token order " + str(contract.get("token_order")) if contract
+        else "no morai_encoder_contract in this checkpoint"))
+    for key in sorted(adapter):
+        print("  {:<26} {:<34} ({})".format(key, str(adapter[key]), decided_by[key]))
+
+    # Forked before moving the model to CUDA. Invalid contracts fail before the child starts.
     writer = (FigureWriter(config, output_dir, history=args.history)
               if config["output"].get("render_hz", 0) else None)
     if writer:
@@ -377,28 +372,37 @@ def main():
     else:
         print("figures    : off (output.render_hz = 0)")
 
-    model, contract, provenance = load_encoder(ROOT / config["checkpoint"])
     model.to(device)
-    adapter, decided_by = resolve_adapter(contract, config.get("encoder"))
-    provenance["adapter"] = adapter
-    provenance["adapter_decided_by"] = decided_by
-    print("checkpoint : {}".format(provenance["checkpoint"]))
-    print("contract   : {} steps, {}".format(
-        provenance.get("steps"),
-        "token order " + str(contract.get("token_order")) if contract
-        else "no morai_encoder_contract in this checkpoint"))
-    for key in sorted(adapter):
-        print("  {:<26} {:<34} ({})".format(key, str(adapter[key]), decided_by[key]))
-
     route_csv = config["route"]["csv"]
-    source = LiveFrameSource(
-        ports=config["ports"],
-        route_csv=(ROOT / route_csv) if route_csv else None,
-        lidar_elevations=config["lidar"].get("elevations"),
-        lidar_axis_policy=config["lidar"]["axis_policy"],
-        bind=config["runtime"]["bind"],
-    )
+    try:
+        source = LiveFrameSource(
+            ports=config["ports"],
+            route_csv=(ROOT / route_csv) if route_csv else None,
+            lidar_elevations=config["lidar"].get("elevations"),
+            lidar_axis_policy=config["lidar"]["axis_policy"],
+            bind=config["runtime"]["bind"],
+            encoder_contract=contract,
+            lidar_frame=config["lidar"].get("frame"),
+            lidar_to_base=config["lidar"].get("lidar_to_base"),
+            velocity_source=config["runtime"].get("velocity_source"),
+            allow_velocity_mismatch=config["runtime"].get("allow_velocity_mismatch", False),
+            route_map_root=(ROOT / config["route"]["map_root"]) if config["route"].get("map_root") else None,
+            route_definition=(ROOT / config["route"]["definition"]) if config["route"].get("definition") else None,
+        )
+    except Exception:
+        if writer is not None:
+            writer.close()
+        raise
     offsets = (config["route"]["utm_east_offset"], config["route"]["utm_north_offset"])
+    provenance["live_lidar_frame"] = config["lidar"]["frame"]
+    provenance["live_lidar_to_base"] = config["lidar"].get("lidar_to_base")
+    provenance["velocity_contract_mismatch"] = source.velocity_mismatch
+    provenance["live_velocity_source"] = source.velocity_source
+    provenance["live_pose_source"] = "GPS position + Competition Vehicle Status yaw; teacher-pose parity not verified"
+    if source.velocity_mismatch:
+        print("[DIAGNOSTIC] vehicle_status speed differs from training causal GPS speed; "
+              "this run does not establish scalar/time input parity")
+    print("checkpoint SHA256: " + provenance["checkpoint_sha256"])
 
     print("waiting for every stream to publish...", flush=True)
     ready, missing = source.wait_ready(timeout=config["runtime"]["startup_timeout_s"])
@@ -416,7 +420,6 @@ def main():
     started = time.time()
     inferred = 0
     skipped = 0
-    forced = None
     next_due = time.time()
     while RUNNING:
         if args.seconds and time.time() - started >= args.seconds:
@@ -437,12 +440,6 @@ def main():
             print("\r  waiting for {:<40}".format(", ".join(meta["missing"])[:40]),
                   end="", flush=True)
             continue
-        if forced is None:
-            forced = apply_contract(inputs, adapter)
-            print("adapter applied: {}".format(", ".join(forced) if forced else "nothing"))
-        else:
-            apply_contract(inputs, adapter)
-
         with torch.no_grad():
             outputs = model(inputs)
         inferred += 1
@@ -477,7 +474,8 @@ def main():
         "schema": "morai-vision-encoder-realtime-report-v1",
         "config": config,
         "encoder": provenance,
-        "forced_inputs": forced or [],
+        "forced_inputs": [key for key in ("velocity_input", "target_point_input")
+                          if contract[key] == "constant_zero"],
         "cpu_threads": torch.get_num_threads(),
         "frames_inferred": inferred,
         "frames_rendered": writer.drawn if writer else 0,

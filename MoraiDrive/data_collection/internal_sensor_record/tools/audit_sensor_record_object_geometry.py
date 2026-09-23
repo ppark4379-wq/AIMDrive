@@ -29,6 +29,8 @@ def median_dimensions_wlh(case):
     rows=[view.get('dimensions_lwh_m') for view in case.get('views',[])]
     if len(rows)!=4 or any(not isinstance(row,list) or len(row)!=3 for row in rows):
         return None
+    if any(type(v) not in (float,int) or not math.isfinite(v) or v<=0
+           for row in rows for v in row):return None
     # The catalog names its axes L/W/H; the GT timeline explicitly stores W/L/H.
     return [statistics.median(row[index] for row in rows) for index in (1,0,2)]
 
@@ -50,6 +52,9 @@ def check_object_geometry(item,catalog_cases,catalog_hash,absolute_tolerance_m,
     elif case.get('kind')!=EXPECTED_CATALOG_KIND.get(kind):reasons.append('catalog_kind_mismatch')
     elif case.get('visible_return_contradiction') is True:
         reasons.append('catalog_visible_return_contradiction')
+    elif ('actual_pose_audit' in case and
+          (case.get('actual_pose_audit') or {}).get('consistent') is not True):
+        reasons.append('catalog_actual_pose_inconsistent')
     elif reference is None:reasons.append('catalog_lacks_four_views')
     elif not reasons:
         errors=[abs(float(value)-reference[index]) for index,value in enumerate(dims)]
@@ -60,6 +65,8 @@ def check_object_geometry(item,catalog_cases,catalog_hash,absolute_tolerance_m,
         if any(error>tolerance for error,tolerance in zip(errors,tolerances)):
             reasons.append('observed_dimensions_differ_from_catalog')
     check['reasons']=reasons;check['api_box_geometry_candidate']=not reasons
+    check['catalog_actual_pose_checked']=bool(case and
+        (case.get('actual_pose_audit') or {}).get('consistent') is True)
     return check
 
 

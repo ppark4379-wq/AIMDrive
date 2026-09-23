@@ -92,22 +92,17 @@ def use_paper_style():
     })
 
 
-def forward_right(waypoints):
-    """LMDrive head output -> (forward, right) metres in the ego frame.
+def forward_right(waypoints, waypoint_axes="left_negative_forward"):
+    """Decode explicitly: legacy LMDrive callers default to their left axis.
 
-    Axis 1 is -forward and axis 0 is +left; both checked against real motion.
-    Forward: at 8.9 m/s axis 1 ran -4.7 -> -25.4 m over 0.5 ... 2.5 s.  Lateral:
-    on a frame whose yaw went 149.0 -> 135.5 deg, i.e. a right turn, the true
-    future displacement had axis 0 negative (-0.20, -0.75, -1.61 m), so axis 0
-    grows towards the left.
-
-    Both are returned as (forward, right) because a bird's-eye plot seen from
-    above with the nose pointing up puts the vehicle's right on the right of the
-    page, and the BEV grid already runs that way.  Flipping here keeps the
-    waypoint figure and the BEV figures on one convention.
+    SensorRecord callers must pass right_negative_forward from the checkpoint.
     """
     waypoints = np.asarray(waypoints, dtype=np.float64).reshape(-1, 2)
-    return -waypoints[:, 1], -waypoints[:, 0]
+    if waypoint_axes == "right_negative_forward":
+        return -waypoints[:, 1], waypoints[:, 0]
+    if waypoint_axes == "left_negative_forward":
+        return -waypoints[:, 1], -waypoints[:, 0]
+    raise ValueError("Unknown waypoint axes: " + str(waypoint_axes))
 
 
 def denormalize_image(image):
@@ -146,13 +141,16 @@ def _cell_centre(row, col):
     return col - 24.5, 29.5 - row
 
 
-def decode_detection_map(detection, threshold=0.4):
+def decode_detection_map(detection, threshold=0.4, detection_axes="legacy_renderer_v1"):
     """Peak cells of the objectness channel -> oriented boxes in metres.
 
     Keeps a cell whose objectness is very high, or which is a local maximum
     above ``threshold``; the same rule LMDrive's renderer used, so a figure from
     this module and one from the original agree on what counts as an object.
     """
+    if detection_axes not in ("legacy_renderer_v1",
+                               "right_forward_offsets_right_negative_forward_heading"):
+        raise ValueError("Unknown detection axes: " + str(detection_axes))
     grid = _as_grid(detection)
     probability = grid[:, :, 0]
     padded = np.zeros((BEV_GRID + 2, BEV_GRID + 2))
@@ -172,8 +170,14 @@ def decode_detection_map(detection, threshold=0.4):
             centre_lateral, centre_forward = _cell_centre(row, col)
             heading = np.array([grid[row, col, 3], grid[row, col, 4]], dtype=np.float64)
             extent = np.array([grid[row, col, 5], grid[row, col, 6]], dtype=np.float64)
-            if extent[0] < 1.5:
-                extent = extent * 1.5
+            if detection_axes == "legacy_renderer_v1":
+                if extent[0] < 1.5:
+                    extent = extent * 1.5
+            else:
+                # Head orientation is [right, -forward]; plot is [right, forward].
+                heading[1] *= -1.
+                if not np.isfinite(extent).all() or np.any(extent <= 0):
+                    continue
             boxes.append({
                 "objectness": float(value),
                 "lateral": float(centre_lateral + grid[row, col, 1]),
@@ -234,7 +238,8 @@ def _style_bev_axes(axes):
 
 
 def render_bev_detection(detection, *, threshold=0.4, title="BEV map", subtitle=None,
-                         lidar_points=None, figsize=(5.0, 5.2)):
+                         lidar_points=None, figsize=(5.0, 5.2),
+                         detection_axes="legacy_renderer_v1"):
     """traffic_pred_head -> objectness heat map with the decoded oriented boxes.
 
     ``lidar_points`` is an optional [N, 2] array of (forward, right) metres in
@@ -245,7 +250,7 @@ def render_bev_detection(detection, *, threshold=0.4, title="BEV map", subtitle=
     """
     use_paper_style()
     grid = _as_grid(detection)
-    boxes = decode_detection_map(detection, threshold=threshold)
+    boxes = decode_detection_map(detection, threshold=threshold, detection_axes=detection_axes)
 
     figure, axes = plt.subplots(figsize=figsize, constrained_layout=True)
     image = axes.imshow(np.clip(grid[:, :, 0], 0.0, 1.0), extent=BEV_EXTENT, origin="upper",
@@ -387,10 +392,10 @@ def render_traffic_light(logits, *, camera_image=None, title="Traffic light stat
 
 
 def render_waypoints(waypoints, *, speed=None, target_point=None, title="Future waypoints",
-                     subtitle=None, figsize=(3.8, 5.4)):
+                     subtitle=None, figsize=(3.8, 5.4), waypoint_axes="left_negative_forward"):
     """waypoints_generator -> the 0.5 ... 2.5 s path in the ego frame."""
     use_paper_style()
-    forward, right = forward_right(waypoints)
+    forward, right = forward_right(waypoints, waypoint_axes=waypoint_axes)
     if forward.size != len(HORIZONS_S):
         raise ValueError("Expected {} waypoints, got {}".format(len(HORIZONS_S), forward.size))
 
@@ -407,7 +412,8 @@ def render_waypoints(waypoints, *, speed=None, target_point=None, title="Future 
                       textcoords="offset points", xytext=(6, -2), fontsize=7.5, color=INK)
     if target_point is not None:
         target = np.asarray(target_point, dtype=np.float64).reshape(2)
-        axes.scatter([-target[0]], [-target[1]], marker="*", s=90, color=MUTED, zorder=4,
+        target_forward, target_right = forward_right(target, waypoint_axes=waypoint_axes)
+        axes.scatter(target_right, target_forward, marker="*", s=90, color=MUTED, zorder=4,
                      label="route target point")
 
     axes.add_patch(Rectangle((-EGO_WIDTH_M / 2, -EGO_LENGTH_M / 2), EGO_WIDTH_M, EGO_LENGTH_M,

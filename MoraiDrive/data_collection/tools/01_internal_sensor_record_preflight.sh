@@ -77,9 +77,8 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-if [[ "$RUN_MODE" == "capture" ]] \
-        && { [[ ! "$CONNECT_TIMEOUT" =~ ^[0-9]+$ ]] \
-             || (( CONNECT_TIMEOUT < 30 )); }; then
+if [[ ! "$CONNECT_TIMEOUT" =~ ^[0-9]+$ ]] \
+        || (( CONNECT_TIMEOUT < 30 )); then
     echo "[FAIL] MORAI_CONNECT_TIMEOUT_SECONDS는 30 이상의 정수여야 합니다." >&2
     exit 2
 fi
@@ -188,6 +187,41 @@ if [[ "$MORAI_ENDPOINT_IP" == 127.* ]]; then
 fi
 echo
 if [[ "$RUN_MODE" == "scenario" ]]; then
+    echo "[5/5] MORAI 차량 제어 연결을 기다립니다."
+    echo "      MORAI Vehicle Information을 ${MORAI_ENDPOINT_IP}:9090으로 연결하세요."
+    echo "      Camera/LiDAR/GPS/IMU, Sensor Record, Synchronization Mode는 꺼도 됩니다."
+    deadline=$((SECONDS + CONNECT_TIMEOUT))
+    while ! /usr/bin/python3 - <<'PYCTRL'
+import rosgraph
+
+try:
+    _, subscribers, _ = rosgraph.Master(
+        "/aimdrive_scenario_preflight"
+    ).getSystemState()
+except Exception:
+    raise SystemExit(2)
+
+raise SystemExit(
+    0 if dict(subscribers).get("/ctrl_cmd", []) else 1
+)
+PYCTRL
+    do
+        if [[ "$STARTED_BRIDGE" == "1" ]] \
+                && ! kill -0 "$BRIDGE_PID" 2>/dev/null; then
+            wait "$BRIDGE_PID" || true
+            echo "[FAIL] 차량 제어 연결 대기 중 bridge가 종료됐습니다." >&2
+            tail -n 40 "$BRIDGE_LOG" >&2 || true
+            exit 2
+        fi
+        if (( SECONDS >= deadline )); then
+            echo "[FAIL] ${CONNECT_TIMEOUT}초 동안 /ctrl_cmd 구독자가 연결되지 않았습니다." >&2
+            echo "       MORAI Vehicle Information을 ${MORAI_ENDPOINT_IP}:9090으로 다시 연결하세요." >&2
+            exit 2
+        fi
+        sleep 1
+    done
+    echo "[PASS] MORAI 차량 제어 연결 준비: /ctrl_cmd subscriber 확인"
+    echo
     echo "[5/5] 시나리오 검증용 bridge를 계속 유지합니다."
     echo "      Camera/LiDAR/GPS/IMU, Sensor Record, Synchronization Mode는 꺼도 됩니다."
     echo "      Expert 실제 주행에는 MORAI 차량 정보와 객체 정보 연결이 필요합니다."
@@ -197,6 +231,7 @@ if [[ "$RUN_MODE" == "scenario" ]]; then
     echo
     echo "      이 터미널은 자동 검증이 끝날 때까지 닫지 마세요. Ctrl+C로 종료합니다."
     keepalive_report_at=$((SECONDS + 30))
+    ctrl_cmd_missing_count=0
     while true; do
         if [[ "$STARTED_BRIDGE" == "1" ]]; then
             if ! kill -0 "$BRIDGE_PID" 2>/dev/null; then
@@ -209,8 +244,32 @@ if [[ "$RUN_MODE" == "scenario" ]]; then
             echo "[FAIL] 기존 9090 bridge listener가 종료됐습니다." >&2
             exit 2
         fi
+        if /usr/bin/python3 - <<'PYCTRL'
+import rosgraph
+
+try:
+    _, subscribers, _ = rosgraph.Master(
+        "/aimdrive_scenario_keepalive"
+    ).getSystemState()
+except Exception:
+    raise SystemExit(2)
+
+raise SystemExit(
+    0 if dict(subscribers).get("/ctrl_cmd", []) else 1
+)
+PYCTRL
+        then
+            ctrl_cmd_missing_count=0
+        else
+            ((ctrl_cmd_missing_count += 1))
+            if (( ctrl_cmd_missing_count >= 5 )); then
+                echo "[FAIL] MORAI /ctrl_cmd 구독 연결이 5초 이상 끊겼습니다." >&2
+                echo "       Vehicle Information을 ${MORAI_ENDPOINT_IP}:9090으로 다시 연결한 뒤 01번을 재실행하세요." >&2
+                exit 2
+            fi
+        fi
         if (( SECONDS >= keepalive_report_at )); then
-            echo "[KEEPALIVE] ROS master와 bridge 정상; 전체 센서 없이 시나리오 검증 대기 중"
+            echo "[KEEPALIVE] ROS master·bridge·/ctrl_cmd 정상; 전체 센서 없이 시나리오 검증 대기 중"
             keepalive_report_at=$((SECONDS + 30))
         fi
         sleep 1

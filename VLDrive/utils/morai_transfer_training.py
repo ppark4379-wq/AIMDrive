@@ -17,6 +17,8 @@ from torch.utils.data import DataLoader, Subset
 from models.vision_encoder import create_vision_encoder
 from datasets.morai_sensor_record_dataset import (
     PathResolver, load_publications, SensorRecordDataset, digest)
+from datasets.morai_encoder_contract import sensor_record_encoder_contract
+from inference.morai_route import navigation_recipe
 from .morai_transfer_objective import multitask_loss, DETECTION_LOSS_POLICIES
 from .morai_transfer_metrics import evaluate, to_device
 
@@ -209,6 +211,17 @@ def run(args):
     print('[CHECK] validating publication, evidence seals and GPS history',flush=True)
     index, manifests=load_publications(args.manifest_index,resolver)
     datasets={key:SensorRecordDataset(rows,resolver,args.velocity_source) for key,rows in manifests.items()}
+    encoder_contract = sensor_record_encoder_contract(
+        (row[2].config for dataset in datasets.values() for row in dataset.rows), args.velocity_source)
+    encoder_contract['route_source_sha256s'] = sorted({
+        doc['navigation_contract']['global_path_sha256']
+        for rows in manifests.values() for _, doc in rows})
+    encoder_contract['navigation_recipes'] = []
+    for rows in manifests.values():
+        for _, doc in rows:
+            recipe = navigation_recipe(doc['navigation_contract'])
+            if recipe not in encoder_contract['navigation_recipes']:
+                encoder_contract['navigation_recipes'].append(recipe)
     coverage={key:{'usable':dict(ds.coverage),'excluded':dict(ds.excluded)} for key,ds in datasets.items()}
     print(json.dumps(coverage),flush=True)
     for split,ds in datasets.items():
@@ -225,12 +238,15 @@ def run(args):
                      ROOT/'models/resnet.py',ROOT/'models/transformer.py']+
                     sorted((ROOT/'datasets').glob('morai_transfer*.py'))+
                     [ROOT/'datasets/morai_sensor_record_dataset.py',ROOT/'datasets/morai_gps_speed.py',
+                     ROOT/'datasets/morai_encoder_contract.py',
+                     ROOT/'inference/morai_route.py',
                      ROOT/'utils/morai_transfer_objective.py',ROOT/'utils/morai_transfer_metrics.py']}
     provenance=dict(schema='morai_visual_transfer_v1',args=vars(args),coverage=coverage,
         publications=index['publications'],
         initial_checkpoint_sha256=args.checkpoint_sha256,
         implementation_sha256=implementation,
         initialization=args.initialization,
+        encoder_contract=encoder_contract,
         trainable_scope=args.trainable_scope,
         loss=('0.5*detection+0.5*waypoint_L1+0.05*object_speed_L1+0.1*light_CE; '
               'detection_policy='+args.detection_loss_policy),
@@ -293,6 +309,7 @@ def run(args):
         if best_object is not None and score <= tuple(best_object['selection_score']):
             return False
         payload=dict(state_dict=model.state_dict(),optimizer=optimizer.state_dict(),epoch=epoch,steps=steps,
+                     morai_encoder_contract=encoder_contract,
                      pretraining=provenance,metrics=metrics,token_shape=[106,256],
                      feature_model_name='memfuser_baseline_e1d3_return_feature')
         save(best_checkpoint,payload)
@@ -327,6 +344,7 @@ def run(args):
                 if step%args.log_interval==0 or step==1:log.flush();print(json.dumps(row),flush=True)
             after=evaluate(model,loaders['val'],args.device,progress_phase='validation',detection_loss_policy=args.detection_loss_policy)
             payload=dict(state_dict=model.state_dict(),optimizer=optimizer.state_dict(),epoch=epoch+1,steps=step,
+                         morai_encoder_contract=encoder_contract,
                          pretraining=provenance,metrics=after,token_shape=[106,256],
                          feature_model_name='memfuser_baseline_e1d3_return_feature')
             save(args.output/'checkpoint-last.pth.tar',payload)

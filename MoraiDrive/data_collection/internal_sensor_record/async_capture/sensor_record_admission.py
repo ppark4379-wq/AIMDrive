@@ -106,6 +106,24 @@ def validate_native_session_snapshot(snapshot, *, transferred_run=None):
                       if portable_identity and recorded_name else None)
         result = _verify_pinned_file(
             item, local_copy=local_copy, local_root=transferred_run)
+        # Direct collection keeps plan/apply evidence alongside all runs in
+        # _campaign/runtime. Promotion renames .collecting/<scenario>/<campaign>
+        # without rewriting the immutable capture contract. Resolve only that
+        # exact same campaign/run tail, retaining the original content hash.
+        if (not result["valid"] and portable_identity
+                and key in ("session_plan", "session_apply")
+                and recorded_name == "native_%s.json" % key):
+            campaign = transferred_run.parent
+            recorded = Path(item.get("path", ""))
+            expected_tail = (campaign.name, "_campaign", "runtime",
+                             transferred_run.name, recorded_name)
+            if recorded.parts[-5:] == expected_tail:
+                runtime_copy = (campaign / "_campaign" / "runtime"
+                                / transferred_run.name / recorded_name)
+                result = _verify_pinned_file(
+                    item, local_copy=runtime_copy, local_root=campaign)
+                if result["valid"]:
+                    result["resolution"] = "campaign_runtime_exact_sha256_copy"
         checks[key] = result["valid"]
         resolutions[key] = result
     return {"valid": all(checks.values()), "checks": checks,

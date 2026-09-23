@@ -23,6 +23,8 @@ ROUTE_KEYS = ("compact", "wide")
 DIFFICULTY_KEYS = ("easy", "medium", "hard")
 WEATHER_KEYS = ("SUNNY", "FOGGY")
 TIME_KEYS = (11, 13, 15)
+FIXED_SCALE_POLICY = "morai_native_model_scale_v1"
+LEGACY_FIXED_SCALE_POLICY = "configured_model_baseline_scale_v1"
 
 
 def sha256_file(path):
@@ -93,7 +95,7 @@ def _bin(value, low, high):
     return "middle"
 
 
-def candidate_balance_features(document):
+def candidate_balance_features(document, *, fixed_scale=False):
     longitudinal = Counter()
     lateral = Counter()
     scale = Counter()
@@ -103,7 +105,9 @@ def candidate_balance_features(document):
         generation = obstacle.get("generation", {})
         fraction = float(generation.get("longitudinal_fraction", 0.5))
         lateral_offset = float(generation.get("lateral_offset_m", 0.0))
-        multiplier = float(generation.get("scale_multiplier", 1.0))
+        # Legacy reports may retain generation metadata. New candidates reach
+        # here only after their actual scale vectors match MORAI native size.
+        multiplier = 1.0 if fixed_scale else float(generation.get("scale_multiplier", 1.0))
         longitudinal[_bin(fraction, 1.0 / 3.0, 2.0 / 3.0)] += 1
         lateral[_bin(lateral_offset, -0.20, 0.20)] += 1
         scale[_bin(multiplier, 0.95, 1.05)] += 1
@@ -115,7 +119,80 @@ def candidate_balance_features(document):
     }
 
 
-def load_candidates(manifest_paths):
+def _positive_scale(value):
+    try:
+        return (isinstance(value, (list, tuple)) and len(value) == 3
+                and all(math.isfinite(float(item)) and float(item) > 0 for item in value))
+    except (TypeError, ValueError, OverflowError):
+        return False
+
+
+def load_fixed_scale_policy(config_path=None, route_path=None):
+    """Pin allowed models at native size; historical enlargement is ignored.
+
+    route_path remains an accepted argument for older callers. Neither its
+    fallback scale nor static_obstacle_model_scales defines native model size.
+    """
+    config_path = Path(config_path or ROOT / "scenario_runner/config/full_loop.yaml")
+    scenario = yaml.safe_load(config_path.read_text(encoding="utf-8"))["scenarios"]["full_loop"]
+    models = scenario.get("static_obstacle_models", [])
+    if (not isinstance(models, (list, tuple)) or not models
+            or not all(isinstance(model, str) and model.strip() for model in models)):
+        raise ValueError("Native-scale policy requires a nonempty list of allowed model names")
+    baselines = {model: [1., 1., 1.] for model in models}
+    return {"name": FIXED_SCALE_POLICY, "model_baselines": baselines,
+            "absolute_rounding_tolerance": 1e-6,
+            "sources": [{"path": portable_path(config_path),
+                         "sha256": sha256_file(config_path)}]}
+
+
+def validate_scale_policy(policy, *, allow_legacy=False):
+    names = (FIXED_SCALE_POLICY, LEGACY_FIXED_SCALE_POLICY) if allow_legacy else (FIXED_SCALE_POLICY,)
+    if (not isinstance(policy, dict) or policy.get("name") not in names
+            or not isinstance(policy.get("model_baselines"), dict)
+            or not policy["model_baselines"]
+            or not all(isinstance(model, str) and model.strip() and _positive_scale(scale)
+                       for model, scale in policy["model_baselines"].items())):
+        raise ValueError("Invalid fixed-scale plan policy")
+    if (policy["name"] == FIXED_SCALE_POLICY
+            and any(any(float(axis) != 1. for axis in scale)
+                    for scale in policy["model_baselines"].values())):
+        raise ValueError("Native-scale policy requires every model scale to be [1,1,1]")
+
+
+def fixed_scale_issues(document, policy):
+    """Check actual vectors, never a claimed scale_multiplier or policy marker."""
+    issues = []
+    obstacles = document.get("obstacles")
+    if not isinstance(obstacles, list) or not obstacles:
+        return [{"reason": "missing_obstacles"}]
+    for index, obstacle in enumerate(obstacles):
+        if not isinstance(obstacle, dict):
+            issues.append({"obstacle": index, "reason": "invalid_obstacle"})
+            continue
+        model = str(obstacle.get("model", ""))
+        expected = policy["model_baselines"].get(model)
+        observed = obstacle.get("scale")
+        if expected is None:
+            reason = "model_missing_from_scale_policy"
+        elif not _positive_scale(observed):
+            reason = "invalid_obstacle_scale"
+        elif any(not math.isclose(float(a), float(b), rel_tol=0., abs_tol=1e-6)
+                 for a, b in zip(observed, expected)):
+            reason = ("obstacle_scale_differs_from_native_model"
+                      if policy.get("name") == FIXED_SCALE_POLICY
+                      else "obstacle_scale_differs_from_configured_baseline")
+        else:
+            continue
+        issues.append({"obstacle": index, "model": model, "reason": reason,
+                       "observed_scale": observed, "expected_scale": expected})
+    return issues
+
+
+def load_candidates(manifest_paths, *, scale_policy=None):
+    scale_policy = load_fixed_scale_policy() if scale_policy is None else scale_policy
+    # Legacy policy snapshots are accepted only by the existing-plan loader.
+    validate_scale_policy(scale_policy)
     candidates = []
     seen_hashes = set()
     source_rows = []
@@ -128,11 +205,14 @@ def load_candidates(manifest_paths):
             if row.get("accepted_preset")
         }
         accepted = list(manifest.get("accepted_presets", []))
-        source_rows.append({
+        source_row = {
             "manifest": portable_path(manifest_path),
             "sha256": sha256_file(manifest_path),
             "accepted_presets": len(accepted),
-        })
+            "eligible_fixed_scale_presets": 0,
+            "excluded_scale_presets": [],
+        }
+        source_rows.append(source_row)
         for preset_value in accepted:
             preset_path = resolve_path(preset_value, manifest_path.parent)
             document = yaml.safe_load(preset_path.read_text(encoding="utf-8"))
@@ -156,6 +236,13 @@ def load_candidates(manifest_paths):
             if preset_hash in seen_hashes:
                 continue
             seen_hashes.add(preset_hash)
+            issues = fixed_scale_issues(document, scale_policy)
+            if issues:
+                source_row["excluded_scale_presets"].append({
+                    "preset": portable_path(preset_path), "sha256": preset_hash,
+                    "issues": issues,
+                })
+                continue
             row = attempt_by_preset.get(preset_value, {})
             evidence = row.get("closed_loop_evidence", {})
             routes = list(
@@ -186,10 +273,11 @@ def load_candidates(manifest_paths):
                     "max_cross_track_error_m",
                     verification.get("max_cross_track_error_m"),
                 ),
-                "balance_features": candidate_balance_features(document),
+                "balance_features": candidate_balance_features(document, fixed_scale=True),
             }
             candidate["challenge_score"] = challenge_score(candidate)
             candidates.append(candidate)
+            source_row["eligible_fixed_scale_presets"] += 1
     return candidates, source_rows
 
 
@@ -243,7 +331,7 @@ def _feature_cost(candidate, totals):
     features = candidate["balance_features"]
     for group, weight in (
         ("models", 2.0), ("longitudinal_bins", 1.0),
-        ("lateral_bins", 1.0), ("scale_bins", 1.0),
+        ("lateral_bins", 1.0),
     ):
         for key, increment in features[group].items():
             cost += weight * (totals[group][key] + increment) ** 2
@@ -547,8 +635,114 @@ def environment_distribution_by_split(items):
     return result
 
 
+def select_one_candidate_per_model(candidates, required_models):
+    """Choose one collision-free native-scale single-object preset per model."""
+    groups = defaultdict(list)
+    for candidate in candidates:
+        models = list(candidate.get("models", []))
+        if candidate.get("obstacle_count") == 1 and len(models) == 1:
+            groups[models[0]].append(candidate)
+    missing = [model for model in required_models if not groups.get(model)]
+    if missing:
+        return [], missing
+    selected = []
+    for model in required_models:
+        selected.append(min(groups[model], key=lambda item: (
+            float(item.get("max_cross_track_error_m") or float("inf")),
+            float(item.get("challenge_score") or 0.0),
+            item["sha256"],
+        )))
+    if len({item["sha256"] for item in selected}) != len(selected):
+        raise ValueError("One-per-model audit selection repeated a preset")
+    return selected, []
+
+
+def build_audit36_plan(args):
+    output = Path(args.output).expanduser().resolve()
+    if output.exists():
+        raise FileExistsError("Existing plan is preserved; choose a new output: " + str(output))
+    scale_policy = load_fixed_scale_policy()
+    required_models = sorted(scale_policy["model_baselines"])
+    if len(required_models) != 36:
+        raise ValueError("Native static audit plan requires exactly 36 configured models")
+    candidates, sources = load_candidates(args.suite, scale_policy=scale_policy)
+    selected, missing = select_one_candidate_per_model(candidates, required_models)
+    ready = not missing
+    if ready:
+        assign_difficulty(selected, {"easy": 12, "medium": 12, "hard": 12})
+        assign_splits(selected, {"train": 28, "val": 4, "test": 4}, args.seed)
+        assign_environment(
+            selected, {"SUNNY": 18, "FOGGY": 18}, {11: 12, 13: 12, 15: 12}, args.seed
+        )
+    route_targets = distribution(selected, "route_class") if selected else {}
+    available_models = balance_distribution(candidates)["models"] if candidates else {}
+    plan = {
+        "schema": SCHEMA,
+        "name": args.name or output.stem,
+        "scenario": "full_loop_static",
+        "ready": ready,
+        "audit_purpose": "one_native_scale_closed_loop_capture_per_static_model",
+        "seed": int(args.seed),
+        "created_at_unix": time.time(),
+        "target_runs": 36,
+        "sources": sources,
+        "scale_policy": scale_policy,
+        "selection_balance_groups": ["models"],
+        "targets": {
+            "obstacle_count": {"1": 36, "2": 0, "3": 0},
+            "route_class": route_targets,
+            "difficulty": {"easy": 12, "medium": 12, "hard": 12},
+            "split": {"train": 28, "val": 4, "test": 4},
+            "weather": {"SUNNY": 18, "FOGGY": 18},
+            "time_hour": {"11": 12, "13": 12, "15": 12},
+            "model_minimum_occurrences": 1,
+            "required_models": required_models,
+        },
+        "difficulty_policy": "relative rank across the 36 one-model audit presets",
+        "available": {
+            "total_unique_verified": len(candidates),
+            "model_occurrences": available_models,
+        },
+        "shortages": {
+            "missing_models": missing,
+            "missing_model_count": len(missing),
+        },
+        "selected_cell_counts": (
+            {"1:{}".format(route): count for route, count in route_targets.items()}
+            if ready else None
+        ),
+        "achieved": ({
+            "obstacle_count": distribution(selected, "obstacle_count"),
+            "route_class": route_targets,
+            "difficulty": distribution(selected, "difficulty"),
+            "split": distribution(selected, "split"),
+            "weather": distribution(selected, "weather"),
+            "time_hour": distribution(selected, "time_hour"),
+            "environment_by_split": environment_distribution_by_split(selected),
+            "obstacle_balance": balance_distribution(selected),
+        } if ready else None),
+        "runs": [dict({"run": index}, **item) for index, item in enumerate(selected, 1)] if ready else [],
+    }
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("x", encoding="utf-8") as stream:
+        stream.write(json.dumps(plan, indent=2, ensure_ascii=False) + "\n")
+    print(json.dumps({
+        "ready": ready,
+        "output": str(output),
+        "required_models": len(required_models),
+        "selected_models": len(selected),
+        "missing_models": missing,
+        "achieved": plan["achieved"],
+    }, indent=2, ensure_ascii=False))
+    return 0 if ready else 3
+
+
 def build_plan(args):
-    candidates, sources = load_candidates(args.suite)
+    output = Path(args.output).expanduser().resolve()
+    if output.exists():
+        raise FileExistsError("Existing plan is preserved; choose a new output: " + str(output))
+    scale_policy = load_fixed_scale_policy()
+    candidates, sources = load_candidates(args.suite, scale_policy=scale_policy)
     count_targets = parse_quota(args.counts, COUNT_KEYS, args.runs, "--counts")
     route_targets = parse_quota(args.routes, ROUTE_KEYS, args.runs, "--routes")
     difficulty_targets = parse_quota(
@@ -563,6 +757,13 @@ def build_plan(args):
     time_targets = parse_quota(
         args.times, TIME_KEYS, args.runs, "--times"
     )
+    required_models = sorted(scale_policy["model_baselines"])
+    total_obstacle_slots = sum(
+        int(count) * int(amount) for count, amount in count_targets.items()
+    )
+    model_minimum_occurrences = max(
+        1, total_obstacle_slots // len(required_models)
+    )
     cell_counts, capacity = choose_cell_counts(
         candidates, count_targets, route_targets
     )
@@ -573,10 +774,20 @@ def build_plan(args):
         assign_difficulty(selected, difficulty_targets)
         assign_splits(selected, split_targets, args.seed)
         assign_environment(selected, weather_targets, time_targets, args.seed)
+    selected_model_counts = balance_distribution(selected)["models"] if selected else {}
+    model_occurrence_shortages = {
+        model: max(0, model_minimum_occurrences - selected_model_counts.get(model, 0))
+        for model in required_models
+    }
+    if any(model_occurrence_shortages.values()):
+        ready = False
+    available_model_counts = balance_distribution(candidates)["models"] if candidates else {}
     available = {
         "total_unique_verified": len(candidates),
+        "excluded_scale_presets": sum(len(row["excluded_scale_presets"]) for row in sources),
         "obstacle_count": distribution(candidates, "obstacle_count"),
         "route_class": distribution(candidates, "route_class"),
+        "model_occurrences": available_model_counts,
         "cell_capacity": {
             "{}:{}".format(count, route): capacity[(count, route)]
             for count in COUNT_KEYS for route in ROUTE_KEYS
@@ -593,6 +804,11 @@ def build_plan(args):
             for key, value in route_targets.items()
         },
         "joint_quota_feasible": cell_counts is not None,
+        "model_minimum_occurrences": model_minimum_occurrences,
+        "model_occurrence_shortages": {
+            model: shortage for model, shortage in model_occurrence_shortages.items()
+            if shortage
+        },
     }
     plan = {
         "schema": SCHEMA,
@@ -603,6 +819,8 @@ def build_plan(args):
         "created_at_unix": time.time(),
         "target_runs": int(args.runs),
         "sources": sources,
+        "scale_policy": scale_policy,
+        "selection_balance_groups": ["models", "longitudinal_bins", "lateral_bins"],
         "targets": {
             "obstacle_count": {str(k): v for k, v in count_targets.items()},
             "route_class": route_targets,
@@ -610,6 +828,8 @@ def build_plan(args):
             "split": split_targets,
             "weather": weather_targets,
             "time_hour": {str(k): v for k, v in time_targets.items()},
+            "model_minimum_occurrences": model_minimum_occurrences,
+            "required_models": required_models,
         },
         "difficulty_policy": (
             "relative rank of obstacle_count + route_severity + "
@@ -633,28 +853,38 @@ def build_plan(args):
         } if selected else None),
         "runs": [dict({"run": index}, **item) for index, item in enumerate(selected, 1)],
     }
-    output = Path(args.output).expanduser().resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
-    temporary = output.with_suffix(output.suffix + ".tmp")
-    temporary.write_text(json.dumps(plan, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    temporary.replace(output)
+    with output.open("x", encoding="utf-8") as stream:
+        stream.write(json.dumps(plan, indent=2, ensure_ascii=False) + "\n")
     print(json.dumps({
         "ready": ready,
         "output": str(output),
         "available": available,
+        "scale_policy": scale_policy["name"],
+        "excluded_scale_presets": available["excluded_scale_presets"],
         "shortages": shortages,
         "achieved": plan["achieved"],
     }, indent=2, ensure_ascii=False))
     return 0 if ready or args.allow_incomplete else 3
 
 
-def load_checked_plan(path, laps=None, require_ready=True):
+def load_checked_plan(path, laps=None, require_ready=True, require_native_scale=False):
     plan_path = Path(path).expanduser().resolve()
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
     if plan.get("schema") != SCHEMA or plan.get("scenario") != "full_loop_static":
         raise ValueError("Invalid static collection plan schema/scenario")
     if require_ready and not plan.get("ready"):
         raise ValueError("Static collection plan is not ready")
+    scale_policy = plan.get("scale_policy")
+    if scale_policy is not None:
+        validate_scale_policy(scale_policy, allow_legacy=True)
+    if require_native_scale and (
+            not isinstance(scale_policy, dict)
+            or scale_policy.get("name") != FIXED_SCALE_POLICY):
+        raise ValueError(
+            "New collection requires a morai_native_model_scale_v1 plan; "
+            "legacy scaled plans are replay-only"
+        )
     runs = list(plan.get("runs", []))
     if laps is not None and len(runs) < int(laps):
         raise ValueError("Plan has {} runs but {} were requested".format(len(runs), laps))
@@ -668,6 +898,13 @@ def load_checked_plan(path, laps=None, require_ready=True):
         actual = sha256_file(preset)
         if actual != row.get("sha256"):
             raise ValueError("Preset hash mismatch: {}".format(preset))
+        # Legacy sealed plans have no scale policy and remain replayable.
+        # Configured-scale plans replay their pinned snapshot. Native-scale
+        # plans additionally require unit baselines, never today's old overrides.
+        if scale_policy is not None:
+            document = yaml.safe_load(preset.read_text(encoding="utf-8"))
+            if not isinstance(document, dict) or fixed_scale_issues(document, scale_policy):
+                raise ValueError("Fixed-scale plan contains a non-baseline preset: " + str(preset))
         if actual in seen:
             raise ValueError("Plan repeats a static preset: {}".format(preset))
         seen.add(actual)
@@ -684,6 +921,20 @@ def load_checked_plan(path, laps=None, require_ready=True):
         previous_weather, previous_hour = weather, hour
 
     targets = plan.get("targets", {})
+    if scale_policy is not None and scale_policy.get("name") == FIXED_SCALE_POLICY:
+        required_models = sorted(scale_policy["model_baselines"])
+        if sorted(targets.get("required_models", [])) != required_models:
+            raise ValueError("Native-scale plan required model set does not match its policy")
+        minimum = int(targets.get("model_minimum_occurrences", 0))
+        if minimum < 1:
+            raise ValueError("Native-scale plan lacks a positive model coverage target")
+        observed = balance_distribution(runs)["models"] if runs else {}
+        missing = {
+            model: observed.get(model, 0) for model in required_models
+            if observed.get(model, 0) < minimum
+        }
+        if missing:
+            raise ValueError("Native-scale plan model coverage is incomplete: {}".format(missing))
     expected_weather = targets.get("weather")
     expected_time = targets.get("time_hour")
     actual_weather = distribution(runs, "weather")
@@ -697,7 +948,10 @@ def load_checked_plan(path, laps=None, require_ready=True):
 
 
 def check_plan(args):
-    path, plan = load_checked_plan(args.plan, args.laps)
+    path, plan = load_checked_plan(
+        args.plan, args.laps,
+        require_native_scale=bool(getattr(args, "require_native_scale", False)),
+    )
     print(json.dumps({
         "ready": True, "plan": str(path), "runs": len(plan["runs"]),
         "achieved": plan.get("achieved"),
@@ -739,9 +993,16 @@ def parse_args(argv=None):
     build.add_argument("--seed", type=int, default=260920)
     build.add_argument("--allow-incomplete", action="store_true")
     build.set_defaults(func=build_plan)
+    audit = subparsers.add_parser("build-audit36")
+    audit.add_argument("--suite", action="append", required=True)
+    audit.add_argument("--output", required=True)
+    audit.add_argument("--name")
+    audit.add_argument("--seed", type=int, default=260923)
+    audit.set_defaults(func=build_audit36_plan)
     check = subparsers.add_parser("check")
     check.add_argument("--plan", required=True)
     check.add_argument("--laps", type=int, required=True)
+    check.add_argument("--require-native-scale", action="store_true")
     check.set_defaults(func=check_plan)
     resolve = subparsers.add_parser("resolve")
     resolve.add_argument("--plan", required=True)

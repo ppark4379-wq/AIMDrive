@@ -34,21 +34,52 @@ def verify_feature_contract(package_root, scenario_cfg):
         "Scenario time choices must remain 11/13/15",
     )
 
-    static_models = set(scenario_cfg.get("static_obstacle_models", []))
-    required_static_models = {
+    expected_static_models = {
+        "CargoBox",
         "WoodBox",
-        "Scooter_02",
-        "Bicycle_city",
+        "RedBarrel",
+        "YellowBarrel",
+        "TrafficBarrel",
+        "Lane_Separation_Bar",
+        "PE_Drum",
+        "PE_Firewall_Orange",
+        "PE_Firewall_White",
         "Steel_Barricade",
+        "Concrete_Barricade01",
+        "Concrete_Barricade02",
+        "Bollard01",
+        "Bollard04",
+        "Bicycle_city",
+        "Bicycle_mountain",
+        "Scooter_02",
+        "Sportbike_01",
+        "BabyStroller1",
+        "BabyStroller2",
+        "BabyStroller3",
+        "Bike1",
+        "Bike2",
+        "SportBike",
+        "ElectricScooter1",
+        "ElectricScooter2",
+        "obj_obstacle_dog",
+        "NCAP_GVT",
+        "Color_Cone",
+        "Rubber_Cone",
+        "concrete-barrier",
+        "Bike3",
+        "Scooter1",
+        "Scooter2",
+        "Rockslide",
+        "Barbed_Wirefence",
     }
+    static_models = set(scenario_cfg.get("static_obstacle_models", []))
     require(
-        required_static_models <= static_models,
-        "Compact static-obstacle families were not fully separated",
+        static_models == expected_static_models,
+        "Native static-obstacle audit set changed: "
+        f"missing={sorted(expected_static_models - static_models)}, "
+        f"unexpected={sorted(static_models - expected_static_models)}",
     )
-    require(
-        "RedBarrel" not in static_models,
-        "RedBarrel must remain excluded from static-obstacle selection",
-    )
+
     require(
         bool(scenario_cfg.get("dynamic_obstacle_models")),
         "Dynamic-obstacle model pool is missing",

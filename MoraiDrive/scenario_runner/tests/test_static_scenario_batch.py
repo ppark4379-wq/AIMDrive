@@ -1,3 +1,4 @@
+import copy
 import importlib.util
 from pathlib import Path
 import random
@@ -46,7 +47,7 @@ class StaticScenarioBatchTest(unittest.TestCase):
         for _ in range(100):
             count = rng.randint(1, 3)
             obstacles = batch.generate_layout(
-                self.policy(), rng, count, 0.6, 12.0, 0.1
+                self.policy(), rng, count, 0.6, 0.0, 0.0
             )
             signature = batch.layout_signature(obstacles)
             self.assertNotIn(signature, signatures)
@@ -59,11 +60,68 @@ class StaticScenarioBatchTest(unittest.TestCase):
                 self.assertLessEqual(item["position"]["y"], 10.0)
                 self.assertGreaterEqual(item["position"]["x"], -0.6)
                 self.assertLessEqual(item["position"]["x"], 0.6)
-                self.assertGreaterEqual(item["yaw_deg"], -2.0)
-                self.assertLessEqual(item["yaw_deg"], 22.0)
-                self.assertTrue(all(value > 0 for value in item["scale"]))
+                self.assertEqual(item["yaw_deg"], 10.0)
+                self.assertEqual(item["scale"], [1.0, 1.0, 1.0])
+                self.assertEqual(item["generation"]["scale_policy"], "morai_native_model_scale_v1")
+                self.assertEqual(item["generation"]["scale_multiplier"], 1.0)
         self.assertEqual(counts, {1, 2, 3})
         self.assertEqual(selected_models, {"A", "B", "C", "D"})
+
+    def test_required_model_is_always_present_without_duplication(self):
+        for count in (1, 2, 3):
+            obstacles = batch.generate_layout(
+                self.policy(), random.Random(100 + count), count, 0.6, 0.0,
+                required_model="D",
+            )
+            models = [item["model"] for item in obstacles]
+            self.assertIn("D", models)
+            self.assertEqual(len(models), len(set(models)))
+        with self.assertRaisesRegex(ValueError, "outside the generation policy"):
+            batch.generate_layout(
+                self.policy(), random.Random(1), 2, 0.6, 0.0,
+                required_model="missing",
+            )
+
+    def test_random_scale_rejected_before_any_trial_or_output(self):
+        from unittest.mock import patch
+        self.assertEqual(batch.parse_args([]).scale_jitter, 0.0)
+        self.assertEqual(batch.parse_args([]).yaw_margin_deg, 0.0)
+        for jitter in (0.1, -0.1, float("nan"), float("inf")):
+            with self.subTest(jitter=jitter):
+                with self.assertRaisesRegex(ValueError, "scale is disabled"):
+                    batch.generate_layout(self.policy(), random.Random(1), 2, 0.6, 0, jitter)
+                with patch.object(batch, "load_generation_policy") as load_policy:
+                    with self.assertRaisesRegex(SystemExit, "scale is disabled"):
+                        batch.main(["--scale-jitter", str(jitter)])
+                    load_policy.assert_not_called()
+
+    def test_legacy_enlargement_cannot_reach_new_candidates(self):
+        policy = self.policy()
+        policy["models"] = ["C"]
+        policy["scale_overrides"]["C"] = [2.0, 3.0, 2.0]
+        original = copy.deepcopy(policy)
+        result = batch.generate_layout(policy, random.Random(1), 1, 0.6, 0)
+        self.assertEqual(result[0]["scale"], [1.0, 1.0, 1.0])
+        self.assertEqual(policy, original)
+
+    def test_native_policy_ignores_legacy_config_and_route_scales(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "config.yaml"
+            route = Path(directory) / "route.yaml"
+            config.write_text(yaml.safe_dump({"scenarios": {"full_loop": {
+                "static_obstacle_models": ["CargoBox", "WoodBox"],
+                "static_obstacle_model_scales": {"CargoBox": [2, 3, 2]},
+            }}}))
+            route.write_text(yaml.safe_dump({"full_loop": {"zones": {
+                "static_obstacle": {"scale": [2, 3, 2], "multi_positions": [
+                    self.policy()["anchor_start"], self.policy()["anchor_end"],
+                ]},
+            }}}))
+            originals = (config.read_bytes(), route.read_bytes())
+            policy = batch.load_generation_policy(config, route)
+            result = batch.generate_layout(policy, random.Random(1), 2, 0.6, 0)
+            self.assertTrue(all(item["scale"] == [1, 1, 1] for item in result))
+            self.assertEqual((config.read_bytes(), route.read_bytes()), originals)
 
     def test_candidate_is_not_marked_verified(self):
         obstacles = batch.generate_layout(
@@ -90,7 +148,7 @@ class StaticScenarioBatchTest(unittest.TestCase):
 
     def test_atomic_yaml_is_replayable_by_existing_schema(self):
         obstacles = batch.generate_layout(
-            self.policy(), random.Random(2), 3, 0.5, 5.0, 0.1
+            self.policy(), random.Random(2), 3, 0.5, 5.0, 0.0
         )
         document = batch.build_candidate_document(
             "trial", 2, 1, obstacles, self.policy()
@@ -110,6 +168,8 @@ class StaticScenarioBatchTest(unittest.TestCase):
         self.assertIn("--scenario-only", source)
         self.assertIn("rosparam set /use_sim_time false", source)
         self.assertIn("시나리오 검증용 bridge를 계속 유지", source)
+        self.assertIn("/ctrl_cmd subscriber 확인", source)
+        self.assertIn("ctrl_cmd_missing_count", source)
         self.assertIn('if [[ "$RUN_MODE" == "capture" ]]', source)
 
         launcher = (
@@ -117,6 +177,8 @@ class StaticScenarioBatchTest(unittest.TestCase):
             "run_static_scenario_batch.sh"
         ).read_text(encoding="utf-8")
         self.assertIn("01_internal_sensor_record_preflight.sh --scenario-only", launcher)
+        self.assertIn("static_scenario_batch_preflight", launcher)
+        self.assertIn("/ctrl_cmd 구독자가 없습니다", launcher)
 
     def test_closed_loop_evidence_requires_goal_plan_and_tracks_max_cte(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -224,6 +286,7 @@ class StaticScenarioBatchTest(unittest.TestCase):
                     "attempt": 1,
                     "accepted": False,
                     "candidate": str(candidate),
+                    "models": ["ElectricScooter2"],
                     "return_code": 0,
                     "timed_out": False,
                     "rejection_reasons": ["cross_track_limit_exceeded"],
@@ -234,6 +297,9 @@ class StaticScenarioBatchTest(unittest.TestCase):
                     },
                 }],
                 "accepted_count": 0,
+                "accepted_model_counts": {"ElectricScooter2": 0},
+                "accepted_model_minimum": 1,
+                "accepted_model_minimum_met": False,
                 "rejected_count": 1,
                 "accepted_presets": [],
             }), encoding="utf-8")
@@ -249,6 +315,8 @@ class StaticScenarioBatchTest(unittest.TestCase):
         )
         self.assertFalse(promoted["verification"]["automatic_gate_passed"])
         self.assertEqual(manifest["manual_accepted_count"], 1)
+        self.assertEqual(manifest["accepted_model_counts"]["ElectricScooter2"], 1)
+        self.assertTrue(manifest["accepted_model_minimum_met"])
         self.assertEqual(manifest["rejected_count"], 0)
 
     def test_manual_review_cannot_override_collision_or_failed_run(self):

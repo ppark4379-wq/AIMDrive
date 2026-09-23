@@ -483,6 +483,21 @@ class MissionModesTest(unittest.TestCase):
         actor.set_physics.assert_called_once_with(False)
         actor.set_transform.assert_not_called()
 
+    def test_new_single_obstacle_uses_native_size_despite_legacy_scales(self):
+        scenario = self.make_scenario("full_loop_static")
+        scenario.cfg["static_obstacle_model_scales"] = {
+            model: [2.0, 3.0, 2.0] for model in scenario.cfg["static_obstacle_models"]
+        }
+        self.assertEqual(
+            scenario.load_route_definition()["zones"]["static_obstacle"]["scale"],
+            [2.0, 3.0, 2.0],
+        )
+        self.setup_scenario(scenario)
+        call = scenario.grpc.spawn_obstacle.call_args
+        scale = call.kwargs["scale"]
+        self.assertEqual([scale.x, scale.y, scale.z], [1.0, 1.0, 1.0])
+        self.assertEqual(scenario.static_obstacle_scale, [1.0, 1.0, 1.0])
+
     def test_static_two_object_test_layout_spawns_and_tracks_both(self):
         scenario = self.make_scenario("full_loop_static")
         scenario.cfg["static_obstacle_count"] = 2
@@ -517,6 +532,9 @@ class MissionModesTest(unittest.TestCase):
             scenario.setup()
 
         self.assertEqual(scenario.grpc.spawn_obstacle.call_count, 2)
+        for call in scenario.grpc.spawn_obstacle.call_args_list:
+            scale = call.kwargs["scale"]
+            self.assertEqual([scale.x, scale.y, scale.z], [1.0, 1.0, 1.0])
         self.assertEqual(len(scenario.static_obstacles), 2)
         self.assertEqual(
             [item["actor_id"] for item in scenario.static_obstacle_expectations],

@@ -25,7 +25,7 @@ from morai_pretraining.bev_geometry import (
     conservative_training_bev_relation,
 )
 from morai_pretraining.sensor_record_manifest import dense_ego_timeline, interpolate_ego
-from ssd_storage import require_ssd
+from ssd_storage import require_ssd, SSD_ROOT
 
 
 DEFAULT_CATALOG = (ROOT / "evidence/native_mission_integration_v1/"
@@ -37,6 +37,9 @@ EXPECTED_CATALOG_KIND = {"npc": "vehicle", "pedestrian": "pedestrian",
 def median_dimensions_wlh(case):
     rows = [view.get("dimensions_lwh_m") for view in (case or {}).get("views", [])]
     if len(rows) != 4 or any(not isinstance(row, list) or len(row) != 3 for row in rows):
+        return None
+    if any(type(v) not in (float, int) or not math.isfinite(v) or v <= 0
+           for row in rows for v in row):
         return None
     return [statistics.median(row[index] for row in rows) for index in (1, 0, 2)]
 
@@ -67,6 +70,9 @@ def check_object_geometry(item, catalog_cases, catalog_hash,
         reasons.append("catalog_kind_mismatch")
     elif case.get("visible_return_contradiction") is True:
         reasons.append("catalog_visible_return_contradiction")
+    elif ("actual_pose_audit" in case and
+          (case.get("actual_pose_audit") or {}).get("consistent") is not True):
+        reasons.append("catalog_actual_pose_inconsistent")
     elif reference is None:
         reasons.append("catalog_lacks_four_views")
     elif not reasons:
@@ -81,10 +87,12 @@ def check_object_geometry(item, catalog_cases, catalog_hash,
             reasons.append("observed_dimensions_differ_from_catalog")
     check["reasons"] = reasons
     check["api_box_geometry_candidate"] = not reasons
+    check["catalog_actual_pose_checked"] = bool(case and
+        (case.get("actual_pose_audit") or {}).get("consistent") is True)
     return check
 
 
-def main():
+def main(*, geometry_version=2):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--episode", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -124,6 +132,12 @@ def main():
     catalog = json.loads(args.catalog_report.read_text())
     catalog_cases = {row["model"]: row for row in catalog.get("cases", [])}
     catalog_hash = digest(args.catalog_report)
+    scale_evidence = None
+    if geometry_version == 3:
+        from morai_pretraining.scaled_object_geometry import load_scale_evidence
+        scale_evidence = load_scale_evidence(
+            args.episode, active, actor.get("raw_manifest_sha256"),
+            SSD_ROOT, ROOT.parents[1])
     bev = {
         "forward_min_m": args.bev_forward_min_m,
         "forward_max_m": args.bev_forward_max_m,
@@ -163,9 +177,17 @@ def main():
                 relevant_actor_observations += 1
                 if model:
                     relevant_models.add(model)
-                check = check_object_geometry(
-                    item, catalog_cases, catalog_hash,
-                    args.absolute_tolerance_m, args.relative_tolerance)
+                if geometry_version == 3:
+                    from morai_pretraining.scaled_object_geometry import check_scaled_object_geometry
+                    check = check_scaled_object_geometry(
+                        item, catalog_cases, catalog_hash,
+                        args.absolute_tolerance_m, args.relative_tolerance,
+                        scale_evidence, frame["object_gt"].get("source_record_ids", []),
+                        check_object_geometry)
+                else:
+                    check = check_object_geometry(
+                        item, catalog_cases, catalog_hash,
+                        args.absolute_tolerance_m, args.relative_tolerance)
                 reasons.extend("%s:%s" % (model or "<unknown>", reason)
                                for reason in check["reasons"])
             else:
@@ -213,7 +235,7 @@ def main():
             "observed_size_range_wlh_m": ranges,
         })
     report = {
-        "schema": "morai_sensor_record_object_geometry_audit_v2",
+        "schema": "morai_sensor_record_object_geometry_audit_v%d" % geometry_version,
         "frames": len(frames),
         "frame_status": dict(status),
         "api_box_geometry_candidate_frames": sum(
@@ -251,18 +273,33 @@ def main():
             "geometry; this does not prove camera exposure atomicity or occluded-box tightness."
         ),
     }
+    files = ["report.json", "frames.json"]
+    if geometry_version == 3:
+        report["scale_policy"] = "proportional_to_measured_catalog_scale_v1"
+        report["scale_evidence"] = {
+            "file": "scale_evidence.json",
+            "preset_resolved": scale_evidence["preset_resolved"],
+            "matched_instances": sum(row["valid"] for row in scale_evidence["instances"].values()),
+            "unresolved_instances": sum(not row["valid"] for row in scale_evidence["instances"].values()),
+            "anisotropic_relative_scale_supported": False,
+        }
+        files.append("scale_evidence.json")
     args.output.mkdir(parents=True, exist_ok=False)
+    if scale_evidence is not None:
+        write_json(args.output / "scale_evidence.json", scale_evidence)
     write_json(args.output / "report.json", report)
     write_json(args.output / "frames.json", output)
     write_json(args.output / "COMPLETE.json", {
         "schema": report["schema"],
         "files": {name: digest(args.output / name)
-                  for name in ("report.json", "frames.json")},
+                  for name in files},
         "gt_timeline_seal_sha256": digest(gt_dir / "COMPLETE.json"),
         "actor_inventory_seal_sha256": digest(actor_dir / "COMPLETE.json"),
         "quality_seal_sha256": digest(quality_dir / "QUALITY_COMPLETE.json"),
         "catalog_report_sha256": catalog_hash,
         "script_sha256": digest(Path(__file__)),
+        **({"scale_module_sha256": digest(ROOT / "morai_pretraining/scaled_object_geometry.py")}
+           if geometry_version == 3 else {}),
         "source_timestamps_modified": False,
         "training_visible": False,
     })

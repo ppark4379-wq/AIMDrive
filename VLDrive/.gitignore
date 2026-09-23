@@ -33,3 +33,4 @@ __pycache__/
 
 # Machine-specific Sensor Record transfer paths.
 /configs/morai_transfer.local.json
+/configs/vision_encoder_sensor_record.local.json

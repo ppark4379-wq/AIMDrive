@@ -18,6 +18,7 @@ sys.path[:0] = [
 from async_capture.journal import digest, write_json
 from ssd_storage import require_ssd
 from morai_pretraining.sensor_record_manifest import build_episode_manifest
+from async_capture.sensor_record_admission import verify_sealed_directory
 from scenario_runner.scenarios.segment_modes.modes import (
     PRIMARY_SCENARIOS,
     get_scenario_zones,
@@ -98,6 +99,21 @@ def planned_split_laps(path, expected_sha256, available, requested_laps):
     return result
 
 
+def verify_reprocessed_manifest(previous, current):
+    """A geometry-only revision must retain frames, input bytes and other targets."""
+    if previous.get("split") != current.get("split"):
+        raise ValueError("Reprocessing changed the original split")
+    old = previous.get("entries", [])
+    new = current.get("entries", [])
+    if len(old) != len(new):
+        raise ValueError("Geometry reprocessing changed the original frame count")
+    changed_fields = {"objects", "object_valid", "object_positive"}
+    for left, right in zip(old, new):
+        if ({k: v for k, v in left.items() if k not in changed_fields}
+                != {k: v for k, v in right.items() if k not in changed_fields}):
+            raise ValueError("Geometry reprocessing changed input bytes or non-object targets")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--validation-report", type=Path, required=True)
@@ -105,6 +121,10 @@ def main():
     parser.add_argument("--val-lap", type=int, action="append", default=[])
     parser.add_argument("--split-plan", type=Path)
     parser.add_argument("--split-plan-sha256")
+    parser.add_argument("--admission-recovery-name", default="ADMISSION_RECOVERY.json",
+                        help="Run-local immutable recovery JSON pinned by the new publication")
+    parser.add_argument("--source-manifest-index", type=Path,
+                        help="Pin an earlier publication and preserve its frames and split")
     args = parser.parse_args()
     report_path = args.validation_report.expanduser().resolve()
     output = args.output.expanduser().resolve()
@@ -143,6 +163,36 @@ def main():
         split_names = ("train", "val")
         split_policy = "complete_lap_holdout_v1"
 
+    previous_documents = {}
+    previous_roots = {}
+    source_index = None
+    source_index_path = None
+    if args.source_manifest_index:
+        source_index_path = args.source_manifest_index.expanduser().resolve()
+        source_seal = verify_sealed_directory(source_index_path.parent)
+        if source_seal.get("files", {}).get(source_index_path.name) != digest(source_index_path):
+            raise ValueError("Source manifest index is not covered by its publication seal")
+        source_index = load(source_index_path)
+        if (source_index.get("training_ready") is not True
+                or source_index.get("source_validation_sha256") != digest(report_path)):
+            raise ValueError("Reprocessing source publication has different campaign evidence")
+        for split in split_names:
+            old_rows = source_index.get(split, [])
+            if {int(row["lap"]) for row in old_rows} != split_laps[split]:
+                raise ValueError("Reprocessing must preserve original run splits")
+            for row in old_rows:
+                old_path = Path(row["path"])
+                if not old_path.is_absolute():
+                    old_path = source_index_path.parent / old_path
+                if digest(old_path) != row["sha256"]:
+                    raise ValueError("Source manifest changed")
+                old_doc = load(old_path)
+                previous_documents[int(row["lap"])] = old_doc
+                previous_roots[int(row["lap"])] = {
+                    key: (old_path.parent / old_doc[key]).resolve()
+                    for key in ("episode", "native_root")
+                }
+
     output.mkdir(parents=False, exist_ok=False)
     manifest_rows = {split: [] for split in split_names}
     coverage = {split: Counter() for split in split_names}
@@ -158,10 +208,18 @@ def main():
         run = ((report_path.parent / raw_run) if not raw_run.is_absolute()
                else raw_run).resolve()
         require_ssd(run, reserve_bytes=0)
+        previous_root = previous_roots.get(number)
+        if previous_root and previous_root["episode"] != (run / "episode_000").resolve():
+            raise ValueError("Reprocessing source publication points to a different episode")
         manifest = build_episode_manifest(run / "episode_000",
                                           campaign_validation_sha256=validation_sha,
                                           split=split,
-                                          expected_evidence=lap.get("input_seals", {}))
+                                          expected_evidence=lap.get("input_seals", {}),
+                                          recovery_name=args.admission_recovery_name,
+                                          published_native_root=(
+                                              previous_root["native_root"] if previous_root else None))
+        if source_index is not None:
+            verify_reprocessed_manifest(previous_documents[number], manifest)
         name = "lap_%03d_%s_manifest.json" % (number, split)
         path = output / name
         if portable:
@@ -199,6 +257,7 @@ def main():
         "scenario_name": scenario_name,
         "required_coverage": list(required),
         "split_policy": split_policy,
+        "admission_recovery_name": args.admission_recovery_name,
         "train_laps": sorted(split_laps["train"]),
         "val_laps": sorted(split_laps["val"]),
         "train": manifest_rows["train"],
@@ -224,6 +283,15 @@ def main():
             if portable else str(split_plan_path)
         )
         index["split_plan_sha256"] = digest(split_plan_path)
+    if source_index_path is not None:
+        index["reprocessing"] = {
+            "policy": "additive_object_geometry_only_v1",
+            "source_manifest_index": relative_path(source_index_path, output),
+            "source_manifest_index_sha256": digest(source_index_path),
+            "original_run_splits_preserved": True,
+            "input_bytes_and_non_object_targets_preserved": True,
+            "admission_recovery_name": args.admission_recovery_name,
+        }
     write_json(output / "manifest_index.json", index)
     write_json(output / "COMPLETE.json", {
         "schema": "morai_sensor_record_training_publication_v1",
