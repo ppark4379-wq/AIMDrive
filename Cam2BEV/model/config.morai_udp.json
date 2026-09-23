@@ -1,0 +1,120 @@
+{
+  "simulator": "MORAI R1.H3 (year not yet confirmed)",
+  "bind_ip": "0.0.0.0",
+  "protocol": "auto",
+  "max_skew_ms": 100,
+  "max_age_ms": 500,
+  "cameras": {
+    "front": {
+      "port": 15001,
+      "width": 1280,
+      "height": 720,
+      "fov_deg": 90,
+      "fov_axis": "horizontal",
+      "position_m": [
+        1.19,
+        0,
+        1.2
+      ],
+      "rotation_deg": [
+        0,
+        2,
+        0
+      ],
+      "rotation_order": "roll,pitch,yaw",
+      "camera_model": "pinhole",
+      "intrinsics": {
+        "fx": 640.0000000000001,
+        "fy": 640.0000000000001,
+        "px": 640.0,
+        "py": 360.0
+      }
+    },
+    "rear": {
+      "port": 15002,
+      "width": 640,
+      "height": 480,
+      "fov_deg": 90,
+      "fov_axis": "horizontal",
+      "position_m": [
+        -0.14,
+        0,
+        1.2
+      ],
+      "rotation_deg": [
+        0,
+        2,
+        180
+      ],
+      "rotation_order": "roll,pitch,yaw",
+      "camera_model": "pinhole",
+      "intrinsics": {
+        "fx": 320.00000000000006,
+        "fy": 320.00000000000006,
+        "px": 320.0,
+        "py": 240.0
+      }
+    },
+    "left": {
+      "port": 15003,
+      "width": 640,
+      "height": 480,
+      "fov_deg": 130,
+      "fov_axis": "horizontal",
+      "position_m": [
+        1.15,
+        0.65,
+        1.2
+      ],
+      "rotation_deg": [
+        0,
+        10,
+        70
+      ],
+      "rotation_order": "roll,pitch,yaw",
+      "camera_model": "pinhole",
+      "intrinsics": {
+        "fx": 149.21845060959956,
+        "fy": 149.21845060959956,
+        "px": 320.0,
+        "py": 240.0
+      }
+    },
+    "right": {
+      "port": 15004,
+      "width": 640,
+      "height": 480,
+      "fov_deg": 130,
+      "fov_axis": "horizontal",
+      "position_m": [
+        1.15,
+        -0.65,
+        1.2
+      ],
+      "rotation_deg": [
+        0,
+        10,
+        290
+      ],
+      "rotation_order": "roll,pitch,yaw",
+      "camera_model": "pinhole",
+      "intrinsics": {
+        "fx": 149.21845060959956,
+        "fy": 149.21845060959956,
+        "px": 320.0,
+        "py": 240.0
+      }
+    }
+  },
+  "inference": {
+    "image_shape": [
+      256,
+      512
+    ],
+    "segmenter": "segmenters/segformer_cityscapes.py",
+    "homographies": null,
+    "weights": null,
+    "road_threshold": 0.7
+  },
+  "intrinsics_assumption": "Centered principal point, square pixels, ideal pinhole; native image resolution."
+}

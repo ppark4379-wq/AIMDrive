@@ -138,6 +138,56 @@ def _model_selection_policy(self):
     return "review_exact" if self.cfg.get("dynamic_obstacle_review") else policy
 
 
+def _excluded_model_path_pairs(self):
+    """Return exact path/model pairs disabled for ordinary random scenes."""
+    raw = _dynamic_cfg(self).get("excluded_model_path_pairs", [])
+    if not isinstance(raw, list):
+        raise RuntimeError(
+            "dynamic_obstacle.excluded_model_path_pairs must be a list"
+        )
+    excluded = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            raise RuntimeError(
+                "dynamic_obstacle.excluded_model_path_pairs entries must be mappings"
+            )
+        path_id = str(item.get("path_id", "")).strip()
+        model = str(item.get("model", "")).strip()
+        if not path_id or not model:
+            raise RuntimeError(
+                "dynamic_obstacle.excluded_model_path_pairs entries require path_id and model"
+            )
+        pair = (path_id, model)
+        if pair in excluded:
+            raise RuntimeError(
+                "dynamic_obstacle.excluded_model_path_pairs contains a duplicate: "
+                f"{path_id}/{model}"
+            )
+        excluded.add(pair)
+    return excluded
+
+
+def _single_event_probability(cfg):
+    value = float(cfg.get("single_event_probability", 0.5))
+    if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+        raise RuntimeError(
+            "dynamic_obstacle.single_event_probability must be between 0 and 1"
+        )
+    return value
+
+
+def _select_random_schedule(scene_random, schedules, cfg):
+    """Choose a one- or two-event schedule with an explicit mode ratio."""
+    available_counts = [count for count in (1, 2) if schedules.get(count)]
+    if not available_counts:
+        raise RuntimeError("No one- or two-event dynamic schedule is available")
+    if len(available_counts) == 2:
+        count = 1 if scene_random.random() < _single_event_probability(cfg) else 2
+    else:
+        count = available_counts[0]
+    return list(scene_random.choice(schedules[count]))
+
+
 def _ego_speed_mps(ego_state):
     # The gRPC adapter supplies an explicit SI field. The ROS fallback and
     # injected collection observations already provide metres/second.
@@ -614,6 +664,22 @@ def _schedule_candidates(entries, maximum_count, minimum_spacing_m):
 
 
 def _choose_schedule(self, catalogue, cfg):
+    _single_event_probability(cfg)
+    excluded = _excluded_model_path_pairs(self)
+    known_paths = {entry["id"] for entry in catalogue}
+    unknown_paths = sorted({path_id for path_id, _ in excluded} - known_paths)
+    unknown_models = sorted(
+        {model for _, model in excluded}
+        - set(self.cfg.get("dynamic_obstacle_models", []))
+    )
+    # A one-entry catalogue is the supported legacy fallback; exclusions for
+    # modern catalogue IDs are simply irrelevant there. Multi-entry production
+    # catalogues stay fail-closed against misspelled path IDs.
+    if (unknown_paths and len(catalogue) > 1) or unknown_models:
+        raise RuntimeError(
+            "dynamic_obstacle.excluded_model_path_pairs references unknown "
+            f"paths={unknown_paths}, models={unknown_models}"
+        )
     review = self.cfg.get("dynamic_obstacle_review")
     if review:
         if self.cfg.get("mission_mode") != "full_loop_dynamic" or self.cfg.get("sync_runtime", {}).get("enabled", True):
@@ -647,7 +713,8 @@ def _choose_schedule(self, catalogue, cfg):
     for entry in catalogue:
         if _model_speed_pairs(self, entry):
             eligible.append(entry)
-    maximum_count = max(1, min(3, int(cfg.get("max_count", 3))))
+    # Production scenes deliberately use at most two sequential interactions.
+    maximum_count = max(1, min(2, int(cfg.get("max_count", 2))))
     schedules = _schedule_candidates(
         eligible,
         maximum_count,
@@ -671,8 +738,7 @@ def _choose_schedule(self, catalogue, cfg):
     # pedestrian scene even when the previous run's profile file differs.
     scene_random = random.Random(int(self.run_seed) ^ 0x44594E414D4943)
     if selected is None:
-        count = scene_random.choice(sorted(schedules))
-        selected = list(scene_random.choice(schedules[count]))
+        selected = _select_random_schedule(scene_random, schedules, cfg)
     events = []
     for sequence, entry in enumerate(selected, 1):
         pairs = _model_speed_pairs(self, entry)
@@ -725,6 +791,12 @@ def _model_speed_pairs(self, entry):
             pairs = [pair for pair in pairs if pair[1] in reviewed_speeds]
         else:
             pairs = [pair for pair in pairs if pair in permitted]
+    # Explicit review remains capable of reproducing a blocked pair. Ordinary
+    # random selection removes it before drawing, so no redraw can skew other
+    # models on the same path.
+    if not self.cfg.get("dynamic_obstacle_review"):
+        excluded = _excluded_model_path_pairs(self)
+        pairs = [pair for pair in pairs if (entry["id"], pair[0]) not in excluded]
     return pairs
 
 
@@ -907,7 +979,10 @@ def _persist_progress(self, during_cleanup=False):
 def _emit_event(self, name, event, **fields):
     payload = {
         "crossing_id": event["id"],
-        "sequence": int(event["sequence"]),
+        # ``RawScenario.event`` owns the generic ``sequence`` field for the
+        # collection-wide event order.  Keep the pedestrian's order in its
+        # own namespace so multi-event evidence cannot collide with it.
+        "dynamic_sequence": int(event["sequence"]),
         "model": event["model"],
         "route_s": float(event["route_s"]),
     }
@@ -1319,7 +1394,7 @@ def _emit_signal_guard(self, name, event, **fields):
     guard = event["signal_guard"]
     payload = {
         "crossing_id": event["id"],
-        "sequence": int(event["sequence"]),
+        "dynamic_sequence": int(event["sequence"]),
         "light_id": guard["light_id"],
         "stopline_route_s": float(guard["stopline_route_s"]),
         "release_route_s": float(guard["release_route_s"]),

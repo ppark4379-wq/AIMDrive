@@ -1,5 +1,6 @@
 """Offline integration tests: real routing/events with a mocked MORAI boundary."""
 import ast
+from collections import Counter
 import copy
 import io
 import json
@@ -120,7 +121,12 @@ class MissionModesTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
 
-    def make_scenario(self, name, seed=7):
+    def make_scenario(self, name, seed=None):
+        # Most dynamic lifecycle tests exercise the legacy crossing explicitly.
+        # Pin their fixture seed to a scene that selects that path under the
+        # production 80:20 selector; other modes retain the historical seed.
+        if seed is None:
+            seed = 27 if name == "full_loop_dynamic" else 7
         global_cfg = copy.deepcopy(self.global_cfg)
         global_cfg["paths"]["runtime_root"] = self.tmp.name
         cfg = copy.deepcopy(self.base_cfg)
@@ -2026,6 +2032,40 @@ class MissionModesTest(unittest.TestCase):
             scenario.update_dynamic_obstacle(ego, event["route_s"] - 20)
         self.assertEqual(scenario.grpc.spawn_pedestrian.call_count, 1)
 
+    def test_dynamic_collection_event_keeps_npc_and_log_sequences_distinct(self):
+        rows = []
+
+        def collection_writer(event_name, **fields):
+            row = dict(event=event_name, sequence=len(rows), **fields)
+            rows.append(row)
+
+        scenario = SimpleNamespace(
+            cfg={"dynamic_obstacle_review": None},
+            event=collection_writer,
+        )
+        event = {
+            "id": "crossing-test",
+            "sequence": 2,
+            "model": "Man1",
+            "route_s": 90.0,
+            "signal_guard": {
+                "light_id": "C-test",
+                "stopline_route_s": 67.0,
+                "release_route_s": 95.0,
+                "mode": "auto",
+            },
+        }
+
+        dynamic_obstacle._emit_event(
+            scenario, "dynamic_obstacle_started", event, actor_id="actor-1"
+        )
+        dynamic_obstacle._emit_signal_guard(
+            scenario, "dynamic_signal_guard_command", event, verified=True
+        )
+
+        self.assertEqual([row["sequence"] for row in rows], [0, 1])
+        self.assertEqual([row["dynamic_sequence"] for row in rows], [2, 2])
+
     def enable_collection_actor_observation(self, scenario, time_mode="simulation_free_run"):
         # Exercise the actual unchanged collection hook/reader without
         # importing ROS, starting recording, or constructing its output dir.
@@ -2135,20 +2175,26 @@ class MissionModesTest(unittest.TestCase):
                 actor.get_actor_state.assert_not_called()
                 self.assertEqual(scenario.grpc.spawn_pedestrian.call_count, 1)
 
-    def test_dynamic_collection_one_two_three_events_keep_separate_wrapped_handles(self):
-        for count, seed in ((1, 0), (2, 3), (3, 1)):
+    def test_dynamic_collection_one_two_events_keep_separate_wrapped_handles(self):
+        for count, seed in ((1, 0), (2, 3)):
             with self.subTest(count=count):
                 scenario = self.make_scenario("full_loop_dynamic", seed)
                 self.setup_scenario(scenario)
-                # Exercise all supported counts independently of whether the
-                # current inset site has room for three real crossing events.
+                # Exercise both supported production event counts.
                 legacy = scenario.dynamic_obstacle_catalog[0]
                 catalogue = [dict(legacy, id="collection-test-%d" % i,
                                   route_s=40.0 + i * 50.0) for i in range(count)]
                 scenario.cfg["dynamic_obstacle"]["max_count"] = count
+                scenario.cfg["dynamic_obstacle"]["single_event_probability"] = (
+                    1.0 if count == 1 else 0.0
+                )
+                scenario.cfg["dynamic_obstacle"]["excluded_model_path_pairs"] = []
                 with patch.object(dynamic_obstacle.random, "Random") as factory:
                     def choose(choices):
-                        return max(choices) if isinstance(choices[0], int) else choices[0]
+                        return choices[0]
+                    factory.return_value.random.return_value = (
+                        0.0 if count == 1 else 1.0
+                    )
                     factory.return_value.choice.side_effect = choose
                     scenario.dynamic_obstacle_events = dynamic_obstacle._choose_schedule(
                         scenario, catalogue, scenario.cfg["dynamic_obstacle"])
@@ -2495,9 +2541,16 @@ class MissionModesTest(unittest.TestCase):
             with self.subTest(crossing=entry["id"]):
                 self.assertIn({"model": "Man1", "speed_mps": 2.5}, entry["approved_combinations"])
                 reviewed_speeds = {pair["speed_mps"] for pair in entry["approved_combinations"]}
-                self.assertEqual(dynamic_obstacle._model_speed_pairs(scenario, entry),
-                                 [(model, speed) for model in sorted(scenario.dynamic_obstacle_models)
-                                  for speed in sorted(reviewed_speeds)])
+                excluded = dynamic_obstacle._excluded_model_path_pairs(scenario)
+                self.assertEqual(
+                    dynamic_obstacle._model_speed_pairs(scenario, entry),
+                    [
+                        (model, speed)
+                        for model in sorted(scenario.dynamic_obstacle_models)
+                        for speed in sorted(reviewed_speeds)
+                        if (entry["id"], model) not in excluded
+                    ],
+                )
                 evidence = entry["verification"]
                 self.assertTrue(evidence["morai_closed_loop"])
                 self.assertTrue(evidence["collision_free"])
@@ -2545,8 +2598,16 @@ class MissionModesTest(unittest.TestCase):
                 speeds = set(entry["allowed_speeds_mps"])
                 if entry["approved_combinations"]:
                     speeds &= {float(item["speed_mps"]) for item in entry["approved_combinations"]}
-                self.assertEqual(set(pairs), {(model, speed) for model in scenario.dynamic_obstacle_models
-                                             for speed in speeds})
+                excluded = dynamic_obstacle._excluded_model_path_pairs(scenario)
+                self.assertEqual(
+                    set(pairs),
+                    {
+                        (model, speed)
+                        for model in scenario.dynamic_obstacle_models
+                        for speed in speeds
+                        if (entry["id"], model) not in excluded
+                    },
+                )
         # Missing simulator models are excluded even when historically reviewed.
         scenario.dynamic_obstacle_models = ["Dog1", "Dog1"]
         for entry in approved:
@@ -2559,32 +2620,146 @@ class MissionModesTest(unittest.TestCase):
         scenario = self.make_scenario("full_loop_dynamic")
         self.setup_scenario(scenario)
         scenario.dynamic_obstacle_models = ["Man1", "Woman1", "Dog1"]
-        # Test the generic 3-event selector without pretending three crossings
-        # fit inside the newly restricted real-world placement region.
+        # Test the generic two-event selector without depending on the two
+        # route-specific production pairs.
         catalogue = [dict(scenario.dynamic_obstacle_catalog[0], id=str(i), route_s=40.0 + i * 50.0)
-                     for i in range(3)]
-        for models in (("Man1", "Man1", "Man1"), ("Man1", "Woman1", "Dog1"),
-                       ("Man1", "Man1", "Dog1")):
+                     for i in range(2)]
+        scenario.cfg["dynamic_obstacle"]["single_event_probability"] = 0.0
+        scenario.cfg["dynamic_obstacle"]["excluded_model_path_pairs"] = []
+        for models in (("Man1", "Man1"), ("Man1", "Woman1"),
+                       ("Dog1", "Man1")):
             with self.subTest(models=models):
                 choices_seen = []
                 def choose(choices):
                     choices_seen.append(choices)
                     if len(choices_seen) == 1:
-                        self.assertIn(3, choices)
-                        return 3
-                    if len(choices_seen) == 2:
                         return choices[0]
                     # Every event must retain the entire model pool, regardless
                     # of the models selected for the preceding events.
                     self.assertEqual({model for model, _ in choices}, set(scenario.dynamic_obstacle_models))
-                    return next(pair for pair in choices if pair[0] == models[len(choices_seen) - 3])
+                    return next(pair for pair in choices if pair[0] == models[len(choices_seen) - 2])
                 with patch.object(dynamic_obstacle.random, "Random") as factory:
+                    factory.return_value.random.return_value = 1.0
                     factory.return_value.choice.side_effect = choose
                     events = dynamic_obstacle._choose_schedule(scenario, catalogue,
                                                               scenario.cfg["dynamic_obstacle"])
                 self.assertEqual(tuple(event["model"] for event in events), models)
-                self.assertEqual(len(choices_seen), 5)
+                self.assertEqual(len(choices_seen), 3)
                 self.assertTrue(all(event["model_selection_policy"] == "yaml_pool" for event in events))
+
+    def test_dynamic_observed_bad_pairs_are_prefiltered_only_for_random_runs(self):
+        scenario = self.make_scenario("full_loop_dynamic")
+        self.setup_scenario(scenario)
+        expected = {
+            ("general_south_east_to_west_diagonal__0_0_reverse", "police_m_2"),
+            ("general_south_east_to_west_diagonal__2_0_reverse", "worker_f_1"),
+            ("general_north_west_to_east_diagonal__0_0_forward", "worker_f_1"),
+            ("rear_crosswalk_diagonal_right_to_left_north", "Man4"),
+        }
+        self.assertEqual(dynamic_obstacle._excluded_model_path_pairs(scenario), expected)
+        approved = [entry for entry in scenario.dynamic_obstacle_catalog
+                    if entry["status"] == "approved"]
+        self.assertEqual(len(approved), 40)
+        for entry in approved:
+            models = {model for model, _ in dynamic_obstacle._model_speed_pairs(scenario, entry)}
+            blocked_models = {
+                model for path_id, model in expected if entry["id"] == path_id
+            }
+            self.assertEqual(
+                models,
+                set(scenario.dynamic_obstacle_models) - blocked_models,
+            )
+        # Manual review must remain able to reproduce a blocked pair exactly.
+        path_id, model = sorted(expected)[0]
+        entry = next(item for item in approved if item["id"] == path_id)
+        scenario.cfg["sync_runtime"]["enabled"] = False
+        scenario.cfg["dynamic_obstacle_review"] = [
+            {"id": path_id, "model": model, "speed_mps": entry["allowed_speeds_mps"][0]}
+        ]
+        reviewed = dynamic_obstacle._choose_schedule(
+            scenario, scenario.dynamic_obstacle_catalog, scenario.cfg["dynamic_obstacle"]
+        )
+        self.assertEqual([(event["id"], event["model"]) for event in reviewed], [(path_id, model)])
+
+    def test_dynamic_schedule_mix_is_80_20_and_single_paths_are_uniform(self):
+        cfg = {"single_event_probability": 0.8}
+        singles = [(f"path-{index}",) for index in range(40)]
+        doubles = [("south", "north-forward"), ("south", "north-reverse")]
+        schedules = {1: singles, 2: doubles}
+        modes = Counter()
+        paths = Counter()
+        pairs = Counter()
+        for seed in range(20000):
+            selected = dynamic_obstacle._select_random_schedule(
+                random.Random(seed ^ 0x44594E414D4943), schedules, cfg
+            )
+            modes[len(selected)] += 1
+            if len(selected) == 1:
+                paths[selected[0]] += 1
+            else:
+                pairs[tuple(selected)] += 1
+        self.assertGreaterEqual(modes[1] / sum(modes.values()), 0.79)
+        self.assertLessEqual(modes[1] / sum(modes.values()), 0.81)
+        self.assertEqual(set(paths), {item[0] for item in singles})
+        self.assertLess(max(paths.values()) - min(paths.values()), 100)
+        self.assertEqual(set(pairs), set(doubles))
+        self.assertLess(abs(pairs[doubles[0]] - pairs[doubles[1]]), 150)
+
+    def test_dynamic_schedule_mix_configuration_is_fail_closed(self):
+        for value in (-0.01, 1.01, float("nan"), float("inf")):
+            with self.subTest(value=value), self.assertRaisesRegex(
+                RuntimeError, "single_event_probability"
+            ):
+                dynamic_obstacle._single_event_probability(
+                    {"single_event_probability": value}
+                )
+        scenario = self.make_scenario("full_loop_dynamic")
+        self.setup_scenario(scenario)
+        for invalid in (None, ["bad"], [{"path_id": "x"}], [{"model": "Man1"}]):
+            with self.subTest(invalid=invalid):
+                scenario.cfg["dynamic_obstacle"]["excluded_model_path_pairs"] = invalid
+                with self.assertRaisesRegex(RuntimeError, "excluded_model_path_pairs"):
+                    dynamic_obstacle._excluded_model_path_pairs(scenario)
+
+    def test_dynamic_production_catalogue_keeps_40_single_and_two_safe_pairs(self):
+        scenario = self.make_scenario("full_loop_dynamic")
+        self.setup_scenario(scenario)
+        cfg = scenario.cfg["dynamic_obstacle"]
+        eligible = [
+            entry for entry in scenario.dynamic_obstacle_catalog
+            if dynamic_obstacle._model_speed_pairs(scenario, entry)
+        ]
+        schedules = dynamic_obstacle._schedule_candidates(
+            eligible, cfg["max_count"], cfg["minimum_event_spacing_m"]
+        )
+        zone = scenario.route_definition["zones"]["dynamic_obstacle"]
+        zone_start_s = scenario.path_s_at_index(zone["start_path_index"])
+        schedules = {
+            count: [
+                schedule for schedule in choices
+                if dynamic_obstacle._schedule_has_timing_room(
+                    scenario, schedule, cfg, zone_start_s
+                )
+            ]
+            for count, choices in schedules.items()
+        }
+        self.assertEqual(len(schedules[1]), 40)
+        self.assertEqual(
+            {
+                tuple(entry["id"] for entry in schedule)
+                for schedule in schedules[2]
+            },
+            {
+                (
+                    "general_south_east_to_west_diagonal__0_0_reverse",
+                    "general_north_west_to_east_diagonal__2_2_forward",
+                ),
+                (
+                    "general_south_east_to_west_diagonal__0_0_reverse",
+                    "general_north_west_to_east_diagonal__2_2_reverse",
+                ),
+            },
+        )
 
     def test_dynamic_model_policy_defaults_to_strict_and_rejects_typos(self):
         scenario = self.make_scenario("full_loop_dynamic")

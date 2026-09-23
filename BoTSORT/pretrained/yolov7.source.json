@@ -1,0 +1,6 @@
+{
+  "source": "https://github.com/WongKinYiu/yolov7/releases/download/v0.1/yolov7.pt",
+  "bytes": 75587165,
+  "sha256": "d1ac3c74eb96a3eec77949c0f37a06bc272756606ff011d9353f7abff4e0c71d",
+  "description": "Official YOLOv7 COCO pretrained weights"
+}
