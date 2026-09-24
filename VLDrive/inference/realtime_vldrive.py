@@ -44,8 +44,46 @@ def validate_config(cfg):
     rate=cfg['runtime']['prediction_hz']
     if rate is not None and (type(rate) not in (int,float) or not math.isfinite(rate) or rate<=0):
         raise ValueError('prediction_hz must be null (unlimited) or positive and finite')
-    if rate is not None and rate>cfg['runtime']['target_hz']:
-        raise ValueError('prediction_hz must not exceed sensor history target_hz')
+    runtime = cfg['runtime']
+    capacity = runtime.get('input_buffer_frames', 64)
+    if type(capacity) is not int or not 11 <= capacity <= 128:
+        raise ValueError('input_buffer_frames must be an integer in 11..128')
+    for key in ('resample_history', 'optimized_window'):
+        if type(runtime.get(key, False)) is not bool:
+            raise ValueError(key+' must be boolean')
+    capture_hz = runtime.get('capture_hz', runtime['target_hz'])
+    if type(capture_hz) not in (int,float) or not math.isfinite(capture_hz) or not 0 < capture_hz <= 20:
+        raise ValueError('capture_hz must be positive and <= 20')
+    encoder_hz = runtime.get('encoder_max_hz', 10.)
+    if type(encoder_hz) not in (int,float) or not math.isfinite(encoder_hz) or not 0 < encoder_hz <= 20:
+        raise ValueError('encoder_max_hz must be positive and <= 20')
+    gap = runtime.get('history_reset_gap_s', 1.)
+    if type(gap) not in (int,float) or not math.isfinite(gap) or gap <= 1/runtime['target_hz'] + runtime['history_tolerance_s']:
+        raise ValueError('history_reset_gap_s must exceed one trained interval plus tolerance')
+    if capture_hz != runtime['target_hz'] and not runtime.get('resample_history', False):
+        raise ValueError('Changing capture_hz requires resample_history')
+    if capture_hz < runtime['target_hz']:
+        raise ValueError('capture_hz must be at least the trained history target_hz')
+    if runtime.get('resample_history', False) and runtime['history_tolerance_s'] >= .5/runtime['target_hz']:
+        raise ValueError('history_tolerance_s must be below half the trained interval')
+    for key, minimum, maximum in (
+        ('history_max_span_s', 10/runtime['target_hz'], 12/runtime['target_hz']),
+        ('history_max_adjacent_gap_s', 1/runtime['target_hz'], 2/runtime['target_hz']+runtime['history_tolerance_s']),
+    ):
+        if key in runtime and (type(runtime[key]) not in (int,float) or not math.isfinite(runtime[key])
+                               or not minimum <= runtime[key] <= maximum+1e-8):
+            raise ValueError(f'{key} must be within {minimum:g}..{maximum:g}')
+    if type(runtime.get('pin_encoder_inputs', False)) is not bool:
+        raise ValueError('pin_encoder_inputs must be boolean')
+    if type(runtime.get('encoder_stream_priority', 0)) is not int or runtime.get('encoder_stream_priority', 0) not in (-1, 0):
+        raise ValueError('encoder_stream_priority must be -1 or 0')
+    if type(runtime.get('encoder_batch_size', 1)) is not int or runtime.get('encoder_batch_size', 1) not in (1, 2):
+        raise ValueError('encoder_batch_size must be 1 or 2')
+    batch_wait = runtime.get('encoder_batch_wait_s', 1/runtime['target_hz']+.02)
+    if type(batch_wait) not in (int,float) or not math.isfinite(batch_wait) or not 0 < batch_wait <= 1/runtime['target_hz']+runtime['history_tolerance_s']:
+        raise ValueError('encoder_batch_wait_s must be positive and within one interval plus tolerance')
+    if rate is not None and rate > capture_hz:
+        raise ValueError('prediction_hz must not exceed capture_hz')
     if type(cfg['runtime'].get('separate_encoder_stream',False)) is not bool:
         raise ValueError('separate_encoder_stream must be boolean')
     nav = cfg['navigation']
@@ -93,12 +131,16 @@ def main():
     parser.add_argument('--probe-only', action='store_true', help='Check receive streams without loading networks')
     parser.add_argument('--duration', type=float, help='Limit live acquisition seconds (also caps startup wait)')
     parser.add_argument('--no-browser', action='store_true', help='Serve the local display without opening a browser')
-    parser.add_argument('--control', action='store_true', help='Enable LMDrive lateral PID + expert longitudinal PID and UDP control')
+    control_options = parser.add_mutually_exclusive_group()
+    control_options.add_argument('--control', action='store_true', help='Enable LMDrive lateral PID + expert longitudinal PID and UDP control')
+    control_options.add_argument('--no-control', action='store_true', help='Disable UDP control and only display inference during manual driving')
     args = parser.parse_args()
     cfg = read_json(args.config if args.config.is_file() else local_path(str(args.config)))
     cfg.setdefault('control',dict(enabled=False,config='configs/vldrive_control.json'))
     if args.control:
         cfg['control']['enabled']=True
+    elif args.no_control:
+        cfg['control']['enabled']=False
     if args.instruction is not None:
         cfg['navigation_instruction'] = args.instruction
         cfg['navigation']['mode'] = 'fixed'

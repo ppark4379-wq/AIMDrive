@@ -351,7 +351,7 @@ def test_live_pipeline_publishes_actual_predict_result_and_closes_control_first(
     from inference import live_pipeline as pipeline
     cfg = json.loads((ROOT/'configs/vldrive_realtime.json').read_text())
     cfg.pop('navigation_token_config', None)  # No real tokenizer in this pipeline fixture.
-    cfg['runtime'].update(device='cpu',history_tolerance_s=.019,max_age_s=1.)
+    cfg['runtime'].update(device='cpu',history_tolerance_s=.019,max_age_s=1.,resample_history=False)
     cfg['visualization']['enabled'] = False
     events = []; published = []; predictions = []
     started = time.monotonic()
@@ -373,7 +373,7 @@ def test_live_pipeline_publishes_actual_predict_result_and_closes_control_first(
         def invalidate(self, reason): pass
         def submit(self, value): published.append(value)
         def close(self): events.append('control_close')
-    def predict(*args):
+    def predict(*args, **kwargs):
         result = prediction(); result.update(selected_tokens=32,vldrive_ms=0.)
         predictions.append(result)
         return result

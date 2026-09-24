@@ -37,7 +37,7 @@ def seed_runtime(seed):
 
 
 def verify_sources(provenance):
-    """Permit reviewed evaluation-only changes and the optional predict API."""
+    """Permit exact reviewed inference-compatible revisions, never whole files."""
     # Exact old/new hashes: do not exempt entire files from source verification.
     # 2026-09-22: Gumbel evaluation, isolated seeded RNG, evaluation CLI wiring.
     evaluation_changes = {
@@ -48,6 +48,26 @@ def verify_sources(provenance):
             'bca46c2afdb3d0e1b89a1b802971b99f08458c59ff38d2ac744aaa04065c6638',
             '954443cf18999d36914d9d0b94ca374566a4fd28436aae53d8a78dbc6b3c031e'),
     }
+    # Reviewed 9b60831 against its parent (the CRLF files match this run's
+    # recorded hashes). These revisions do not change cached Stage-2 forward:
+    # dataset child/verify_seal helpers are unchanged; its new admission checks
+    # and equivalent target transform belong to SensorRecord training. The VE
+    # training entry point only adds checkpoint metadata. Visualization retains
+    # legacy axes by default. Cache recipe/model checks below remain mandatory.
+    inference_compatible_changes = {
+        'datasets/morai_sensor_record_dataset.py': (
+            '9af9b8b1186a6b3158a880094faf0df8abb6cee27d8efd22d595d5e07b96caf5',
+            'a626e2f87253570975fe726b6f7ecc19f0421c9036344f164c571d46e06c457e',
+            'reviewed SensorRecord admission checks; cached inference helpers unchanged'),
+        'utils/morai_transfer_training.py': (
+            'cf0e8b89f74ef435dba10aeb318bb3efa48de432ad9b5b3837e72f39e55359e7',
+            '775d3318afc8552571027dd9cc00952e50fc4c245db714386c990d153f186336',
+            'VE training metadata export only; not executed by cached inference'),
+        'utils/vision_encoder_visualization.py': (
+            '5c9e02e8828266961264c8f7073845abae75199ea276eecbc4463837d15de8fd',
+            'e2e4e1d0bad31a53ace0b453ef6ee23af2ee653f5aefa50bf893d10520ce389c',
+            'explicit SensorRecord plot axes; default legacy VLDrive axes preserved'),
+    }
     changes = []
     for name, expected in provenance['source'].items():
         raw = (ROOT / name).read_bytes()
@@ -56,6 +76,10 @@ def verify_sources(provenance):
             continue
         if evaluation_changes.get(name) == (expected, actual):
             changes.append(name + ': Gumbel evaluation only; model and training loss unchanged')
+            continue
+        reviewed = inference_compatible_changes.get(name)
+        if reviewed is not None and reviewed[:2] == (expected, actual):
+            changes.append(name + ': ' + reviewed[2])
             continue
         if name == 'models/vldrive.py':
             original = raw.replace(
@@ -174,22 +198,34 @@ def synchronize(device):
 
 
 @torch.inference_mode()
-def encode_frame(model, inputs):
+def encode_frames(model, inputs):
+    """Encode a bounded sensor batch; each output remains a separate real frame."""
     device = inputs['rgb_front'].device
+    batch = inputs['rgb_front'].shape[0]
+    if batch not in (1, 2):
+        raise ValueError('Live VE batches must contain one or two real frames')
     synchronize(device)
     started = time.perf_counter()
     with deterministic_pointpillar_reductions():
         feature = model(inputs)
     synchronize(device)
     elapsed = (time.perf_counter() - started) * 1000
-    if feature.shape != (1, 106, 256) or not bool(torch.isfinite(feature).all()):
-        raise ValueError('Vision encoder must return finite [1,106,256] features')
+    if feature.shape != (batch, 106, 256) or not bool(torch.isfinite(feature).all()):
+        raise ValueError('Vision encoder must return finite [B,106,256] features')
     # Cache writes float16 and the dataset reads it as float32. Reproduce that
     # quantization boundary; the encoder itself always computes in float32.
-    feature = feature[0].to(torch.float16).float()
+    feature = feature.to(torch.float16).float()
     if not bool(torch.isfinite(feature).all()):
         raise ValueError('Feature overflow at the cache float16 storage boundary')
     return feature, elapsed
+
+
+@torch.inference_mode()
+def encode_frame(model, inputs):
+    if inputs['rgb_front'].shape[0] != 1:
+        raise ValueError('encode_frame requires one frame')
+    features, elapsed = encode_frames(model, inputs)
+    return features[0], elapsed
 
 
 class TokenHistory:
@@ -266,7 +302,7 @@ class TokenHistory:
 
 
 @torch.inference_mode()
-def predict_window(model, features, instruction):
+def predict_window(model, features, instruction, *, optimized=False):
     from utils.training import autocast
     if model.training:
         raise ValueError('Inference requires model.eval()')
@@ -277,12 +313,17 @@ def predict_window(model, features, instruction):
     synchronize(features.device)
     started = time.perf_counter()
     with autocast(model):
-        output = model.predict({'visual_feature': features, 'instruction': [instruction]},
-                               compute_auxiliary=False, token_selection_mode='gumbel')
+        if optimized:
+            from inference.fast_window import predict_latest
+            output = predict_latest(model, features, instruction)
+        else:
+            output = model.predict({'visual_feature': features, 'instruction': [instruction]},
+                                   compute_auxiliary=False, token_selection_mode='gumbel')
     synchronize(features.device)
     elapsed = (time.perf_counter() - started) * 1000
-    if output['trajectory'].shape != (1, 11, 5, 2) or not bool(torch.isfinite(output['trajectory']).all()):
-        raise ValueError('Expected finite [1,11,5,2] waypoint predictions')
+    expected_shape = (1, 1 if optimized else 11, 5, 2)
+    if output['trajectory'].shape != expected_shape or not bool(torch.isfinite(output['trajectory']).all()):
+        raise ValueError(f'Expected finite {expected_shape} waypoint predictions')
     if not bool((output['selected_count'] >= 1).all()):
         raise ValueError('Every frame must retain at least one token')
     latest = output['trajectory'][0, -1].float().cpu()

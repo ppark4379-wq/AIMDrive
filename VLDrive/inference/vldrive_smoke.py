@@ -71,7 +71,7 @@ def run_offline(cfg, contract, output_dir, report):
                 torch.cuda.set_rng_state_all(cuda_rng)
 
         report['stage'] = 'B_cached_validation'
-        cached_result = predict_window(model, cached, instruction)
+        cached_result = predict_window(model, cached, instruction, optimized=cfg['runtime'].get('optimized_window', False))
         tests['B'] = dict(status='passed', input_shape=list(cached.shape), output_shape=[5, 2],
                           result=cached_result)
         print('B: cached validation -> [5,2] passed', flush=True)
@@ -122,14 +122,14 @@ def run_offline(cfg, contract, output_dir, report):
             print(f'C/D: recorded real frame {n+1}/11 | token max error {comparison["max_abs"]:.6g}', flush=True)
         raw_window, _ = history.snapshot()
         replay_rng()
-        raw_result = predict_window(model, raw_window, instruction)
+        raw_result = predict_window(model, raw_window, instruction, optimized=cfg['runtime'].get('optimized_window', False))
         a = torch.tensor(cached_result['waypoints_raw'])
         b = torch.tensor(raw_result['waypoints_raw'])
         torch.testing.assert_close(a, b, atol=cfg['offline']['waypoint_atol_m'], rtol=cfg['offline']['waypoint_rtol'])
         if cached_result['selected_tokens_history'] != raw_result['selected_tokens_history']:
             raise AssertionError('Paired cache/raw selection counts differ')
         replay_rng()
-        repeat_result = predict_window(model, raw_window, instruction)
+        repeat_result = predict_window(model, raw_window, instruction, optimized=cfg['runtime'].get('optimized_window', False))
         torch.testing.assert_close(torch.tensor(raw_result['waypoints_raw']),
                                    torch.tensor(repeat_result['waypoints_raw']), atol=0, rtol=0)
         if reconstruction_calls:

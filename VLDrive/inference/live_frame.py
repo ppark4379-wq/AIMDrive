@@ -125,6 +125,9 @@ class LiveFrameSource:
         self.route = self.route_tracker.points if self.route_tracker is not None else None
         self._utm = None
         self.frames = 0
+        # One decoded image per camera; a reused sensor sample is never given a
+        # new identity or timestamp. Only the preprocessing worker uses this.
+        self._decoded_camera_cache = {}
 
     # ------------------------------------------------------------------ status
 
@@ -182,6 +185,119 @@ class LiveFrameSource:
 
     # ------------------------------------------------------------------ frame
 
+    def snapshot_raw(self, max_age=1.0, max_skew=None, now=None):
+        """Select complete sensor samples without decoding or preprocessing.
+
+        Each receiver publishes a new bytes/array object and snapshots its
+        payload, sequence and timestamp under its own short lock. Retaining
+        these references freezes this selection while new packets arrive; it
+        does not lock multiple receivers or copy a LiDAR sweep. Callers must
+        treat the returned payloads as read-only.
+
+        GPS is captured with the selected status for navigation's separate
+        validity checks; it is not an encoder synchronisation requirement.
+        ``now``, when supplied, is from time.monotonic(), just like stamps.
+        """
+        if getattr(self, 'adapter', None) is None:
+            raise ValueError('An explicit cache encoder_recipe is required')
+        meta = {'ages': {}, 'missing': [], 'sample_ids': {}, 'received_at': {}}
+
+        def snapshot(receiver):
+            if receiver is None:
+                return None, float('inf'), 0, None
+            if hasattr(receiver, 'snapshot'):
+                payload, age, sequence, stamp = receiver.snapshot()
+            else:
+                payload, age = receiver.latest()
+                sequence, stamp = 0, None
+            # Status/GPS fields are cheap to copy. Camera bytes and completed
+            # sweep arrays are immutable-by-publication and stay referenced.
+            if isinstance(payload, dict):
+                payload = dict(payload)
+            if now is not None and stamp is not None:
+                age = max(0., float(now) - float(stamp))
+            return payload, age, sequence, stamp
+
+        def read(name, receiver):
+            row = snapshot(receiver)
+            payload, age, sequence, stamp = row
+            meta['ages'][name] = age
+            meta['sample_ids'][name] = sequence
+            meta['received_at'][name] = stamp
+            if payload is None or not math.isfinite(age) or age > max_age:
+                meta['missing'].append(name)
+            return row
+
+        camera_bytes = {key: read(key, self.cameras.get(key))[0] for key in CAMERA_KEYS}
+        sweep = read('lidar', self.lidar)[0]
+        status_row = read('vehicle_status', self.status)
+        gps_row = snapshot(self.gps)
+        meta['status_snapshot'], meta['gps_snapshot'] = status_row, gps_row
+        status = status_row[0]
+        if status is not None:
+            meta.update(speed=float(status['speed']), yaw_degrees=float(status['yaw_degrees']),
+                        sim_time=status.get('sim_time'))
+        meta['front_jpeg'] = camera_bytes['rgb_front']
+
+        stamps = list(meta['received_at'].values())
+        valid_stamps = all(stamp is not None and math.isfinite(stamp) for stamp in stamps)
+        if valid_stamps:
+            meta['stream_skew_s'] = max(stamps) - min(stamps)
+        if max_skew is not None:
+            if not valid_stamps:
+                meta['missing'].append('stream_timestamps')
+            elif meta['stream_skew_s'] > max_skew:
+                meta['missing'].append('stream_skew')
+        if meta['missing']:
+            return None, meta
+        return dict(camera_bytes=camera_bytes, sweep=sweep, status=status,
+                    gps=gps_row[0], meta=meta), meta
+
+    def prepare_snapshot(self, raw, device='cpu'):
+        """Decode only a selected native snapshot, preserving its identities.
+
+        The small per-camera cache avoids decoding a still-fresh reused JPEG
+        twice. Navigation and temporal scheduling can reject raw snapshots
+        before this method does any image/LiDAR work.
+        """
+        import io
+        from PIL import Image
+
+        if getattr(self, 'adapter', None) is None:
+            raise ValueError('An explicit cache encoder_recipe is required')
+        meta = dict(raw['meta'])
+        for name in ('ages', 'sample_ids', 'received_at'):
+            meta[name] = dict(meta[name])
+        meta['missing'] = list(meta['missing'])
+        if meta['missing']:
+            return None, meta
+        cache = getattr(self, '_decoded_camera_cache', None)
+        if cache is None:
+            self._decoded_camera_cache = cache = {}
+        images = {}
+        for key in CAMERA_KEYS:
+            payload = raw['camera_bytes'][key]
+            identity = (meta['sample_ids'][key], meta['received_at'][key])
+            cached = cache.get(key)
+            if cached is not None and cached[0] == identity and cached[1] is payload:
+                images[key] = cached[2]
+                continue
+            try:
+                with Image.open(io.BytesIO(payload)) as im:
+                    decoded = np.asarray(im.convert('RGB')).copy()
+            except (OSError, ValueError):
+                meta['missing'].append(key + '(undecodable)')
+                continue
+            cache[key] = (identity, payload, decoded)
+            images[key] = decoded
+        if meta['missing']:
+            return None, meta
+        inputs = self.prepare_encoder_frame(images, raw['sweep'], device=device,
+                                            rng_seed=meta['sample_ids']['lidar'] - 1)
+        meta['lidar_points'] = int(inputs['num_points'].item())
+        self.frames += 1
+        return inputs, meta
+
     def prepare_encoder_frame(self, images, sweep, *, device='cpu', rng_seed=0):
         """Native cache recipe shared by live UDP and recorded regression frames.
 
@@ -208,6 +324,9 @@ class LiveFrameSource:
     def build(self, device, utm_offsets=(0.0, 0.0), max_age=1.0, rng_seed=0):
 
         """Newest sample of every stream -> (inputs, meta), or (None, meta) if stale."""
+        if getattr(self, 'adapter', None) is not None:
+            raw, meta = self.snapshot_raw(max_age=max_age)
+            return (None, meta) if raw is None else self.prepare_snapshot(raw, device=device)
         import cv2
 
         meta = {"ages": {}, "missing": [], "sample_ids": {}, "received_at": {}}
@@ -222,23 +341,12 @@ class LiveFrameSource:
             meta['received_at'][name] = stamp
             return payload, age
         images = {}
-        camera_bytes = {}
         meta['missing'].extend(key for key in CAMERA_KEYS if key not in self.cameras)
         for key, receiver in self.cameras.items():
             payload, age = read(key, receiver)
             meta["ages"][key] = age
             if payload is None or age > max_age:
                 meta["missing"].append(key)
-                continue
-            if getattr(self, 'adapter', None) is not None:
-                camera_bytes[key] = payload
-                import io
-                from PIL import Image
-                try:
-                    with Image.open(io.BytesIO(payload)) as im:
-                        images[key] = np.asarray(im.convert('RGB')).copy()
-                except (OSError, ValueError):
-                    meta['missing'].append(key + '(undecodable)')
                 continue
             decoded = cv2.imdecode(np.frombuffer(payload, dtype=np.uint8), cv2.IMREAD_COLOR)
             if decoded is None:
@@ -258,19 +366,6 @@ class LiveFrameSource:
 
         if meta["missing"]:
             return None, meta
-
-        if getattr(self, 'adapter', None) is not None:
-            inputs = self.prepare_encoder_frame(images, sweep, device=device,
-                                                rng_seed=meta['sample_ids']['lidar'] - 1)
-            meta.update(speed=float(status['speed']), yaw_degrees=float(status['yaw_degrees']),
-                        lidar_points=int(inputs['num_points'].item()), sim_time=status.get('sim_time'))
-            meta['front_jpeg'] = camera_bytes['rgb_front']
-            meta['status_snapshot'] = (status, status_age, meta['sample_ids']['vehicle_status'],
-                                       meta['received_at']['vehicle_status'])
-            meta['gps_snapshot'] = self.gps.snapshot() if self.gps else (None, float('inf'), 0, None)
-            self.frames += 1
-            return inputs, meta
-
 
         theta = status["yaw"]
         meta["speed"] = status["speed"]

@@ -10,9 +10,10 @@ import traceback
 import torch
 
 from inference.live_frame import CAMERA_KEYS, LiveFrameSource
-from inference.vldrive_runtime import (TokenHistory, encode_frame, load_encoder, load_stage2,
+from inference.vldrive_runtime import (TokenHistory, encode_frame, encode_frames, load_encoder, load_stage2,
                                       local_path, predict_window, seed_runtime)
 from navigation.live import navigation_for_frame
+from inference.input_windows import RawWindowHistory, WindowInputProducer
 
 
 def write_report(path, report):
@@ -33,6 +34,13 @@ def current_window(rows, history, max_age, now=None):
             and 0 <= now-rows[-1]['stamp'] <= max_age)
 
 
+def input_available(history, state):
+    nav = state['navigation']
+    if isinstance(history, RawWindowHistory):
+        return not state['missing'] and nav is not None and nav['valid']
+    return nav is None or nav['valid']
+
+
 def run_live(cfg, contract, output, report, duration=None, probe_only=False, *, navigation=None, view=None, controller=None):
     runtime, route = cfg['runtime'], cfg['route']
     source = LiveFrameSource(cfg['ports'], route_csv=local_path(route['csv']) if route['csv'] else None,
@@ -42,7 +50,12 @@ def run_live(cfg, contract, output, report, duration=None, probe_only=False, *, 
     worker = None
     encoder_worker = None
     captured = queue.Queue(maxsize=runtime['encoder_queue_size'])
-    history = TokenHistory(contract['history_interval_s'], runtime['history_tolerance_s'])
+    if runtime.get('resample_history', False):
+        history = RawWindowHistory(contract['history_interval_s'], runtime['history_tolerance_s'],
+            reset_gap_s=runtime.get('history_reset_gap_s', 1.),
+            capacity=runtime.get('input_buffer_frames', 64))
+    else:
+        history = TokenHistory(contract['history_interval_s'], runtime['history_tolerance_s'])
     state = dict(error=None, missing=[], discarded_skew=0, navigation=None, rejected_frames=0,
                  capture_drops=0, capture_generation=0)
     def display(**values):
@@ -85,10 +98,30 @@ def run_live(cfg, contract, output, report, duration=None, probe_only=False, *, 
         seed_runtime(cfg['seed'])
         encoder_stream=None
         if torch.device(runtime['device']).type=='cuda' and runtime.get('separate_encoder_stream',False):
-            encoder_stream=torch.cuda.Stream(device=runtime['device'])
+            encoder_stream=torch.cuda.Stream(device=runtime['device'], priority=runtime.get('encoder_stream_priority', 0))
             encoder_stream.wait_stream(torch.cuda.current_stream(runtime['device']))
         report['separate_encoder_stream']=encoder_stream is not None
+        report['window_execution'] = dict(optimized=runtime.get('optimized_window', False),
+            resample_history=runtime.get('resample_history', False),
+            capture_hz=runtime.get('capture_hz', runtime['target_hz']),
+            encoder_max_hz=runtime.get('encoder_max_hz', 10.),
+            encoder_batch_size=runtime.get('encoder_batch_size', 1),
+            encoder_stream_priority=encoder_stream.priority if encoder_stream is not None else None,
+            pin_encoder_inputs=runtime.get('pin_encoder_inputs', False),
+            history_max_span_s=runtime.get('history_max_span_s', 10*history.interval+2*history.tolerance),
+            history_max_adjacent_gap_s=runtime.get('history_max_adjacent_gap_s', history.interval+2*history.tolerance),
+            input_buffer_frames=runtime.get('input_buffer_frames', 64),
+            sampling_grid_hz=1/contract['history_interval_s'] if isinstance(history, RawWindowHistory) else None,
+            capture_hz_applies_to='legacy_only' if isinstance(history, RawWindowHistory) else 'frame_capture',
+            trained_interval_s=contract['history_interval_s'],
+            input_assembly='streaming_grid_features' if isinstance(history, RawWindowHistory) else 'legacy',
+            sampling_tolerance_basis='fixed_grid_slot' if isinstance(history, RawWindowHistory) else 'previous_frame',
+            visual_kv_cache=False)
         print('Models loaded | eval | Gumbel | reconstruction off | navigation '+cfg['navigation']['mode'],flush=True)
+        if isinstance(history, RawWindowHistory):
+            print(f'Input: streaming {1/history.interval:g}Hz sampling grid | '
+                  f'11 cached features | span <= {report["window_execution"]["history_max_span_s"]:g}s | '
+                  f'VE batch <= {runtime.get("encoder_batch_size", 1)} | separate preprocessing and VE workers', flush=True)
         if controller is not None:
             controller.start(source,navigation,history,state,runtime['max_age_s'])
 
@@ -196,6 +229,10 @@ def run_live(cfg, contract, output, report, duration=None, probe_only=False, *, 
                 state['error']=traceback.format_exc()
                 stop.set()
 
+        if isinstance(history, RawWindowHistory):
+            producer = WindowInputProducer(cfg, source, history, state, stop, output,
+                navigation, encoder, encoder_stream, encode_frame, navigation_for_frame, encode_frames=encode_frames)
+            collect, encode_captured = producer.collect, producer.encode
         worker = threading.Thread(target=collect,name='vldrive-capture',daemon=True)
         encoder_worker = threading.Thread(target=encode_captured,name='vldrive-vision',daemon=True)
         worker.start()
@@ -207,6 +244,7 @@ def run_live(cfg, contract, output, report, duration=None, probe_only=False, *, 
         last_prediction_at = 0.
         last_ui = 0.
         last_console = 0.
+        last_report = 0.
         with (output/'waypoints.jsonl').open('x',encoding='utf-8',buffering=1) as stream:
             while not stop.is_set() and (duration is None or time.monotonic()-started<duration):
                 if controller is not None:
@@ -215,11 +253,18 @@ def run_live(cfg, contract, output, report, duration=None, probe_only=False, *, 
                 now = time.monotonic()
                 output_age_limit=cfg['visualization']['max_prediction_age_s']
                 ready = current_window(rows,history,output_age_limit,now)
-                if state['navigation'] is not None and not state['navigation']['valid']:
+                if not input_available(history, state):
                     ready=False
+                if now-last_report >= 1.:
+                    report.update(input_preparation=dict(state.get('input_preparation', {})),
+                                  history_selection=dict(state.get('history_selection', {})),
+                                  sampling_status=dict(state.get('sampling_status', {})))
+                    write_report(output/'inference_report.json',report)
+                    last_report=now
                 if now-last_ui>=.2:
                     report['streams'] = stream_rows(source)
-                    display(streams=report['streams'],history_count=len(rows),history_resets=history.resets,
+                    count = state.get('history_selection', {}).get('selected', len(rows))
+                    display(streams=report['streams'],history_count=count,history_resets=history.resets,
                             navigation=state['navigation'])
                     last_ui = now
                 if not ready:
@@ -227,19 +272,36 @@ def run_live(cfg, contract, output, report, duration=None, probe_only=False, *, 
                         controller.invalidate('history_or_navigation_unavailable')
                     nav = state['navigation']
                     reason = ', '.join(state['missing'])
+                    if not reason and state.get('history_selection'):
+                        selection=state['history_selection']
+                        reason=f'{selection["reason"]}: {selection["selected"]}/11 encoded frames'
                     status = 'warming_up'
                     if nav is not None and not nav['valid']:
                         status, reason = 'navigation_unavailable',nav['reason']
                     elif rows and now-rows[-1]['stamp']>output_age_limit:
-                        status, reason = 'stale','새로운 센서 프레임이 없습니다.'
+                        age = now-rows[-1]['stamp']
+                        detail = state.get('history_selection', {})
+                        status = 'stale'
+                        reason = (f'완성된 입력이 {age:.2f}초 경과했습니다. '
+                                  f'새 특징 이력 {detail.get("selected", 0)}/11; '
+                                  f'{detail.get("reason", "waiting_for_encoded_history")}')
                     display(status=status,reason=reason,clear_prediction=True)
                     if now-last_console>=2:
-                        print(f'History {len(rows)}/11 | {status} | {reason}',flush=True)
+                        count = state.get('history_selection', {}).get('selected', len(rows))
+                        print(f'Encoded history {count}/11 | {status} | {reason}',flush=True)
                         last_console = now
-                    stop.wait(.02)
+                    if isinstance(history, RawWindowHistory):
+                        history.ready.wait(.02)
+                        history.ready.clear()
+                    else:
+                        stop.wait(.02)
                     continue
                 if rows[-1]['stamp']==last_output_stamp:
-                    stop.wait(.01)
+                    if isinstance(history, RawWindowHistory):
+                        history.ready.wait(.02)
+                        history.ready.clear()
+                    else:
+                        stop.wait(.01)
                     continue
                 if runtime['prediction_hz'] is not None and now-last_prediction_at < 1/runtime['prediction_hz']:
                     stop.wait(.01)
@@ -249,9 +311,11 @@ def run_live(cfg, contract, output, report, duration=None, probe_only=False, *, 
                 context = rows[-1]['context']
                 instruction = context['navigation']['instruction']['text']
                 features=history.materialize(rows)
-                result = predict_window(model,features,instruction)
+                result = predict_window(model,features,instruction,
+                                        optimized=runtime.get('optimized_window', False))
                 # A reset/stream outage during forward cannot produce a current display.
-                if stop.is_set() or not current_window(rows,history,output_age_limit):
+                if (stop.is_set() or not current_window(rows,history,output_age_limit)
+                        or not input_available(history, state)):
                     if controller is not None:
                         controller.invalidate('history_reset_or_stale')
                     report['discarded_predictions'] += 1
@@ -261,9 +325,26 @@ def run_live(cfg, contract, output, report, duration=None, probe_only=False, *, 
                     instruction=instruction,navigation=context['navigation'],sim_time=context['sim_time'],
                     anchor_received_at=rows[-1]['stamp'],history_ready=True,history_generation=rows[-1]['generation'],
                     history_sample_ids=[r['ids'] for r in rows],history_timestamps_s=[r['stamp'] for r in rows],
+                    history_span_s=rows[-1]['stamp']-rows[0]['stamp'],
+                    history_temporally_extended=context.get('history_temporally_extended', False),
+                    history_effective_interval_s=(rows[-1]['stamp']-rows[0]['stamp'])/10,
+                    history_grid_timestamps_s=[r['target_stamp'] for r in rows] if 'target_stamp' in rows[-1] else None,
+                    history_grid_max_offset_s=max(abs(r['stamp']-r['target_stamp']) for r in rows)
+                        if 'target_stamp' in rows[-1] else None,
+                    history_max_adjacent_gap_s=max(b['stamp']-a['stamp'] for a,b in zip(rows, rows[1:])),
+                    history_max_offset_s=max(abs(r['stamp']-(rows[-1]['stamp']-(10-i)*contract['history_interval_s']))
+                                             for i,r in enumerate(rows)),
                     vision_encoder_ms=rows[-1]['vision_ms'],
                     preprocessing_ms=context['preprocessing_ms'],
-                    total_inference_ms=rows[-1]['vision_ms']+result['vldrive_ms'],
+                    window_preparation_ms=context.get('window_preparation_ms'),
+                    new_vision_frames=context.get('new_vision_frames', 1),
+                    encoder_batch_size=context.get('encoder_batch_size', 1),
+                    window_vision_ms=context.get('window_vision_ms', rows[-1]['vision_ms']),
+                    window_preprocessing_ms=context.get('window_preprocessing_ms', context['preprocessing_ms']),
+                    encoder_queue_wait_ms=context.get('encoder_queue_wait_ms'),
+                    input_ready_age_ms=context.get('input_ready_age_ms'),
+                    input_preparation=dict(state.get('input_preparation', {})),
+                    total_inference_ms=context.get('window_vision_ms', rows[-1]['vision_ms'])+result['vldrive_ms'],
                     sensor_to_output_ms=(time.monotonic()-rows[-1]['stamp'])*1000)
                 stream.write(json.dumps(result,allow_nan=False)+'\n')
                 if controller is not None:
@@ -276,7 +357,9 @@ def run_live(cfg, contract, output, report, duration=None, probe_only=False, *, 
                     view.show_prediction(result,context['front_jpeg'])
                 write_report(output/'inference_report.json',report)
                 print(f'frame {result["frame"]:05d} | tokens {result["selected_tokens"]}/106'
-                      f' | infer {result["total_inference_ms"]:.0f} ms | {instruction}',flush=True)
+                      f' | VE {result["vision_encoder_ms"]:.0f} ms'
+                      f' | Stage2 {result["vldrive_ms"]:.0f} ms'
+                      f' | age {result["sensor_to_output_ms"]:.0f} ms | {instruction}',flush=True)
         if state['error']:
             raise RuntimeError('Sensor/encoder worker failed:\n'+state['error'])
         if not report['outputs']:
@@ -295,5 +378,8 @@ def run_live(cfg, contract, output, report, duration=None, probe_only=False, *, 
             encoder_worker.join(timeout=15)
         report.update(streams=stream_rows(source),history_resets=history.resets,
                       discarded_skew=state['discarded_skew'],rejected_frames=state['rejected_frames'],
-                      capture_queue_drops=state['capture_drops'])
+                      capture_queue_drops=state['capture_drops'],
+                      input_preparation=dict(state.get('input_preparation', {})),
+                      history_selection=dict(state.get('history_selection', {})),
+                      sampling_status=dict(state.get('sampling_status', {})))
         source.close()
