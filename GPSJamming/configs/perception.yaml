@@ -1,0 +1,5 @@
+# Tuning parameters will be defined during implementation.
+camera: {}
+lidar: {}
+timing: {}
+association: {}

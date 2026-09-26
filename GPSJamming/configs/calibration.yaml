@@ -1,0 +1,4 @@
+# Populate with verified sensor calibration before running.
+intrinsic: null
+distortion: null
+extrinsic: null

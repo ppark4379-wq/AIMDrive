@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gps-jamming"
+version = "0.1.0"
+description = "Camera and LiDAR rule-based perception scaffold"
+readme = "README.md"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["gps_jamming*"]
