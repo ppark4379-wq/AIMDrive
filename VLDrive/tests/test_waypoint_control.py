@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.fixture
 def cfg():
-    cfg = load_config(ROOT/'configs/vldrive_control.json')
+    cfg = load_config(ROOT/'../AIM2026/Control/vldrive_control.json')
     cfg['max_speed_kmh']=None  # Historical uncapped longitudinal regression.
     cfg['lateral']['target']['mode']='first_two_midpoint'  # Historical midpoint regression.
     # Historical LMDrive math fixtures only. The live controller reads expert.
@@ -201,7 +201,7 @@ def test_bridge_actual_udp_handshake_watchdog_and_shutdown(cfg):
 @pytest.fixture
 def controller(cfg, tmp_path):
     cfg.pop('pid')
-    session = ControllerSession(cfg, ROOT/'configs/vldrive_control.json', tmp_path, clock=lambda:10.)
+    session = ControllerSession(cfg, ROOT/'../AIM2026/Control/vldrive_control.json', tmp_path, clock=lambda:10.)
     gps = SimpleNamespace(snapshot=lambda: (dict(latitude=0.,longitude=0.),.01,1,9.99))
     vehicle = dict(yaw=0.,speed=2.,sim_time=20.5)
     status = SimpleNamespace(snapshot=lambda: (vehicle,.01,1,9.99))
@@ -339,7 +339,7 @@ def test_insufficient_remaining_path_stops_even_between_lateral_ticks(controller
 
 def test_control_cli_configuration_requires_live_pose():
     from inference.realtime_vldrive import validate_config as validate_live
-    cfg = json.loads((ROOT/'configs/vldrive_realtime.json').read_text())
+    cfg = json.loads((ROOT/'../AIM2026/Inference/vldrive_realtime.json').read_text())
     cfg['control']['enabled'] = True
     validate_live(cfg)
     cfg['navigation']['mode'] = 'fixed'
@@ -349,7 +349,7 @@ def test_control_cli_configuration_requires_live_pose():
 def test_live_pipeline_publishes_actual_predict_result_and_closes_control_first(monkeypatch, tmp_path):
     import torch
     from inference import live_pipeline as pipeline
-    cfg = json.loads((ROOT/'configs/vldrive_realtime.json').read_text())
+    cfg = json.loads((ROOT/'../AIM2026/Inference/vldrive_realtime.json').read_text())
     cfg.pop('navigation_token_config', None)  # No real tokenizer in this pipeline fixture.
     cfg['runtime'].update(device='cpu',history_tolerance_s=.019,max_age_s=1.,resample_history=False)
     cfg['visualization']['enabled'] = False

@@ -1,17 +1,17 @@
 {
   "schema": "morai-vldrive-realtime-v1",
-  "navigation_token_config": "configs/vldrive_realtime.json#presets/navigation_inference_tokens",
+  "navigation_token_config": "../AIM2026/Inference/vldrive_realtime.json#presets/navigation_inference_tokens",
   "stage1_checkpoint": "outputs/checkpoints/morai_visual_encoder.pth.tar",
   "stage2_checkpoint": "outputs/logs/vldrive_20260921_172411_715080/model-best.pt",
   "visual_cache": "data/processed/vision_tokens/basic_drive_morai",
   "navigation_instruction": "Continue straight along the current road.",
   "control": {
     "enabled": true,
-    "config": "configs/vldrive_control.json"
+    "config": "../AIM2026/Control/vldrive_control.json"
   },
   "navigation": {
     "mode": "route",
-    "config": "configs/vldrive_realtime.json#presets/navigation_observer",
+    "config": "../AIM2026/Inference/vldrive_realtime.json#presets/navigation_observer",
     "max_anchor_skew_s": 0.15
   },
   "visualization": {
@@ -201,7 +201,7 @@
         "map_root": "../MoraiDrive/scenario_runner/data/R_KR_PR_K-city_2025",
         "route_definition": "../MoraiDrive/scenario_runner/config/full_loop_links.yaml",
         "route_key": "full_loop",
-        "policy_config": "configs/vldrive_realtime.json#presets/navigation_lmdrive"
+        "policy_config": "../AIM2026/Inference/vldrive_realtime.json#presets/navigation_lmdrive"
       },
       "output": "outputs/logs/navigation_manual",
       "window": true,
@@ -229,7 +229,7 @@
       "dataset": {
         "format": "carla_style",
         "root": "../MoraiDrive/dataset_local/competition_train",
-        "split_file": "configs/vldrive_train.json#split_manifests/morai_full_loop_80_20",
+        "split_file": "training/vldrive_train.json#split_manifests/morai_full_loop_80_20",
         "split": "validation",
         "route_csv": null,
         "lidar_axis_policy": "morai_flu_to_lmdrive_fru"

@@ -28,7 +28,7 @@ The config filename is resolved from `configs/`, and a new timestamped output di
 is created under `outputs/logs/`. The explicit `vldrive` stage and `--output` remain
 supported. No separate visualization command is needed.
 `--mode preflight` and `--mode evaluate` do not launch the Dashboard.
-The `dashboard` object in `configs/vldrive_train.json` controls `enabled` (true),
+The `dashboard` object in `training/vldrive_train.json` controls `enabled` (true),
 `open_browser` (true), `port` (8501), and `refresh_seconds` (2, supported range 1..5).
 Set `enabled` to false to disable automatic launch, or `open_browser` to false
 to keep just the server. An occupied preferred port falls back to a free port.

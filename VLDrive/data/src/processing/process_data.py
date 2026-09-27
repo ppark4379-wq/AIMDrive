@@ -101,7 +101,7 @@ def process(config, name=None, activate=True, root=ROOT, run=subprocess.run):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--config', type=Path, default=ROOT / 'configs/vldrive_train.json')
+    parser.add_argument('--config', type=Path, default=ROOT / 'training/vldrive_train.json')
     parser.add_argument('--id', help='Optional unique version ID; defaults to a timestamp')
     parser.add_argument('--no-activate', action='store_true', help='Do not select the result for training')
     args = parser.parse_args()

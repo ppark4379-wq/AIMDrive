@@ -12,7 +12,7 @@ from models.vldrive import VLDriveTrainingConfig
 
 def test_default_training_config_uses_d2():
     root = Path(__file__).resolve().parents[1]
-    d2 = json.loads((root / 'configs/vldrive_train.json').read_text())
+    d2 = json.loads((root / 'training/vldrive_train.json').read_text())
     expected = dict(training_variant='morai_repair_v1', reconstruction_reduction='mean',
                     detach_reconstruction_loss_mask=False, retention_logit_weight=0.,
                     selector_task_gradient_mode='legacy', inference_selection_mode='argmax')

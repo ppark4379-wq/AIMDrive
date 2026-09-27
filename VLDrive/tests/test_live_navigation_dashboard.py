@@ -148,7 +148,7 @@ def test_dashboard_expiry_exact_camera_metric_axes_and_get_only_http():
         assert state['result']['plot_waypoints_xy'][0]==[-1.,5.]
         assert get('/api/frame.jpg?frame=25')==b'anchor-camera'
         with pytest.raises(urllib.error.HTTPError): get('/api/frame.jpg?frame=24')
-        with pytest.raises(urllib.error.HTTPError): get('/../../configs/vldrive_realtime.json')
+        with pytest.raises(urllib.error.HTTPError): get('/../../../AIM2026/Inference/vldrive_realtime.json')
         with pytest.raises(urllib.error.HTTPError) as error:
             opener.open(urllib.request.Request(url+'/api/state',data=b'{}',method='POST'),timeout=2)
         assert error.value.code==501
@@ -169,7 +169,7 @@ def test_dashboard_clear_and_bounded_camera_memory():
 
 @pytest.mark.parametrize('kind',['gps_missing','control_port','bad_refresh','nan_skew'])
 def test_live_config_rejects_unsafe_or_incomplete_stream_settings(kind):
-    cfg=json.loads((ROOT/'configs/vldrive_realtime.json').read_text())
+    cfg=json.loads((ROOT/'../AIM2026/Inference/vldrive_realtime.json').read_text())
     validate_config(cfg)
     if kind=='gps_missing': del cfg['ports']['gps']
     if kind=='control_port': cfg['ports']['control']=9090
@@ -180,14 +180,14 @@ def test_live_config_rejects_unsafe_or_incomplete_stream_settings(kind):
 
 @pytest.mark.parametrize('rate',[None,.5,5.])
 def test_prediction_limit_can_be_removed_or_explicitly_restored(rate):
-    cfg=json.loads((ROOT/'configs/vldrive_realtime.json').read_text())
+    cfg=json.loads((ROOT/'../AIM2026/Inference/vldrive_realtime.json').read_text())
     cfg['runtime']['prediction_hz']=rate
     validate_config(cfg)
 
 
 @pytest.mark.parametrize('rate',[0,-1,True,float('nan'),float('inf'),6.])
 def test_prediction_limit_rejects_invalid_values(rate):
-    cfg=json.loads((ROOT/'configs/vldrive_realtime.json').read_text())
+    cfg=json.loads((ROOT/'../AIM2026/Inference/vldrive_realtime.json').read_text())
     cfg['runtime']['prediction_hz']=rate
     with pytest.raises(ValueError): validate_config(cfg)
 
@@ -204,7 +204,7 @@ def test_navigation_and_pipeline_do_not_transmit_to_simulator():
 def test_live_pipeline_passes_anchor_navigation_and_camera_with_real_history(tmp_path,monkeypatch,interval,batch_size):
     import time
     from inference import live_pipeline as pipeline
-    cfg=json.loads((ROOT/'configs/vldrive_realtime.json').read_text())
+    cfg=json.loads((ROOT/'../AIM2026/Inference/vldrive_realtime.json').read_text())
     cfg.pop('navigation_token_config', None)  # This fixture mocks the language model.
     cfg['runtime'].update(device='cpu',history_tolerance_s=.06 if interval==.2 else .03,prediction_hz=25.,
                           resample_history=interval==.2, capture_hz=10., encoder_max_hz=20., encoder_batch_size=batch_size)
@@ -288,7 +288,7 @@ def test_live_pipeline_rechecks_input_after_forward_before_publishing(tmp_path,m
     import time
     from inference import live_pipeline as pipeline
 
-    cfg=json.loads((ROOT/'configs/vldrive_realtime.json').read_text())
+    cfg=json.loads((ROOT/'../AIM2026/Inference/vldrive_realtime.json').read_text())
     cfg.pop('navigation_token_config',None)
     cfg['runtime'].update(device='cpu',resample_history=True,prediction_hz=None)
     cfg['visualization']['max_prediction_age_s']=10.

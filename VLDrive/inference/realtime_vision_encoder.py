@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run the frozen stage-1 vision encoder on the live MORAI UDP streams.
 
-    python inference/realtime_vision_encoder.py --config configs/vldrive_realtime.json#presets/vision_encoder_realtime
+    python inference/realtime_vision_encoder.py --config ../AIM2026/Inference/vldrive_realtime.json#presets/vision_encoder_realtime
 
 Receive-only: the encoder watches the simulator and draws what its prediction
 heads say, and nothing in this process ever sends to the simulator, so it cannot

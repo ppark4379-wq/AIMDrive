@@ -8,7 +8,7 @@ gradient 진단은 `../common/`에서 가져옵니다. 커넥터와 LLM의 공�
 optimizer step 순서, 손실 가중치와 동결 정책은 유지합니다.
 
 ```bash
-bash training/joint/scripts/train.sh --config configs/vldrive_train.json
+bash training/joint/scripts/train.sh --config training/vldrive_train.json
 ```
 
 셸은 기존 `train.py vldrive`를 실행합니다. 새로운 Python 실행기를 만들지 않습니다.

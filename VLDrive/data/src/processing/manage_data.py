@@ -141,7 +141,7 @@ def main():
     add.add_argument('--name',required=True)
     add.add_argument('--tag',action='append',default=[])
     bundle=commands.add_parser('version')
-    bundle.add_argument('--config',type=Path,default=ROOT/'configs/vldrive_train.json')
+    bundle.add_argument('--config',type=Path,default=ROOT/'training/vldrive_train.json')
     bundle.add_argument('--name',required=True)
     args=parser.parse_args()
     if args.command=='register':

@@ -58,7 +58,7 @@ RGB_BACKBONE_SHA256 = (
 def add_arguments(parser):
     """Stage-1 command line: the config file, and nothing that could override it."""
     parser.add_argument("--config", type=Path, required=True,
-                        help="stage-1 training config, e.g. configs/vldrive_train.json")
+                        help="stage-1 training config, e.g. training/vldrive_train.json")
     return parser
 
 

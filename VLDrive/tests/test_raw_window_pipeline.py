@@ -21,7 +21,7 @@ from inference.timed_history import TimedTokenHistory
 def test_history_and_transfer_configuration_is_bounded(key, value):
     from inference.realtime_vldrive import validate_config
     from inference.vldrive_runtime import ROOT, read_json
-    cfg = copy.deepcopy(read_json(ROOT/'configs/vldrive_realtime.json'))
+    cfg = copy.deepcopy(read_json(ROOT/'../AIM2026/Inference/vldrive_realtime.json'))
     cfg['runtime'][key] = value
     with pytest.raises(ValueError, match=key):
         validate_config(cfg)

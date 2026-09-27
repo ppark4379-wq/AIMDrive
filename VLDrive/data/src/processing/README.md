@@ -6,7 +6,7 @@ Run from `VLDrive` with the training Python environment:
 python data/src/processing/process_data.py
 ```
 
-The command reads `configs/vldrive_train.json`, allocates a unique timestamp ID,
+The command reads `training/vldrive_train.json`, allocates a unique timestamp ID,
 and writes all new artifacts inside `data/processed/<id>/`:
 
 ```text

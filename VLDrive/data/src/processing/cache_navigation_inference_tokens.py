@@ -14,7 +14,7 @@ configure_runtime()
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--config', default='configs/vldrive_realtime.json#presets/navigation_inference_tokens')
+    parser.add_argument('--config', default='../AIM2026/Inference/vldrive_realtime.json#presets/navigation_inference_tokens')
     args = parser.parse_args()
     from utils.config.config_files import read_document, document_bytes
     cfg = read_document(ROOT / args.config)

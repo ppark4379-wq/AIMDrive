@@ -18,7 +18,7 @@ pyproj, 화면은 Python의 tkinter를 사용합니다. GPU나 LLM은 지시 생
 실행합니다. 이 프로젝트의 전체 학습 환경이 구성되어 있으면 해당 환경을 사용합니다.
 
 ```powershell
-python VLDrive/tools/labeling/build_instructions.py --config VLDrive/configs/navigation_lmdrive.json
+python VLDrive/data/src/processing/build_instructions.py --config VLDrive/configs/navigation_lmdrive.json
 python VLDrive/inference/navigation_observer.py --config VLDrive/configs/navigation_replay.json
 python VLDrive/inference/navigation_observer.py --config VLDrive/configs/navigation_observer.json
 ```
@@ -237,7 +237,7 @@ crop 시작점 기준으로 거리·상대 목표점 인자를 다시 계산합�
 checkpoint가 준비된 후 사용합니다. 이번 navigation 검증은 학습을 실행하지 않습니다.
 
 ```powershell
-python VLDrive/tools/cache/cache_navigation_tokens.py --config VLDrive/configs/navigation_token_cache.example.json
+python VLDrive/data/src/processing/cache_navigation_tokens.py --config VLDrive/configs/navigation_token_cache.example.json
 python VLDrive/train.py vldrive --config VLDrive/configs/vldrive_train_navigation.json --output VLDrive/outputs/logs/navigation_stage2_run1
 ```
 

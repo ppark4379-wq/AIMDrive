@@ -2,7 +2,7 @@
 """Train VLDrive on MORAI data.
 
   stage 1, vision encoder pre-training
-      python train.py vision-encoder --config configs/vldrive_train.json
+      python train.py vision-encoder --config training/vldrive_train.json
 
   stage 2, VLDrive (frozen encoder -> CCDP -> MEFA -> TinyLlama -> waypoints)
       python train.py --config vldrive_train.json
@@ -19,8 +19,8 @@ feature_contract.json.  Stage 2 writes model-best.pt / model-last.pt,
 checkpoint.pt (weights + optimizer, for --checkpoint resume), training.jsonl,
 epoch_metrics.jsonl and report.json.
 
-Stage 2 reads visual tokens from a cache built by tools/cache/cache_vision_tokens.py
-and instructions built by tools/labeling/build_instructions.py, so the frozen encoder
+Stage 2 reads visual tokens from a cache built by data/src/processing/cache_vision_tokens.py
+and instructions built by data/src/processing/build_instructions.py, so the frozen encoder
 never runs during training.  --mode preflight stops after the gradient and
 causality checks; --mode evaluate scores a checkpoint without training.
 """
@@ -63,7 +63,7 @@ def run_vision_encoder(parser, args):
 
 def add_vldrive_arguments(parser):
     parser.add_argument('--config', type=Path, required=True,
-                        help='training config, e.g. configs/vldrive_train.json')
+                        help='training config, e.g. training/vldrive_train.json')
     parser.add_argument('--output', type=Path,
                         help='new run directory; default: outputs/logs/vldrive_<timestamp>')
     parser.add_argument('--mode', choices=('train', 'preflight', 'evaluate'), default='train')

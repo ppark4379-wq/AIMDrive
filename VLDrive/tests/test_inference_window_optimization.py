@@ -109,7 +109,7 @@ def test_dense_history_reset_and_expiry_cannot_reuse_previous_generation():
 def test_optimized_configuration_rejects_invalid_cadences():
     from inference.realtime_vldrive import validate_config
     from inference.vldrive_runtime import read_json, ROOT
-    cfg = read_json(ROOT/'configs/vldrive_realtime.json')
+    cfg = read_json(ROOT/'../AIM2026/Inference/vldrive_realtime.json')
     cfg['runtime'].update(resample_history=True, capture_hz=10., optimized_window=True,
                           history_reset_gap_s=1., prediction_hz=10.)
     validate_config(cfg)

@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
 
 from utils.config.vision_encoder_config import LAYOUT, load_config
 
-TEMPLATE = ROOT / "configs/vldrive_train.json"
+TEMPLATE = ROOT / "training/vldrive_train.json"
 
 PLACE = {attribute: (section, key)
          for section, entries in LAYOUT.items()

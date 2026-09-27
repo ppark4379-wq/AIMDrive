@@ -18,7 +18,7 @@ ROOT=Path(__file__).resolve().parents[1]
 
 @pytest.fixture
 def cfg():
-    cfg=load_config(ROOT/'configs/vldrive_control.json')
+    cfg=load_config(ROOT/'../AIM2026/Control/vldrive_control.json')
     cfg['max_speed_kmh']=None  # Historical uncapped expert parity.
     cfg['lateral']['target']['mode']='first_two_midpoint'  # Original-reference regression.
     return cfg

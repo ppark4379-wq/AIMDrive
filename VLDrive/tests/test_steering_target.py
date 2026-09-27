@@ -12,7 +12,7 @@ from control.steering_target import select_target
 
 @pytest.fixture
 def cfg():
-    return load_config(Path(__file__).resolve().parents[1]/'configs/vldrive_control.json')
+    return load_config(Path(__file__).resolve().parents[1]/'../AIM2026/Control/vldrive_control.json')
 
 
 def test_passed_points_are_skipped_and_segment_is_interpolated(cfg):

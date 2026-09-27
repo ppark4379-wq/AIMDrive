@@ -16,7 +16,7 @@
 VLDrive 루트에서 실행합니다.
 
 ```bash
-bash training/vision_encoder/scripts/pretrain.sh --config configs/vldrive_train.json
+bash training/vision_encoder/scripts/pretrain.sh --config training/vldrive_train.json
 bash training/vision_encoder/scripts/transfer.sh --help
 bash training/vision_encoder/scripts/object_head.sh
 ```

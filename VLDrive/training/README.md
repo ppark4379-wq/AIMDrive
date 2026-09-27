@@ -68,10 +68,10 @@ training/
 VLDrive 루트에서 실행합니다. 셸은 기존 `train.py`에 인자를 그대로 전달합니다.
 
 ```bash
-bash training/vision_encoder/scripts/pretrain.sh --config configs/vldrive_train.json
+bash training/vision_encoder/scripts/pretrain.sh --config training/vldrive_train.json
 bash training/vision_encoder/scripts/transfer.sh --help
 bash training/vision_encoder/scripts/object_head.sh
-bash training/joint/scripts/train.sh --config configs/vldrive_train.json
+bash training/joint/scripts/train.sh --config training/vldrive_train.json
 ```
 
 `pretrain.sh`와 `joint/scripts/train.sh`는 요청한 전체 구조에 맞춰 추가한 얇은 셸 진입점입니다.

@@ -12,7 +12,7 @@ cd /mnt/c/Users/autonav009/Desktop/AIMDrive/VLDrive
 ```bash
 ls data/raw
 sha256sum outputs/checkpoints/vision_encoder/checkpoint-best-object.pth.tar
-nano configs/vldrive_train.json
+nano training/vldrive_train.json
 ```
 
 - 3. 새 ID로 데이터를 전처리하고 완료된 버전을 학습 설정에 반영합니다.
@@ -26,11 +26,11 @@ python data/src/processing/process_data.py
 ```bash
 cat data/processed/<ID>/status.json
 ls data/processed/<ID>/manifest.json
-python -c "import json; print(json.load(open('configs/vldrive_train.json'))['data_version'])"
+python -c "import json; print(json.load(open('training/vldrive_train.json'))['data_version'])"
 ```
 
 - 5. 완료 상태가 `complete`이면 Stage2 학습을 시작합니다.
 
 ```bash
-python train.py --config configs/vldrive_train.json
+python train.py --config training/vldrive_train.json
 ```

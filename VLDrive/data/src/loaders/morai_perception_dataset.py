@@ -1,13 +1,13 @@
 """Stage 1 dataset: one synchronized MORAI frame -> vision-encoder inputs and targets.
 
-The frames come from a split manifest written by ``tools/preprocess/create_split.py``
+The frames come from a split manifest written by ``data/src/processing/create_split.py``
 (see ``data/src/loaders/split_manifest.py``), so the train/validation boundary is
 chronological and reproducible.  Waypoint supervision is rebuilt from the
 future synchronized ego positions at +0.5 ... +2.5 s (10 Hz recordings); no
 missing file is ever silently replaced with a neighbouring frame.
 
 Traffic-light labels come from the measurement stream, or from the audited
-sidecar built by ``tools/labeling/build_traffic_labels.py`` when one is given.
+sidecar built by ``data/src/processing/build_traffic_labels.py`` when one is given.
 
 Formerly ``vision_encoder/timm/data/carla_dataset.py::MoraiExpertDataset``.
 """

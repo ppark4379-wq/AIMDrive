@@ -105,7 +105,7 @@ def validate_config(cfg):
             raise ValueError('Invalid visualization '+key)
     if view['refresh_hz']>15:
         raise ValueError('Display refresh_hz must not exceed 15')
-    control=cfg.get('control',dict(enabled=False,config='configs/vldrive_control.json'))
+    control=cfg.get('control',dict(enabled=False,config='../AIM2026/Control/vldrive_control.json'))
     if set(control)!={'enabled','config'} or type(control['enabled']) is not bool or not isinstance(control['config'],str) or not control['config']:
         raise ValueError('Invalid control settings')
     if control['enabled'] and nav['mode']!='route':
@@ -125,7 +125,7 @@ def load_navigation(cfg):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--config', type=Path, default=Path('configs/vldrive_realtime.json'))
+    parser.add_argument('--config', type=Path, default=Path('../AIM2026/Inference/vldrive_realtime.json'))
     parser.add_argument('--instruction', help='Override the fixed navigation instruction')
     parser.add_argument('--offline-smoke', action='store_true', help='Verify A-D on recorded validation sensors')
     parser.add_argument('--probe-only', action='store_true', help='Check receive streams without loading networks')
@@ -136,7 +136,7 @@ def main():
     control_options.add_argument('--no-control', action='store_true', help='Disable UDP control and only display inference during manual driving')
     args = parser.parse_args()
     cfg = read_json(args.config if args.config.is_file() else local_path(str(args.config)))
-    cfg.setdefault('control',dict(enabled=False,config='configs/vldrive_control.json'))
+    cfg.setdefault('control',dict(enabled=False,config='../AIM2026/Control/vldrive_control.json'))
     if args.control:
         cfg['control']['enabled']=True
     elif args.no_control:

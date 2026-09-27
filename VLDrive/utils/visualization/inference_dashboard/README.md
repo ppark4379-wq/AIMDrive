@@ -5,7 +5,7 @@
 WSL `(lmdrive)`의 VLDrive 폴더에서:
 
 ```bash
-python inference/realtime_vldrive.py --config configs/vldrive_realtime.json
+python inference/realtime_vldrive.py --config ../AIM2026/Inference/vldrive_realtime.json
 ```
 
 브라우저 기본 주소는 `http://127.0.0.1:8502`이며 실행 시 자동으로 열린다. `--no-browser`는 자동 열기만 끈다. `visualization.enabled=false`는 서버를 끈다. `--probe-only --duration 8 --no-browser`는 모델을 로드하지 않고 센서 수신만 확인한다.

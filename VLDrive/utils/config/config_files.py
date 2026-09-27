@@ -6,9 +6,24 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def config_path(path):
+    """Resolve exact former config locations for saved run snapshots."""
+    path = Path(path)
+    if path.is_file():
+        return path
+    aliases = {
+        'vldrive_train.json': ROOT / 'training/vldrive_train.json',
+        'vldrive_realtime.json': ROOT.parent / 'AIM2026/Inference/vldrive_realtime.json',
+        'vldrive_control.json': ROOT.parent / 'AIM2026/Control/vldrive_control.json',
+    }
+    if path.resolve().parent == ROOT / 'configs' and path.name in aliases:
+        return aliases[path.name]
+    return path
+
+
 def read_document(path):
     filename, _, selector = str(path).partition('#')
-    value = json.loads(Path(filename).read_text(encoding='utf-8-sig'))
+    value = json.loads(config_path(filename).read_text(encoding='utf-8-sig'))
     for key in selector.replace('\\', '/').split('/') if selector else ():
         value = value[key]
     return value
@@ -16,7 +31,7 @@ def read_document(path):
 
 def document_bytes(path):
     if '#' not in str(path):
-        return Path(path).read_bytes()
+        return config_path(path).read_bytes()
     # Preserve the original split files' byte identity for existing cache hashes.
     if '#split_manifests/' in str(path).replace('\\', '/'):
         return (json.dumps(read_document(path), indent=2) + '\n').replace('\n', '\r\n').encode()

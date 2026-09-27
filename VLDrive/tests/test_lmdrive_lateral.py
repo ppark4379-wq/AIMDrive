@@ -12,7 +12,7 @@ from control.lmdrive_lateral import LMDriveLateralPID
 
 @pytest.fixture
 def cfg():
-    cfg=load_config(Path(__file__).resolve().parents[1]/'configs/vldrive_control.json')
+    cfg=load_config(Path(__file__).resolve().parents[1]/'../AIM2026/Control/vldrive_control.json')
     cfg['lateral']['target']['mode']='first_two_midpoint'  # Original-reference regression.
     return cfg
 

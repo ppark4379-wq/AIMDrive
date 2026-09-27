@@ -186,7 +186,7 @@ def main():
     parser.add_argument("--dataset-root", type=Path,
                         default=ROOT.parent / "MoraiDrive/dataset_local/competition_train")
     parser.add_argument("--split-file", type=Path,
-                        default=ROOT / "configs/vldrive_train.json#split_manifests/morai_full_loop_95_05")
+                        default=ROOT / "training/vldrive_train.json#split_manifests/morai_full_loop_95_05")
     parser.add_argument("--workers", type=int, default=0)
     args = parser.parse_args()
 
