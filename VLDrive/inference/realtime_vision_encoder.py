@@ -50,7 +50,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from utils.runtime import configure_runtime
+from utils.common.runtime import configure_runtime
 
 configure_runtime()
 
@@ -61,9 +61,9 @@ from inference.live_frame import LiveFrameSource
 from datasets.morai_encoder_contract import checkpoint_encoder_contract
 from inference.live_view import DisplayUnavailable, LiveView, camera_panel
 from models.vision_encoder import create_vision_encoder
-from utils import vision_encoder_visualization as viz
-from utils.vision_encoder_visualization import plt
-from utils.vision_encoder_training import MODEL_NAME, sha256_file
+from utils.visualization import vision_encoder_visualization as viz
+from utils.visualization.vision_encoder_visualization import plt
+from utils.training.vision_encoder_training import MODEL_NAME, sha256_file
 
 # Torch sizes its CPU thread pool for training-sized tensors.  The per-frame
 # work here is tiny -- a 224x224 ToTensor, a Normalize -- and fanning that out

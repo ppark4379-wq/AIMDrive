@@ -16,7 +16,7 @@ from datasets.morai_transfer_adapter import MoraiLMDriveVisionAdapter, MoraiVisi
 from datasets.morai_transfer_targets import render_object_target
 from inference.live_frame import LiveFrameSource
 from inference.realtime_vision_encoder import FigureWriter
-from utils.vision_encoder_visualization import decode_detection_map, _box_corners, forward_right
+from utils.visualization.vision_encoder_visualization import decode_detection_map, _box_corners, forward_right
 
 
 def adapter_config():

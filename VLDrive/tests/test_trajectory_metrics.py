@@ -1,6 +1,6 @@
 import torch
 
-from utils.metrics import TrajectoryMetrics
+from utils.evaluation.metrics import TrajectoryMetrics
 
 
 def test_axis_mae_agrees_between_stage6e_and_lmdrive_coordinates():

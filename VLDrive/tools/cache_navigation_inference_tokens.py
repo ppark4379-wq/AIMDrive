@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 if sys.platform.startswith('linux'):
     sys.path.insert(0, str(ROOT / '.runtime/stage2_wsl_deps'))
-from utils.runtime import configure_runtime, sha256
+from utils.common.runtime import configure_runtime, sha256
 configure_runtime()
 
 

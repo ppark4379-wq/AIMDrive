@@ -22,7 +22,8 @@ if sys.platform.startswith('linux') and (ROOT/'.runtime/offline_viz_wsl_deps').i
     sys.path.insert(0,str(ROOT/'.runtime/offline_viz_wsl_deps'))
 os.environ.setdefault('MPLCONFIGDIR',str(ROOT/'.runtime/matplotlib'))
 
-from utils.runtime import configure_runtime, sha256
+from utils.common.runtime import configure_runtime, sha256
+from utils.common.source_compatibility import source_matches
 configure_runtime()
 from inference.vldrive_offline_config import ConfigError, load_config, require_checkpoint
 
@@ -72,7 +73,7 @@ def visual_contract(config):
             or identity['inference_precision']!='float32' or identity['storage_precision']!='float16'):
         raise ConfigError('Unsupported encoder precision or cache recipe')
     for name,digest in identity['sources_sha256'].items():
-        if sha256(ROOT/name)!=digest:
+        if not source_matches(ROOT,name,digest):
             raise ConfigError('Cache preprocessing/model source changed: '+name)
     if not config.vision_checkpoint.is_file() or sha256(config.vision_checkpoint)!=meta['checkpoint_sha256']:
         raise ConfigError('Vision checkpoint must match the Stage-2 cache SHA256')
@@ -176,7 +177,7 @@ def front_camera(dataset,index):
 
 def render_frame(config,record,prediction,dataset,folder,example=False):
     from inference.vldrive_waypoint_visualization import render_vldrive_waypoints
-    from utils.vision_encoder_visualization import save_figure
+    from utils.visualization.vision_encoder_visualization import save_figure
     kwargs=dict(instruction=config.instruction,frame_id=record['frame_id'],route=record['route'],
                 selected_tokens=prediction.get('selected_tokens'),example=example)
     actual=dataset.target(record['frame_id']) if config.show_actual_trajectory and not example else None

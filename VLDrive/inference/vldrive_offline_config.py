@@ -6,8 +6,8 @@ from pathlib import Path
 import re
 import sys
 
-from utils.vision_encoder_config import ConfigError, _sha256_file, _typed
-from utils.vision_encoder_inference_config import _typed_list
+from utils.config.vision_encoder_config import ConfigError, _sha256_file, _typed
+from utils.config.vision_encoder_inference_config import _typed_list
 
 SCHEMA = 'morai-vldrive-offline-inference-v1'
 LAYOUT = {

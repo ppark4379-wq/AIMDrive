@@ -3,7 +3,7 @@ import textwrap
 
 import numpy as np
 
-from utils import vision_encoder_visualization as viz
+from utils.visualization import vision_encoder_visualization as viz
 
 
 def render_vldrive_waypoints(waypoints, *, instruction, frame_id, route, selected_tokens,

@@ -13,7 +13,7 @@ import sys
 ROOT=Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0,str(ROOT))
-from utils.runtime import configure_runtime, sha256
+from utils.common.runtime import configure_runtime, sha256
 configure_runtime()
 
 
@@ -26,7 +26,7 @@ def main():
     from datasets.navigation_cache_dataset import NavigationCacheDataset
     from models.vldrive import VLDriveTrainingConfig, VLDriveTrainingModel
     from navigation.token_cache import CachedNavigationTokenizer
-    from utils.training import batch, autocast, seed_all, source_hashes
+    from utils.training.training_helper import batch, autocast, seed_all, source_hashes
     cfg=json.loads(args.config.read_text())
     output=args.output.resolve()
     output.mkdir(parents=True,exist_ok=True)

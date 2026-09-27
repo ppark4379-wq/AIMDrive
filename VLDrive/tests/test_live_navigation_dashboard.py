@@ -14,7 +14,7 @@ from inference.live_pipeline import current_window
 from inference.realtime_vldrive import validate_config
 from inference.vldrive_runtime import TokenHistory
 from navigation import live
-from utils.inference_dashboard.server import Dashboard
+from utils.visualization.inference_dashboard.server import Dashboard
 
 ROOT = Path(__file__).resolve().parents[1]
 

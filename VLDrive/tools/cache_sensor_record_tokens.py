@@ -11,7 +11,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from utils.runtime import configure_runtime, deterministic_pointpillar_reductions, sha256
+from utils.common.runtime import configure_runtime, deterministic_pointpillar_reductions, sha256
 configure_runtime()
 
 

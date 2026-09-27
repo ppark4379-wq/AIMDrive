@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT))
 if sys.platform.startswith('linux'):
     sys.path.insert(1, str(ROOT/'.runtime/stage2_wsl_deps'))
     sys.path.insert(2, str(ROOT/'.runtime/offline_viz_wsl_deps'))
-from utils.runtime import configure_runtime, deterministic_pointpillar_reductions, sha256
+from utils.common.runtime import configure_runtime, deterministic_pointpillar_reductions, sha256
 configure_runtime()
 from tools.cache_sensor_record_tokens import write_json, tensor_ref, valid_record
 

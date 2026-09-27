@@ -10,7 +10,7 @@ from pathlib import Path
 
 import torch
 from torch import nn
-from utils.runtime import deterministic_pointpillar_reductions
+from utils.common.runtime import deterministic_pointpillar_reductions
 
 from datasets.sensor_adapter import load_frozen_lmdrive_vision_encoder
 

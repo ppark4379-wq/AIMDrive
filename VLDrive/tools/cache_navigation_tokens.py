@@ -37,7 +37,7 @@ def main():
     if checkpoint_sha!=cfg['checkpoint_sha256']: raise ValueError('Checkpoint SHA256 mismatch')
     output=(ROOT/cfg['output']).resolve()
     if output.exists(): raise FileExistsError('Choose a new cache output directory')
-    from utils.runtime import configure_runtime
+    from utils.common.runtime import configure_runtime
     configure_runtime()
     import numpy as np
     import torch

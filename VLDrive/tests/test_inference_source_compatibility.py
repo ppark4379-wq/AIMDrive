@@ -15,7 +15,7 @@ from inference import vldrive_runtime as runtime
      '5c9e02e8828266961264c8f7073845abae75199ea276eecbc4463837d15de8fd'),
 ])
 def test_only_reviewed_old_new_pair_is_accepted(tmp_path, monkeypatch, name, expected):
-    current = (runtime.ROOT / name).read_bytes()
+    current = runtime.source_path(runtime.ROOT, name).read_bytes()
     target = tmp_path / name
     target.parent.mkdir(parents=True)
     target.write_bytes(current)

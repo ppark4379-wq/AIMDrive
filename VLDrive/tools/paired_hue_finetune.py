@@ -4,7 +4,7 @@
 DISABLED.  This tool supplies its own training parameters to the stage-1
 trainer through ``trainer_args``, which is the one thing stage-1 no longer
 permits: training values may come only from a config file loaded by
-``utils.vision_encoder_config.load_config``.  The trainer rejects any other
+``utils.config.vision_encoder_config.load_config``.  The trainer rejects any other
 object, so this tool stops before it can run.
 
 To bring it back, move the fixed protocol values out of ``trainer_args`` into a
@@ -44,7 +44,7 @@ from torchvision.transforms import functional as TF
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from utils import vision_encoder_training as trainer
+from utils.training import vision_encoder_training as trainer
 from datasets.traffic_labels import traffic_record
 
 REPO = ROOT.parent
@@ -654,7 +654,7 @@ DISABLED_REASON = (
     "tools/paired_hue_finetune.py is disabled: it builds stage-1 training "
     "parameters in code (trainer_args), and stage-1 now accepts them only from "
     "a config file. Move the protocol values into configs/ and load them with "
-    "utils.vision_encoder_config.load_config to re-enable it."
+    "utils.config.vision_encoder_config.load_config to re-enable it."
 )
 
 

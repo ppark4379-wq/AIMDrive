@@ -37,7 +37,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from utils.runtime import configure_runtime
+from utils.common.runtime import configure_runtime
 
 configure_runtime()
 
@@ -48,9 +48,9 @@ from datasets.loader import attach_camera_transforms
 from datasets.morai_native_capture import MoraiNativeCaptureDataset
 from datasets.morai_perception_dataset import MoraiPerceptionDataset
 from models.vision_encoder import create_vision_encoder
-from utils import vision_encoder_visualization as viz
-from utils.vision_encoder_inference_config import ConfigError, load_config, require_config
-from utils.vision_encoder_training import MODEL_NAME, sha256_file
+from utils.visualization import vision_encoder_visualization as viz
+from utils.config.vision_encoder_inference_config import ConfigError, load_config, require_config
+from utils.training.vision_encoder_training import MODEL_NAME, sha256_file
 
 # The head-bearing variant; return_feature would stop at the 106 tokens.
 HEAD_MODEL_NAME = MODEL_NAME

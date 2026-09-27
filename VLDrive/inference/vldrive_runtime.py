@@ -11,7 +11,8 @@ import time
 import numpy as np
 import torch
 
-from utils.runtime import deterministic_pointpillar_reductions, sha256
+from utils.common.runtime import deterministic_pointpillar_reductions, sha256
+from utils.common.source_compatibility import source_matches, source_path
 
 ROOT = Path(__file__).resolve().parents[1]
 FEATURE_MODEL = 'memfuser_baseline_e1d3_return_feature'
@@ -70,7 +71,11 @@ def verify_sources(provenance):
     }
     changes = []
     for name, expected in provenance['source'].items():
-        raw = (ROOT / name).read_bytes()
+        raw = source_path(ROOT, name).read_bytes()
+        if source_matches(ROOT, name, expected):
+            if hashlib.sha256(raw).hexdigest() != expected:
+                changes.append(name + ': approved utility-package relocation')
+            continue
         actual = hashlib.sha256(raw).hexdigest()
         if actual == expected:
             continue
@@ -119,7 +124,7 @@ def load_contract(config):
             or meta['trajectory_coordinate_convention'] != CONVENTION):
         raise ValueError('Unsupported visual precision/coordinate contract')
     for name, digest in identity['sources_sha256'].items():
-        if sha256(ROOT / name) != digest:
+        if not source_matches(ROOT, name, digest):
             raise ValueError('Visual cache implementation changed: ' + name)
     if (training['sequence_length'] != 11 or description['config']['memory_size'] != 10
             or description['config']['input_mode'] != 'cached'
@@ -139,7 +144,7 @@ def load_contract(config):
 
 def load_stage2(contract, device):
     from models.vldrive import VLDriveTrainingConfig, VLDriveTrainingModel
-    from utils.trainer import restore_model_checkpoint
+    from training.training import restore_model_checkpoint
     model_config = VLDriveTrainingConfig(**contract['description']['config'])
     for field in ('language_checkpoint', 'qformer_checkpoint'):
         if not Path(getattr(model_config, field)).is_dir():
@@ -303,7 +308,7 @@ class TokenHistory:
 
 @torch.inference_mode()
 def predict_window(model, features, instruction, *, optimized=False):
-    from utils.training import autocast
+    from utils.training.training_helper import autocast
     if model.training:
         raise ValueError('Inference requires model.eval()')
     if features.shape != (1, 11, 106, 256):

@@ -10,7 +10,7 @@
 
 Stage 1 reports the waypoint L1 loss, ADE/FDE in metres and traffic-light
 accuracy on the validation half of the split.  Stage 2 reports the trajectory
-metrics of utils/metrics.py and writes val_predictions.json next to the report.
+metrics of utils/evaluation/metrics.py and writes val_predictions.json next to the report.
 
 Closed-loop driving evaluation needs the MORAI simulator and is not part of
 this project.
@@ -26,7 +26,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from train import add_vldrive_arguments, run_vldrive
-from utils.runtime import configure_runtime
+from utils.common.runtime import configure_runtime
 
 configure_runtime()
 
@@ -34,7 +34,7 @@ configure_runtime()
 # --------------------------------------------------------------------------- stage 1
 
 def add_vision_encoder_arguments(parser):
-    from utils import vision_encoder_training
+    from utils.training import vision_encoder_training
     vision_encoder_training.add_arguments(parser)
     parser.add_argument('--checkpoint', type=Path, required=True,
                         help='stage-1 checkpoint, e.g. .../model-best.pth.tar')
@@ -46,7 +46,7 @@ def run_vision_encoder(parser, args):
     import torch
 
     from models.vision_encoder import create_vision_encoder
-    from utils import vision_encoder_training as stage1
+    from utils.training import vision_encoder_training as stage1
 
     config = stage1.config_from_args(parser, args)
     stage1.seed_everything(config.seed)

@@ -65,13 +65,14 @@ VLDrive/
 │   ├── traffic_labels.py            신호등 라벨 사이드카 생성/검증
 │   ├── transforms.py, lidar.py      카메라 전처리, LiDAR 전처리
 │   └── loader.py                    DataLoader 와 카메라 변환 부착
+├── training/
+│   └── training.py           2단계 학습/preflight/평가/체크포인트
 ├── utils/
-│   ├── runtime.py            오프라인 캐시 설정, sha256 출처 기록, 수치 어댑터, 경로 해석
-│   ├── vision_encoder_config.py  1단계 config 로더 (frozen, 누락·미지 키·타입 거부)
-│   ├── vision_encoder_training.py  1단계 학습 루프 (에폭·체크포인트)
-│   ├── trainer.py            2단계 학습/preflight/평가/체크포인트
-│   ├── training.py           배치·autocast·시드·그래디언트 보고 공통 함수
-│   └── metrics.py            궤적 지표 (ADE, FDE, 구간별 오차)
+│   ├── common/               실행 환경·해시·수치 어댑터·소스 경로 호환
+│   ├── training/             training_helper.py, 비전 인코더·MORAI 전이학습
+│   ├── evaluation/           평가 실행·지표·전이학습 손실 함수
+│   ├── config/               설정 로더·검증
+│   └── visualization/        비전 인코더 그림·추론/학습 대시보드
 ├── tools/                    분할·라벨·지시문·토큰 캐시·시각화 (tools/README.md 참고)
 ├── tests/                    148개 단위 테스트
 ├── docs/                     설계 노트와 실험 보고서
@@ -244,7 +245,7 @@ python tools/render_vision_tokens.py --probe-root outputs/logs/tokens --labels r
 
 | 재구성 후 | 재구성 전 |
 |---|---|
-| `train.py vision-encoder`, `utils/vision_encoder_training.py` | `vision_encoder/train_morai_pretrain.py` |
+| `train.py vision-encoder`, `utils/training/vision_encoder_training.py` | `vision_encoder/train_morai_pretrain.py` |
 | `train.py vldrive` | `LAVIS/train_vldrive.py` |
 | `models/vision_encoder.py`, `resnet.py`, `transformer.py`, `pointpillars.py` | `vision_encoder/timm/models/{memfuser,resnet,...,pointpillar}.py` |
 | `models/qformer.py` | `LAVIS/lavis/models/blip2_models/Qformer.py` |
@@ -256,10 +257,10 @@ python tools/render_vision_tokens.py --probe-root outputs/logs/tokens --labels r
 | `datasets/{transforms,lidar,loader}.py` | `vision_encoder/timm/data/{transforms_carla_factory,carla_loader}.py` |
 | `datasets/{split_manifest,traffic_labels}.py` | `vision_encoder/{morai_data,morai_traffic_labels}.py` |
 | `datasets/morai_expert_dataset.py`, `sensor_adapter.py` | `LAVIS/lavis/datasets/datasets/morai/` |
-| `utils/runtime.py` | `LAVIS/lavis/common/morai_runtime.py` |
-| `utils/{trainer,training,metrics}.py` | `LAVIS/lavis/runners/{vldrive_trainer,morai_trainer,morai_metrics}.py` |
+| `utils/common/runtime.py` | `LAVIS/lavis/common/morai_runtime.py` |
+| `training/training.py`, `utils/training/training_helper.py`, `utils/evaluation/metrics.py` | `LAVIS/lavis/runners/{vldrive_trainer,morai_trainer,morai_metrics}.py` |
 | `configs/vldrive_train*.json` | `LAVIS/lavis/projects/vldrive/morai_paper*.json` |
-| `configs/vision_encoder_train*.json`, `utils/vision_encoder_config.py` | `vision_encoder/train_morai_pretrain.py` 의 argparse 인자 |
+| `configs/vision_encoder_train*.json`, `utils/config/vision_encoder_config.py` | `vision_encoder/train_morai_pretrain.py` 의 argparse 인자 |
 | `configs/splits/` | `vision_encoder/configs/` |
 | `data/external/` | `LAVIS/assets/pretrained/`, `weights/`, `.runtime/lmdrive_official/` |
 | `data/processed/vision_tokens/`, `instructions/` | `LAVIS/.runtime/morai_vldrive/` |
@@ -280,8 +281,8 @@ python tools/render_vision_tokens.py --probe-root outputs/logs/tokens --labels r
 - **신호등 라벨 사이드카를 다시 생성했습니다.** 사이드카는 자기를 만든 코드의 해시를
   기록하고 로드할 때 전체 재현 비교를 합니다. 파일이 옮겨져 해시가 바뀌었으므로
   다시 만들었고, 라벨 레코드 자체는 이전과 **바이트 단위로 동일**합니다.
-- **체크포인트 출처 기록 경로가 바뀌었습니다.** `utils/training.py:source_hashes` 가
-  이제 `models/`, `datasets/`, `utils/`, `train.py`, `evaluate.py` 를 해시합니다.
+- **체크포인트 출처 기록 경로가 바뀌었습니다.** `utils/training/training_helper.py:source_hashes` 가
+  이제 `models/`, `datasets/`, `navigation/`, `training/`, 학습 관련 `utils/` 하위 모듈, `train.py`, `evaluate.py`를 해시합니다.
   이전 체크포인트는 출처 불일치로 재개되지 않습니다(이전 학습 결과는 모두 삭제했습니다).
 - 진단·재현용 일회성 스크립트 약 25개를 지웠습니다. 그 결과 보고서는 `docs/reports/` 에
   그대로 있습니다.

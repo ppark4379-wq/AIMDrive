@@ -40,7 +40,7 @@ from inference.morai_udp import (
 TARGET_LOOKAHEAD_M = 25.0
 UTM_EPSG = "EPSG:32652"
 CAMERA_KEYS = ("rgb_front", "rgb_left", "rgb_right", "rgb_rear")
-# The BEV figure's window, from utils.vision_encoder_visualization.BEV_EXTENT.
+# The BEV figure's window, from utils.visualization.vision_encoder_visualization.BEV_EXTENT.
 BEV_FORWARD_M = (-20.0, 30.0)
 BEV_RIGHT_M = (-25.0, 25.0)
 # Enough to read the shape of a wall or a car, few enough to scatter cheaply.

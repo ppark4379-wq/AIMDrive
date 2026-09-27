@@ -35,7 +35,7 @@ ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from utils.runtime import add_path_arguments, configure_runtime, resolve_settings, sha256
+from utils.common.runtime import add_path_arguments, configure_runtime, resolve_settings, sha256
 
 configure_runtime()
 
@@ -50,12 +50,12 @@ def write(path, data):
 # --------------------------------------------------------------------------- stage 1
 
 def add_vision_encoder_arguments(parser):
-    from utils import vision_encoder_training
+    from utils.training import vision_encoder_training
     return vision_encoder_training.add_arguments(parser)
 
 
 def run_vision_encoder(parser, args):
-    from utils import vision_encoder_training
+    from utils.training import vision_encoder_training
     return vision_encoder_training.run(vision_encoder_training.config_from_args(parser, args))
 
 
@@ -114,10 +114,10 @@ def run_vldrive(args):
     write(output / 'resolved_config.json', settings)
 
     import torch
-    from utils.runtime import bootstrap
+    from utils.common.runtime import bootstrap
     backend = bootstrap(ROOT)
     from models.vldrive import VLDriveTrainingConfig, VLDriveTrainingModel
-    from utils.trainer import (seed_all, subset_indices, stride_indices, source_hashes, parameter_hash,
+    from training.training import (seed_all, subset_indices, stride_indices, source_hashes, parameter_hash,
         preflight, evaluate, make_optimizer, train, save_checkpoint, restore_checkpoint,
         save_model_checkpoint, restore_model_checkpoint, periodic_checkpoint_path,
         warm_start_model_checkpoint)
@@ -240,7 +240,7 @@ def run_vldrive(args):
         if not report['preflight']['passed']:
             raise RuntimeError('VLDrive preflight failed; inspect preflight.json')
         if args.mode == 'train':
-            from utils.training_dashboard.launcher import launch_dashboard
+            from utils.visualization.training_dashboard.launcher import launch_dashboard
             launch_dashboard(output, settings.get('dashboard'))
             if optimizer is None:
                 optimizer = make_optimizer(model, **settings.get('optimizer', {}))
@@ -327,7 +327,7 @@ def main(argv=None):
     stage1 = stages.add_parser('vision-encoder', help='stage 1: MORAI vision encoder pre-training')
     add_vision_encoder_arguments(stage1)
     morai = stages.add_parser('vision-encoder-morai', help='MORAI Sensor Record multitask transfer from full LMDrive weights')
-    from utils import morai_transfer_training
+    from utils.training import morai_transfer_training
     morai_transfer_training.add_arguments(morai)
     stage2 = stages.add_parser('vldrive', help='stage 2: VLDrive training on cached visual tokens')
     add_vldrive_arguments(stage2)

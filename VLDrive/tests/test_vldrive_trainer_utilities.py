@@ -7,7 +7,7 @@ import pytest
 import torch
 from torch import nn
 
-from utils.trainer import (
+from training.training import (
     restore_model_checkpoint,
     save_model_checkpoint,
     stride_indices,

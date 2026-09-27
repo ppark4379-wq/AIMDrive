@@ -22,5 +22,5 @@ fi
 
 CHECKPOINT="$1"
 shift
-exec "${MORAI_TRAIN_PYTHON:-python3}" -u -m utils.morai_transfer_evaluation \
+exec "${MORAI_TRAIN_PYTHON:-python3}" -u -m utils.evaluation.morai_transfer_evaluation \
   --checkpoint "$CHECKPOINT" "$@"

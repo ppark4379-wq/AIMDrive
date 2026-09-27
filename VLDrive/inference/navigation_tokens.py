@@ -3,7 +3,7 @@ import json
 
 from inference.vldrive_runtime import local_path
 from navigation.token_cache import CachedNavigationTokenizer
-from utils.runtime import sha256
+from utils.common.runtime import sha256
 
 
 def attach_navigation_tokens(model, cfg, navigation):

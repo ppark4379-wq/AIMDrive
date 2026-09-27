@@ -15,7 +15,7 @@ if sys.platform.startswith('linux') and (ROOT / '.runtime/stage2_wsl_deps').is_d
     sys.path.insert(0, str(ROOT / '.runtime/stage2_wsl_deps'))
 if sys.platform.startswith('linux') and (ROOT / '.runtime/offline_viz_wsl_deps').is_dir():
     sys.path.insert(0, str(ROOT / '.runtime/offline_viz_wsl_deps'))
-from utils.runtime import configure_runtime
+from utils.common.runtime import configure_runtime
 configure_runtime()
 
 from inference.vldrive_runtime import load_contract, local_path, read_json
@@ -165,7 +165,7 @@ def main():
     controller = None
     try:
         if not args.offline_smoke and cfg['visualization']['enabled']:
-            from utils.inference_dashboard.server import Dashboard
+            from utils.visualization.inference_dashboard.server import Dashboard
             view = Dashboard(cfg['visualization'],model_label=cfg['stage2_checkpoint'])
             report['visualization_url'] = view.start()
             view.update(status='contract',receive_only=report['receive_only'])

@@ -2,7 +2,7 @@
 
 Tests take the same path production does: values reach the trainer only by
 being written to a config file and loaded through
-``utils.vision_encoder_config.load_config``.  The helper starts from the
+``utils.config.vision_encoder_config.load_config``.  The helper starts from the
 checked-in config so a new key is never forgotten here.
 """
 import json
@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from utils.vision_encoder_config import LAYOUT, load_config
+from utils.config.vision_encoder_config import LAYOUT, load_config
 
 TEMPLATE = ROOT / "configs/vision_encoder_train.json"
 

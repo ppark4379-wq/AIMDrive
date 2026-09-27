@@ -12,7 +12,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from utils.runtime import sha256, complete_visual_checkpoint_initialization
+from utils.common.runtime import sha256, complete_visual_checkpoint_initialization
 from .qformer_mefa import QFormerMEFAConfig, QFormerMEFAConnector
 from .frozen_vision_encoder import MoraiVisualEncoder
 from .language_model import VLDriveModel

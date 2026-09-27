@@ -16,7 +16,7 @@ from inference.vldrive_runtime import seed_runtime
 from inference.vldrive_waypoint_visualization import render_vldrive_waypoints
 from models.qformer_mefa import QFormerMEFAConfig,QFormerMEFAConnector
 from models.vldrive import VLDriveTrainingConfig,VLDriveTrainingModel
-from utils import vision_encoder_visualization as viz
+from utils.visualization import vision_encoder_visualization as viz
 
 ROOT=Path(__file__).resolve().parents[1]
 

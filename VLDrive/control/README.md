@@ -20,7 +20,7 @@ python inference/realtime_vldrive.py
 | 종방향 파라미터 / 주기 | expert `config/config.json` → `control.pid`, `common.realtime_sampling_rate` |
 | 두 제어기의 연결 | `control/expert_controller.py` |
 | 입력 유효성 검사 / UDP 송신 | `control/runtime.py`, `transport.py`, `udp_bridge.py` |
-| 상태·목표점 시각화 | `utils/inference_dashboard/` |
+| 상태·목표점 시각화 | `utils/visualization/inference_dashboard/` |
 
 추론의 다섯 waypoint가 제어 경로다. Global path를 제어 목표점으로 가져오지 않는다.
 이전 `control/waypoint_pid.py`의 `WaypointPID`는 실시간 제어기로 사용하지 않는다. 좌표 변환과 정지 명령 함수만 기존 runtime에서 사용한다.

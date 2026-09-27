@@ -11,7 +11,7 @@ if str(ROOT) not in sys.path:
 dependencies=ROOT/'.runtime/stage2_wsl_deps'
 if sys.platform.startswith('linux') and dependencies.is_dir():
     sys.path.insert(1,str(dependencies))
-from utils.runtime import configure_runtime, sha256
+from utils.common.runtime import configure_runtime, sha256
 configure_runtime()
 
 
