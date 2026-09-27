@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 export PYTHONNOUSERSITE=1
 
 if [[ $# -lt 1 ]]; then
   cat >&2 <<'EOF'
 사용법:
-  bash tools/evaluate_visual_morai.sh CHECKPOINT [추가 옵션]
+  bash tools/evaluation/evaluate_visual_morai.sh CHECKPOINT [추가 옵션]
 
 예:
-  bash tools/evaluate_visual_morai.sh \
+  bash tools/evaluation/evaluate_visual_morai.sh \
     /path/to/checkpoint-last.pth.tar
 
 configs/morai_transfer.local.json의 manifest_indices를 publication별·lap별로

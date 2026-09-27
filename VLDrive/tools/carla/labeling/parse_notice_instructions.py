@@ -141,7 +141,7 @@ if __name__ == '__main__':
     dataset_root = sys.argv[1]
     output_dir = dataset_root
     curr_dir = Path(__file__).parent
-    scenarios_dir = os.path.join(curr_dir, "../../", "leaderboard/data/scenarios")
+    scenarios_dir = os.path.join(curr_dir, "../../../", "leaderboard/data/scenarios")
     lines = open(os.path.join(dataset_root, "dataset_index.txt")).readlines()
 
     with Pool(8) as p:

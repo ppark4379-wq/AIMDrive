@@ -13,7 +13,10 @@ ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = json.loads((ROOT / 'utils/common/source_relocations.json').read_text())
 
 
-@pytest.mark.parametrize('name', ['utils/trainer.py', 'utils/training.py', 'utils/runtime.py'])
+@pytest.mark.parametrize('name', [
+    'utils/trainer.py', 'utils/training.py', 'utils/runtime.py',
+    'tools/build_instructions.py', 'tools/cache_sensor_record_tokens.py',
+])
 def test_old_paths_accept_only_exact_relocated_source(tmp_path, name):
     entry = MANIFEST['files'][name]
     target = tmp_path / entry['path']

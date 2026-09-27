@@ -15,14 +15,15 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, Subset
 from models.ve.vision_encoder import create_vision_encoder
+from training.vision_encoder.setup import make_model, configure_trainable_scope, train_mode
 from data.src.loaders.morai_sensor_record_dataset import (
     PathResolver, load_publications, SensorRecordDataset, digest)
 from data.src.loaders.morai_encoder_contract import sensor_record_encoder_contract
 from inference.morai_route import navigation_recipe
-from utils.evaluation.morai_transfer_objective import multitask_loss, DETECTION_LOSS_POLICIES
-from utils.evaluation.morai_transfer_metrics import evaluate, to_device
+from training.vision_encoder.losses.morai_transfer import multitask_loss, DETECTION_LOSS_POLICIES
+from training.vision_encoder.utils.morai_transfer_metrics import evaluate, to_device
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 GROUPS = ('rgb_backbone.', 'lidar_backbone.', 'encoder.', 'decoder.',
           'traffic_pred_head.', 'traffic_light_pred_head.', 'waypoints_generator.')
 DEFAULT_CHECKPOINT_HASH = '348c2885113c69f9c41813f6c1c02edc4c69568c6241aa4a4d4bae830cdd9023'
@@ -95,32 +96,6 @@ def resolve_args(args):
     return PathResolver(cfg.get('path_mappings', []))
 
 
-def make_model(checkpoint, expected_sha256, device, initialization='lmdrive_base'):
-    if digest(checkpoint) != expected_sha256:
-        raise ValueError('Initial checkpoint SHA256 mismatch')
-    # Only trusted tensor data; no old timm pickle imports needed.
-    doc = torch.load(str(checkpoint), map_location='cpu', weights_only=True)
-    if not isinstance(doc,dict) or 'state_dict' not in doc:
-        raise ValueError('Expected LMDrive state_dict checkpoint')
-    if initialization == 'lmdrive_base' and ('pretraining' in doc or 'morai_initialization' in doc):
-        raise ValueError('This path starts from the base LMDrive checkpoint, not an earlier MORAI run')
-    model = create_vision_encoder({'name':'memfuser_baseline_e1d3'}, pretrained_backbone=False)
-    model.load_state_dict(doc['state_dict'], strict=True)
-    model.requires_grad_(True)
-    model.stop_sign_head.requires_grad_(False)
-    return model.to(device)
-
-
-def configure_trainable_scope(model, scope):
-    if scope == 'full':
-        model.requires_grad_(True)
-        model.stop_sign_head.requires_grad_(False)
-        return tuple(GROUPS)
-    model.requires_grad_(False)
-    model.traffic_pred_head.requires_grad_(True)
-    return ('traffic_pred_head.',)
-
-
 def selected_training_indices(dataset, args):
     indices = list(range(len(dataset)))
     selection = {'policy': args.frame_sampling, 'available_frames': len(indices)}
@@ -154,18 +129,6 @@ def frozen_state_digest(model, excluded_prefixes=()):
         value.update(name.encode());value.update(str(array.dtype).encode())
         value.update(str(array.shape).encode());value.update(array.tobytes())
     return value.hexdigest()
-
-
-def train_mode(model, scope='full'):
-    if scope == 'object_head':
-        model.eval()
-        model.traffic_pred_head.train()
-        return
-    model.train()
-    # v3_lav physical batch 1: keep pretrained BN running stats, train affine.
-    for module in model.modules():
-        if isinstance(module, nn.modules.batchnorm._BatchNorm):
-            module.eval()
 
 
 def gradients(model):
@@ -234,13 +197,14 @@ def run(args):
     train_indices,sampling=selected_training_indices(datasets['train'],args)
     args.output.mkdir(parents=True,exist_ok=False)
     implementation={str(p.relative_to(ROOT)):digest(p) for p in
-                    [Path(__file__),ROOT/'models/ve/vision_encoder.py',ROOT/'models/ve/pointpillars.py',
+                    [Path(__file__),ROOT/'training/vision_encoder/setup.py',ROOT/'models/ve/vision_encoder.py',ROOT/'models/ve/pointpillars.py',
                      ROOT/'models/ve/resnet.py',ROOT/'models/ve/transformer.py']+
                     sorted((ROOT/'data/src/loaders').glob('morai_transfer*.py'))+
                     [ROOT/'data/src/loaders/morai_sensor_record_dataset.py',ROOT/'data/src/loaders/morai_gps_speed.py',
                      ROOT/'data/src/loaders/morai_encoder_contract.py',
                      ROOT/'inference/morai_route.py',
-                     ROOT/'utils/evaluation/morai_transfer_objective.py',ROOT/'utils/evaluation/morai_transfer_metrics.py']}
+                     ROOT/'training/vision_encoder/losses/morai_transfer.py',
+                     ROOT/'training/vision_encoder/utils/morai_transfer_metrics.py']}
     provenance=dict(schema='morai_visual_transfer_v1',args=vars(args),coverage=coverage,
         publications=index['publications'],
         initial_checkpoint_sha256=args.checkpoint_sha256,

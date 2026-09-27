@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from utils.training import vision_encoder_training as trainer
+from training import vision_encoder_training as trainer
 from utils.config.vision_encoder_config import ConfigError
 from tests.stage1_config import make_config
 
@@ -234,7 +234,7 @@ class WarmStartTest(unittest.TestCase):
 
     def test_source_provenance_covers_runner_labels_and_model(self):
         provenance = trainer.implementation_provenance()
-        for relative in ("train.py", "utils/training/vision_encoder_training.py", "data/src/loaders/split_manifest.py",
+        for relative in ("train.py", "training/vision_encoder_training.py", "data/src/loaders/split_manifest.py",
                          "data/src/loaders/traffic_labels.py", "data/src/loaders/morai_perception_dataset.py",
                          "models/ve/vision_encoder.py"):
             self.assertEqual(provenance[relative], trainer.sha256_file(ROOT / relative))

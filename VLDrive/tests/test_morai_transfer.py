@@ -10,8 +10,8 @@ from data.src.loaders.morai_sensor_record_dataset import (
     child, digest, PathResolver, load_publications, validate_navigation_target,
     verify_admission_recovery,
 )
-from utils.evaluation.morai_transfer_objective import multitask_loss
-from utils.training.morai_transfer_training import object_selection_score, selected_training_indices
+from utils.training.morai_transfer_objective import multitask_loss
+from training.morai_transfer_training import object_selection_score, selected_training_indices
 
 class TransferTests(unittest.TestCase):
     def test_object_checkpoint_selection_prefers_ap_then_f1(self):
@@ -100,7 +100,7 @@ class TransferTests(unittest.TestCase):
 
     def test_requested_new_campaign_cannot_be_omitted(self):
         import argparse,json
-        from utils.training.morai_transfer_training import add_arguments,resolve_args
+        from training.morai_transfer_training import add_arguments,resolve_args
         with tempfile.TemporaryDirectory() as tmp:
             config=Path(tmp)/'config.json'
             config.write_text(json.dumps({'manifest_indices':['/old/index.json'],

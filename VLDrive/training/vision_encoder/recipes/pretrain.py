@@ -35,14 +35,15 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from data.src.loaders.morai_perception_dataset import MoraiPerceptionDataset
 from data.src.loaders.loader import create_perception_loader
 from models.ve.vision_encoder import create_vision_encoder
-from utils.config.vision_encoder_config import ConfigError, load_config, require_config
+from training.vision_encoder.setup import (ConfigError, load_config, require_config,
+    set_rgb_frozen, optimizer_for, lr_factor, apply_epoch_lr)
 
 
 MODEL_NAME = "memfuser_baseline_e1d3"
@@ -114,50 +115,6 @@ def make_loader(config, split, training):
         hue_jitter=config.rgb_hue_jitter if training else 0.0,
     )
     return dataset, loader
-
-
-def set_rgb_frozen(model, frozen):
-    for parameter in model.rgb_backbone.parameters():
-        parameter.requires_grad_(not frozen)
-    if frozen:
-        model.rgb_backbone.eval()
-
-
-def optimizer_for(model, config):
-    require_config(config)
-    effective_batch = config.batch_size * config.accumulation_steps
-    lr = config.reference_lr * effective_batch / 512.0
-    rgb_lr = config.reference_rgb_lr * effective_batch / 512.0
-    rgb_parameters = []
-    other_parameters = []
-    for name, parameter in model.named_parameters():
-        if name.startswith("rgb_backbone."):
-            rgb_parameters.append(parameter)
-        else:
-            other_parameters.append(parameter)
-    optimizer = torch.optim.AdamW(
-        [
-            {"params": other_parameters, "lr": lr, "name": "fusion_lidar_heads"},
-            {"params": rgb_parameters, "lr": rgb_lr, "name": "rgb_backbone"},
-        ],
-        weight_decay=config.weight_decay,
-    )
-    return optimizer, lr, rgb_lr
-
-
-def lr_factor(epoch, config):
-    if config.warmup_epochs > 0 and epoch < config.warmup_epochs:
-        return float(epoch + 1) / float(config.warmup_epochs)
-    cosine_epochs = max(config.epochs - config.warmup_epochs, 1)
-    progress = float(epoch - config.warmup_epochs) / float(cosine_epochs)
-    progress = min(max(progress, 0.0), 1.0)
-    return 0.5 * (1.0 + math.cos(math.pi * progress))
-
-
-def apply_epoch_lr(optimizer, base_lr, rgb_lr, epoch, config):
-    factor = lr_factor(epoch, config)
-    optimizer.param_groups[0]["lr"] = base_lr * factor
-    optimizer.param_groups[1]["lr"] = rgb_lr * factor
 
 
 def loss_and_metrics(output, target, config):
@@ -340,7 +297,9 @@ def sha256_file(path):
 def implementation_provenance():
     """Freeze the trainer, target construction, and encoder implementation identity."""
     paths = (
-        "train.py", "utils/training/vision_encoder_training.py",
+        "train.py", "training/vision_encoder_training.py",
+        "training/vision_encoder/recipes/pretrain.py",
+        "training/vision_encoder/setup.py",
         "utils/config/vision_encoder_config.py",
         "data/src/loaders/split_manifest.py", "data/src/loaders/traffic_labels.py",
         "data/src/loaders/morai_perception_dataset.py", "data/src/loaders/lidar.py",

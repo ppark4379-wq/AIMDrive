@@ -1,7 +1,7 @@
 """Frame-weighted multitask metrics preserved from the MORAI v3_lav evaluation."""
 import json
 import torch
-from utils.evaluation.morai_transfer_objective import multitask_loss
+from utils.training.morai_transfer_objective import multitask_loss
 
 def to_device(batch, device):
     return tuple({k: v.to(device) for k, v in side.items()} for side in batch)

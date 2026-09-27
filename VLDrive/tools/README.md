@@ -1,20 +1,37 @@
 # tools/
 
-`basic_drive`의 visual token 생성, navigation token ID 생성, connector+LLM 연결은
-[Stage 2 캐시 안내](../docs/NAVIGATION_STAGE2_CACHE_KO.md)를 참고합니다.
-`python data/src/processing/cache_navigation_tokens.py --config configs/legacy/navigation_token_cache.json`은
-현재 Sensor Record용 생성기로 연결되며 프레임 단위 재시작을 지원합니다.
+학습 전후의 데이터 준비·캐시 생성·점검 도구입니다. 명령은 VLDrive 루트에서 실행합니다.
+시각 토큰은 이 폴더에 저장하지 않습니다. `configs/vldrive_train.json`의 `feature_cache`
+경로에 저장하고, 커넥터·LLM 학습은 그 파일을 읽습니다. 현재 경로는
+`data/processed/vision_tokens/basic_dynamic_velocity_v1`입니다.
 
-학습 전후에 한 번씩 돌리는 스크립트 모음입니다. 모두 VLDrive 루트에서 실행합니다.
+| 폴더 | 역할 | 파일 |
+|---|---|---|
+| `assets/` | 사전학습 모델 준비·입력 규약 추출 | `prepare_assets.py`, `export_morai_encoder_contract.py` |
+| `preprocess/` | 학습/검증 분할·기존 형식 데이터 정리 | `create_split.py`, `build_dataset_index.py`, `merge_*`, `find_blocked_frames.py`, `remove_*`, `renumber_frames.py` |
+| `labeling/` | MORAI 정답·주행 지시문 생성 | `build_traffic_labels.py`, `build_instructions.py` |
+| `cache/` | 시각 특징·텍스트 토큰 ID 저장 | `cache_vision_tokens.py`, `cache_sensor_record_tokens.py`, `cache_velocity_tokens.py`, `cache_navigation_tokens.py`, `cache_navigation_text_tokens.py`, `cache_navigation_inference_tokens.py` |
+| `evaluation/` | 비전 인코더 성능 평가 | `evaluate_visual_morai.sh`, `evaluate_traffic_departures.py` |
+| `validation/` | 분할·gradient·신호등 입력·실시간 전처리 점검 | `audit_split.py`, `audit_vldrive_paper.py`, `audit_sensor_record_light_inputs.py`, `check_morai_realtime_parity.py` |
+| `carla/` | 현재 MORAI 경로에서 호출하지 않는 CARLA 전용 도구 | 경로·시나리오 생성 스크립트, `labeling/`의 규칙·파서·지도 |
 
-완료된 CCDP 비교 실험 전용 스크립트·config·도구 테스트는 2026-09-19에 정리했습니다.
-현재 본 학습은 D2 설정의 `configs/vldrive_train.json`과 `train.py`를 사용합니다.
-데이터 준비 도구, 모델·데이터·navigation 회귀 테스트, 과거 실험 결과와 checkpoint는 유지합니다.
+`cache_navigation_tokens.py`도 비전 인코더로 시각 특징을 생성합니다. 문장을 숫자 ID로
+바꾸는 도구는 `cache_navigation_text_tokens.py`와 `cache_navigation_inference_tokens.py`입니다.
+시각 캐시 생성기 네 개는 데이터 형식과 속도 입력에 따라 선택하며 순서대로 전부 실행하지 않습니다.
 
-LMDrive 55개 navigation 유형·8개 표현, 여러 데이터셋 입력, 실시간 MORAI 손 주행
-관찰은 [navigation 안내](../navigation/README.md)를 사용합니다.
-새 생성 config는 `configs/navigation/navigation_lmdrive.json`입니다.
-아래 `navigation_instructions.json` 기반 생성기는 이전의 단순 지시문 baseline입니다.
+통합 학습 설정을 사용하는 준비 명령:
+
+```bash
+python tools/labeling/build_instructions.py --config configs/vldrive_train.json
+python tools/cache/cache_velocity_tokens.py --config configs/vldrive_train.json
+python tools/cache/cache_navigation_text_tokens.py --config configs/vldrive_train.json
+```
+
+학습 코드·실행 스크립트·실험은 [최상위 training/](../training/README.md)에 모았습니다.
+학습 본체의 진입점은 그대로 `python train.py ...`입니다.
+오프라인 토큰 추출·렌더링과 대시보드는 [utils/visualization/](../utils/visualization/README.md)에 있습니다.
+실시간 센서 추론은 `inference/`가 담당합니다. 내비게이션 동작은
+[navigation 안내](../navigation/README.md)를 참고합니다.
 
 ## MORAI 파이프라인 (지금 쓰는 것)
 
@@ -26,11 +43,7 @@ LMDrive 55개 navigation 유형·8개 표현, 여러 데이터셋 입력, 실시
 | `build_instructions.py` | 기록된 global path 로부터 주행 지시문 JSONL(`data/processed/instructions/`)을 만듭니다. | 2단계 학습 전 |
 | `prepare_assets.py` | TinyLlama·bert-base-uncased 를 내려받아 `data/external/` 에 고정 해시로 검증해 둡니다. 학습기 안에서는 절대 다운로드하지 않습니다. | 최초 1회 |
 | `cache_vision_tokens.py` | 얼린 1단계 인코더로 프레임별 [106,256] 시각 토큰을 미리 계산해 `data/processed/vision_tokens/` 에 저장합니다. 프레임 단위 재개 가능. | 1단계 → 2단계 사이 |
-| `run_pipeline.py` | 인코더 미세조정 → 토큰 캐시 → preflight → 2단계 학습을 순차 실행합니다. 단계별 게이트가 있어 중단 후 이어서 돌릴 수 있습니다. | 전체 재현 |
 | `evaluate_traffic_departures.py` | 신호등 상태가 바뀌는 구간에서 인코더 예측이 어떻게 달라지는지 측정합니다. | 진단 |
-| `paired_hue_finetune.py` | hue 증강 유무를 짝지어 비교하는 인코더 미세조정. **현재 비활성**: 학습 파라미터를 코드(`trainer_args`)에서 만들어 넘기는데, 1단계는 config 파일에서 온 값만 받습니다. 고정 프로토콜 값을 `configs/` 로 옮기면 되살아납니다. | 진단 |
-| `inspect_vision_tokens.py` | 언어 모델을 거치지 않고 인코더 토큰만 뽑아 JSON/NPY 로 덤프합니다. | 시각화 1/2 |
-| `render_vision_tokens.py` | 위 덤프를 프레임별 BEV 토큰 세기 맵 이미지로 그립니다(matplotlib 필요). | 시각화 2/2 |
 
 ## Sensor Record 원본에서 navigation instruction 생성
 
@@ -42,11 +55,12 @@ PyYAML이 필요하며 `requirements.txt`에 포함돼 있습니다.
 아래는 **AIMDrive 루트**에서 실행하는 PowerShell 명령입니다.
 
 ```powershell
-python VLDrive/data/src/processing/build_instructions.py `
-  --config VLDrive/configs/navigation/navigation_instructions.json
+python VLDrive/tools/labeling/build_instructions.py `
+  --config VLDrive/configs/vldrive_train.json
 ```
 
-생성 파라미터는 `configs/navigation/navigation_instructions.json`에서 관리합니다.
+통합 생성 파라미터는 `configs/vldrive_train.json`의 `preprocessing`에서 관리합니다.
+아래 개별 키 설명은 이전 standalone 설정을 사용하는 경우에도 해당합니다.
 config 안의 상대 경로는 실행 위치와 관계없이 **VLDrive 루트** 기준입니다.
 `--config`와 개별 파라미터 플래그를 함께 사용하면 오류를 내므로 실제 적용값이
 설정 파일과 달라지지 않습니다. 기존 개별 CLI 방식은 config 없이 실행할 때만 유지됩니다.
@@ -94,16 +108,15 @@ Stage 2 로더에 이 JSONL을 그대로 넣을 수는 없으며, Sensor Record 
 
 ## CARLA 시절 스크립트 (지금은 실행되지 않음)
 
-`labeling/` 과 `preprocess/` 는 LMDrive 원본의 데이터 라벨링·정리 스크립트입니다.
-MORAI 수집분은 `MoraiDrive` 쪽에서 이미 같은 형식으로 정리되어 나오므로 현재 파이프라인은
-이 스크립트들을 쓰지 않지만, 데이터 형식과 지시문 규칙의 근거 자료라서 남겨두었습니다.
-같은 파일의 정리된 판이 `../../LMDrive/tools/` 에 있고, 그쪽이 유지보수 대상입니다.
+`carla/labeling/`은 CARLA 데이터용 지시문 생성 규칙·파서입니다.
+현재 MORAI 학습·실시간 추론 경로에서는 호출하지 않으며, 참고 및 CARLA 재사용을 위해 보존합니다.
+CARLA 지도 파일도 같은 폴더 아래의 `carla_maps/`에 함께 보관합니다.
 
-- `labeling/` — 2단계 지시문 라벨 생성. `turn_rules` / `follow_rules` / `notice_rules` /
+- `carla/labeling/` — CARLA 지시문 라벨 생성. `turn_rules` / `follow_rules` / `notice_rules` /
   `other_rules` 가 규칙이고, `parse_navigation_instructions.py`,
   `parse_notice_instructions.py`, `parse_misleading_instructions.py` 가 이를 돌려
   라벨 파일을 씁니다. `carla_maps/*.xodr` 은 규칙이 참조하는 도로망입니다.
-- `preprocess/` — 수집 직후 파일 정리. 카메라 4장을 `rgb_full` 로, 측정값을
+- `preprocess/`의 기존 형식 정리 도구 — 카메라 4장을 `rgb_full` 로, 측정값을
   `measurements_full` / `measurements_all.json` 로 병합하고(`merge_*`), 정차로 막힌
   구간을 찾아(`find_blocked_frames.py`) 지우고(`remove_blocked_frames.py`) 프레임 번호를
   다시 매긴 뒤(`renumber_frames.py`) `dataset_index.txt` 를 만듭니다(`build_dataset_index.py`).

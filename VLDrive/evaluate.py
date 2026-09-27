@@ -34,7 +34,7 @@ configure_runtime()
 # --------------------------------------------------------------------------- stage 1
 
 def add_vision_encoder_arguments(parser):
-    from utils.training import vision_encoder_training
+    from training import vision_encoder_training
     vision_encoder_training.add_arguments(parser)
     parser.add_argument('--checkpoint', type=Path, required=True,
                         help='stage-1 checkpoint, e.g. .../model-best.pth.tar')
@@ -46,7 +46,7 @@ def run_vision_encoder(parser, args):
     import torch
 
     from models.ve.vision_encoder import create_vision_encoder
-    from utils.training import vision_encoder_training as stage1
+    from training import vision_encoder_training as stage1
 
     config = stage1.config_from_args(parser, args)
     stage1.seed_everything(config.seed)

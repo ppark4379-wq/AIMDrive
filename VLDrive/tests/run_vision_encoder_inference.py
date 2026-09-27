@@ -50,7 +50,7 @@ from data.src.loaders.morai_perception_dataset import MoraiPerceptionDataset
 from models.ve.vision_encoder import create_vision_encoder
 from utils.visualization import vision_encoder_visualization as viz
 from utils.config.vision_encoder_inference_config import ConfigError, load_config, require_config
-from utils.training.vision_encoder_training import MODEL_NAME, sha256_file
+from training.vision_encoder_training import MODEL_NAME, sha256_file
 
 # The head-bearing variant; return_feature would stop at the 106 tokens.
 HEAD_MODEL_NAME = MODEL_NAME

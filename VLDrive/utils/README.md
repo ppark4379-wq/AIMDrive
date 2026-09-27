@@ -1,13 +1,13 @@
 # Utility layout
 
 - `common/`: runtime configuration, numerical adapters and exact source relocation compatibility.
-- `training/`: Stage-1 training, MORAI transfer training and shared `training_helper.py` functions.
-- `evaluation/`: trajectory/token metrics, MORAI transfer objectives and evaluation.
+- `training/`: shared batching/precision/checkpoint helpers and MORAI transfer loss functions.
+- `evaluation/`: trajectory/token metrics and MORAI transfer evaluation.
 - `config/`: Python configuration loaders and validators; JSON/YAML values remain in `../configs/`.
-- `visualization/`: encoder figures and the inference/training dashboards.
+- `visualization/`: offline token extraction/rendering, encoder figures and the inference/training dashboards.
 
-The Stage-2 training loop is `../training/training.py`. The root `train.py`
-remains the command-line entry point. Inference also uses the checkpoint loader
+Training loops and launch scripts live in `../training/`; reusable helpers and losses live in `training/` here.
+The root `train.py` remains the command-line entry point. Inference also uses the checkpoint loader
 in `training.training` and the precision helpers in `utils.training.training_helper`.
 
 `common/source_relocations.json` records exact source hashes before and after

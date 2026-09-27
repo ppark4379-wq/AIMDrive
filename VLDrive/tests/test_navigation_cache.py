@@ -98,7 +98,7 @@ def test_changed_feature_is_detected(cache):
 
 
 def test_sensor_record_right_axis_is_converted_to_stage2_left_axis():
-    from data.src.processing.cache_navigation_tokens import stage2_trajectory
+    from tools.cache.cache_navigation_tokens import stage2_trajectory
     source=np.asarray([[-2,-5]]*5,dtype='float32')
     result=stage2_trajectory(source,{'waypoint_output_axes':'right_negative_forward'})
     assert np.array_equal(result,np.asarray([[2,-5]]*5))

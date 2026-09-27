@@ -12,7 +12,7 @@ import torch.nn.functional as F
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from tools import evaluate_traffic_departures as evaluation
+from tools.evaluation import evaluate_traffic_departures as evaluation
 
 
 def measurement(frame, green_frame=30):

@@ -15,8 +15,8 @@ import torch
 from torchvision import transforms
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "tools"))
-import paired_hue_finetune as pair
+sys.path.insert(0, str(ROOT))
+from training.experiments import paired_hue_finetune as pair
 from data.src.loaders.transforms import create_camera_transform
 
 

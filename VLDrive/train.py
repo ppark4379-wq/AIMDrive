@@ -19,8 +19,8 @@ feature_contract.json.  Stage 2 writes model-best.pt / model-last.pt,
 checkpoint.pt (weights + optimizer, for --checkpoint resume), training.jsonl,
 epoch_metrics.jsonl and report.json.
 
-Stage 2 reads visual tokens from a cache built by data/src/processing/cache_vision_tokens.py
-and instructions built by data/src/processing/build_instructions.py, so the frozen encoder
+Stage 2 reads visual tokens from a cache built by tools/cache/cache_vision_tokens.py
+and instructions built by tools/labeling/build_instructions.py, so the frozen encoder
 never runs during training.  --mode preflight stops after the gradient and
 causality checks; --mode evaluate scores a checkpoint without training.
 """
@@ -50,12 +50,12 @@ def write(path, data):
 # --------------------------------------------------------------------------- stage 1
 
 def add_vision_encoder_arguments(parser):
-    from utils.training import vision_encoder_training
+    from training import vision_encoder_training
     return vision_encoder_training.add_arguments(parser)
 
 
 def run_vision_encoder(parser, args):
-    from utils.training import vision_encoder_training
+    from training import vision_encoder_training
     return vision_encoder_training.run(vision_encoder_training.config_from_args(parser, args))
 
 
@@ -328,7 +328,7 @@ def main(argv=None):
     stage1 = stages.add_parser('vision-encoder', help='stage 1: MORAI vision encoder pre-training')
     add_vision_encoder_arguments(stage1)
     morai = stages.add_parser('vision-encoder-morai', help='MORAI Sensor Record multitask transfer from full LMDrive weights')
-    from utils.training import morai_transfer_training
+    from training import morai_transfer_training
     morai_transfer_training.add_arguments(morai)
     stage2 = stages.add_parser('vldrive', help='stage 2: VLDrive training on cached visual tokens')
     add_vldrive_arguments(stage2)

@@ -1,1 +1,1 @@
-"""utils training package."""
+"""Shared training helpers and loss functions; no training loops."""

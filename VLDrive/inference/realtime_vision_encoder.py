@@ -63,7 +63,7 @@ from inference.live_view import DisplayUnavailable, LiveView, camera_panel
 from models.ve.vision_encoder import create_vision_encoder
 from utils.visualization import vision_encoder_visualization as viz
 from utils.visualization.vision_encoder_visualization import plt
-from utils.training.vision_encoder_training import MODEL_NAME, sha256_file
+from training.vision_encoder_training import MODEL_NAME, sha256_file
 
 # Torch sizes its CPU thread pool for training-sized tensors.  The per-frame
 # work here is tiny -- a 224x224 ToTensor, a Normalize -- and fanning that out

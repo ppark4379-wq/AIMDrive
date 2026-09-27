@@ -10,7 +10,7 @@ from data.src.loaders.navigation_velocity_sensors import gps_velocities, Velocit
 from data.src.loaders.navigation_sensor_record import NativeNavigationSensors
 from data.src.loaders.morai_encoder_contract import sensor_record_encoder_contract
 from data.src.loaders.morai_transfer_adapter import MoraiVisionAdapterConfig
-from data.src.processing.build_instructions import verified_expert_path_span
+from tools.labeling.build_instructions import verified_expert_path_span
 
 
 def test_causal_gps_speed_preserves_missing_and_gapped_indices():

@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import shutil
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 REPOSITORY = 'TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T'
 REVISION = '59f6f375b26bde864a6ca194a9a3044570490064'
 QFORMER_REPOSITORY = 'google-bert/bert-base-uncased'

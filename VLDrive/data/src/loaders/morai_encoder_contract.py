@@ -102,7 +102,7 @@ def checkpoint_encoder_contract(blob, checkpoint_sha256, sidecar=None):
         contract["migrated_from"] = "morai_encoder_recipe_v1_with_sensor_contract"
         return validate_encoder_contract(contract)
     raise ValueError("Checkpoint lacks a verified input/output contract. Run "
-                     "data/src/processing/export_morai_encoder_contract.py and pass --contract <sidecar.json>")
+                     "tools/assets/export_morai_encoder_contract.py and pass --contract <sidecar.json>")
 
 
 def adapter_config(value):

@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location('light_input_review', ROOT / 'data/src/eval/audit_sensor_record_light_inputs.py')
+spec = importlib.util.spec_from_file_location('light_input_review', ROOT / 'tools/validation/audit_sensor_record_light_inputs.py')
 review = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(review)
 
