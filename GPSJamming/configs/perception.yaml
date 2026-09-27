@@ -1,5 +1,57 @@
-# Tuning parameters will be defined during implementation.
 camera: {}
-lidar: {}
-timing: {}
+lidar:
+  runtime:
+    frame_queue_size: 4
+  udp:
+    bind: 127.0.0.1
+    port: 2368
+    source_ip: null
+    socket_timeout_ms: 50
+  decoder:
+    # Adapted from the existing VLDrive VLP-16 decoder; verify actual model.
+    elevations_deg: [-15, 1, -13, 3, -11, 5, -9, 7, -7, 9, -5, 11, -3, 13, -1, 15]
+    distance_scale: 0.002
+  assembly:
+    coordinate_frame: lidar_x_forward_y_left_z_up
+    assembly_timeout_ms: 150
+    max_pending_frames: 8
+    max_packets_per_frame: 4096
+    # Verified live on 2026-09-27: 900 blocks, gaps 0.39/0.40/0.41 degrees.
+    # Reverify after changing the sensor; null keeps completeness unverified.
+    azimuth_step_deg: 0.4
+    azimuth_tolerance_deg: 0.02
+  transform:
+    target_frame: base_link
+    # LiDAR pose in base_link; p_base = Rz(yaw) Ry(pitch) Rx(roll) p_lidar + t.
+    translation_m: [1.0, 0.0, 1.45]
+    rotation_rpy_deg: [0.0, 0.0, 0.0]
+  preprocessing:
+    # XYZ bounds in base_link, metres.
+    roi_min: [-10.0, -10.0, -1.0]
+    roi_max: [30.0, 10.0, 5.0]
+    voxel_size: 0.10
+  ground:
+    # 모든 높이/거리는 base_link 기준 m. 현재 추정 높이는 -1.48 + 1.45 = -0.03 m.
+    expected_z: -0.03       # 예상 지면 높이. 추정 평면의 x=y=0 위치 높이를 이 값과 비교.
+    seed_band: 0.6          # expected_z ±0.6 m 안의 점으로 평면 후보 생성/평가.
+                           # 평면의 x=y=0 높이도 expected_z와 이 범위 이내여야 채택.
+    distance_threshold: 0.10 # 평면까지의 수직거리(법선 방향)가 0.10 m 이하면 지면으로 제거.
+                            # 최종 판정은 후보 높이 범위 밖을 포함한 모든 voxel 점에 적용.
+    max_tilt_deg: 12.0      # 수평면 대비 허용 최대 기울기(도). 벽 같은 급경사 평면은 제외.
+    iterations: 80         # 후보 점 3개를 뽑아 평면을 시도하는 횟수. 조건 탈락도 1회로 계산.
+    min_inliers: 40        # 필요한 최소 후보 점 수이자, 후보 내 최적 평면을 지지할 최소 점 수.
+                           # 미달하면 지면을 제거하지 않음. ROI/voxel 처리 후 점 개수 기준.
+    seed: 0                # 무작위 추출 시드. 동일 입력/설정으로 결과를 재현하기 위한 고정값.
+  clustering:
+    tolerance: 1.0      # 이웃 점 연결 거리(m). 연결을 따라 하나의 군집으로 확장하므로 군집 지름 제한은 아님.
+    min_points: 8     # ROI/voxel/지면 제거 후 군집을 채택할 최소 점 수. 미만은 제외.
+    max_points: 20000 # 채택할 최대 점 수. 초과 군집은 통째로 제외하며 작은 군집으로 분할하지 않음.
+timing:
+  lidar:
+    # Verify source units and the shared source/Unix anchor before filling in.
+    # Never use packet receipt time as if it were acquisition time.
+    ns_per_tick: null
+    source_anchor: null
+    unix_anchor_ns: null
+    max_forward_jump_ns: 5000000000
 association: {}
