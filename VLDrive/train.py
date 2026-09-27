@@ -90,6 +90,8 @@ def run_vldrive(args):
     validation_enabled = settings.get('validation_enabled', True)
     if type(validation_enabled) is not bool:
         raise ValueError('validation_enabled must be boolean')
+    if type(settings.get('initial_evaluation', True)) is not bool:
+        raise ValueError('initial_evaluation must be boolean')
     full_route = settings.get('include_validation_in_train', False)
     if type(full_route) is not bool or (full_route and validation_enabled):
         raise ValueError('Full-route training requires validation_enabled=false')
@@ -247,7 +249,15 @@ def run_vldrive(args):
                 optimizer = make_optimizer(model, **settings.get('optimizer', {}))
             frozen = parameter_hash(model, trainable=False)
             before = parameter_hash(model, trainable=True)
-            report['before'] = {k: evaluate(model, datasets[k], indices[k], device) for k in datasets}
+            initial_evaluation = settings.get('initial_evaluation', True)
+            report['initial_evaluation'] = dict(enabled=initial_evaluation)
+            if initial_evaluation:
+                print('Initial full evaluation started; optimizer updates begin after evaluation and baseline checkpoint saving.', flush=True)
+                report['before'] = {k: evaluate(model, datasets[k], indices[k], device) for k in datasets}
+                print('Initial full evaluation complete.', flush=True)
+            else:
+                report['before'] = None
+                print('Initial full evaluation skipped (initial_evaluation=false).', flush=True)
 
             def periodic(step):
                 interval = settings.get('checkpoint_every', 100)
@@ -260,12 +270,15 @@ def run_vldrive(args):
 
             score_split = 'val' if validation_enabled else 'train'
             score_name = 'validation' if validation_enabled else 'training'
-            baseline_row = dict(epoch=start_update // steps_per_epoch, updates=start_update,
-                                **{score_name: report['before'][score_split]})
-            best = dict(fde_m=report['before'][score_split]['fde_m'], epoch=baseline_row['epoch'],
-                        metrics=baseline_row, scope=score_name + '_current_invocation_including_starting_weights')
-            save_model_checkpoint(output / 'model-best.pt', model, updates=start_update,
-                provenance=provenance, settings=settings, metrics=baseline_row)
+            best = dict(fde_m=None, epoch=None, metrics=None,
+                        scope=score_name + '_current_invocation_after_training')
+            if initial_evaluation:
+                baseline_row = dict(epoch=start_update // steps_per_epoch, updates=start_update,
+                                    **{score_name: report['before'][score_split]})
+                best.update(fde_m=report['before'][score_split]['fde_m'], epoch=baseline_row['epoch'],
+                            metrics=baseline_row, scope=score_name + '_current_invocation_including_starting_weights')
+                save_model_checkpoint(output / 'model-best.pt', model, updates=start_update,
+                    provenance=provenance, settings=settings, metrics=baseline_row)
             epoch_metrics = output / 'epoch_metrics.jsonl'
 
             def end_epoch(epoch, step):
@@ -275,7 +288,7 @@ def run_vldrive(args):
                     stream.write(json.dumps(row, allow_nan=False, sort_keys=True) + '\n')
                 save_model_checkpoint(output / 'model-last.pt', model, updates=step,
                     provenance=provenance, settings=settings, metrics=row)
-                if validation['fde_m'] < best['fde_m']:
+                if best['epoch'] is None or validation['fde_m'] < best['fde_m']:
                     best.update(fde_m=validation['fde_m'], epoch=int(epoch) + 1, metrics=row)
                     save_model_checkpoint(output / 'model-best.pt', model, updates=step,
                         provenance=provenance, settings=settings, metrics=row)
