@@ -7,7 +7,7 @@ conda activate lmdrive
 cd /mnt/c/Users/autonav009/Desktop/AIMDrive/VLDrive
 ```
 
-- 2. 실제 원본 데이터 경로와 VE 가중치 설정을 확인합니다.
+- 2. 원본·VE·이어학습 설정을 확인하고, 초기 전체 평가는 `initial_evaluation`의 `true`/`false`로 선택합니다.
 
 ```bash
 ls data/raw
