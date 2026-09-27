@@ -86,7 +86,7 @@
         "format": "sensor_record",
         "namespace": "basic_drive",
         "map_root": null,
-        "route_definition": "configs/navigation_routes/basic_drive_full_loop_links.yaml"
+        "route_definition": "configs/routes.yaml"
       },
       {
         "root": "data/raw/dynamic_obstacle",
