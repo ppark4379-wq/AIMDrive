@@ -1173,7 +1173,7 @@
       ]
     },
     "tools/audit_sensor_record_light_inputs.py": {
-      "path": "tools/audit_sensor_record_light_inputs.py",
+      "path": "data/src/eval/audit_sensor_record_light_inputs.py",
       "before": [
         "0f6d80061029877ccba8f2fdf072dfb3625eae63d3aa1032e94f4fd3bd31703b",
         "465eeff238ef4bc761968dbe62780f14d7f8d39d9a5e76e4b462abe9e16a02bc",
@@ -1183,12 +1183,12 @@
         "afcc844f7f4e23cb56d66068b30882356cbb4bd67d00766dba7990a07ade5bba"
       ],
       "after": [
-        "465eeff238ef4bc761968dbe62780f14d7f8d39d9a5e76e4b462abe9e16a02bc",
-        "80675ca7abe9df75482ef4ae469cf5be873a46814356f0d4840ac01d06aecb46"
+        "6085864e93624aa91aa2d2191d8a22225c37e9ae0e290142b9e1774d16c32e9b",
+        "b8c48907f810c41f2a6498da521b879c54bb85e64160340ad796ec5cb1a3f68f"
       ]
     },
     "tools/audit_split.py": {
-      "path": "tools/audit_split.py",
+      "path": "data/src/eval/audit_split.py",
       "before": [
         "31c6876cf6fac31456167940f3540036c9ec0ffdafb6e04f8dbad8ab41b77abd",
         "7ad92251cae44c394092dff781ce2e45e98d3d1a86b5d41e827f1f5e656b236a",
@@ -1198,8 +1198,8 @@
         "e75e82adff7140301ee623ac5405e75ec01b1c56f65bc64551cb318999c5de31"
       ],
       "after": [
-        "31c6876cf6fac31456167940f3540036c9ec0ffdafb6e04f8dbad8ab41b77abd",
-        "c36203cf135967a353400276de2080ac2acdbc7dc0d77746ca78638ccbb89465"
+        "2155758c753ec66265c0962dba9259b05cb98c962aebc1b615702b7f7dea95c8",
+        "545ea111c40977ba4fcfb44f66f94dfdcdb42fad6c9dc43098e621ab117a74ae"
       ]
     },
     "tools/build_traffic_labels.py": {
@@ -1216,7 +1216,7 @@
       ]
     },
     "tools/check_morai_realtime_parity.py": {
-      "path": "tools/check_morai_realtime_parity.py",
+      "path": "data/src/eval/check_morai_realtime_parity.py",
       "before": [
         "346a134c27888d67a573189e7ca0c1d82bffb9d49be412087af0a02be64515cc",
         "50c3926485d28d69c9271abd83ca9d39e7499c31bc9002477567208d385d280d",
@@ -1226,8 +1226,8 @@
         "bdf2992574e73542603a133c86f5d25f3299054495a0b284b9a23763c76f4e84"
       ],
       "after": [
-        "7d5ddef2ce625b1fb00b29baefa56f8dc463d574197b9106c88334b429abec0b",
-        "9dc2e91c04b2c892b5be9454892b32399a59d4e1dfdc848690afeb99fb04eba7"
+        "70ab113d502a8515afa510560a544d6ce56f414d3707420db91d77526f04eedb",
+        "9fccf4865b14c3b531307a17fba654bcaac39437ad98ce1b209dc8a9b5ac2a77"
       ]
     },
     "tools/create_split.py": {

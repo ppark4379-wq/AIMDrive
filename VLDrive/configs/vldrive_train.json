@@ -134,6 +134,9 @@
       "train_fraction": 1.0,
       "max_sensor_gap_ms": 150,
       "log_interval": 200
+    },
+    "traffic_labels": {
+      "jobs": []
     }
   },
   "vision_encoder_training": {
@@ -142,7 +145,7 @@
     "dataset": {
       "root": "../MoraiDrive/dataset_local/competition_train",
       "split_file": "configs/vldrive_train.json#split_manifests/morai_full_loop_80_20",
-      "traffic_label_sidecar": "data/processed/traffic_labels/full_loop_80_20.json",
+      "traffic_label_sidecar": "data/processed/legacy_v001/traffic_labels/full_loop_80_20.json",
       "lidar_axis_policy": "morai_flu_to_lmdrive_fru",
       "train_stride": 1,
       "validation_stride": 1

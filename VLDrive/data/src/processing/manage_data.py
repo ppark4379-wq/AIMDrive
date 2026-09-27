@@ -104,18 +104,29 @@ def version(config, name, root=ROOT):
         raise ValueError('Visual manifest changed')
     if token_meta['tokens_sha256'] != digest(texts.parent/'tokens.jsonl'):
         raise ValueError('Text token payload changed')
+    target=root/'data/processed'/component(name)/'manifest.json'
+    traffic=target.parent/'traffic_labels'
+    if traffic.is_dir():
+        files.extend(sorted(traffic.glob('*.json')))
+    snapshot=target.parent/'processing_config.json'
+    if snapshot.is_file():
+        files.append(snapshot)
+    for key, filename in (('features_manifest_sha256', 'features.jsonl'),
+                          ('visual_source_sha256', 'visual_source.json')):
+        if key in meta and meta[key] != digest(vision/filename):
+            raise ValueError('Visual cache changed: ' + filename)
     sources=[dict(s, available=(root/s['root']).is_dir()) for s in nav['datasets']]
     record=dict(schema='vldrive-data-version-v1', name=component(name),
                 config=cfg, navigation=nav, sources=sources,
                 assets=dict(instructions=str(labels.parent.resolve()),
                             vision_tokens=str(vision.resolve()),
-                            navigation_tokens=str(texts.parent.resolve())),
+                            navigation_tokens=str(texts.parent.resolve()),
+                            traffic_labels=str(traffic.resolve()) if traffic.is_dir() else None),
                 fingerprints={str(p.resolve().relative_to(root.resolve())).replace('\\','/'):digest(p) for p in files},
                 visual_frames=meta.get('visual_frames'), training_frames=meta.get('training_frames'),
                 raw_available=all(s['available'] for s in sources),
                 sequence_length=cfg['sequence_length'],
                 frame_sampling_interval=cfg['frame_sampling_interval'])
-    target=root/'data/processed'/component(name)/'manifest.json'
     write_new(target, record)
     return target
 

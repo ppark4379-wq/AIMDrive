@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location('light_input_review', ROOT / 'tools/audit_sensor_record_light_inputs.py')
+spec = importlib.util.spec_from_file_location('light_input_review', ROOT / 'data/src/eval/audit_sensor_record_light_inputs.py')
 review = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(review)
 
@@ -26,8 +26,8 @@ class LightInputReviewTests(unittest.TestCase):
                 rgb = review.rgb_from_model_tensor(tensors[view])
                 self.assertEqual(rgb.shape, (size,size,3))
                 x0,y0,x1,y1 = review.crop_rectangle(width,height,view)
-                actual = [rgb[0,0,0]*(width-1)/255., rgb[0,0,1]*(height-1)/255.,
-                          rgb[-1,-1,0]*(width-1)/255., rgb[-1,-1,1]*(height-1)/255.]
+                actual = [float(rgb[0,0,0])*(width-1)/255., float(rgb[0,0,1])*(height-1)/255.,
+                          float(rgb[-1,-1,0])*(width-1)/255., float(rgb[-1,-1,1])*(height-1)/255.]
                 self.assertLess(np.max(np.abs(np.array(actual)-[x0,y0,x1,y1])), 9)
 
     def test_signal_at_raw_top_is_outside_both_front_inputs(self):

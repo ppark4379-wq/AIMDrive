@@ -37,3 +37,4 @@ __pycache__/
 
 # Versioned local dataset bundles and links (not source code).
 /data/processed/stage2_*/
+/data/processed/*/

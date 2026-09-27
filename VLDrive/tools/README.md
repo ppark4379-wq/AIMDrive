@@ -21,7 +21,7 @@ LMDrive 55개 navigation 유형·8개 표현, 여러 데이터셋 입력, 실시
 | 스크립트 | 하는 일 | 언제 |
 |---|---|---|
 | `create_split.py` | `dataset_index.txt` 를 읽어 시간순 train/purge/validation 분할 파일을 `configs/splits/` 에 씁니다. | 데이터 수집 직후 |
-| `audit_split.py` | 분할 파일이 실제 수집 데이터와 맞는지, 경계가 새지 않는지 검사합니다. | 분할 생성 후 |
+| `../data/src/eval/audit_split.py` | 분할 파일이 실제 수집 데이터와 맞는지, 경계가 새지 않는지 검사합니다. | 분할 생성 후 |
 | `build_traffic_labels.py` | 신호등 라벨 사이드카(`data/processed/traffic_labels/`)를 만듭니다. 원본 데이터는 건드리지 않습니다. | 1단계 학습 전 |
 | `build_instructions.py` | 기록된 global path 로부터 주행 지시문 JSONL(`data/processed/instructions/`)을 만듭니다. | 2단계 학습 전 |
 | `prepare_assets.py` | TinyLlama·bert-base-uncased 를 내려받아 `data/external/` 에 고정 해시로 검증해 둡니다. 학습기 안에서는 절대 다운로드하지 않습니다. | 최초 1회 |
