@@ -6,11 +6,11 @@ from pathlib import Path
 import pytest
 import torch
 
-from data.loaders.navigation_velocity_sensors import gps_velocities, VelocityNativeNavigationSensors
-from data.loaders.navigation_sensor_record import NativeNavigationSensors
-from data.loaders.morai_encoder_contract import sensor_record_encoder_contract
-from data.loaders.morai_transfer_adapter import MoraiVisionAdapterConfig
-from tools.build_instructions import verified_expert_path_span
+from data.src.loaders.navigation_velocity_sensors import gps_velocities, VelocityNativeNavigationSensors
+from data.src.loaders.navigation_sensor_record import NativeNavigationSensors
+from data.src.loaders.morai_encoder_contract import sensor_record_encoder_contract
+from data.src.loaders.morai_transfer_adapter import MoraiVisionAdapterConfig
+from data.src.processing.build_instructions import verified_expert_path_span
 
 
 def test_causal_gps_speed_preserves_missing_and_gapped_indices():
@@ -59,7 +59,7 @@ def test_only_explicit_unique_forward_subpaths_are_allowed():
 
 
 def test_velocity_reader_replaces_scalar_and_checks_actual_gps_bytes(tmp_path,monkeypatch):
-    import data.loaders.navigation_velocity_sensors as module
+    import data.src.loaders.navigation_velocity_sensors as module
     assets={};bundles=[];scenes=[]
     for i in range(3):
         name=f'gps_{i}.txt';raw=f'Latitude : 0\nLongitude : {i*.000001}\n'.encode()
@@ -84,7 +84,7 @@ def test_velocity_reader_replaces_scalar_and_checks_actual_gps_bytes(tmp_path,mo
 
 
 def test_verified_asset_reader_rejects_escape_and_changed_bytes(tmp_path):
-    from data.loaders.navigation_velocity_sensors import VerifiedNativeAssets
+    from data.src.loaders.navigation_velocity_sensors import VerifiedNativeAssets
     folder=tmp_path/'native';folder.mkdir();(folder/'camera').mkdir()
     path=folder/'camera/frame';path.write_bytes(b'actual sensor bytes')
     reader=VerifiedNativeAssets(folder,{'camera/frame':dict(size_bytes=path.stat().st_size,

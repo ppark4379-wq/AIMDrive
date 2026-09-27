@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import sys
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 if sys.platform.startswith('linux'):
     sys.path.insert(0, str(ROOT / '.runtime/stage2_wsl_deps'))

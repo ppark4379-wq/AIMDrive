@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from tools.build_instructions import (
+from data.src.processing.build_instructions import (
     COMMAND_TEXT, RouteLookaheadPolicy, SENSOR_RECORD_SCHEMA,
     main, parse_arguments, sensor_record_episode, sha256, verified_source,
 )
@@ -192,12 +192,12 @@ def test_temporal_gap_splits_identical_instructions(capture):
 
 
 def config_document():
-    from tools.build_instructions import VLDRIVE_ROOT
+    from data.src.processing.build_instructions import VLDRIVE_ROOT
     return __import__("utils.config.config_files", fromlist=["read_document"]).read_document(VLDRIVE_ROOT / "configs/vldrive_realtime.json#presets/navigation_instructions")
 
 
 def test_config_paths_are_independent_of_working_directory(tmp_path, monkeypatch):
-    from tools.build_instructions import VLDRIVE_ROOT
+    from data.src.processing.build_instructions import VLDRIVE_ROOT
     path = tmp_path / "config.json"
     write_json(path, config_document())
     monkeypatch.chdir(tmp_path)

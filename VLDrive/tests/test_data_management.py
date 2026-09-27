@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 import pytest
-from tools.manage_data import register, digest
+from data.src.processing.manage_data import register, digest
 
 
 def capture(tmp_path):

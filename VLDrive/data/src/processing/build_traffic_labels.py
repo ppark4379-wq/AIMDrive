@@ -5,11 +5,11 @@ import json
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from data.loaders.traffic_labels import build_traffic_label_sidecar, sha256_file, sidecar_summary
+from data.src.loaders.traffic_labels import build_traffic_label_sidecar, sha256_file, sidecar_summary
 
 
 def main():

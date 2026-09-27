@@ -39,8 +39,8 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from data.loaders.morai_perception_dataset import MoraiPerceptionDataset
-from data.loaders.loader import create_perception_loader
+from data.src.loaders.morai_perception_dataset import MoraiPerceptionDataset
+from data.src.loaders.loader import create_perception_loader
 from models.vision_encoder import create_vision_encoder
 from utils.config.vision_encoder_config import ConfigError, load_config, require_config
 
@@ -342,9 +342,9 @@ def implementation_provenance():
     paths = (
         "train.py", "utils/training/vision_encoder_training.py",
         "utils/config/vision_encoder_config.py",
-        "data/loaders/split_manifest.py", "data/loaders/traffic_labels.py",
-        "data/loaders/morai_perception_dataset.py", "data/loaders/lidar.py",
-        "data/loaders/loader.py", "data/loaders/transforms.py",
+        "data/src/loaders/split_manifest.py", "data/src/loaders/traffic_labels.py",
+        "data/src/loaders/morai_perception_dataset.py", "data/src/loaders/lidar.py",
+        "data/src/loaders/loader.py", "data/src/loaders/transforms.py",
         "models/vision_encoder.py", "models/pointpillars.py", "models/resnet.py",
         "models/transformer.py",
     )

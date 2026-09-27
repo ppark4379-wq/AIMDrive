@@ -1,4 +1,4 @@
-"""Put the VLDrive root on sys.path so tests import models/, data/loaders/ and utils/."""
+"""Put the VLDrive root on sys.path so tests import models/, data/src/loaders/ and utils/."""
 import sys
 from pathlib import Path
 

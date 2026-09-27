@@ -7,7 +7,7 @@ import pytest
 
 from navigation.engine import DEFAULT_POLICY
 from navigation.build import build
-from data.loaders.navigation_cache_dataset import NavigationCacheDataset
+from data.src.loaders.navigation_cache_dataset import NavigationCacheDataset
 
 
 def digest(path): return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -98,7 +98,7 @@ def test_changed_feature_is_detected(cache):
 
 
 def test_sensor_record_right_axis_is_converted_to_stage2_left_axis():
-    from tools.cache_navigation_tokens import stage2_trajectory
+    from data.src.processing.cache_navigation_tokens import stage2_trajectory
     source=np.asarray([[-2,-5]]*5,dtype='float32')
     result=stage2_trajectory(source,{'waypoint_output_axes':'right_negative_forward'})
     assert np.array_equal(result,np.asarray([[2,-5]]*5))

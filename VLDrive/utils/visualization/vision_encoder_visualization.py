@@ -258,7 +258,7 @@ def render_bev_detection(detection, *, threshold=0.4, title="BEV map", subtitle=
     if lidar_points is not None and len(lidar_points):
         cloud = np.asarray(lidar_points, dtype=np.float32).reshape(-1, 2)
         # The BEV page is +right across and +forward up; the cloud arrives as
-        # (forward, right), matching data/loaders/lidar and the live adapter.
+        # (forward, right), matching data/src/loaders/lidar and the live adapter.
         axes.scatter(cloud[:, 1], cloud[:, 0], s=0.4, c="#5ec8f0", alpha=0.45,
                      linewidths=0, zorder=2, rasterized=True)
     for box in boxes:

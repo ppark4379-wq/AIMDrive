@@ -2,7 +2,7 @@
 
 `basic_drive`의 visual token 생성, navigation token ID 생성, connector+LLM 연결은
 [Stage 2 캐시 안내](../docs/NAVIGATION_STAGE2_CACHE_KO.md)를 참고합니다.
-`python tools/cache_navigation_tokens.py --config configs/legacy/navigation_token_cache.json`은
+`python data/src/processing/cache_navigation_tokens.py --config configs/legacy/navigation_token_cache.json`은
 현재 Sensor Record용 생성기로 연결되며 프레임 단위 재시작을 지원합니다.
 
 학습 전후에 한 번씩 돌리는 스크립트 모음입니다. 모두 VLDrive 루트에서 실행합니다.
@@ -42,7 +42,7 @@ PyYAML이 필요하며 `requirements.txt`에 포함돼 있습니다.
 아래는 **AIMDrive 루트**에서 실행하는 PowerShell 명령입니다.
 
 ```powershell
-python VLDrive/tools/build_instructions.py `
+python VLDrive/data/src/processing/build_instructions.py `
   --config VLDrive/configs/navigation/navigation_instructions.json
 ```
 

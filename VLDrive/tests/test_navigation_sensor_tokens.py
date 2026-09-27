@@ -5,7 +5,7 @@ import json
 import numpy as np
 import pytest
 
-from data.loaders.navigation_sensor_record import future_target, temporal_split
+from data.src.loaders.navigation_sensor_record import future_target, temporal_split
 from navigation.token_cache import CachedNavigationTokenizer, tokenizer_fingerprint
 
 

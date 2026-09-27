@@ -12,14 +12,14 @@ import json
 from pathlib import Path
 import sys
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
 import torch
-from data.loaders.morai_encoder_contract import (
+from data.src.loaders.morai_encoder_contract import (
     SCHEMA, checkpoint_encoder_contract, sensor_record_encoder_contract, validate_encoder_contract,
 )
-from data.loaders.morai_transfer_adapter import MoraiVisionAdapterConfig
+from data.src.loaders.morai_transfer_adapter import MoraiVisionAdapterConfig
 from inference.morai_route import navigation_recipe
 
 

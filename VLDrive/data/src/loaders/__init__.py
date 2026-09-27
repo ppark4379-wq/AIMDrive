@@ -10,7 +10,7 @@ split_manifest            chronological train/validation split files
 traffic_labels            audited traffic-light sidecar labels
 transforms, lidar, loader shared preprocessing and DataLoader construction
 
-Code lives under data.loaders; raw and processed data are sibling directories.
+Code lives under data.src.loaders; raw and processed data are sibling directories.
 """
 from .loader import attach_camera_transforms, create_perception_loader
 from .morai_perception_dataset import MoraiPerceptionDataset

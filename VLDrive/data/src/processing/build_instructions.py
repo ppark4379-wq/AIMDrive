@@ -16,7 +16,10 @@ SCHEMA = "morai-global-path-instructions-v1"
 LOOKAHEAD_SCHEMA = "morai-global-path-instructions-v2"
 SENSOR_RECORD_SCHEMA = "morai-sensor-record-instructions-v1"
 CONFIG_SCHEMA = "morai-navigation-instructions-config-v1"
-VLDRIVE_ROOT = Path(__file__).resolve().parents[1]
+VLDRIVE_ROOT = Path(__file__).resolve().parents[3]
+import sys
+if str(VLDRIVE_ROOT) not in sys.path:
+    sys.path.insert(0, str(VLDRIVE_ROOT))
 ARGUMENT_DEFAULTS = {
     "dataset_root": None, "output": None, "policy": None, "input_format": "auto",
     "map_root": None, "route_definition": None, "max_route_error_m": 10.0,
@@ -229,7 +232,7 @@ def sensor_record_route(episode, args):
         hashes[key] = value
     if metadata.get("global_path_sha256") != hashes["global_path"]:
         raise ValueError("Episode and route audit global paths disagree")
-    scenario = Path(__file__).resolve().parents[2] / "MoraiDrive/scenario_runner"
+    scenario = Path(__file__).resolve().parents[4] / "MoraiDrive/scenario_runner"
     recorded_map = Path(traffic["map_root"])
     map_roots = ([args.map_root] if args.map_root else
                  [recorded_map, scenario / "data" / recorded_map.name])

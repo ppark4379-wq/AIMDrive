@@ -15,9 +15,9 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, Subset
 from models.vision_encoder import create_vision_encoder
-from data.loaders.morai_sensor_record_dataset import (
+from data.src.loaders.morai_sensor_record_dataset import (
     PathResolver, load_publications, SensorRecordDataset, digest)
-from data.loaders.morai_encoder_contract import sensor_record_encoder_contract
+from data.src.loaders.morai_encoder_contract import sensor_record_encoder_contract
 from inference.morai_route import navigation_recipe
 from utils.evaluation.morai_transfer_objective import multitask_loss, DETECTION_LOSS_POLICIES
 from utils.evaluation.morai_transfer_metrics import evaluate, to_device
@@ -236,9 +236,9 @@ def run(args):
     implementation={str(p.relative_to(ROOT)):digest(p) for p in
                     [Path(__file__),ROOT/'models/vision_encoder.py',ROOT/'models/pointpillars.py',
                      ROOT/'models/resnet.py',ROOT/'models/transformer.py']+
-                    sorted((ROOT/'data/loaders').glob('morai_transfer*.py'))+
-                    [ROOT/'data/loaders/morai_sensor_record_dataset.py',ROOT/'data/loaders/morai_gps_speed.py',
-                     ROOT/'data/loaders/morai_encoder_contract.py',
+                    sorted((ROOT/'data/src/loaders').glob('morai_transfer*.py'))+
+                    [ROOT/'data/src/loaders/morai_sensor_record_dataset.py',ROOT/'data/src/loaders/morai_gps_speed.py',
+                     ROOT/'data/src/loaders/morai_encoder_contract.py',
                      ROOT/'inference/morai_route.py',
                      ROOT/'utils/evaluation/morai_transfer_objective.py',ROOT/'utils/evaluation/morai_transfer_metrics.py']}
     provenance=dict(schema='morai_visual_transfer_v1',args=vars(args),coverage=coverage,

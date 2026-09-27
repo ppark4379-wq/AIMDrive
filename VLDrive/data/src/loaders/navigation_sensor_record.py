@@ -14,8 +14,8 @@ import numpy as np
 import torch
 from PIL import Image
 
-from data.loaders.morai_sensor_record_dataset import child, verify_seal
-from data.loaders.morai_transfer_adapter import MoraiLMDriveVisionAdapter, MoraiVisionAdapterConfig
+from data.src.loaders.morai_sensor_record_dataset import child, verify_seal
+from data.src.loaders.morai_transfer_adapter import MoraiLMDriveVisionAdapter, MoraiVisionAdapterConfig
 from navigation.adapters import json_array_items
 
 

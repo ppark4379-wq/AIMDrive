@@ -96,7 +96,7 @@ def recorded_action_labels(frames, policy):
 
 
 def sensor_record(episode, config, policy=None):
-    from tools.build_instructions import sensor_record_route, indexed_timeline
+    from data.src.processing.build_instructions import sensor_record_route, indexed_timeline
     import yaml
     args = SimpleNamespace(map_root=config.get('map_root'), route_definition=config.get('route_definition'))
     basic, point_links, point_link_indices, _, sources = sensor_record_route(episode, args)
@@ -115,7 +115,7 @@ def sensor_record(episode, config, policy=None):
     ego={}
     signal_path=episode/'quality/active_signals.json'
     if signal_path.is_file():
-        from tools.build_instructions import sha256
+        from data.src.processing.build_instructions import sha256
         for row in json_array_items(signal_path):
             if row.get('record_id') in needed and row.get('role')=='ego': ego[row['record_id']]=row
         sources['ego_signals']={'path':str(signal_path),'sha256':sha256(signal_path)}
@@ -156,7 +156,7 @@ def sensor_record(episode, config, policy=None):
 
 
 def legacy(root, policy):
-    from tools.build_instructions import dataset_routes, sha256
+    from data.src.processing.build_instructions import dataset_routes, sha256
     _, routes = dataset_routes(root)
     for identity, folder, count in routes:
         path=folder/'route.json'; data=load(path)

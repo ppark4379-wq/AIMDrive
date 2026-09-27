@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 import time
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from utils.common.runtime import configure_runtime, deterministic_pointpillar_reductions, sha256
@@ -61,7 +61,7 @@ def main():
         raise ValueError('Invalid split/thread/gap configuration')
     import numpy as np
     import torch
-    from data.loaders.navigation_sensor_record import NativeNavigationSensors, temporal_split
+    from data.src.loaders.navigation_sensor_record import NativeNavigationSensors, temporal_split
     from navigation.sampling import NavigationLabels
     from models.vision_encoder import create_vision_encoder
     torch.set_num_threads(cfg['cpu_threads'])
@@ -86,7 +86,7 @@ def main():
     identity = dict(schema='native-visual-cache-source-v1',checkpoint_sha256=cfg['checkpoint_sha256'],
         encoder_contract=recipe, source={d.identity:d.provenance for d in datasets},
         sources_sha256={name:sha256(ROOT/name) for name in (
-            'data/loaders/navigation_sensor_record.py','data/loaders/morai_transfer_adapter.py',
+            'data/src/loaders/navigation_sensor_record.py','data/src/loaders/morai_transfer_adapter.py',
             'models/vision_encoder.py','models/pointpillars.py','models/resnet.py','models/transformer.py')},
         inference_precision='float32',storage_precision='float16')
     output = (ROOT/cfg['output']).resolve()

@@ -12,7 +12,7 @@ import torch
 from torch import nn
 from utils.common.runtime import deterministic_pointpillar_reductions
 
-from data.loaders.sensor_adapter import load_frozen_lmdrive_vision_encoder
+from data.src.loaders.sensor_adapter import load_frozen_lmdrive_vision_encoder
 
 
 SENSOR_KEYS={"rgb_front","rgb_left","rgb_right","rgb_rear","rgb_center","lidar","num_points","velocity"}

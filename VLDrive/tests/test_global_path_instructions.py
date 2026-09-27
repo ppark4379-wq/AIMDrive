@@ -4,7 +4,7 @@ import math
 
 import pytest
 
-from tools.build_instructions import (
+from data.src.processing.build_instructions import (
     COMMAND_TEXT, RouteLookaheadPolicy, SCHEMA, main,
 )
 

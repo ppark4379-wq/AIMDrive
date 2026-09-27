@@ -15,7 +15,7 @@ from pathlib import Path
 import sys
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -26,8 +26,8 @@ configure_runtime()
 import numpy as np
 import torch
 
-from data.loaders.morai_perception_dataset import MoraiPerceptionDataset
-from data.loaders.loader import create_perception_loader
+from data.src.loaders.morai_perception_dataset import MoraiPerceptionDataset
+from data.src.loaders.loader import create_perception_loader
 from models.vision_encoder import create_vision_encoder
 
 
@@ -89,7 +89,7 @@ def make_dataset_and_loader(args, split):
         is_training=False,
         scale=[1.0, 1.0],
         color_jitter=0.0,
-        # No interpolation choice: data/loaders/transforms.py resizes with the PIL
+        # No interpolation choice: data/src/loaders/transforms.py resizes with the PIL
         # default (bicubic), and the cache must preprocess exactly as training
         # and evaluation do, or the cached tokens would not match the encoder
         # they were produced with.
@@ -225,10 +225,10 @@ def main():
     partial_meta = args.output / "cache_meta.partial.json"
     implementation_files = [
         Path(__file__).resolve(),
-        ROOT / "data/loaders" / "morai_perception_dataset.py",
-        ROOT / "data/loaders" / "loader.py",
-        ROOT / "data/loaders" / "transforms.py",
-        ROOT / "data/loaders" / "lidar.py",
+        ROOT / "data/src/loaders" / "morai_perception_dataset.py",
+        ROOT / "data/src/loaders" / "loader.py",
+        ROOT / "data/src/loaders" / "transforms.py",
+        ROOT / "data/src/loaders" / "lidar.py",
         ROOT / "models" / "vision_encoder.py",
         ROOT / "models" / "pointpillars.py",
     ]

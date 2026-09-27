@@ -84,8 +84,8 @@ def visual_contract(config):
 
 def build_dataset(config,contract):
     """Reuse existing native loaders, including the exact cache input adapter."""
-    from data.loaders.morai_native_capture import MoraiNativeCaptureDataset
-    from data.loaders.navigation_sensor_record import NativeNavigationSensors
+    from data.src.loaders.morai_native_capture import MoraiNativeCaptureDataset
+    from data.src.loaders.navigation_sensor_record import NativeNavigationSensors
     detected,episodes=detect_dataset_format(config.dataset_root,config.dataset_format)
     datasets=[]
     for episode in episodes:
@@ -169,7 +169,7 @@ def load_offline_stage2_contract(config,visual):
 
 
 def front_camera(dataset,index):
-    from data.loaders.morai_sensor_record_dataset import child
+    from data.src.loaders.morai_sensor_record_dataset import child
     # inputs(index) verifies the same raw camera hash before prediction/rendering.
     path=child(dataset.native,dataset.scenes[index]['camera_files']['camera_1'])
     return dataset.capture_inventory._read_image(path)

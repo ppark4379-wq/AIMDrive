@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import sys
 
-ROOT=Path(__file__).resolve().parents[1]
+ROOT=Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0,str(ROOT))
 dependencies=ROOT/'.runtime/stage2_wsl_deps'
@@ -22,7 +22,7 @@ def main():
     from utils.config.config_files import load_config
     cfg=load_config(args.config)
     from transformers import AutoTokenizer
-    from data.loaders.navigation_cache_dataset import NavigationCacheDataset
+    from data.src.loaders.navigation_cache_dataset import NavigationCacheDataset
     from navigation.token_cache import tokenizer_fingerprint
     tokenizer=AutoTokenizer.from_pretrained(str(ROOT/cfg['model']['language_checkpoint']),
                                           local_files_only=True,use_fast=True)

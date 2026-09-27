@@ -23,7 +23,7 @@ def main():
     parser.add_argument('--output',type=Path,required=True)
     args=parser.parse_args()
     import torch
-    from data.loaders.navigation_cache_dataset import NavigationCacheDataset
+    from data.src.loaders.navigation_cache_dataset import NavigationCacheDataset
     from models.vldrive import VLDriveTrainingConfig, VLDriveTrainingModel
     from navigation.token_cache import CachedNavigationTokenizer
     from utils.training.training_helper import batch, autocast, seed_all, source_hashes

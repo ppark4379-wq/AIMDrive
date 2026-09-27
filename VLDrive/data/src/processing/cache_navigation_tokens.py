@@ -6,7 +6,7 @@ import json
 import sys
 from pathlib import Path
 
-ROOT=Path(__file__).resolve().parents[1]
+ROOT=Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path: sys.path.insert(0,str(ROOT))
 
 
@@ -27,7 +27,7 @@ def main():
     parser.add_argument('--config',type=Path,required=True)
     args=parser.parse_args();cfg=json.loads(args.config.read_text())
     if cfg.get('schema') == 'native-navigation-token-cache-config-v1':
-        from tools.cache_sensor_record_tokens import main as cache_native
+        from data.src.processing.cache_sensor_record_tokens import main as cache_native
         return cache_native()
     if set(cfg)!={'schema','manifest_indices','path_mappings','instructions','checkpoint','checkpoint_sha256','output','device'} or cfg['schema']!='navigation-token-cache-config-v1':
         raise ValueError('Invalid navigation token cache config')
@@ -41,7 +41,7 @@ def main():
     configure_runtime()
     import numpy as np
     import torch
-    from data.loaders.morai_sensor_record_dataset import PathResolver, SensorRecordDataset, load_publications
+    from data.src.loaders.morai_sensor_record_dataset import PathResolver, SensorRecordDataset, load_publications
     from models.vision_encoder import create_vision_encoder
     from navigation.sampling import NavigationLabels
     labels=NavigationLabels(ROOT/cfg['instructions'])

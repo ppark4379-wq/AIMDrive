@@ -9,9 +9,9 @@ import numpy as np
 from PIL import Image
 import torch
 
-from data.loaders.morai_sensor_record_dataset import child
-from data.loaders.navigation_cache_dataset import NavigationCacheDataset
-from data.loaders.navigation_sensor_record import NativeNavigationSensors
+from data.src.loaders.morai_sensor_record_dataset import child
+from data.src.loaders.navigation_cache_dataset import NavigationCacheDataset
+from data.src.loaders.navigation_sensor_record import NativeNavigationSensors
 from inference.live_frame import CAMERA_KEYS, LiveFrameSource
 from inference.vldrive_runtime import (TokenHistory, encode_frame, load_encoder,
     load_stage2, predict_window, read_json, seed_runtime)

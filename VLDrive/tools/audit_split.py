@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from data.loaders.split_manifest import load_split_manifest, split_entries
+from data.src.loaders.split_manifest import load_split_manifest, split_entries
 
 
 SENSOR_FILES = (

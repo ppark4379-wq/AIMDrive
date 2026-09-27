@@ -19,8 +19,8 @@ feature_contract.json.  Stage 2 writes model-best.pt / model-last.pt,
 checkpoint.pt (weights + optimizer, for --checkpoint resume), training.jsonl,
 epoch_metrics.jsonl and report.json.
 
-Stage 2 reads visual tokens from a cache built by tools/cache_vision_tokens.py
-and instructions built by tools/build_instructions.py, so the frozen encoder
+Stage 2 reads visual tokens from a cache built by data/src/processing/cache_vision_tokens.py
+and instructions built by data/src/processing/build_instructions.py, so the frozen encoder
 never runs during training.  --mode preflight stops after the gradient and
 causality checks; --mode evaluate scores a checkpoint without training.
 """
@@ -138,7 +138,7 @@ def run_vldrive(args):
         raise ValueError('Unknown VLDrive dataset_format: ' + str(dataset_format))
     if config.input_mode != 'cached':
         raise ValueError('MORAI expert cache path requires model.input_mode=cached')
-    from data.loaders.morai_expert_dataset import MoraiExpertVLDriveDataset
+    from data.src.loaders.morai_expert_dataset import MoraiExpertVLDriveDataset
     split_path = Path(settings['split_file'])
     if not split_path.is_absolute():
         split_path = (ROOT / split_path).resolve()
@@ -146,7 +146,7 @@ def run_vldrive(args):
     if not cache.is_dir():
         raise ValueError('Completed MORAI feature cache is missing: ' + str(cache))
     if dataset_format == 'navigation_token_cache_v1':
-        from data.loaders.navigation_cache_dataset import NavigationCacheDataset
+        from data.src.loaders.navigation_cache_dataset import NavigationCacheDataset
         language = settings.get('navigation_sampling', {})
         datasets = {split: NavigationCacheDataset(
             cache, settings['instructions'], split, settings['sequence_length'], settings['seed'],

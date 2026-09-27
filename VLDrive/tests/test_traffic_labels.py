@@ -9,8 +9,8 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from data.loaders.split_manifest import build_chronological_split
-from data.loaders.traffic_labels import (
+from data.src.loaders.split_manifest import build_chronological_split
+from data.src.loaders.traffic_labels import (
     build_traffic_label_sidecar, canonical_sha256, checked_traffic_target,
     load_traffic_label_sidecar, sha256_file, sidecar_summary, traffic_record,
 )
@@ -177,7 +177,7 @@ class TrafficSidecarTests(unittest.TestCase):
         import numpy as np
         import torch
         from PIL import Image
-        from data.loaders.morai_perception_dataset import MoraiPerceptionDataset
+        from data.src.loaders.morai_perception_dataset import MoraiPerceptionDataset
 
         for name in ("front", "left", "right", "rear"):
             folder = self.route / ("rgb_" + name)
@@ -195,7 +195,7 @@ class TrafficSidecarTests(unittest.TestCase):
             ds.rgb_transform = lambda image: torch.from_numpy(np.asarray(image).copy())
             ds.rgb_center_transform = ds.rgb_transform
             ds.multi_view_transform = ds.rgb_transform
-        with mock.patch("data.loaders.morai_perception_dataset.lidar_to_raw_features",
+        with mock.patch("data.src.loaders.morai_perception_dataset.lidar_to_raw_features",
                         side_effect=lambda array, **kwargs: (array, len(array))):
             old_input, old_target = plain[0]
             new_input, new_target = corrected[0]

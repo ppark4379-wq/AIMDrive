@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from data.loaders.morai_encoder_contract import LiveInputAdapter, world_target_to_local
+from data.src.loaders.morai_encoder_contract import LiveInputAdapter, world_target_to_local
 from inference.morai_route import official_route_tracker
 from inference.morai_udp import (
     CameraReceiver,
@@ -83,7 +83,7 @@ class LiveFrameSource:
         if encoder_recipe is not None:
             if encoder_contract is not None:
                 raise ValueError('Choose encoder_recipe or encoder_contract, not both')
-            from data.loaders.morai_transfer_adapter import MoraiLMDriveVisionAdapter, MoraiVisionAdapterConfig
+            from data.src.loaders.morai_transfer_adapter import MoraiLMDriveVisionAdapter, MoraiVisionAdapterConfig
             if (encoder_recipe.get('schema') != 'morai_encoder_recipe_v1'
                     or encoder_recipe.get('feature_shape') != [106, 256]
                     or encoder_recipe.get('token_order') != 'bev100_light1_waypoint5'
