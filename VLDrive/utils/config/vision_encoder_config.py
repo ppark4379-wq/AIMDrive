@@ -147,6 +147,9 @@ class VisionEncoderTrainConfig:
 
 
 def _sha256_file(path):
+    if '#' in str(path):
+        from utils.config.config_files import document_bytes
+        return hashlib.sha256(document_bytes(path)).hexdigest()
     digest = hashlib.sha256()
     with Path(path).open("rb") as handle:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
@@ -288,6 +291,8 @@ def load_config(path):
     text = path.read_text(encoding="utf-8")
     try:
         document = json.loads(text)
+        if 'vision_encoder_training' in document:
+            document = document['vision_encoder_training']
     except json.JSONDecodeError as error:
         raise ConfigError("Stage-1 config is not valid JSON: {}".format(error)) from error
     if not isinstance(document, dict):
@@ -305,7 +310,7 @@ def load_config(path):
 
     values["config_path"] = path
     values["config_sha256"] = _sha256_file(path)
-    values["document"] = text
+    values["document"] = json.dumps(document)
     return VisionEncoderTrainConfig(**values)
 
 

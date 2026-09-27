@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run the frozen stage-1 vision encoder on the live MORAI UDP streams.
 
-    python inference/realtime_vision_encoder.py --config configs/vision_encoder_realtime.json
+    python inference/realtime_vision_encoder.py --config configs/vldrive_realtime.json#presets/vision_encoder_realtime
 
 Receive-only: the encoder watches the simulator and draws what its prediction
 heads say, and nothing in this process ever sends to the simulator, so it cannot
@@ -331,7 +331,8 @@ def main():
                         help="also keep a numbered copy of every rendered frame")
     args = parser.parse_args()
 
-    config = json.loads(args.config.read_text(encoding="utf-8"))
+    from utils.config.config_files import read_document, document_bytes
+    config = read_document(args.config)
     signal.signal(signal.SIGINT, _stop)
 
     torch.set_num_threads(config["runtime"].get("cpu_threads", CPU_THREADS))

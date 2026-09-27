@@ -193,7 +193,7 @@ def test_temporal_gap_splits_identical_instructions(capture):
 
 def config_document():
     from tools.build_instructions import VLDRIVE_ROOT
-    return json.loads((VLDRIVE_ROOT / "configs/navigation_instructions.json").read_text())
+    return __import__("utils.config.config_files", fromlist=["read_document"]).read_document(VLDRIVE_ROOT / "configs/vldrive_realtime.json#presets/navigation_instructions")
 
 
 def test_config_paths_are_independent_of_working_directory(tmp_path, monkeypatch):

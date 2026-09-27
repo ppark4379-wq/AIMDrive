@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
 
 from utils.config.vision_encoder_config import LAYOUT, load_config
 
-TEMPLATE = ROOT / "configs/vision_encoder_train.json"
+TEMPLATE = ROOT / "configs/vldrive_train.json"
 
 PLACE = {attribute: (section, key)
          for section, entries in LAYOUT.items()
@@ -24,7 +24,7 @@ PLACE = {attribute: (section, key)
 
 def write_config(directory, name="vision_encoder_train.json", **overrides):
     """Copy the checked-in config, apply overrides by attribute name, write it."""
-    document = json.loads(TEMPLATE.read_text(encoding="utf-8"))
+    document = json.loads(TEMPLATE.read_text(encoding="utf-8"))["vision_encoder_training"]
     for attribute, value in overrides.items():
         section, key = PLACE[attribute]
         if isinstance(value, Path):

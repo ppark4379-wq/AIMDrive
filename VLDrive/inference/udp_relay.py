@@ -69,7 +69,8 @@ def camera_datagrams(payload, max_bytes=0):
 
 
 def read_relay_config(path):
-    config=json.loads(Path(path).read_text(encoding='utf-8-sig'))
+    from utils.config.config_files import read_document, document_bytes
+    config=read_document(path)
     if set(config)-{'camera_datagram_bytes'}!={'schema','to','ports','demux','listen','report'} or config['schema']!='morai-udp-relay-v1':
         raise ValueError('Expected morai-udp-relay-v1 config')
     for name in ('to','ports','listen'):

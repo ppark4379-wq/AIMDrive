@@ -103,7 +103,8 @@ def main():
     parser.add_argument('--config', required=True, type=Path)
     parser.add_argument('--audit-only', action='store_true', help='verify all metadata/scalars; do not run the VE')
     args = parser.parse_args()
-    cfg = json.loads(args.config.read_text())
+    from utils.config.config_files import load_config
+    cfg = load_config(args.config, 'vision')
     fields = {'schema','datasets','instructions','checkpoint','checkpoint_sha256','contract_sidecar',
         'output','device','cpu_threads','batch_size','workers','train_fraction','max_sensor_gap_ms','log_interval'}
     if set(cfg) != fields or cfg['schema'] != 'native-velocity-token-cache-config-v1':
@@ -234,7 +235,7 @@ def main():
     meta=dict(schema='navigation-token-cache-v1',checkpoint_sha256=cfg['checkpoint_sha256'],
         trajectory_coordinate_convention='lmdrive_left_negative_forward',
         manifest_sha256=sha256(output/'manifest.jsonl'),features_manifest_sha256=sha256(output/'features.jsonl'),
-        labels_manifest_sha256=sha256(labels.root/'manifest.json'),config_sha256=sha256(args.config),
+        labels_manifest_sha256=sha256(labels.root/'manifest.json'),config_sha256=hashlib.sha256(json.dumps(cfg,sort_keys=True).encode()).hexdigest(),
         visual_source_sha256=sha256(identity_path),strict_load=strict,encoder_contract=recipe,
         contract_sidecar_sha256=sha256(sidecar_path),visual_frames=len(features),training_frames=len(training),
         counts=counts,split=splits,source_datasets=cfg['datasets'],velocity=audit['velocity_mps'],

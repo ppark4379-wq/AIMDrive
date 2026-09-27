@@ -158,7 +158,8 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config',type=Path,required=True)
     args=parser.parse_args()
-    config=json.loads(args.config.read_text(encoding='utf-8-sig'))
+    from utils.config.config_files import read_document, document_bytes
+    config=read_document(args.config)
     required={'schema','mode','bundle','episode_id','output','window','runtime','udp','position'}
     if set(config)-{'route'}!=required or config['schema']!='morai-navigation-observer-v1':
         raise ValueError('Invalid observer config')

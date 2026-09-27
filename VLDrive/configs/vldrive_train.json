@@ -4,10 +4,6 @@
   "device": "cuda",
   "cpu_threads": 4,
   "dataset_format": "navigation_token_cache_v1",
-  "dataset": "data/raw",
-  "feature_cache": "data/processed/vision_tokens/basic_dynamic_velocity_v1",
-  "split_file": "data/processed/vision_tokens/basic_dynamic_velocity_v1/split.json",
-  "instructions": "data/processed/instructions/basic_dynamic_velocity_v1",
   "sequence_length": 11,
   "frame_sampling_interval": 2,
   "train_window_stride": 5,
@@ -56,9 +52,209 @@
     "inference_selection_mode": "argmax"
   },
   "navigation_sampling": {
-    "token_cache": "data/processed/navigation_tokens/basic_dynamic_velocity_v1_interval2",
-    "train_variants": [0, 1, 2, 3, 4, 5, 6, 7],
-    "validation_variants": [0, 1, 2, 3, 4, 5, 6, 7]
+    "train_variants": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "validation_variants": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "token_cache": "data/processed/navigation_tokens/basic_dynamic_velocity_v1_interval2"
   },
-  "checkpoint_slots": 2
+  "checkpoint_slots": 2,
+  "dataset": "data/raw",
+  "instructions": "data/processed/instructions/basic_dynamic_velocity_v1",
+  "feature_cache": "data/processed/vision_tokens/basic_dynamic_velocity_v1",
+  "split_file": "data/processed/vision_tokens/basic_dynamic_velocity_v1/split.json",
+  "preprocessing": {
+    "datasets": [
+      {
+        "root": "data/raw/basic_drive",
+        "format": "sensor_record",
+        "namespace": "basic_drive",
+        "map_root": null,
+        "route_definition": "configs/routes.yaml"
+      },
+      {
+        "root": "data/raw/dynamic_obstacle",
+        "format": "sensor_record",
+        "namespace": "dynamic_obstacle",
+        "map_root": null,
+        "route_definition": "../MoraiDrive/scenario_runner/config/full_loop_links.yaml",
+        "exclude_episodes": [
+          "dynamic_obstacle_lap100_20260922_231513/dynamic_obstacle_lap100_20260922_231513_lap_013/episode_000",
+          "dynamic_obstacle_lap100_20260922_231513/dynamic_obstacle_lap100_20260922_231513_lap_046/episode_000",
+          "dynamic_obstacle_lap100_20260922_231513/dynamic_obstacle_lap100_20260922_231513_lap_072/episode_000",
+          "dynamic_obstacle_lap100_20260922_231513/dynamic_obstacle_lap100_20260922_231513_lap_076/episode_000",
+          "dynamic_obstacle_lap100_20260922_231513/dynamic_obstacle_lap100_20260922_231513_lap_079/episode_000"
+        ]
+      }
+    ],
+    "navigation": {
+      "schema": "lmdrive-navigation-build-v1",
+      "policy": {
+        "lookahead_m": 30.0,
+        "compound_lookahead_m": 100.0,
+        "completion_margin_m": 2.0,
+        "follow_chunk_m": 50.0,
+        "max_route_error_m": 10.0,
+        "max_heading_error_deg": 60.0,
+        "max_sensor_gap_ms": 150.0,
+        "projection_forward_m": 80.0,
+        "projection_backward_m": 3.0,
+        "seed": 42,
+        "prefer_compound": true,
+        "prefer_distance": false,
+        "stopped_speed_mps": 0.05,
+        "moving_speed_mps": 0.2,
+        "brake_threshold": 0.05,
+        "curve_lookahead_m": 20.0,
+        "curve_threshold_deg": 20.0,
+        "junction_heading_sample_m": 5.0,
+        "junction_turn_threshold_deg": 30.0,
+        "junction_uturn_threshold_deg": 150.0
+      }
+    },
+    "vision": {
+      "schema": "native-velocity-token-cache-config-v1",
+      "contract_sidecar": "outputs/checkpoints/vision_encoder/checkpoint-best-object.contract.json",
+      "device": "cuda",
+      "cpu_threads": 2,
+      "batch_size": 2,
+      "workers": 2,
+      "train_fraction": 1.0,
+      "max_sensor_gap_ms": 150,
+      "log_interval": 200
+    }
+  },
+  "vision_encoder_training": {
+    "schema": "morai-vision-encoder-train-v1",
+    "seed": 42,
+    "dataset": {
+      "root": "../MoraiDrive/dataset_local/competition_train",
+      "split_file": "configs/vldrive_train.json#split_manifests/morai_full_loop_80_20",
+      "traffic_label_sidecar": "data/processed/traffic_labels/full_loop_80_20.json",
+      "lidar_axis_policy": "morai_flu_to_lmdrive_fru",
+      "train_stride": 1,
+      "validation_stride": 1
+    },
+    "dataloader": {
+      "batch_size": 2,
+      "workers": 2
+    },
+    "augmentation": {
+      "rgb_hue_jitter": 0.0
+    },
+    "optimizer": {
+      "reference_lr": 0.00075,
+      "reference_rgb_lr": 0.0003,
+      "weight_decay": 0.05,
+      "clip_grad": 5.0
+    },
+    "schedule": {
+      "epochs": 25,
+      "warmup_epochs": 5,
+      "accumulation_steps": 16,
+      "freeze_rgb_epochs": 0
+    },
+    "loss": {
+      "waypoint_weight": 0.5,
+      "traffic_light_weight": 0.1
+    },
+    "output": {
+      "dir": "outputs/checkpoints/vision_encoder/run1",
+      "feature_checkpoint": "best",
+      "log_interval": 100
+    },
+    "initialization": {
+      "resume": null,
+      "warm_start": null,
+      "warm_start_sha256": null,
+      "warm_start_source_split_sha256": null
+    },
+    "runtime": {
+      "amp": true,
+      "max_train_batches": 0,
+      "max_validation_batches": 0
+    }
+  },
+  "split_manifests": {
+    "morai_full_loop_80_20": {
+      "schema_version": "morai-vision-split-v1",
+      "policy": "front_train_purge_rear_validation",
+      "train_fraction": 0.8,
+      "purge_frames": 25,
+      "future_offsets": [
+        5,
+        10,
+        15,
+        20,
+        25
+      ],
+      "routes": [
+        {
+          "path": "full_loop_basic_drive_2026_09_09_01_44_15",
+          "frame_count": 4240,
+          "last_anchor": 4214,
+          "train": {
+            "start": 0,
+            "stop": 3351
+          },
+          "purge": {
+            "start": 3352,
+            "stop": 3376
+          },
+          "validation": {
+            "start": 3377,
+            "stop": 4214
+          }
+        }
+      ]
+    },
+    "morai_full_loop_95_05": {
+      "schema_version": "morai-vision-split-v1",
+      "policy": "front_train_purge_rear_validation",
+      "train_fraction": 0.95,
+      "purge_frames": 25,
+      "future_offsets": [
+        5,
+        10,
+        15,
+        20,
+        25
+      ],
+      "routes": [
+        {
+          "path": "full_loop_basic_drive_2026_09_09_01_44_15",
+          "frame_count": 4240,
+          "last_anchor": 4214,
+          "train": {
+            "start": 0,
+            "stop": 3979
+          },
+          "purge": {
+            "start": 3980,
+            "stop": 4004
+          },
+          "validation": {
+            "start": 4005,
+            "stop": 4214
+          }
+        }
+      ]
+    }
+  }
 }

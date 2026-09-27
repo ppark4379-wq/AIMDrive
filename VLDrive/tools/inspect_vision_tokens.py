@@ -56,6 +56,9 @@ CARLA_FOCUS_FRACTION = 128.0 / 800.0
 
 
 def sha256(path):
+    if '#' in str(path):
+        from utils.config.config_files import document_bytes
+        return hashlib.sha256(document_bytes(path)).hexdigest()
     digest = hashlib.sha256()
     with Path(path).open("rb") as stream:
         for block in iter(lambda: stream.read(4 * 1024 * 1024), b""):
@@ -183,7 +186,7 @@ def main():
     parser.add_argument("--dataset-root", type=Path,
                         default=ROOT.parent / "MoraiDrive/dataset_local/competition_train")
     parser.add_argument("--split-file", type=Path,
-                        default=ROOT / "configs/splits/morai_full_loop_95_05.json")
+                        default=ROOT / "configs/vldrive_train.json#split_manifests/morai_full_loop_95_05")
     parser.add_argument("--workers", type=int, default=0)
     args = parser.parse_args()
 

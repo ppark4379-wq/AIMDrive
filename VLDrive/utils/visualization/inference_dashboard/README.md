@@ -12,7 +12,7 @@ python inference/realtime_vldrive.py --config configs/vldrive_realtime.json
 
 화면에는 같은 anchor의 front JPEG/waypoint, 모델에 실제 입력한 navigation 문장, global path와 차량 위치, token 수, 시간, 센서 수신 상태가 표시된다. 모든 좌표는 기존 `forward_right()`에서 변환하며 x=right, y=forward, m 단위의 동일 축척이다. 5개 점은 미래 0.5/1/1.5/2/2.5초다.
 
-Navigation 설정은 `configs/navigation_observer.json`의 `route`와 `position`을 재사용한다. 별도 observer 프로세스는 실행하지 않는다. 같은 GPS/status receiver를 공유한다. CLI `--instruction "..."`를 명시하면 해당 실행만 고정 문장 모드가 된다. 기본은 `navigation.mode=route`다.
+Navigation 설정은 `configs/navigation/navigation_observer.json`의 `route`와 `position`을 재사용한다. 별도 observer 프로세스는 실행하지 않는다. 같은 GPS/status receiver를 공유한다. CLI `--instruction "..."`를 명시하면 해당 실행만 고정 문장 모드가 된다. 기본은 `navigation.mode=route`다.
 
 실시간 이력은 학습과 같은 0.2초 간격의 실제 11프레임이다. Offline 테스트에서 사용한 interval=1과 구분한다. 처음에는 `n/11`을 표시하며, 누락 프레임을 복제하거나 zero-padding하지 않는다. 잘못된 중간 샘플은 건너뛰고, 정상 입력 간격이 0.2±0.06초 범위를 벗어나거나 simulator 시간이 되돌아가면 이력을 새로 모은다.
 
@@ -28,10 +28,10 @@ GPS/status가 오래되거나 route에서 벗어나면 navigation을 사용할 �
 
 최근 11개 특징/anchor 문맥, 최대 3개 전처리 대기 입력, 최대 3개 표시 JPEG를 보관하며 무한히 누적하지 않는다. 화면 조회는 기본 5Hz이며 모델 계산 횟수와 다르다. 별도 프레임마다 PNG/PDF를 만들지 않는다. `waypoints.jsonl`, `navigation.jsonl`, `planned_route.json`, `inference_report.json`은 실행별 `outputs/inference/vldrive_<시각>/`에 저장한다. Log의 instruction/카메라 id/센서 id/history timestamp는 출력 anchor에 연결된다.
 
-현재 MORAI가 Windows localhost로 보내고 WSL에서 추론하는 중계 구성은 `configs/vldrive_udp_relay.json`이다. 기존 중계가 실행 중이면 중복 실행하지 않는다. 새로 시작할 때는 Windows의 VLDrive 폴더에서:
+현재 MORAI가 Windows localhost로 보내고 WSL에서 추론하는 중계 구성은 `configs/inference/vldrive_udp_relay.json`이다. 기존 중계가 실행 중이면 중복 실행하지 않는다. 새로 시작할 때는 Windows의 VLDrive 폴더에서:
 
 ```powershell
-python inference/udp_relay.py --config configs/vldrive_udp_relay.json
+python inference/udp_relay.py --config configs/inference/vldrive_udp_relay.json
 ```
 
 이 중계는 JPEG 내용은 그대로 두고 카메라 datagram만 1,400 bytes 이하로 나눠 IP 단편화에 따른 누락을 줄인다. LiDAR/GPS/status/IMU 내용은 바꾸지 않는다. `to`는 현재 WSL 주소이며 재시작으로 주소가 바뀌면 `wsl -d Ubuntu-20.04 -- hostname -I` 결과에 맞춰 설정한다. 별도의 기존 GPS 전용 중계가 필요한 현재 센서 설정은 유지한다.

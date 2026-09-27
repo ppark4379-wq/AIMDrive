@@ -62,7 +62,8 @@ class OfflineConfig:
 def load_config(path):
     path = Path(path).expanduser().resolve()
     try:
-        document = json.loads(path.read_text(encoding='utf-8'))
+        from utils.config.config_files import read_document, document_bytes
+        document = read_document(path)
     except (OSError, json.JSONDecodeError) as error:
         raise ConfigError('Cannot read VLDrive offline config: ' + str(error)) from error
     if not isinstance(document, dict):

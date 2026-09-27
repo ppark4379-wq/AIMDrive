@@ -24,7 +24,7 @@ ROOT=Path(__file__).resolve().parents[1]
 @pytest.fixture
 def config():
     # Null-checkpoint tests stay independent of the user's selected trained model.
-    return replace(load_config(ROOT/'configs/vldrive_offline_inference.json'),vldrive_checkpoint=None)
+    return replace(load_config(ROOT/'configs/vldrive_realtime.json#presets/vldrive_offline_inference'),vldrive_checkpoint=None)
 
 
 def records(count=36):
@@ -48,7 +48,7 @@ def test_missing_checkpoint_is_rejected_and_history_is_consecutive(config,monkey
     ('dataset','max_sensor_gap_ms',float('nan')),('frames','ids',[20,10]),
     (None,'instruction',' '),('dataset','format','carla_style')])
 def test_strict_configuration_rejects_bad_values(tmp_path,section,key,value):
-    document=json.loads((ROOT/'configs/vldrive_offline_inference.json').read_text())
+    document=__import__("utils.config.config_files", fromlist=["read_document"]).read_document(ROOT/'configs/vldrive_realtime.json#presets/vldrive_offline_inference')
     (document[section] if section else document)[key]=value
     path=tmp_path/'config.json'
     path.write_text(json.dumps(document))
@@ -56,7 +56,7 @@ def test_strict_configuration_rejects_bad_values(tmp_path,section,key,value):
 
 
 def test_unknown_config_key_is_not_silently_ignored(tmp_path):
-    document=json.loads((ROOT/'configs/vldrive_offline_inference.json').read_text())
+    document=__import__("utils.config.config_files", fromlist=["read_document"]).read_document(ROOT/'configs/vldrive_realtime.json#presets/vldrive_offline_inference')
     document['frame_stride']=10
     path=tmp_path/'config.json'
     path.write_text(json.dumps(document))

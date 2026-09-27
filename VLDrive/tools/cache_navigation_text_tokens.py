@@ -19,7 +19,8 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config',type=Path,required=True,help='VLDrive Stage 2 training config')
     args=parser.parse_args()
-    cfg=json.loads(args.config.read_text())
+    from utils.config.config_files import load_config
+    cfg=load_config(args.config)
     from transformers import AutoTokenizer
     from datasets.navigation_cache_dataset import NavigationCacheDataset
     from navigation.token_cache import tokenizer_fingerprint

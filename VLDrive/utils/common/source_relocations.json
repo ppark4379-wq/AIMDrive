@@ -15,19 +15,25 @@
     "evaluate.py": {
       "path": "evaluate.py",
       "before": [
+        "23daae35e07cb7dea2ec854c99956115fbfac82078a58dd91859ca859ebbe0f2",
         "5134e6986258777562f7fe080db659d747f19ec367b92a4d69eb12bd1c276f60",
-        "928254c956563c671653e6ffe60dc44de3ecae39e17af11b9d6296514db40444"
+        "8d3e5bfe851c3f7131b312d44236f7e547eccd2853aadac106f346a09c4ea0f7",
+        "928254c956563c671653e6ffe60dc44de3ecae39e17af11b9d6296514db40444",
+        "e85c1fd417386f915370ed98088fc2f51bde46b48f5229128d4db1b84c59bbd8",
+        "ec4205afe17f73674e4188c0e5eeff649d2172a0ee4fdf757c962cf15e9bb089"
       ],
       "after": [
-        "ec4205afe17f73674e4188c0e5eeff649d2172a0ee4fdf757c962cf15e9bb089",
-        "23daae35e07cb7dea2ec854c99956115fbfac82078a58dd91859ca859ebbe0f2"
+        "1085d43fcb53610b7bcf3a6142313e8f2e097f3064ae5e40d7cdb2e1188f13bf",
+        "0ddbe943dd69aeef02e9629563e93409be0b664bdc3c8d5fc4559bcd40cda82c"
       ]
     },
     "inference/live_frame.py": {
       "path": "inference/live_frame.py",
       "before": [
         "00a8e97c689a1a112612eca6e76304142c9a05d866ffa67c397444ccc5ae5005",
-        "0e25cfc3fe23ee3f5fbff9c653100b2a6c00923152eede4376b025d39923df64"
+        "0e25cfc3fe23ee3f5fbff9c653100b2a6c00923152eede4376b025d39923df64",
+        "6442ab182adcf9d1f51b65f320493682715c9dfa5e6ea98bc53872354ef869e2",
+        "a2522b8f7f53852c41348a469f476d1ff216c21e02901dbf5dc61a9ac9a24d05"
       ],
       "after": [
         "a2522b8f7f53852c41348a469f476d1ff216c21e02901dbf5dc61a9ac9a24d05",
@@ -38,39 +44,52 @@
       "path": "inference/navigation_tokens.py",
       "before": [
         "4d09bbd1174437d0f338dfc4fbe4a089c50fee1e70af6f8e5a7b14c8b65afcfd",
-        "7503a8af442785aa47813b3a2cdf8c02729a357be4a1eb82906da04fcbb10249"
+        "7503a8af442785aa47813b3a2cdf8c02729a357be4a1eb82906da04fcbb10249",
+        "7571287fb475052708a201de3507eb125927016c01aa8ea7aa1bbb7853cb7067",
+        "79ae5b3e3d167397d871c45ee398dfbcd89f85088f826b847de16560e1330480",
+        "f53e0c226696ee5efca8473088b7ce82dfeeb24222387ef7157d823bda8dcfc1",
+        "ffd0a6f2f4799d92dce3627acb482ff55ee88aaaf97696edecefe20127fe8e22"
       ],
       "after": [
-        "79ae5b3e3d167397d871c45ee398dfbcd89f85088f826b847de16560e1330480",
-        "ffd0a6f2f4799d92dce3627acb482ff55ee88aaaf97696edecefe20127fe8e22"
+        "95bf8d460fcb15610cf890ae68ecfd4018d344f4e0bc7bd70898a57924ef3626",
+        "9c6dcfbfe146b74889f568e41bfa69673fb93b0ab0ee957f47ac988f7cde494a"
       ]
     },
     "inference/offline_vldrive.py": {
       "path": "inference/offline_vldrive.py",
       "before": [
         "0dcd5f9909c7f146deeb9d582d5e96544c37f24fb1ebb3f4b5b7a4654d86ad01",
-        "d3bf9ef4c802ff46b9f395999fefafd235d53bc18741f8eb3d9b4d15bfd32107"
+        "1edf358f030e23c4a92d90aad64098b4549039bc209bfb330369a4efe94811ff",
+        "a8e939679a1dce935cf9905bef568966b21af42587ee6e77578107c85fcfc772",
+        "d3bf9ef4c802ff46b9f395999fefafd235d53bc18741f8eb3d9b4d15bfd32107",
+        "dea5924b22814ed1a09d9892c0c171246a7afd819dde7bbe7656f45427232369",
+        "f10da401900ebc9486c94a4c9ce38036691fe117f954db00a865976c3e4e1f0f"
       ],
       "after": [
-        "b3398ae8835186cfd85a426f39822eba22634b597a0c713bec26329983b7f64a",
-        "a8e939679a1dce935cf9905bef568966b21af42587ee6e77578107c85fcfc772",
-        "f10da401900ebc9486c94a4c9ce38036691fe117f954db00a865976c3e4e1f0f"
+        "ddc5f08069297b80471bbe0e951a0bba28eb8c60cdce4959a18afc615ddc95b6",
+        "b69beaef14260f0520205aef3572d7053429ec614fa859c52fe998da75542c6c"
       ]
     },
     "inference/realtime_vision_encoder.py": {
       "path": "inference/realtime_vision_encoder.py",
       "before": [
+        "3525233b0f53cc11dee85c1ba62b1f7ad4c2c917e7ab50e25cb15ada667993bc",
+        "5b63c857a00b47cede5f3097f966bb050a03557a52481045e178d6057d676c36",
+        "8febf911caf5b71ca21ea867e549cb81b0086ebef9bc9abd24211516d2d2efaf",
         "b1149a55f5caa63c701d4fdd3cf5c6d379a187baf1f32de0bf3a5e7fc245aaa1",
-        "d95e907b2c30da1281f6da38f21d696a5bcf8e1396358b8f6b63555726427ee8"
+        "d95e907b2c30da1281f6da38f21d696a5bcf8e1396358b8f6b63555726427ee8",
+        "fff0151e5654d2a564bd5765d6fb7da6862c30eabb45e27a5ad40ea5702b9275"
       ],
       "after": [
-        "fff0151e5654d2a564bd5765d6fb7da6862c30eabb45e27a5ad40ea5702b9275",
-        "8febf911caf5b71ca21ea867e549cb81b0086ebef9bc9abd24211516d2d2efaf"
+        "45ceb76e4bc1d3245b7cc3bb080d926206cf96993ad8bb7d831621a809fd360b",
+        "29624afbf59970cd18df4f8496c0f03d9e36d8abcc69f848a2a0f5dad41ed7c5"
       ]
     },
     "inference/realtime_vldrive.py": {
       "path": "inference/realtime_vldrive.py",
       "before": [
+        "1141e9a2e550544b99925b5260cad513f14c31a6af1fed6f5d9052c58e80cc84",
+        "1e0e32c1d7873388a86e57e9ade179e5f982c7ed8b8349b23d14cbba2e01a9e1",
         "42dc478a596e3af49c408a39ae509754b4d12beb72b2fed421b2bb04c4b47e97",
         "f406cf2229d56da1f22f38d076405adf40f2650637e420230151df78286e2e56"
       ],
@@ -83,29 +102,38 @@
       "path": "inference/vldrive_offline_config.py",
       "before": [
         "1256323d02e1c853a566b9106bda5afdb8f5e21f3b5895839c772efa16452b0a",
-        "bdead9bb6c54d3285369ce9deb05aa3e27ee8a562b291d1a881b6d088c2ac131"
+        "3174255efa43641e91289e48c80c149b5124a6fce7b182b6768bbce6c34dc058",
+        "5edc71b5943d87ffe5ea0b5ccb85a6e23cd9a1c05937cbd738605d87fe332442",
+        "b8459f4a13e38c6f4b1c57b4205107b18c88c3dcc1a5bdeb25779a35180bd59b",
+        "bdead9bb6c54d3285369ce9deb05aa3e27ee8a562b291d1a881b6d088c2ac131",
+        "fd073718ee390a13464806355b60268d8bdbff4ae753145906ca40960981fe94"
       ],
       "after": [
-        "3174255efa43641e91289e48c80c149b5124a6fce7b182b6768bbce6c34dc058",
-        "fd073718ee390a13464806355b60268d8bdbff4ae753145906ca40960981fe94"
+        "faf172b7ccb1c405c3594d8cd09dd320074b3bf3f2821bf3e89dc1675e3c1f0e",
+        "56275f5e3940cef9e9771eb05a0106c67404f9bddfbdf132dbe80350ce774c0e"
       ]
     },
     "inference/vldrive_runtime.py": {
       "path": "inference/vldrive_runtime.py",
       "before": [
+        "158883b064c3d05f468b981086fe8636f1c57f4b78e234aa716cd9365af57bc9",
         "15a8ffa61906a3124ba820b9963a697c4ffc2aa7910bfc30763c17a2daec23f1",
-        "50ce42012d5374fe5bb16296b8e2fc4ad81a4046cb5d4b7fd3aa75b5b4311fc6"
+        "401f441f113a98ffdd9c6df20587ada0e208185e8a80336474e20b6c10b0971a",
+        "50ce42012d5374fe5bb16296b8e2fc4ad81a4046cb5d4b7fd3aa75b5b4311fc6",
+        "ba65536e31f294b861cd2ac8e8cd2160b59d5f1cd01c3608ebf8257b7c85aebb",
+        "cb38701a7c961656b8601e0a29af2b269932fce422faa6ac887679e23eae532f"
       ],
       "after": [
-        "7814cb0420452e92465525d66abece77f6a53a9e51106815fd93f186b4939570",
-        "ba65536e31f294b861cd2ac8e8cd2160b59d5f1cd01c3608ebf8257b7c85aebb",
-        "158883b064c3d05f468b981086fe8636f1c57f4b78e234aa716cd9365af57bc9"
+        "86721e703a00993860d2a9ffbe3f4b18bc6a42b2c874022e62d2953f2d7043f5",
+        "178c6f42b9d1924a46cb4861f822b3f91a90e4ca0ea84fd1452e7490ee3fba3e"
       ]
     },
     "inference/vldrive_waypoint_visualization.py": {
       "path": "inference/vldrive_waypoint_visualization.py",
       "before": [
         "50dc4f7bcc9b4bd427155a2abb73c92046ea896c35abb8e87249cc42493bcc27",
+        "5ecdd55c033e09d6cc5b8d91e06d4ad746a3ebd0c580c1bf1ad1096bda78e3d3",
+        "67ef1b34c12298322fabffc7b7617b3a8ebf8c1f3e91226332c52e0a626b7673",
         "a1b5d5834a5c1f211042438e44c4be22deaa8427a1c5d4c18b1eb1de78fcb8b1"
       ],
       "after": [
@@ -117,6 +145,8 @@
       "path": "models/frozen_vision_encoder.py",
       "before": [
         "53804d79578968cb9343f66c741127d6ebb7a9e690045189e048702a4a4e60e6",
+        "8cf51187f6133ef7be14f78c5358b408b68fb21e76644d7f4be1674e817a4c10",
+        "98b1b97295fd8c7f29d94ef1b4a8b7b1d3cbb08e54d1e7b4939d9ec1450e718c",
         "fc1c03730f680b2db5482182776037522c361c1cd2429f9ecf1c1f7b02471d90"
       ],
       "after": [
@@ -128,7 +158,9 @@
       "path": "models/vldrive.py",
       "before": [
         "0d3490e5a7df46531a0ef473bfdbc6b97d10d638e810a8d728cd96c8f74e2863",
-        "b720f6253fe040a66eea1d7ed05e9dc1817e51b7516a13d7453f0a95b8b843e1"
+        "7654ccb09061f95a673d1b18dc934face22ee46fc0fdb43e76742ed3c975114a",
+        "b720f6253fe040a66eea1d7ed05e9dc1817e51b7516a13d7453f0a95b8b843e1",
+        "f5957937826d1ca421f73ef75605f02db1b5323ce7c45eed5cac3b0bc46582be"
       ],
       "after": [
         "7654ccb09061f95a673d1b18dc934face22ee46fc0fdb43e76742ed3c975114a",
@@ -139,7 +171,9 @@
       "path": "tools/audit_vldrive_paper.py",
       "before": [
         "29ca667ff3f60688eab6d18ac6448228aba873e749fb09845df1ee15ffd59183",
-        "6cd030045e390f0b44cd657ddb4dfad41f7b29c0a3c5bc6f78a40eef1dc0fc0a"
+        "6cd030045e390f0b44cd657ddb4dfad41f7b29c0a3c5bc6f78a40eef1dc0fc0a",
+        "87ca8da9de1be784d8fbbb51b44ed9868ad2b223a33ad0f592cc22774e941b44",
+        "fc22339f7c29ecb2a04f63b5ca677c52d505b788c5ba201b3725dc05f4950699"
       ],
       "after": [
         "fc22339f7c29ecb2a04f63b5ca677c52d505b788c5ba201b3725dc05f4950699",
@@ -149,29 +183,39 @@
     "tools/cache_navigation_inference_tokens.py": {
       "path": "tools/cache_navigation_inference_tokens.py",
       "before": [
+        "34a18ea5d1981b1789a6c2f5be8a702290cdf1da05e82409f9b15123e1deab62",
         "51f59d1f0c77fd44130bfcbceb0523cc80feb732f30addabe1f8552fea788d2d",
-        "b2df0590f942a48adf74c4990122666b9ac488688322065850bd6578897a16ec"
+        "65fc0774da706ace14aace653e81f023e902272ab84189f346485f8b616a600b",
+        "b2df0590f942a48adf74c4990122666b9ac488688322065850bd6578897a16ec",
+        "c16e33dfe74d01dd05624da14d8dd053016d25e6e7632673981e5b346bca3dd4",
+        "e1ac1b78fa5e94375e6741481d7661517658ce574ad802d2c86b13440f67b78c"
       ],
       "after": [
-        "34a18ea5d1981b1789a6c2f5be8a702290cdf1da05e82409f9b15123e1deab62",
-        "65fc0774da706ace14aace653e81f023e902272ab84189f346485f8b616a600b"
+        "e7cf4f8abdfac8ff01da5178280afba0b2bcdf119bb7a9d86663850b01625c02",
+        "a31c275047257445c30829c7643f1cc6a54e0e3618b3044d9fae4f04fef74112"
       ]
     },
     "tools/cache_navigation_text_tokens.py": {
       "path": "tools/cache_navigation_text_tokens.py",
       "before": [
         "1df2f47f46c0544e0bbda1f113b89de7d500fd650ddeb2e36ac007318bc69f10",
+        "253ab71a4de9f3e4956455908fa5ec81e054ea54f74f212faefa4b32f3207170",
+        "28270795aa322a120b30d3c676c1e8b4372d4fb84b407bdf5aaca64654fc012e",
+        "5bd81c8ae0e6252e75437b2e4b65650613d770d3fc604050e4bcfa62f3ac52d8",
+        "5da2c48e5abaf3ff6d7347d9f05f76dcc88851179a78aae7479790a8b047983f",
         "ae30ac94cb693065c8aa3969d2243a65c8bc52efc438e4d7639e4da769670ec6"
       ],
       "after": [
-        "28270795aa322a120b30d3c676c1e8b4372d4fb84b407bdf5aaca64654fc012e",
-        "5da2c48e5abaf3ff6d7347d9f05f76dcc88851179a78aae7479790a8b047983f"
+        "ec2ee88e884f447845fecfa0b2dc6d9e9844622409a1caf7e6146182a7879072",
+        "2c1595ff34b5266c93908c1b82a900245dc5b4a39850ad8714a8a9bf63b43ef4"
       ]
     },
     "tools/cache_navigation_tokens.py": {
       "path": "tools/cache_navigation_tokens.py",
       "before": [
         "7e6a0fc187643b1f5925bca908964bb8c8ee38ec7c1f635897fd40848b2dc9c7",
+        "95d6e3f38e90851040969934976c55ae527f950a7815e4a238af5852e2cd8455",
+        "d67a14d5fce159978d3cf56466e455b735de6e24f2823628399f259bf8836f36",
         "e42f112d40da6496e4e79b29b6374c6a9a54ed6f26c6af051f17a785f3e95f29"
       ],
       "after": [
@@ -183,7 +227,9 @@
       "path": "tools/cache_sensor_record_tokens.py",
       "before": [
         "22474fe1e826debbe40e28195d30ab17151a0b3d0ec09bd0bb0c2823d8e9b9d7",
-        "28dd9a1a53795dd6357e2bb2b8bc86eb5f06925b92b148efd59171c04e3e3901"
+        "28dd9a1a53795dd6357e2bb2b8bc86eb5f06925b92b148efd59171c04e3e3901",
+        "d59c1a2193cc95e0ab29ce705b9f0c6710c84315bb53d8d0fa2e9d3492b5d5b7",
+        "e3b0fb5b8bd23ea0d8909f4e3d4f79ff7c6ffc6f53eb6c4b3ab64a3a4b4c9f18"
       ],
       "after": [
         "e3b0fb5b8bd23ea0d8909f4e3d4f79ff7c6ffc6f53eb6c4b3ab64a3a4b4c9f18",
@@ -194,27 +240,37 @@
       "path": "tools/cache_velocity_tokens.py",
       "before": [
         "06bcbc0c4a9c29ee520cb98c4ecae0fdb4d9345806b1f1975460770057f7eba6",
-        "d579ab76b1075ae6fae1bdf9a8e3a47ee33ee120d1863b88331a3cca459ad6f6"
+        "083e80ed64fb4c50ecb14a6c5c3217d1a61328e5da66034a7a805c2b513df352",
+        "72704b2ac88fed3b00c707ddfdb615413663d6dbdcd148a1eec626a6aa002f6e",
+        "b49539bcb79ab422de65d8b474cebf5b8e34fbaa422e70ad56a0c948ef4d64cc",
+        "d579ab76b1075ae6fae1bdf9a8e3a47ee33ee120d1863b88331a3cca459ad6f6",
+        "dc561def9681c955d7e220b553194728642e1ad4fa35fd4dd8e8ac0ebd88c715"
       ],
       "after": [
-        "dc561def9681c955d7e220b553194728642e1ad4fa35fd4dd8e8ac0ebd88c715",
-        "b49539bcb79ab422de65d8b474cebf5b8e34fbaa422e70ad56a0c948ef4d64cc"
+        "e7a359e603372a2a02523f9d73fb52224b7ae11e924997d6ad17c072262615ac",
+        "4d05af57dcc4d25866e8e476b966009542ee54040ccfac66fb3ac4fca2030de4"
       ]
     },
     "tools/cache_vision_tokens.py": {
       "path": "tools/cache_vision_tokens.py",
       "before": [
+        "0d628052b9dc9634a262403064b6eb17b45c8c2e286489f0d0bbfb97bb96ba3f",
         "0ec23f4cc7df90775889a5f7584721440d6cdb2fef84341577d39760026501ce",
-        "5c962f13866d5d66ed6e9312440e5135ed474fc16ef27f020d570da8ea4c463a"
+        "2d468c3de2c11e9a853b97eb62150c558e7644fbdca264bfbac8f4771f35c7e3",
+        "5c962f13866d5d66ed6e9312440e5135ed474fc16ef27f020d570da8ea4c463a",
+        "7fec4235da853fd311b6acaa3db114b6f91abb029909103ada2edda14f1cced6",
+        "d9dabc31b45ebbde3f7afb7c23c9833058bdda005c803a9e380e7a5a4995cc63"
       ],
       "after": [
-        "d9dabc31b45ebbde3f7afb7c23c9833058bdda005c803a9e380e7a5a4995cc63",
-        "7fec4235da853fd311b6acaa3db114b6f91abb029909103ada2edda14f1cced6"
+        "9274e5436b19569219d3f34b93e87a4fd41fa446288200b78d56db60701f96a3",
+        "ea87bb8804e178457042ab771b25d27cb6d89797559cc3b1b8db21ff1197f2a3"
       ]
     },
     "tools/evaluate_traffic_departures.py": {
       "path": "tools/evaluate_traffic_departures.py",
       "before": [
+        "2cf92fb4be230840ad66905ebee4e311486525947d812af9ed0f7ef7f3fd9931",
+        "34327d3bc2e303a964a28ea583bdc2e3cc1cdb43cb6bfa3b4b0d019ca85a69cc",
         "806e60afceb30d18bedb82e606cc3b805e629f6355bd0d7f787e524c652fded0",
         "9c424e3a6ed360cf547fd679b9324d66261e7f5fcf7003809ac57608deb05384"
       ],
@@ -226,19 +282,25 @@
     "tools/inspect_vision_tokens.py": {
       "path": "tools/inspect_vision_tokens.py",
       "before": [
+        "053089f4693ba3cdca4acb9c4baaef33fccb23be23f4543e3bf97ea46ea91540",
+        "2c1a3f2a1b16c1fb3972f4df9252f1b0f7967cf06f817ada4b7ea2ff83c31dc5",
         "56d503d391810e415413cb1071bb51d0e4d5d92e14b4be4623a74e5097bb06a8",
-        "6d46f0b70cc915f479f1fb34258b45ddb25b8ae4375423bb44d1190d56222f5c"
+        "6d46f0b70cc915f479f1fb34258b45ddb25b8ae4375423bb44d1190d56222f5c",
+        "cf458a1dcb3b575b93191d619ccb92e1acba0f8d3bfea2dea29dfbbb95440a5d",
+        "e107d8f1f691c65ed86d28985923ef080ab428c0abb84ea7bc941d049092a181"
       ],
       "after": [
-        "cf458a1dcb3b575b93191d619ccb92e1acba0f8d3bfea2dea29dfbbb95440a5d",
-        "2c1a3f2a1b16c1fb3972f4df9252f1b0f7967cf06f817ada4b7ea2ff83c31dc5"
+        "b2455155a78ea24d10eca7ce5ce12a5f1ffa18e2ffd75748a549d628d9fb454b",
+        "1deefb409549e9dd0d0a3137f2ae18bfc900c69f6709a2db78d130411e126ca9"
       ]
     },
     "tools/paired_hue_finetune.py": {
       "path": "tools/paired_hue_finetune.py",
       "before": [
         "8e675cc51c5a1cba14c2a8c3861003773079a1248fa212e149b69b465ae96320",
-        "f27ab5fb3a1742d9ed5f2249b8d4a76fdedfd9619f220a502949e1c110a4bb13"
+        "d944dd44aaa33cb2d293f9592b7bc4fafb16ee8fa381c0e68aa0e78f0632efff",
+        "f27ab5fb3a1742d9ed5f2249b8d4a76fdedfd9619f220a502949e1c110a4bb13",
+        "f7534b9d19e72ef965634e74e8fb13c9a8908f4113bc94554389eef90be1c17f"
       ],
       "after": [
         "d944dd44aaa33cb2d293f9592b7bc4fafb16ee8fa381c0e68aa0e78f0632efff",
@@ -248,19 +310,25 @@
     "train.py": {
       "path": "train.py",
       "before": [
+        "1833988a3f65c7c76808addb11d1d7ff80e94c20ab315f99a9fc52478d43db67",
         "1f5a6cfa4fa4599ce03c78e0ab70c3efdd2bd2b554596be5448f9b0ee6f861e7",
-        "ba9ac7d7fa38053b1d094d549b711a72ec878a830482f43a75a2caac9fab050d"
+        "4c96492a6f76f16762043a55056149a8082808a241f1c276f3278845aceadfe1",
+        "78aca7443892186116dc99a5766fdef2c4ad05aa483bb8f2a50ced83ee4128e4",
+        "ba9ac7d7fa38053b1d094d549b711a72ec878a830482f43a75a2caac9fab050d",
+        "df2a17315f047c5654f4f29c17581e81dc433d4281f221f306ecd4a92d3e8cf9"
       ],
       "after": [
-        "78aca7443892186116dc99a5766fdef2c4ad05aa483bb8f2a50ced83ee4128e4",
-        "4c96492a6f76f16762043a55056149a8082808a241f1c276f3278845aceadfe1"
+        "7c1cf6a3fed4d24c3a2e6ac503566f3e7905c736a54ade2ed0f0eeb2f0b21d90",
+        "9b7721c8bd8a099eef914a099590c0fc88c2344ed9585e0e717de4b99a6159e4"
       ]
     },
     "utils/__init__.py": {
       "path": "utils/__init__.py",
       "before": [
         "1dcebda037b37623ef1f1cdd73c30a6d15e9fe79fba446033d1e826a8ddef05b",
-        "527bf72f204e963061ad10f10403cae6d9a7efb44db596fbe696c13f06e709e0"
+        "527bf72f204e963061ad10f10403cae6d9a7efb44db596fbe696c13f06e709e0",
+        "59dfe06acf91700700e12c24c1b7aa3f3ec507203916559467fa1f3c459816ee",
+        "81e420eca699823c5682fbf8a5c145d1a5ab5bcf500713c2768913f5f8f2c116"
       ],
       "after": [
         "81e420eca699823c5682fbf8a5c145d1a5ab5bcf500713c2768913f5f8f2c116",
@@ -337,23 +405,27 @@
       "path": "utils/training/morai_transfer_training.py",
       "before": [
         "775d3318afc8552571027dd9cc00952e50fc4c245db714386c990d153f186336",
+        "9806d206e4b78feec19e986e55b624d895c88bc687b47d17ac5bf464fe478b8d",
         "b0c6f0cf1b100d34a53c0b648cfc3f099a050694bbedc44e75e2eb61e3c57eec",
+        "b860ea4b7f65a591a7e5396b3ea3d6f84f711d9e585b6d41bb542a3850015554",
         "cf0e8b89f74ef435dba10aeb318bb3efa48de432ad9b5b3837e72f39e55359e7"
       ],
       "after": [
-        "e3efbe434ecda201476fd209a8671ca8f017af82ea8a025e95598038e7711448",
-        "c83de0502fa58146c680291469b3508e481b02fdd67c470e914c8c7db9506d75"
+        "e77e9394d9e9bab1966f0bd20602a096110c38e662dc7d1d4f3a55aa16bcd8b1",
+        "580b4ed2b052fc803ec9d54eb8a8e1f53da8824bfd781ab183919982bb083ad6"
       ]
     },
     "utils/runtime.py": {
       "path": "utils/common/runtime.py",
       "before": [
+        "0f7e4399e3b977a171da76f1eb7c8bad25efc405a9438d6f455168f39c8a7175",
+        "4016f240e864defbf663cf4736a50afd45758c7f1a97c976a48ad3ba64e0041c",
         "6a4cb1ad1646cc146da3b6a724e6613c9564c469c9a6064527a189811fb7c33b",
         "e94cb8fc0c4365b9900c34684bf9366e3819bcab121a6dbd565beaf98064d088"
       ],
       "after": [
-        "92defda0c6f40f776e029b24ea1fb00f2ce2c70159f6facd97444c1e454cf7b3",
-        "3c133ba35e24c9e9aa4fb42dfdafb7ba6bb9c0b4aeb7f372eabe9aacd4663b3a"
+        "0148f418b5430c5825a5ff30d6cd50d3a89316282c487b98ccd5c5f41f7c7d9d",
+        "c444f894872a44def9e6ba97de99f1c0754bbebc03b78cf837b540eb71fba2d5"
       ]
     },
     "utils/trainer.py": {
@@ -504,34 +576,40 @@
     "utils/vision_encoder_config.py": {
       "path": "utils/config/vision_encoder_config.py",
       "before": [
+        "138d1d6917e3287b3b4901121f90210f9ce86893efe466d1408094eeaee3aa4f",
         "3ed4a50e87cf221eaacee1cf977c01073dc07bf3a37ade37d32bf67f772a3894",
-        "3f0d1c856ed73509b77a8fbd803193f78a7790389a2fe1adca5a68374fb7f3b1"
+        "3f0d1c856ed73509b77a8fbd803193f78a7790389a2fe1adca5a68374fb7f3b1",
+        "64e5ab69ff32a0ca5b292f1e639feb3ccb9837407ec8be3a10f7bc0487f373bd"
       ],
       "after": [
-        "07242c3f6f6da941f326505e28903786a42e58aa49fd411bb7ba79343b150d21",
-        "bdd5af504dc7bbcf611c5024ed99f09e3eb73e85c8ee7480a453087205814ef3"
+        "998e42654fda4e8b2a5d752b223f098fd2257d1c80ec889375993780478d14e2",
+        "990d16fedf001039177f7050c079dc264dfd6cc0654ca3c0d006a06aca3fe786"
       ]
     },
     "utils/vision_encoder_inference_config.py": {
       "path": "utils/config/vision_encoder_inference_config.py",
       "before": [
+        "19060b81d7aecd7a065626bf11d51a54f16750992e4fe43f9cfe3cf5c9b46ccf",
+        "8d8f2185b1643b15c81ce8bf63ca57c962b294eca527f26ea40ea3cbcbc399ae",
         "8de8b3bc035b4c354113260dc5b9b42ca2163b3cdd532c9a13c47e9594f265f8",
         "dfa6a3fce6c4cd2542fc029619c05ce184a7847f5285ccaef0b28519fc10c8e7"
       ],
       "after": [
-        "e0057149c92ca676328ad8cd65af97fc0f92965e478bd3779d0e10891c03977d",
-        "f7d824802f38a1614ca3be17396b210d5a36f2244da1dc16497afc3954d1720a"
+        "38596a5ed5e81af60f28216babfb0846012baeaea700bc5990adb13fffa6c298",
+        "48fe59ee40bb586790decf575d814ffff79e8f1dd1629f926635651a0176fba3"
       ]
     },
     "utils/vision_encoder_training.py": {
       "path": "utils/training/vision_encoder_training.py",
       "before": [
+        "3a3a5b6fcd0e1fc72dd88d544af06c718fed61a11f0931a8e41c0f9ecbbfe58d",
         "69b08aab19fa1bbc75b4e0aef5439bca2f1e6093ee64ee2a8f50b97c041fe253",
+        "7d35cc667342224a729b3c4bd66e471316a4a33f5130fa80c39ff0f42a80f446",
         "c383f400b2a33f7e6cdc15c6d483d1ab9fd5d519b908e7fa1dd68f1d34f915e1"
       ],
       "after": [
-        "9e4dfa7358def0f49cc12a3c7fc6ed49c0de7dad2002f77a7f536f9672198597",
-        "56d70cc7e6706725fb4962829b1a0641dbbd149fe5c3b0d3aa92494715b7d7d3"
+        "97663b3b5561cbdd288ae06ebc593347e9de7051f7a2398f054e6931e1cd2e61",
+        "4f225f3c1540ca1724f2b1fc29d557f8c083edbc4c2e2d3c0e5776d8f4a8d37d"
       ]
     },
     "utils/vision_encoder_visualization.py": {
@@ -544,6 +622,163 @@
       "after": [
         "e2e4e1d0bad31a53ace0b453ef6ee23af2ee653f5aefa50bf893d10520ce389c",
         "e95c12273d300dc00fcb9654fbcbb9cb315db6b814fb0024c886b2d44a501a27"
+      ]
+    },
+    "utils/config_files.py": {
+      "path": "utils/config/config_files.py",
+      "before": [
+        "2b8173b7ac29313ef701d016dc333980f9c90ab2d28ff18e380f0bcca9edd308",
+        "4b1f875a1b74ea385799d7c7f803336ee2cbd5b46f60d7a9f7bdce1fc1a6454c"
+      ],
+      "after": [
+        "eadbb95fc7ab0fc31814929ccca65c7b4fee1094a293a36240860903cb496225",
+        "6342f2bb6bc9c90ad57ec004bf2f1054c7a4203cd76b2c0346a03badac8ee491"
+      ]
+    },
+    "utils/common/runtime.py": {
+      "path": "utils/common/runtime.py",
+      "before": [
+        "3c133ba35e24c9e9aa4fb42dfdafb7ba6bb9c0b4aeb7f372eabe9aacd4663b3a",
+        "92defda0c6f40f776e029b24ea1fb00f2ce2c70159f6facd97444c1e454cf7b3"
+      ],
+      "after": [
+        "0148f418b5430c5825a5ff30d6cd50d3a89316282c487b98ccd5c5f41f7c7d9d",
+        "c444f894872a44def9e6ba97de99f1c0754bbebc03b78cf837b540eb71fba2d5"
+      ]
+    },
+    "utils/config/vision_encoder_config.py": {
+      "path": "utils/config/vision_encoder_config.py",
+      "before": [
+        "07242c3f6f6da941f326505e28903786a42e58aa49fd411bb7ba79343b150d21",
+        "bdd5af504dc7bbcf611c5024ed99f09e3eb73e85c8ee7480a453087205814ef3"
+      ],
+      "after": [
+        "998e42654fda4e8b2a5d752b223f098fd2257d1c80ec889375993780478d14e2",
+        "990d16fedf001039177f7050c079dc264dfd6cc0654ca3c0d006a06aca3fe786"
+      ]
+    },
+    "utils/config/vision_encoder_inference_config.py": {
+      "path": "utils/config/vision_encoder_inference_config.py",
+      "before": [
+        "e0057149c92ca676328ad8cd65af97fc0f92965e478bd3779d0e10891c03977d",
+        "f7d824802f38a1614ca3be17396b210d5a36f2244da1dc16497afc3954d1720a"
+      ],
+      "after": [
+        "38596a5ed5e81af60f28216babfb0846012baeaea700bc5990adb13fffa6c298",
+        "48fe59ee40bb586790decf575d814ffff79e8f1dd1629f926635651a0176fba3"
+      ]
+    },
+    "utils/training/morai_transfer_training.py": {
+      "path": "utils/training/morai_transfer_training.py",
+      "before": [
+        "c83de0502fa58146c680291469b3508e481b02fdd67c470e914c8c7db9506d75",
+        "e3efbe434ecda201476fd209a8671ca8f017af82ea8a025e95598038e7711448"
+      ],
+      "after": [
+        "e77e9394d9e9bab1966f0bd20602a096110c38e662dc7d1d4f3a55aa16bcd8b1",
+        "580b4ed2b052fc803ec9d54eb8a8e1f53da8824bfd781ab183919982bb083ad6"
+      ]
+    },
+    "utils/training/vision_encoder_training.py": {
+      "path": "utils/training/vision_encoder_training.py",
+      "before": [
+        "56d70cc7e6706725fb4962829b1a0641dbbd149fe5c3b0d3aa92494715b7d7d3",
+        "9e4dfa7358def0f49cc12a3c7fc6ed49c0de7dad2002f77a7f536f9672198597"
+      ],
+      "after": [
+        "97663b3b5561cbdd288ae06ebc593347e9de7051f7a2398f054e6931e1cd2e61",
+        "4f225f3c1540ca1724f2b1fc29d557f8c083edbc4c2e2d3c0e5776d8f4a8d37d"
+      ]
+    },
+    "datasets/morai_expert_dataset.py": {
+      "path": "datasets/morai_expert_dataset.py",
+      "before": [
+        "3c5a69bfb1ec1e49d5c38b2e93e106f41b9dd094522b6ec02eb3411b928b6a02",
+        "446bef2c87173e10eb249910fe1c1018742d562b54492ffae414b12d7c916964",
+        "684cff65bfbbc25cb4473f67e760f2b8a7262873cefbb73ca9aceb6ccdd0d063",
+        "ada9aee70b345483f161d8837463162ea9acf52f1405ba787702fde5cc4fb151"
+      ],
+      "after": [
+        "c74fce70e9ab938ffa258ccf04a1d8101d6e78be94620c7b3af031b09c1b139f",
+        "cdf422aa5b97c6500f07781e332991d754ff37e04e2e68f7c29a8dbd6e4d6593"
+      ]
+    },
+    "datasets/split_manifest.py": {
+      "path": "datasets/split_manifest.py",
+      "before": [
+        "12ac4c8039c53d356cc083d8550b03d6b9cfe746a874f392aa6336cbb88881eb",
+        "9bc293cc26a0bc50ccea477d3d5548fc0455340603ffb942c0237f1c7bd7d34f",
+        "bb2d069cead1cf3857f9cfa637ac6a7540ea23fb5db2519a3a82855b3e620078",
+        "e688c5839eb761c00386a13d1581e882c5b47f61b406df7fc6f924c87b67bc39"
+      ],
+      "after": [
+        "e5ed6b8b0233792186326da69cafc82bfed2e97ad71575552dd2af9b0b9f1cb3",
+        "3859ca7ec2a65c9dc664afdea9af2a634906d253f639cc8ce36fa2bfced716de"
+      ]
+    },
+    "inference/navigation_observer.py": {
+      "path": "inference/navigation_observer.py",
+      "before": [
+        "1689c791fb667591bc4f94fb3dc06917ff1d529b237a22b9724b192b588e4856",
+        "3129d524c5d2ee3c88a3078b1d13a0eb8fd92def5ebe78095c133ee264a4f795",
+        "cdf37bd13e5e302d2f910fcca0aa1c119be5987cbc7466671643bb425760a6b5",
+        "f3bfa6b0f8d7d7658f2705f8f0a40b789c796eacc09715df8e1077f5bf9dac8f"
+      ],
+      "after": [
+        "dc593749324ec2b09800fc30509f91c0a7fd6098c15e73bcb7f8db8e30cc46ee",
+        "edbff1c7b68a4ea1143facbeeb9de0abde552914982510f0aa440bc32306cc62"
+      ]
+    },
+    "inference/udp_relay.py": {
+      "path": "inference/udp_relay.py",
+      "before": [
+        "508314915aee349def76788049447996ac627faf9b4e7355b45bfe0554159297",
+        "61ecb93982c1b933faae2975a9b157c9d43f66812272edadfa72487be4a1cce6",
+        "9107835ec2e731cb7963ae85c004d21732d0361a969dbd56d1088ab77ebb3b33",
+        "b93ce7390890012acb76ceda5c93bd376770435c63a29a3ddd02dabc5c614d75"
+      ],
+      "after": [
+        "5d5f0a99d82c21832c2a668816e86d98bc0d58ab2fda5fda591e28e523d35dde",
+        "ba1d4bae9d8f360db99d96c09f5b5b52e316ac1581e0b4671e86878167fb2af4"
+      ]
+    },
+    "navigation/build.py": {
+      "path": "navigation/build.py",
+      "before": [
+        "34216534ee54f0418f88e819c62afaa5b730688b4eb6dff91300eaeea60dfa7e",
+        "384a05524e332ce73a0d90d890101055219d034fe4484fe4e1b7b236247ad28f",
+        "41656661f5708580316dc9b7b602841bbedfc2de3fc08422c7e3c93817d526ac",
+        "98a4f56ce11c308a0a6d1f4f34bf05e3761a6a52a6a37224dbe48657f4005fa7"
+      ],
+      "after": [
+        "20ec41f74ce5eb7c9a38d83cc3249cd3ef89c13e70af80b1ef5c548037059b06",
+        "123c23b0372258de540e2f5a0400dffee3f6a079a351bd090f1d59326ac91e1f"
+      ]
+    },
+    "navigation/route_source.py": {
+      "path": "navigation/route_source.py",
+      "before": [
+        "1ea2366325e8e781af1600aa5ef9647fdb0591d656c0821fb5a1536063cef8fe",
+        "697d7e554310d192c8eaee921d824218eda49ed60f6fc5659e187ea8e7e0238f",
+        "a024955940eccc452d5fab0bc56c97503c4a383ffd36ccf2e38ee4ba91a5e851",
+        "a381ef9838e824761a095e166edac731ea52c82e1453704bf8e4dad3621a715f"
+      ],
+      "after": [
+        "5f0f4a7baa38f32e98d53814759f5e0a85229bab7a61e25984457d1da7a9e1c8",
+        "b743e43074ada6fe8a4df2a637f296a9d8b649c523258551695fad2430769c96"
+      ]
+    },
+    "tools/build_instructions.py": {
+      "path": "tools/build_instructions.py",
+      "before": [
+        "c77fad41436f998461147661cd3c792c454bec15d6c171e447292e9791e9e765",
+        "c7d5207090978c5ccc6643281d51b3b768dd162d26280204e6b4bdebdca80664",
+        "d4b4611600644a8e0abdfdb299e5cca26ef94b3f9141c25c1935b0beb098579e",
+        "e1384dc04b5a7174d8c8186fe041bdff41f28f52c47dc36676994607d47f665f"
+      ],
+      "after": [
+        "f04df14dc8b53a306c50c9bf6efcdf75be03405344bc8a58c76ce5a97bc79a8e",
+        "1f691672f1a7cb0c6dc56d0800b2ccd9c1962c2690b282fb85d2560598ea104f"
       ]
     }
   },
@@ -575,6 +810,10 @@
     "utils/visualization/__init__.py": [
       "bae7056cf87f57cf259187bb234cad3448c02fcbee72f8e6301c8edc81c83744",
       "cf9a8fcabe098a758e279a0a96f5db0f0e63fa70425813fce7846dba177b30b6"
+    ],
+    "utils/config/config_files.py": [
+      "eadbb95fc7ab0fc31814929ccca65c7b4fee1094a293a36240860903cb496225",
+      "6342f2bb6bc9c90ad57ec004bf2f1054c7a4203cd76b2c0346a03badac8ee491"
     ]
   }
 }

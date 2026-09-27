@@ -2,7 +2,7 @@
 
 `basic_drive`의 visual token 생성, navigation token ID 생성, connector+LLM 연결은
 [Stage 2 캐시 안내](../docs/NAVIGATION_STAGE2_CACHE_KO.md)를 참고합니다.
-`python tools/cache_navigation_tokens.py --config configs/navigation_token_cache.json`은
+`python tools/cache_navigation_tokens.py --config configs/legacy/navigation_token_cache.json`은
 현재 Sensor Record용 생성기로 연결되며 프레임 단위 재시작을 지원합니다.
 
 학습 전후에 한 번씩 돌리는 스크립트 모음입니다. 모두 VLDrive 루트에서 실행합니다.
@@ -13,7 +13,7 @@
 
 LMDrive 55개 navigation 유형·8개 표현, 여러 데이터셋 입력, 실시간 MORAI 손 주행
 관찰은 [navigation 안내](../navigation/README.md)를 사용합니다.
-새 생성 config는 `configs/navigation_lmdrive.json`입니다.
+새 생성 config는 `configs/navigation/navigation_lmdrive.json`입니다.
 아래 `navigation_instructions.json` 기반 생성기는 이전의 단순 지시문 baseline입니다.
 
 ## MORAI 파이프라인 (지금 쓰는 것)
@@ -43,10 +43,10 @@ PyYAML이 필요하며 `requirements.txt`에 포함돼 있습니다.
 
 ```powershell
 python VLDrive/tools/build_instructions.py `
-  --config VLDrive/configs/navigation_instructions.json
+  --config VLDrive/configs/navigation/navigation_instructions.json
 ```
 
-생성 파라미터는 `configs/navigation_instructions.json`에서 관리합니다.
+생성 파라미터는 `configs/navigation/navigation_instructions.json`에서 관리합니다.
 config 안의 상대 경로는 실행 위치와 관계없이 **VLDrive 루트** 기준입니다.
 `--config`와 개별 파라미터 플래그를 함께 사용하면 오류를 내므로 실제 적용값이
 설정 파일과 달라지지 않습니다. 기존 개별 CLI 방식은 config 없이 실행할 때만 유지됩니다.

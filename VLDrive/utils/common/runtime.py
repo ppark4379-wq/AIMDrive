@@ -91,6 +91,9 @@ def complete_visual_checkpoint_initialization():
 
 
 def sha256(path):
+    if '#' in str(path):
+        from utils.config.config_files import document_bytes
+        return hashlib.sha256(document_bytes(path)).hexdigest()
     digest = hashlib.sha256()
     with Path(path).open('rb') as stream:
         for block in iter(lambda: stream.read(4 * 1024 * 1024), b''):

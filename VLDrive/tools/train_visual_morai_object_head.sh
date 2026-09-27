@@ -13,7 +13,7 @@ CONFIG="${MORAI_TRANSFER_CONFIG:-$ROOT/configs/morai_transfer.local.json}"
 
 if [[ ! -f "$CONFIG" ]]; then
   echo "[FAIL] PC별 설정이 없습니다: $CONFIG" >&2
-  echo "       configs/morai_transfer.example.json을 복사해 데이터와 checkpoint 경로를 지정하세요." >&2
+  echo "       configs/examples/morai_transfer.example.json을 복사해 데이터와 checkpoint 경로를 지정하세요." >&2
   exit 2
 fi
 
