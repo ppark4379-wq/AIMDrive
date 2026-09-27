@@ -81,7 +81,7 @@ def resolve_args(args):
     args.checkpoint = args.checkpoint or (Path(cfg['checkpoint']) if cfg.get('checkpoint') else None)
     args.checkpoint_sha256 = args.checkpoint_sha256 or cfg.get('checkpoint_sha256', DEFAULT_CHECKPOINT_HASH)
     if not args.manifest_index or args.checkpoint is None:
-        raise ValueError('Set --manifest-index and --checkpoint or copy configs/morai_transfer.example.json to morai_transfer.local.json')
+        raise ValueError('Set --manifest-index and --checkpoint or copy configs/examples/morai_transfer.example.json to morai_transfer.local.json')
     args.manifest_index = [Path(p).expanduser().resolve() for p in args.manifest_index]
     args.checkpoint = args.checkpoint.expanduser().resolve()
     if args.output is None:

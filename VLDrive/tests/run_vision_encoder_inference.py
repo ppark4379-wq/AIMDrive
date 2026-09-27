@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run the frozen stage-1 vision encoder and draw what its prediction heads say.
 
-    python tests/run_vision_encoder_inference.py --config configs/vision_encoder_inference.json
+    python tests/run_vision_encoder_inference.py --config configs/vldrive_realtime.json#presets/vision_encoder_inference
 
 Training uses the encoder's ``return_feature`` path, which stops at the 106
 visual tokens and never runs the prediction heads.  This script takes the other
@@ -283,7 +283,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config", type=Path, required=True,
-                        help="inference config, e.g. configs/vision_encoder_inference.json")
+                        help="inference config, e.g. configs/vldrive_realtime.json#presets/vision_encoder_inference")
     args = parser.parse_args()
     try:
         config = load_config(args.config)

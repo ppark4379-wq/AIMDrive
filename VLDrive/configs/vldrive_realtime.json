@@ -1,6 +1,6 @@
 {
   "schema": "morai-vldrive-realtime-v1",
-  "navigation_token_config": "configs/navigation_inference_tokens.json",
+  "navigation_token_config": "configs/vldrive_realtime.json#presets/navigation_inference_tokens",
   "stage1_checkpoint": "outputs/checkpoints/morai_visual_encoder.pth.tar",
   "stage2_checkpoint": "outputs/logs/vldrive_20260921_172411_715080/model-best.pt",
   "visual_cache": "data/processed/vision_tokens/basic_drive_morai",
@@ -11,7 +11,7 @@
   },
   "navigation": {
     "mode": "route",
-    "config": "configs/navigation_observer.json",
+    "config": "configs/vldrive_realtime.json#presets/navigation_observer",
     "max_anchor_skew_s": 0.15
   },
   "visualization": {
@@ -73,5 +73,245 @@
     "token_rtol": 0.002,
     "waypoint_atol_m": 0.05,
     "waypoint_rtol": 0.01
+  },
+  "presets": {
+    "vldrive_offline_inference": {
+      "schema": "morai-vldrive-offline-inference-v1",
+      "vision_checkpoint": "outputs/checkpoints/morai_visual_encoder.pth.tar",
+      "vldrive_checkpoint": "outputs/logs/vldrive_20260919_182054_301289/model-best.pt",
+      "visual_cache": "data/processed/vision_tokens/basic_drive_morai",
+      "dataset": {
+        "root": "data/raw/basic_drive",
+        "format": "morai_native_sensor_record",
+        "namespace": "basic_drive",
+        "route_csv": null,
+        "lidar_axis_policy": "morai_flu_to_lmdrive_fru",
+        "max_sensor_gap_ms": 150.0
+      },
+      "instruction": "Continue straight along the current road.",
+      "history": {
+        "sequence_length": 11,
+        "frame_sampling_interval": 1
+      },
+      "frames": {
+        "ids": null,
+        "start": 10,
+        "stride": 20,
+        "limit": 8
+      },
+      "runtime": {
+        "device": "cuda",
+        "seed": 607,
+        "cpu_threads": 2
+      },
+      "output": {
+        "dir": "outputs/logs/vldrive_offline/basic_drive",
+        "formats": [
+          "pdf",
+          "png"
+        ],
+        "dpi": 200
+      },
+      "visualization": {
+        "overview": true,
+        "show_actual_trajectory": true
+      }
+    },
+    "vldrive_udp_relay": {
+      "schema": "morai-udp-relay-v1",
+      "to": "172.18.254.59",
+      "ports": "909:10909,2368",
+      "demux": "9090:7501=10501,7502=10502,7503=10503,7504=10504,7506=10506,7507=10507",
+      "listen": "127.0.0.1",
+      "report": 5.0,
+      "camera_datagram_bytes": 1400
+    },
+    "navigation_gps_relay": {
+      "schema": "morai-udp-relay-v1",
+      "to": "172.18.254.59",
+      "ports": "10506",
+      "demux": "",
+      "listen": "127.0.0.1",
+      "report": 5.0
+    },
+    "navigation_inference_tokens": {
+      "instructions": "data/processed/instructions/basic_drive_lmdrive_v2",
+      "output": "data/processed/navigation_tokens/basic_drive_morai_interval2",
+      "language_checkpoint": "data/external/tinyllama-1.1b-3T",
+      "visual_cache": "data/processed/vision_tokens/basic_drive_morai",
+      "max_instruction_tokens": 128
+    },
+    "navigation_instructions": {
+      "schema": "morai-navigation-instructions-config-v1",
+      "dataset_root": "data/raw/basic_drive",
+      "output": "data/processed/instructions/basic_drive_navigation.jsonl",
+      "input_format": "sensor_record",
+      "policy": "route_lookahead",
+      "map_root": null,
+      "route_definition": null,
+      "lookahead_m": 30.0,
+      "curve_lookahead_m": 20.0,
+      "curve_threshold_deg": 20.0,
+      "max_route_error_m": 10.0,
+      "max_heading_error_deg": 60.0,
+      "max_sensor_gap_ms": 150.0
+    },
+    "navigation_lmdrive": {
+      "schema": "lmdrive-navigation-build-v1",
+      "datasets": [
+        {
+          "root": "data/raw/basic_drive",
+          "format": "sensor_record",
+          "namespace": "basic_drive",
+          "map_root": null,
+          "route_definition": null
+        }
+      ],
+      "output": "data/processed/instructions/basic_drive_lmdrive_v2",
+      "policy": {
+        "lookahead_m": 30.0,
+        "compound_lookahead_m": 100.0,
+        "completion_margin_m": 2.0,
+        "follow_chunk_m": 50.0,
+        "max_route_error_m": 10.0,
+        "max_heading_error_deg": 60.0,
+        "max_sensor_gap_ms": 150.0,
+        "projection_forward_m": 80.0,
+        "projection_backward_m": 3.0,
+        "seed": 42,
+        "prefer_compound": true,
+        "prefer_distance": false,
+        "stopped_speed_mps": 0.05,
+        "moving_speed_mps": 0.2,
+        "brake_threshold": 0.05,
+        "curve_lookahead_m": 20.0,
+        "curve_threshold_deg": 20.0,
+        "junction_heading_sample_m": 5.0,
+        "junction_turn_threshold_deg": 30.0,
+        "junction_uturn_threshold_deg": 150.0
+      }
+    },
+    "navigation_observer": {
+      "schema": "morai-navigation-observer-v1",
+      "mode": "udp",
+      "bundle": null,
+      "episode_id": null,
+      "route": {
+        "global_path": "../MoraiDrive/scenario_runner/data/R_KR_PR_K-city_2025/2026_molit_comp_global_path.txt",
+        "map_root": "../MoraiDrive/scenario_runner/data/R_KR_PR_K-city_2025",
+        "route_definition": "../MoraiDrive/scenario_runner/config/full_loop_links.yaml",
+        "route_key": "full_loop",
+        "policy_config": "configs/vldrive_realtime.json#presets/navigation_lmdrive"
+      },
+      "output": "outputs/logs/navigation_manual",
+      "window": true,
+      "runtime": {
+        "hz": 20.0,
+        "max_age_s": 0.5,
+        "max_pair_skew_s": 0.2,
+        "startup_timeout_s": 30.0,
+        "replay_realtime": false
+      },
+      "udp": {
+        "bind": "0.0.0.0",
+        "gps_port": 10506,
+        "vehicle_status_port": 10909
+      },
+      "position": {
+        "map_crs": "EPSG:32652",
+        "east_offset_m": 302595.0,
+        "north_offset_m": 4124145.0
+      }
+    },
+    "vision_encoder_inference": {
+      "schema": "morai-vision-encoder-inference-v1",
+      "checkpoint": "outputs/morai_visual_encoder.pth.tar",
+      "dataset": {
+        "format": "carla_style",
+        "root": "../MoraiDrive/dataset_local/competition_train",
+        "split_file": "configs/vldrive_train.json#split_manifests/morai_full_loop_80_20",
+        "split": "validation",
+        "route_csv": null,
+        "lidar_axis_policy": "morai_flu_to_lmdrive_fru"
+      },
+      "frames": {
+        "ids": null,
+        "stride": 120,
+        "limit": 8
+      },
+      "output": {
+        "dir": "outputs/logs/vision_encoder_inference/run1",
+        "formats": [
+          "pdf",
+          "png"
+        ],
+        "dpi": 200
+      },
+      "runtime": {
+        "device": "cuda",
+        "amp": false
+      },
+      "visualization": {
+        "bev_source": "both",
+        "detection_threshold": 0.4,
+        "show_camera": true
+      }
+    },
+    "vision_encoder_realtime": {
+      "schema": "morai-vision-encoder-realtime-v1",
+      "checkpoint": "outputs/checkpoints/checkpoint-best-object.pth.tar",
+      "encoder": {
+        "lidar_intensity_policy": "reflectance_uint8_unit",
+        "note": "checkpoint-best-object.pth.tar has no morai_encoder_contract; measured on the recorded obstacle frames, unit intensity gives peak objectness 0.162 against 0.038 raw, and applying lidar_translation_xyz drops it to 0.031."
+      },
+      "ports": {
+        "rgb_front": 10501,
+        "rgb_left": 10502,
+        "rgb_right": 10503,
+        "rgb_rear": 10504,
+        "gps": 10506,
+        "imu": 10507,
+        "lidar": 2368,
+        "vehicle_status": 10909
+      },
+      "lidar": {
+        "axis_policy": "morai_flu_to_lmdrive_fru",
+        "elevations": null
+      },
+      "route": {
+        "csv": "data/native_capture/194237_lap_001/route.csv",
+        "utm_east_offset": 302595.0,
+        "utm_north_offset": 4124145.0
+      },
+      "runtime": {
+        "device": "cuda",
+        "bind": "0.0.0.0",
+        "target_hz": 20.0,
+        "max_age_s": 1.0,
+        "startup_timeout_s": 30.0,
+        "cpu_threads": 4
+      },
+      "output": {
+        "window": true,
+        "panels": [
+          "camera",
+          "traffic_light",
+          "bev_detection",
+          "waypoints"
+        ],
+        "window_columns": 2,
+        "window_scale": 1.0,
+        "write_files": false,
+        "dir": "outputs/logs/realtime",
+        "dpi": 130,
+        "render_hz": 4.0
+      },
+      "visualization": {
+        "bev_source": "both",
+        "detection_threshold": 0.1,
+        "show_camera": true,
+        "lidar_overlay": true
+      }
+    }
   }
 }

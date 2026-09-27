@@ -20,7 +20,8 @@ CONVENTION = 'lmdrive_left_negative_forward'
 
 
 def read_json(path):
-    return json.loads(Path(path).read_text(encoding='utf-8'))
+    from utils.config_files import read_document, document_bytes
+    return read_document(path)
 
 
 def local_path(value):

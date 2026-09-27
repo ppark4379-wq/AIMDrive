@@ -15,7 +15,8 @@ LABEL_SCHEMA = 'lmdrive-navigation-labels-v1'
 
 def read_config(path):
     path=Path(path).resolve()
-    config=json.loads(path.read_text(encoding='utf-8-sig'))
+    from utils.config_files import load_config
+    config=load_config(path, 'navigation')
     if config.get('schema')!=CONFIG_SCHEMA or set(config)!={'schema','datasets','output','policy'}:
         raise ValueError('Expected strict '+CONFIG_SCHEMA+' config')
     if not isinstance(config['datasets'],list) or not config['datasets']:
@@ -36,7 +37,12 @@ def read_config(path):
             raise ValueError('Generated output must be outside source datasets')
     if not isinstance(config['policy'],dict) or set(config['policy'])!=set(DEFAULT_POLICY):
         raise ValueError('Config must explicitly specify all navigation policy keys')
-    config['config_sha256']=hashlib.sha256(path.read_bytes()).hexdigest()
+    # Include resolved shared settings in the provenance fingerprint.
+    from utils.config_files import read_document, document_bytes
+    source=read_document(path)
+    from utils.config_files import read_document, document_bytes
+    payload=json.dumps(load_config(path, 'navigation'),sort_keys=True).encode() if 'preprocessing' in source else document_bytes(path)
+    config['config_sha256']=hashlib.sha256(payload).hexdigest()
     return config
 
 

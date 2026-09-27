@@ -10,7 +10,8 @@ def attach_navigation_tokens(model, cfg, navigation):
     path = cfg.get('navigation_token_config')
     if not path:
         return None
-    config = json.loads(local_path(path).read_text())
+    from utils.config_files import read_document, document_bytes
+    config = read_document(local_path(path))
     labels = local_path(config['instructions'])
     manifest = json.loads((labels/'manifest.json').read_text())
     if navigation is not None:

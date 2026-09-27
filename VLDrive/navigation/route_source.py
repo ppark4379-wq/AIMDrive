@@ -23,7 +23,8 @@ def load_live_route(source):
                link_set=paths['map_root']/'link_set.json',node_set=paths['map_root']/'node_set.json',
                policy_config=paths['policy_config'])
     # Read once so the logged hashes describe exactly the bytes used for the plan.
-    raw={key:path.read_bytes() for key,path in files.items()}
+    from utils.config_files import read_document, document_bytes
+    raw={key:document_bytes(path) for key,path in files.items()}
     points=[]
     for line in raw['global_path'].decode('utf-8-sig').splitlines():
         line=line.split('#',1)[0].strip()

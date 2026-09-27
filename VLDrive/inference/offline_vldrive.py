@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Recorded MORAI sensors -> VLDrive waypoints -> publication PNG/PDF figures.
 
-    python inference/offline_vldrive.py --config configs/vldrive_offline_inference.json
+    python inference/offline_vldrive.py --config configs/vldrive_realtime.json#presets/vldrive_offline_inference
 
 Checkpoint selection belongs to the user. Validation/renderer preparation does
 not choose or load any Stage-2 weights. Figure stride never subsamples history.

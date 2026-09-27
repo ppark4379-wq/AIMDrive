@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Score a VLDrive checkpoint on a dataset split, without a simulator.
 
-  stage 1  python evaluate.py vision-encoder --config configs/vision_encoder_train.json \
+  stage 1  python evaluate.py vision-encoder --config configs/vldrive_train.json \
                --checkpoint outputs/checkpoints/vision_encoder/run1/model-best.pth.tar
 
   stage 2  python evaluate.py vldrive --config configs/vldrive_train.json \

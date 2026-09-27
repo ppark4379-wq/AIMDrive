@@ -47,7 +47,8 @@ def safe_artifact(root: Path, relative: str) -> Path:
 
 
 def load_split(path: Path):
-    content = Path(path).read_bytes()
+    from utils.config_files import document_bytes
+    content = document_bytes(path)
     spec = json.loads(content)
     if spec.get("schema_version") != SPLIT_SCHEMA:
         raise ValueError("Expected {} split manifest".format(SPLIT_SCHEMA))

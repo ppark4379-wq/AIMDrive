@@ -61,7 +61,8 @@ def dataset_routes(root):
 
 
 def load(path):
-    return json.loads(Path(path).read_text(encoding="utf-8"))
+    from utils.config_files import read_document
+    return read_document(path)
 
 
 class RouteLookaheadPolicy:
@@ -578,7 +579,7 @@ def main():
     probe = argparse.ArgumentParser(add_help=False)
     probe.add_argument('--config', type=Path)
     known, rest = probe.parse_known_args()
-    if known.config and load(known.config).get('schema') == 'lmdrive-navigation-build-v1':
+    if known.config and (load(known.config).get('schema') == 'lmdrive-navigation-build-v1' or 'preprocessing' in load(known.config)):
         if rest:
             probe.error('--config cannot be combined with parameter flags')
         import sys

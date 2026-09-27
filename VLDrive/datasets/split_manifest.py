@@ -114,7 +114,8 @@ def build_chronological_split(
 
 def load_split_manifest(path: Path) -> Dict[str, object]:
     path = Path(path).resolve()
-    manifest = json.loads(path.read_text(encoding="utf-8"))
+    from utils.config_files import read_document, document_bytes
+    manifest = read_document(path)
     if manifest.get("schema_version") != SCHEMA_VERSION:
         raise ValueError("Unsupported MORAI split schema: {}".format(manifest.get("schema_version")))
     offsets = [int(x) for x in manifest.get("future_offsets", [])]

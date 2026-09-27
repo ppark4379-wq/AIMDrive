@@ -183,9 +183,10 @@ def _check_values(values):
 def load_config(path):
     """Read a stage-1 inference config; the only way to build a config object."""
     path = Path(path).expanduser().resolve()
-    if not path.is_file():
+    if not Path(str(path).split('#', 1)[0]).is_file():
         raise ConfigError("Stage-1 inference config not found: {}".format(path))
-    text = path.read_text(encoding="utf-8")
+    from utils.config_files import read_document, document_bytes
+    text = json.dumps(read_document(path))
     try:
         document = json.loads(text)
     except json.JSONDecodeError as error:

@@ -2,7 +2,7 @@
 """Train VLDrive on MORAI data.
 
   stage 1, vision encoder pre-training
-      python train.py vision-encoder --config configs/vision_encoder_train.json
+      python train.py vision-encoder --config configs/vldrive_train.json
 
   stage 2, VLDrive (frozen encoder -> CCDP -> MEFA -> TinyLlama -> waypoints)
       python train.py --config vldrive_train.json
@@ -78,7 +78,8 @@ def add_vldrive_arguments(parser):
 
 
 def run_vldrive(args):
-    settings = resolve_settings(json.loads(args.config.read_text()), args)
+    from utils.config_files import load_config
+    settings = resolve_settings(load_config(args.config), args)
     for key in ('instructions', 'feature_cache', 'split_file'):
         override = getattr(args, key)
         if override:

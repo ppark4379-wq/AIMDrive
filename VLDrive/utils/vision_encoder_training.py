@@ -57,7 +57,7 @@ RGB_BACKBONE_SHA256 = (
 def add_arguments(parser):
     """Stage-1 command line: the config file, and nothing that could override it."""
     parser.add_argument("--config", type=Path, required=True,
-                        help="stage-1 training config, e.g. configs/vision_encoder_train.json")
+                        help="stage-1 training config, e.g. configs/vldrive_train.json")
     return parser
 
 
@@ -327,6 +327,9 @@ class RunState:
 
 
 def sha256_file(path):
+    if '#' in str(path):
+        from utils.config_files import document_bytes
+        return hashlib.sha256(document_bytes(path)).hexdigest()
     digest = hashlib.sha256()
     with Path(path).open("rb") as handle:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
