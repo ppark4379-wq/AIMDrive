@@ -138,7 +138,7 @@ def run_vldrive(args):
         raise ValueError('Unknown VLDrive dataset_format: ' + str(dataset_format))
     if config.input_mode != 'cached':
         raise ValueError('MORAI expert cache path requires model.input_mode=cached')
-    from datasets.morai_expert_dataset import MoraiExpertVLDriveDataset
+    from data.loaders.morai_expert_dataset import MoraiExpertVLDriveDataset
     split_path = Path(settings['split_file'])
     if not split_path.is_absolute():
         split_path = (ROOT / split_path).resolve()
@@ -146,7 +146,7 @@ def run_vldrive(args):
     if not cache.is_dir():
         raise ValueError('Completed MORAI feature cache is missing: ' + str(cache))
     if dataset_format == 'navigation_token_cache_v1':
-        from datasets.navigation_cache_dataset import NavigationCacheDataset
+        from data.loaders.navigation_cache_dataset import NavigationCacheDataset
         language = settings.get('navigation_sampling', {})
         datasets = {split: NavigationCacheDataset(
             cache, settings['instructions'], split, settings['sequence_length'], settings['seed'],

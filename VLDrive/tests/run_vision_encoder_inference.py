@@ -44,9 +44,9 @@ configure_runtime()
 import numpy as np
 import torch
 
-from datasets.loader import attach_camera_transforms
-from datasets.morai_native_capture import MoraiNativeCaptureDataset
-from datasets.morai_perception_dataset import MoraiPerceptionDataset
+from data.loaders.loader import attach_camera_transforms
+from data.loaders.morai_native_capture import MoraiNativeCaptureDataset
+from data.loaders.morai_perception_dataset import MoraiPerceptionDataset
 from models.vision_encoder import create_vision_encoder
 from utils.visualization import vision_encoder_visualization as viz
 from utils.config.vision_encoder_inference_config import ConfigError, load_config, require_config

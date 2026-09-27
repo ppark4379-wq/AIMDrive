@@ -19,10 +19,10 @@ sys.path.insert(0, str(ROOT))
 
 import numpy as np
 from PIL import Image
-from datasets.morai_sensor_record_dataset import (
+from data.loaders.morai_sensor_record_dataset import (
     PathResolver, SensorRecordDataset, digest, read_json, verify_seal,
 )
-from datasets.morai_transfer_adapter import (
+from data.loaders.morai_transfer_adapter import (
     IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD,
     MoraiLMDriveVisionAdapter, MoraiVisionAdapterConfig,
 )

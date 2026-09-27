@@ -6,7 +6,7 @@ import sys
 import tempfile
 import unittest
 
-from datasets.morai_sensor_record_dataset import digest, verify_admission_recovery
+from data.loaders.morai_sensor_record_dataset import digest, verify_admission_recovery
 
 
 INTERNAL = (Path(__file__).resolve().parents[2] / "MoraiDrive/data_collection/"

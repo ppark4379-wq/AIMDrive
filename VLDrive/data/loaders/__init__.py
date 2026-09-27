@@ -10,8 +10,7 @@ split_manifest            chronological train/validation split files
 traffic_labels            audited traffic-light sidecar labels
 transforms, lidar, loader shared preprocessing and DataLoader construction
 
-Note: this package shadows the Hugging Face "datasets" package when scripts run
-from the project root.  Nothing in VLDrive uses Hugging Face datasets.
+Code lives under data.loaders; raw and processed data are sibling directories.
 """
 from .loader import attach_camera_transforms, create_perception_loader
 from .morai_perception_dataset import MoraiPerceptionDataset

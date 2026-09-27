@@ -61,7 +61,7 @@ def main():
         raise ValueError('Invalid split/thread/gap configuration')
     import numpy as np
     import torch
-    from datasets.navigation_sensor_record import NativeNavigationSensors, temporal_split
+    from data.loaders.navigation_sensor_record import NativeNavigationSensors, temporal_split
     from navigation.sampling import NavigationLabels
     from models.vision_encoder import create_vision_encoder
     torch.set_num_threads(cfg['cpu_threads'])
@@ -86,7 +86,7 @@ def main():
     identity = dict(schema='native-visual-cache-source-v1',checkpoint_sha256=cfg['checkpoint_sha256'],
         encoder_contract=recipe, source={d.identity:d.provenance for d in datasets},
         sources_sha256={name:sha256(ROOT/name) for name in (
-            'datasets/navigation_sensor_record.py','datasets/morai_transfer_adapter.py',
+            'data/loaders/navigation_sensor_record.py','data/loaders/morai_transfer_adapter.py',
             'models/vision_encoder.py','models/pointpillars.py','models/resnet.py','models/transformer.py')},
         inference_precision='float32',storage_precision='float16')
     output = (ROOT/cfg['output']).resolve()

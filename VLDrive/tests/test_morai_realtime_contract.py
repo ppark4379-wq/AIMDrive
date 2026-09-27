@@ -8,12 +8,12 @@ import cv2
 import numpy as np
 import torch
 
-from datasets.morai_encoder_contract import (
+from data.loaders.morai_encoder_contract import (
     DETECTION_AXES, LiveInputAdapter, checkpoint_encoder_contract,
     sensor_record_encoder_contract, world_target_to_local,
 )
-from datasets.morai_transfer_adapter import MoraiLMDriveVisionAdapter, MoraiVisionAdapterConfig
-from datasets.morai_transfer_targets import render_object_target
+from data.loaders.morai_transfer_adapter import MoraiLMDriveVisionAdapter, MoraiVisionAdapterConfig
+from data.loaders.morai_transfer_targets import render_object_target
 from inference.live_frame import LiveFrameSource
 from inference.realtime_vision_encoder import FigureWriter
 from utils.visualization.vision_encoder_visualization import decode_detection_map, _box_corners, forward_right

@@ -234,8 +234,8 @@ class WarmStartTest(unittest.TestCase):
 
     def test_source_provenance_covers_runner_labels_and_model(self):
         provenance = trainer.implementation_provenance()
-        for relative in ("train.py", "utils/training/vision_encoder_training.py", "datasets/split_manifest.py",
-                         "datasets/traffic_labels.py", "datasets/morai_perception_dataset.py",
+        for relative in ("train.py", "utils/training/vision_encoder_training.py", "data/loaders/split_manifest.py",
+                         "data/loaders/traffic_labels.py", "data/loaders/morai_perception_dataset.py",
                          "models/vision_encoder.py"):
             self.assertEqual(provenance[relative], trainer.sha256_file(ROOT / relative))
 

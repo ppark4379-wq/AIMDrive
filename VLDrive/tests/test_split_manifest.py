@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from datasets.split_manifest import build_chronological_split, expand_range
+from data.loaders.split_manifest import build_chronological_split, expand_range
 
 
 class MoraiSplitTest(unittest.TestCase):

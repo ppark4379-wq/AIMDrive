@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from datasets.morai_expert_dataset import (
+from data.loaders.morai_expert_dataset import (
     CACHE_SCHEMA,
     INSTRUCTION_SCHEMA,
     LOOKAHEAD_INSTRUCTION_SCHEMA,

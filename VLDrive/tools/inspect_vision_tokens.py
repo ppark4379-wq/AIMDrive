@@ -43,8 +43,8 @@ import numpy as np
 import torch
 from PIL import Image
 
-from datasets.morai_perception_dataset import MoraiPerceptionDataset
-from datasets.loader import create_perception_loader
+from data.loaders.morai_perception_dataset import MoraiPerceptionDataset
+from data.loaders.loader import create_perception_loader
 from models.vision_encoder import create_vision_encoder
 
 MODEL_NAME = "memfuser_baseline_e1d3"

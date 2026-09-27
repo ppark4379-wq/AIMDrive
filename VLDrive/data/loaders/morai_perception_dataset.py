@@ -1,7 +1,7 @@
 """Stage 1 dataset: one synchronized MORAI frame -> vision-encoder inputs and targets.
 
 The frames come from a split manifest written by ``tools/create_split.py``
-(see ``datasets/split_manifest.py``), so the train/validation boundary is
+(see ``data/loaders/split_manifest.py``), so the train/validation boundary is
 chronological and reproducible.  Waypoint supervision is rebuilt from the
 future synchronized ego positions at +0.5 ... +2.5 s (10 Hz recordings); no
 missing file is ever silently replaced with a neighbouring frame.

@@ -17,10 +17,10 @@ from PIL import Image
 
 import torch
 
-from datasets.morai_encoder_contract import validate_encoder_contract
-from datasets.morai_gps_speed import parse_native_gps, causal_gps_speed
-from datasets.morai_sensor_record_dataset import child, validate_relative_name
-from datasets.navigation_sensor_record import NativeNavigationSensors, read_json
+from data.loaders.morai_encoder_contract import validate_encoder_contract
+from data.loaders.morai_gps_speed import parse_native_gps, causal_gps_speed
+from data.loaders.morai_sensor_record_dataset import child, validate_relative_name
+from data.loaders.navigation_sensor_record import NativeNavigationSensors, read_json
 
 
 def gps_velocities(fixes):

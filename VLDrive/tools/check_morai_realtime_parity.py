@@ -16,8 +16,8 @@ sys.path.insert(0, str(ROOT))
 import numpy as np
 import torch
 
-from datasets.morai_sensor_record_dataset import SensorRecordDataset, PathResolver, digest, read_json
-from datasets.morai_encoder_contract import LiveInputAdapter, sensor_record_encoder_contract
+from data.loaders.morai_sensor_record_dataset import SensorRecordDataset, PathResolver, digest, read_json
+from data.loaders.morai_encoder_contract import LiveInputAdapter, sensor_record_encoder_contract
 from inference.live_frame import LiveFrameSource
 from inference.morai_route import navigation_recipe, official_route_tracker
 

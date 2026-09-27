@@ -12,7 +12,7 @@ from pathlib import Path
 import torch
 from torch.utils.data import DataLoader, Subset
 
-from datasets.morai_sensor_record_dataset import (
+from data.loaders.morai_sensor_record_dataset import (
     PathResolver, SensorRecordDataset, digest, load_publication)
 from models.vision_encoder import create_vision_encoder
 from utils.evaluation.morai_transfer_metrics import evaluate

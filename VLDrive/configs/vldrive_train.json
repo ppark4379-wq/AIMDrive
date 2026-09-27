@@ -71,14 +71,10 @@
       5,
       6,
       7
-    ],
-    "token_cache": "data/processed/navigation_tokens/basic_dynamic_velocity_v1_interval2"
+    ]
   },
   "checkpoint_slots": 2,
   "dataset": "data/raw",
-  "instructions": "data/processed/instructions/basic_dynamic_velocity_v1",
-  "feature_cache": "data/processed/vision_tokens/basic_dynamic_velocity_v1",
-  "split_file": "data/processed/vision_tokens/basic_dynamic_velocity_v1/split.json",
   "preprocessing": {
     "datasets": [
       {
@@ -256,5 +252,6 @@
         }
       ]
     }
-  }
+  },
+  "data_version": "data/processed/stage2_v001/manifest.json"
 }

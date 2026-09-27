@@ -10,7 +10,7 @@ Inputs, a dict of tensors with batch size B
   rgb_right    [B, 3, 128, 128]  right camera
   rgb_rear     [B, 3, 128, 128]  rear camera
   rgb_center   [B, 3, 128, 128]  un-resized centre crop of the front camera
-  lidar        [B, 40000, 4]     points from datasets.lidar.lidar_to_raw_features
+  lidar        [B, 40000, 4]     points from data.loaders.lidar.lidar_to_raw_features
   num_points   [B]               valid points per sample
   velocity     [B, 1]            ego speed in m/s
   target_point [B, 2]            next route point in the ego frame (pre-training only)

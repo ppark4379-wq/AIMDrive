@@ -17,8 +17,8 @@ sys.path.insert(0, str(ROOT))
 
 from utils.training import vision_encoder_training as trainer
 from utils.config.vision_encoder_config import ConfigError
-from datasets.loader import create_perception_loader
-from datasets.transforms import create_camera_transform
+from data.loaders.loader import create_perception_loader
+from data.loaders.transforms import create_camera_transform
 from tests.stage1_config import make_config, write_config
 
 

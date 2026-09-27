@@ -186,7 +186,7 @@ class MoraiNativeCaptureDataset(Dataset):
         stamp = self.stamps[index]
         if self.rgb_transform is None or self.rgb_center_transform is None:
             raise RuntimeError("Attach the camera transforms first, e.g. with "
-                               "datasets.loader.attach_camera_transforms")
+                               "data.loaders.loader.attach_camera_transforms")
         if self.multi_view_transform is None:
             raise RuntimeError("Multi-view transform is not configured")
 

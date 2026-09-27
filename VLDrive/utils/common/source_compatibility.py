@@ -31,7 +31,8 @@ def source_matches(root, name, expected):
     actual = hashlib.sha256(path.read_bytes()).hexdigest()
     if actual == expected:
         return True
-    entry = _manifest()['files'].get(name)
+    files = _manifest()['files']
+    entry = files.get(name) or next((item for item in files.values() if item['path'] == name), None)
     return bool(entry and actual in entry['after'] and expected in entry['before'])
 
 

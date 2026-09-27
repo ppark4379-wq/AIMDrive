@@ -7,7 +7,7 @@ import pytest
 
 from navigation.engine import DEFAULT_POLICY
 from navigation.build import build
-from datasets.navigation_cache_dataset import NavigationCacheDataset
+from data.loaders.navigation_cache_dataset import NavigationCacheDataset
 
 
 def digest(path): return hashlib.sha256(path.read_bytes()).hexdigest()

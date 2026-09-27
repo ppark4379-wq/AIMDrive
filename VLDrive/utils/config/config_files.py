@@ -1,5 +1,6 @@
 """Select a stage from the single training configuration; paths use project root."""
 import json
+import hashlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -25,9 +26,46 @@ def document_bytes(path):
 def load_config(path, role='training'):
     value = read_document(path)
     value.pop('split_manifests', None)
+    data_version = value.pop('data_version', None)
+    if data_version:
+        bundle = read_document(ROOT / data_version)
+        if bundle.get('schema') != 'vldrive-data-version-v1':
+            raise ValueError('Unsupported data version')
+        if bundle['config']['model']['visual_sha256'] != value['model']['visual_sha256']:
+            raise ValueError('Selected data version was made with a different VE')
+        for relative, expected in bundle['fingerprints'].items():
+            source_file = (ROOT / relative).resolve()
+            if ROOT not in source_file.parents:
+                raise ValueError('Data version fingerprint escapes project')
+            digest = hashlib.sha256()
+            with source_file.open('rb') as stream:
+                for block in iter(lambda: stream.read(1024 * 1024), b''):
+                    digest.update(block)
+            if digest.hexdigest() != expected:
+                raise ValueError('Versioned data changed: ' + relative)
+        # The version stores relative paths in its original training config;
+        # do not import machine-specific absolute asset paths into WSL.
+        original = bundle['config']
+        for key in ('feature_cache', 'instructions', 'split_file'):
+            value[key] = original[key]
+        value['navigation_sampling']['token_cache'] = original['navigation_sampling']['token_cache']
     if 'preprocessing' not in value:
         return value  # Existing standalone configs and saved run snapshots.
     preparation = value.pop('preprocessing')
+    for source in preparation['datasets']:
+        registration = ROOT / source['root'] / 'registration.json'
+        if registration.is_file():
+            record = read_document(registration)
+            report = Path(record['validation_report'])
+            if (record.get('schema') != 'vldrive-raw-registration-v1'
+                    or hashlib.sha256(report.read_bytes()).hexdigest() != record['validation_sha256']
+                    or hashlib.sha256((report.parent/'COMPLETE.json').read_bytes()).hexdigest() != record['seal_sha256']):
+                raise ValueError('Registered source validation changed')
+            for episode in record['episodes']:
+                metadata = Path(record['source']) / episode['path'] / 'episode.json'
+                if hashlib.sha256(metadata.read_bytes()).hexdigest() != episode['episode_sha256']:
+                    raise ValueError('Registered episode changed')
+            source['root'] = record['source']
     encoder_training = value.pop('vision_encoder_training', None)
     if role == 'training':
         return value

@@ -41,7 +41,7 @@ def main():
     configure_runtime()
     import numpy as np
     import torch
-    from datasets.morai_sensor_record_dataset import PathResolver, SensorRecordDataset, load_publications
+    from data.loaders.morai_sensor_record_dataset import PathResolver, SensorRecordDataset, load_publications
     from models.vision_encoder import create_vision_encoder
     from navigation.sampling import NavigationLabels
     labels=NavigationLabels(ROOT/cfg['instructions'])

@@ -58,7 +58,7 @@ import numpy as np
 import torch
 
 from inference.live_frame import LiveFrameSource
-from datasets.morai_encoder_contract import checkpoint_encoder_contract
+from data.loaders.morai_encoder_contract import checkpoint_encoder_contract
 from inference.live_view import DisplayUnavailable, LiveView, camera_panel
 from models.vision_encoder import create_vision_encoder
 from utils.visualization import vision_encoder_visualization as viz

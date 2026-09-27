@@ -22,7 +22,7 @@ def main():
     from utils.config.config_files import load_config
     cfg=load_config(args.config)
     from transformers import AutoTokenizer
-    from datasets.navigation_cache_dataset import NavigationCacheDataset
+    from data.loaders.navigation_cache_dataset import NavigationCacheDataset
     from navigation.token_cache import tokenizer_fingerprint
     tokenizer=AutoTokenizer.from_pretrained(str(ROOT/cfg['model']['language_checkpoint']),
                                           local_files_only=True,use_fast=True)

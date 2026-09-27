@@ -89,7 +89,7 @@ def source_hashes(root):
     """Hash every source file a run depends on, for the checkpoint provenance."""
     from utils.common.runtime import sha256
     root = Path(root).resolve()
-    paths = {p for d in ('models', 'datasets', 'utils', 'navigation', 'training', 'utils/common', 'utils/training', 'utils/evaluation', 'utils/config') for p in (root / d).glob('*.py')}
+    paths = {p for d in ('models', 'data/loaders', 'utils', 'navigation', 'training', 'utils/common', 'utils/training', 'utils/evaluation', 'utils/config') for p in (root / d).glob('*.py')}
     paths.update(root / p for p in ('train.py', 'evaluate.py', 'utils/visualization/vision_encoder_visualization.py'))
     # Only the training-side observer belongs in checkpoint provenance.
     # UI/export/plot changes must not invalidate an otherwise identical resume.

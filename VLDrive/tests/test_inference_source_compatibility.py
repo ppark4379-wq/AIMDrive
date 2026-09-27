@@ -7,7 +7,7 @@ from inference import vldrive_runtime as runtime
 
 
 @pytest.mark.parametrize('name,expected', [
-    ('datasets/morai_sensor_record_dataset.py',
+    ('data/loaders/morai_sensor_record_dataset.py',
      '9af9b8b1186a6b3158a880094faf0df8abb6cee27d8efd22d595d5e07b96caf5'),
     ('utils/morai_transfer_training.py',
      'cf0e8b89f74ef435dba10aeb318bb3efa48de432ad9b5b3837e72f39e55359e7'),

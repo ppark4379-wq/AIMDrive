@@ -5,8 +5,8 @@ from pathlib import Path
 from unittest.mock import patch
 import tempfile
 import torch
-from datasets.morai_gps_speed import causal_gps_speed, parse_native_gps
-from datasets.morai_sensor_record_dataset import (
+from data.loaders.morai_gps_speed import causal_gps_speed, parse_native_gps
+from data.loaders.morai_sensor_record_dataset import (
     child, digest, PathResolver, load_publications, validate_navigation_target,
     verify_admission_recovery,
 )
@@ -136,7 +136,7 @@ class TransferTests(unittest.TestCase):
             return {'episode':episode,'entries':[{'asset_roles':roles,'assets':{r:tag+r for r in roles}}]}
         rows1={'train':[(Path('/t1'),doc('/episode1','a'))],'val':[(Path('/v1'),doc('/episode2','b'))]}
         rows2={'train':[(Path('/t2'),doc('/episode3','c'))],'val':[(Path('/v2'),doc('/episode4','d'))]}
-        module='datasets.morai_sensor_record_dataset'
+        module='data.loaders.morai_sensor_record_dataset'
         with patch(module+'.digest',side_effect=lambda p:str(p)), patch(module+'.load_publication',side_effect=[({},rows1),({},rows2)]):
             _,rows=load_publications(['/i1','/i2'],PathResolver())
             self.assertEqual(len(rows['train']),2);self.assertEqual(len(rows['val']),2)
