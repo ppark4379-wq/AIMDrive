@@ -72,7 +72,7 @@ def main(offline=False):
         parser.error("--replay-hz must be nonnegative")
     config = load_config(args.config)
     assembler = make_assembler(config)
-    pipeline = LidarPipeline(config["lidar"], capture_debug=args.direct_view,
+    pipeline = LidarPipeline(config["lidar"], capture_debug=args.direct_view, measure_stages=args.measure_hz,
                              roi_only=args.roi_only, voxel_only=args.voxel_only, ground_only=args.ground_only)
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -92,16 +92,23 @@ def main(offline=False):
         hz_count = 0
         hz_complete = 0
         processing_ms = []
-        def report_hz(now):
+        stage_ms = {}
+        def report_hz(now, force=False):
             nonlocal hz_start, hz_count, hz_complete, processing_ms
             elapsed = now - hz_start
-            if args.measure_hz and elapsed >= 5:
+            if args.measure_hz and elapsed > 0 and (elapsed >= 5 or (force and hz_count)):
                 mean_ms = float(np.mean(processing_ms)) if processing_ms else 0.0
                 p95_ms = float(np.percentile(processing_ms, 95)) if processing_ms else 0.0
                 print(f"[Hz] final_output={hz_count / elapsed:.2f} Hz "
                       f"complete_output={hz_complete / elapsed:.2f} Hz "
                       f"process_mean={mean_ms:.2f} ms p95={p95_ms:.2f} ms "
                       f"frames={hz_count} window={elapsed:.2f}s", flush=True)
+                for name, samples in stage_ms.items():
+                    mean = float(np.mean(samples))
+                    capacity = 1000 / mean if mean > 0 else 0
+                    print(f"[Stage] {name} mean={mean:.3f} ms p95={np.percentile(samples, 95):.3f} ms "
+                          f"compute_capacity={capacity:.1f} Hz samples={len(samples)}", flush=True)
+                stage_ms.clear()
                 hz_start, hz_count, hz_complete, processing_ms = now, 0, 0, []
         def emit(frames):
             nonlocal count, hz_count, hz_complete
@@ -116,6 +123,8 @@ def main(offline=False):
                     hz_count += 1
                     hz_complete += int(result.complete)
                     processing_ms.append((completed_at - frame_start) * 1000)
+                    for name, elapsed_ms in pipeline.last_timings.items():
+                        stage_ms.setdefault(name, []).append(elapsed_ms)
                     report_hz(completed_at)
                 if output:
                     output.write(json.dumps(frame_to_dict(result), allow_nan=False) + "\n")
@@ -182,6 +191,7 @@ def main(offline=False):
             print("Stopping; checking coverage of pending frames before flushing.")
         finally:
             emit(assembler.flush())
+            report_hz(time.monotonic(), force=True)
             if direct_viewer:
                 print(f"viewer_skipped_frames={direct_viewer.dropped_frames}")
     print(f"Processed {count} frames" + (f"; wrote {args.output}" if args.output else ""))
