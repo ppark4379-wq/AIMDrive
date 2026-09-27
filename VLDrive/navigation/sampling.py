@@ -74,9 +74,17 @@ class NavigationLabels:
         number=int.from_bytes(hashlib.sha256(salt.encode()).digest()[:8],'big')
         rule=sorted(by_rule)[number%len(by_rule)]
         key=by_rule[rule][number%len(by_rule[rule])]
+        variant=variant_for(seed,key+':'+str(timestamps[0]),epoch,variants)
+        return self.render_instance(key, episode_id, timestamps[0], variant)
+
+    def render_instance(self, key, episode_id, first_timestamp, variant):
+        """One eligible candidate's text; shared with exhaustive token caching."""
         candidate=self.instances[key]
+        if candidate['episode_id'] != episode_id:
+            raise ValueError('Instruction belongs to a different episode')
+        rule=candidate['instruction_id']
         args=dict(candidate['instruction_args'])
-        first=self.frames[(episode_id,timestamps[0])]
+        first=self.frames[(episode_id,first_timestamp)]
         if candidate['rule'].endswith('-dis'):
             args['x']=max(0,candidate['target_progress_m']-first['progress_m'])
         if rule==64:
@@ -88,6 +96,13 @@ class NavigationLabels:
             left=-math.sin(yaw)*dx+math.cos(yaw)*dy
             if forward<0: raise ValueError('Relative target has passed behind ego')
             args=dict(x=forward,y=abs(left),side='left' if left>=0 else 'right')
-        variant=variant_for(seed,key+':'+str(timestamps[0]),epoch,variants)
         return dict(instruction_instance_id=key,instruction_id=rule,instruction_args=args,
                     variant_id=variant,text=render(rule,args,variant))
+
+    def possible_texts(self, episode_id, timestamps, variants=tuple(range(8)), sampling_interval=1):
+        """Cover every epoch without iterating through an arbitrary schedule."""
+        eligible=self.eligible(episode_id,timestamps,sampling_interval)
+        if not eligible:
+            raise ValueError('No causally valid instruction spans this sensor window')
+        return {self.render_instance(key,episode_id,timestamps[0],variant)['text']
+                for key in eligible for variant in variants}

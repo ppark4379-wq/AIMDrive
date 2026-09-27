@@ -66,6 +66,20 @@ def test_real_stage2_tensor_contract_and_language_augmentation(cache):
     assert validation[0]['metadata']['variant_id'] in (6,7)
 
 
+def test_exhaustive_text_cache_covers_500_epochs_and_full_route(cache):
+    folder,labels,_,_=cache
+    dataset=NavigationCacheDataset(folder,labels,'train',sequence_length=3,
+                                   include_validation_in_train=True)
+    identities=set()
+    for window in dataset.windows:
+        identity=window[0]['episode_id'];identities.add(identity)
+        stamps=[r['sensor_source_ns'] for r in window]
+        possible=dataset.labels.possible_texts(identity,stamps,dataset.variants)
+        for epoch in range(500):
+            assert dataset.labels.sample(identity,stamps,dataset.seed,epoch,dataset.variants)['text'] in possible
+    assert identities=={'train_episode','validation_episode'}
+
+
 def test_split_overlap_and_target_horizon_leak_are_rejected(cache):
     folder,labels,rows,meta=cache
     rows=[r for r in rows if r['split']=='train']

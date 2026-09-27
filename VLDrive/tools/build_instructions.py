@@ -274,8 +274,14 @@ def sensor_record_route(episode, args):
         raise ValueError("Recorded expert path hash mismatch")
     with expert_path.open(encoding="utf-8-sig", newline="") as stream:
         expert = [[float(row["x"]), float(row["y"])] for row in csv.DictReader(stream)]
-    if len(expert) != len(recorded) or any(math.dist(a, b) > 1e-3 for a, b in zip(expert, recorded)):
-        raise ValueError("Recorded expert path differs from the audited global path")
+    expert_span = verified_expert_path_span(expert, recorded,
+        allow_subset=metadata.get('scenario_config', {}).get('expert_is_closed_path') is False)
+    if expert_span != (0, len(recorded)-1):
+        config_path = episode/'runtime/expert/config.json'
+        if sha256(config_path) != metadata.get('expert_inputs', {}).get('runtime/expert/config.json'):
+            raise ValueError('Recorded expert config hash mismatch')
+        if load(config_path).get('map', {}).get('is_closed_path') is not False:
+            raise ValueError('A partial expert path must be explicitly open')
     route = {"nav_waypoints": recorded, "nav_road_options": options,
              "closed_route": math.dist(recorded[0], recorded[-1]) <= 1e-3}
     roundabout = definition.get("zones", {}).get("roundabout")
@@ -292,7 +298,27 @@ def sensor_record_route(episode, args):
     for key, path in (("episode", episode_path), ("sensor_contract", contract_path),
                       ("route_audit", report_path), ("expert_path", expert_path)):
         provenance[key] = {"path": str(path), "sha256": sha256(path)}
+    provenance['expert_path']['global_start_index'] = expert_span[0]
+    provenance['expert_path']['global_end_index'] = expert_span[1]
     return route, point_links, point_link_indices, roundabout_bounds, provenance
+
+
+def verified_expert_path_span(expert, recorded, *, allow_subset=False):
+    """Accept only the entire audited route or a unique forward contiguous part.
+
+    Scenario captures may intentionally drive an open section of the global
+    route. Keep global indices unchanged for the already-audited scene labels.
+    No off-route, reversed, gapped, or ambiguous path is accepted.
+    """
+    if len(expert) < 2 or len(expert) > len(recorded):
+        raise ValueError('Recorded expert path differs from the audited global path')
+    starts = range(len(recorded)-len(expert)+1) if allow_subset else (0,)
+    matches = [start for start in starts if (allow_subset or len(expert)==len(recorded))
+               and math.dist(expert[0],recorded[start])<=1e-3
+               and all(math.dist(a,b)<=1e-3 for a,b in zip(expert,recorded[start:start+len(expert)]))]
+    if len(matches)!=1:
+        raise ValueError('Recorded expert path is not a unique forward part of the audited global path')
+    return matches[0],matches[0]+len(expert)-1
 
 
 def indexed_timeline(path):

@@ -1,0 +1,49 @@
+{
+  "schema": "lmdrive-navigation-build-v1",
+  "datasets": [
+    {
+      "root": "data/raw/basic_drive",
+      "format": "sensor_record",
+      "namespace": "basic_drive",
+      "map_root": null,
+      "route_definition": "configs/navigation_routes/basic_drive_full_loop_links.yaml"
+    },
+    {
+      "root": "data/raw/dynamic_obstacle",
+      "format": "sensor_record",
+      "namespace": "dynamic_obstacle",
+      "map_root": null,
+      "route_definition": "../MoraiDrive/scenario_runner/config/full_loop_links.yaml",
+      "exclude_episodes": [
+        "dynamic_obstacle_lap100_20260922_231513/dynamic_obstacle_lap100_20260922_231513_lap_013/episode_000",
+        "dynamic_obstacle_lap100_20260922_231513/dynamic_obstacle_lap100_20260922_231513_lap_046/episode_000",
+        "dynamic_obstacle_lap100_20260922_231513/dynamic_obstacle_lap100_20260922_231513_lap_072/episode_000",
+        "dynamic_obstacle_lap100_20260922_231513/dynamic_obstacle_lap100_20260922_231513_lap_076/episode_000",
+        "dynamic_obstacle_lap100_20260922_231513/dynamic_obstacle_lap100_20260922_231513_lap_079/episode_000"
+      ]
+    }
+  ],
+  "output": "data/processed/instructions/basic_dynamic_velocity_v1",
+  "policy": {
+    "lookahead_m": 30.0,
+    "compound_lookahead_m": 100.0,
+    "completion_margin_m": 2.0,
+    "follow_chunk_m": 50.0,
+    "max_route_error_m": 10.0,
+    "max_heading_error_deg": 60.0,
+    "max_sensor_gap_ms": 150.0,
+    "projection_forward_m": 80.0,
+    "projection_backward_m": 3.0,
+    "seed": 42,
+    "prefer_compound": true,
+    "prefer_distance": false,
+    "stopped_speed_mps": 0.05,
+    "moving_speed_mps": 0.2,
+    "brake_threshold": 0.05,
+    "curve_lookahead_m": 20.0,
+    "curve_threshold_deg": 20.0,
+    "junction_heading_sample_m": 5.0,
+    "junction_turn_threshold_deg": 30.0,
+    "junction_uturn_threshold_deg": 150.0
+  }
+}

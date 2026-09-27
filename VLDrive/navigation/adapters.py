@@ -186,6 +186,24 @@ def legacy(root, policy):
                               route_sha256=sha256(path)),source_path=str(folder))
 
 
+def sensor_record_episode_paths(root, exclude_episodes=()):
+    """Explicit exclusions only; an incomplete source is never silently ignored."""
+    root=Path(root).resolve()
+    paths=[root] if (root/'episode.json').is_file() else sorted(p.parent.resolve() for p in root.rglob('episode.json'))
+    if not isinstance(exclude_episodes,(list,tuple)) or any(not isinstance(p,str) for p in exclude_episodes):
+        raise ValueError('exclude_episodes must contain relative episode paths')
+    excluded=set()
+    for name in exclude_episodes:
+        relative=Path(name)
+        path=(root/relative).resolve()
+        if relative.is_absolute() or '..' in relative.parts or root not in path.parents or path not in paths:
+            raise ValueError('Unknown or unsafe excluded episode: '+name)
+        excluded.add(path)
+    if len(excluded)!=len(exclude_episodes):
+        raise ValueError('Duplicate episode exclusion')
+    return [path for path in paths if path not in excluded]
+
+
 def episodes(config):
     seen=set()
     for source in config['datasets']:
@@ -205,7 +223,7 @@ def episodes(config):
             items=(portable(p,config['policy']) for p in paths)
         elif kind=='legacy': items=legacy(root,config['policy'])
         elif kind=='sensor_record':
-            paths=[root] if (root/'episode.json').is_file() else sorted(p.parent for p in root.rglob('episode.json'))
+            paths=sensor_record_episode_paths(root,source.get('exclude_episodes',()))
             items=(sensor_record(p, source,config['policy']) for p in paths)
         else: raise ValueError('Unsupported dataset format: '+kind)
         count=0

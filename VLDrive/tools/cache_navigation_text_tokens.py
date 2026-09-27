@@ -8,6 +8,9 @@ import sys
 ROOT=Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0,str(ROOT))
+dependencies=ROOT/'.runtime/stage2_wsl_deps'
+if sys.platform.startswith('linux') and dependencies.is_dir():
+    sys.path.insert(1,str(dependencies))
 from utils.runtime import configure_runtime, sha256
 configure_runtime()
 
@@ -29,22 +32,25 @@ def main():
     folder=ROOT/language['token_cache']
     folder.mkdir(parents=True,exist_ok=True)
     texts=set();counts={};examples=[]
-    for split in ('train','val'):
+    splits=('train','val') if cfg.get('validation_enabled',True) else ('train',)
+    for split in splits:
         dataset=NavigationCacheDataset(ROOT/cfg['feature_cache'],ROOT/cfg['instructions'],split,
             cfg['sequence_length'],cfg['seed'],train_variants=language['train_variants'],
             validation_variants=language['validation_variants'],
-            frame_sampling_interval=cfg.get('frame_sampling_interval',1))
+            frame_sampling_interval=cfg.get('frame_sampling_interval',1),
+            include_validation_in_train=cfg.get('include_validation_in_train',False) and split=='train')
         counts[split]=len(dataset)
-        # Enumerate text only, without rereading image-feature arrays for every epoch.
-        for epoch in range(cfg['epochs'] if split=='train' else 1):
-            for index, rows in enumerate(dataset.windows):
-                times=[r['sensor_source_ns'] for r in rows]
-                sample=dataset.labels.sample(rows[0]['episode_id'],times,cfg['seed'],epoch,dataset.variants,
-                                             sampling_interval=dataset.frame_sampling_interval)
-                texts.add(sample['text'])
-                if epoch==0:
-                    examples.append(dict(split=split,window_index=index,episode_id=rows[0]['episode_id'],
-                                         sensor_source_ns=times,**sample))
+        # Cache every eligible meaning/variant once. This covers 500+ epochs,
+        # full-route training and future sampling without 500 repeated scans.
+        for index, rows in enumerate(dataset.windows):
+            times=[r['sensor_source_ns'] for r in rows]
+            identity=rows[0]['episode_id']
+            texts.update(dataset.labels.possible_texts(identity,times,dataset.variants,
+                sampling_interval=dataset.frame_sampling_interval))
+            sample=dataset.labels.sample(identity,times,cfg['seed'],0,dataset.variants,
+                sampling_interval=dataset.frame_sampling_interval)
+            examples.append(dict(split=split,window_index=index,episode_id=identity,
+                                 sensor_source_ns=times,**sample))
         print('Prepared text windows:',split,len(dataset),'unique texts:',len(texts),flush=True)
     tokens=[]
     maximum=0
@@ -68,6 +74,7 @@ def main():
     meta=dict(schema='navigation-text-token-cache-v1',tokenizer_sha256=fingerprint,
         tokens_sha256=sha256(folder/'tokens.jsonl'),unique_texts=len(tokens),max_token_length=maximum,
         epochs=cfg['epochs'],seed=cfg['seed'],windows=counts,config_sha256=sha256(args.config),
+        coverage='all eligible meanings and configured variants; independent of epoch count',
         sequence_length=cfg['sequence_length'],frame_sampling_interval=cfg.get('frame_sampling_interval',1),
         labels_manifest_sha256=sha256(ROOT/cfg['instructions']/'manifest.json'),
         visual_manifest_sha256=sha256(ROOT/cfg['feature_cache']/'manifest.jsonl'))

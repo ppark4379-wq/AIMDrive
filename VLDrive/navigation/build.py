@@ -25,7 +25,7 @@ def read_config(path):
         return str((ROOT/Path(value).expanduser()).resolve())
     config['output']=resolve(config['output'])
     for dataset in config['datasets']:
-        if not isinstance(dataset,dict) or 'root' not in dataset or set(dataset)-{'root','format','namespace','map_root','route_definition'}:
+        if not isinstance(dataset,dict) or 'root' not in dataset or set(dataset)-{'root','format','namespace','map_root','route_definition','exclude_episodes'}:
             raise ValueError('Invalid dataset adapter config')
         for key in ('root','map_root','route_definition'):
             if dataset.get(key) is not None: dataset[key]=resolve(dataset[key])
