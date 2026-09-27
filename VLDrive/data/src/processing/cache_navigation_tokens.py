@@ -42,7 +42,7 @@ def main():
     import numpy as np
     import torch
     from data.src.loaders.morai_sensor_record_dataset import PathResolver, SensorRecordDataset, load_publications
-    from models.vision_encoder import create_vision_encoder
+    from models.ve.vision_encoder import create_vision_encoder
     from navigation.sampling import NavigationLabels
     labels=NavigationLabels(ROOT/cfg['instructions'])
     resolver=PathResolver(cfg['path_mappings'])

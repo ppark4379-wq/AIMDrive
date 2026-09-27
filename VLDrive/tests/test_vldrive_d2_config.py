@@ -6,7 +6,7 @@ from unittest.mock import patch
 import torch
 import torch.nn.functional as F
 
-from models.qformer_mefa import QFormerMEFAConfig, QFormerMEFAConnector
+from models.connector.qformer_mefa import QFormerMEFAConfig, QFormerMEFAConnector
 from models.vldrive import VLDriveTrainingConfig
 
 
@@ -34,7 +34,7 @@ def connector():
 def test_d2_train_uses_real_hard_gumbel_despite_eval_argmax():
     net = connector().train()
     assert net.ccdp.temperature == net.ccdp.gumbel_noise_scale == 1.
-    with patch('models.ccdp.F.gumbel_softmax', wraps=F.gumbel_softmax) as sampler:
+    with patch('models.connector.ccdp.F.gumbel_softmax', wraps=F.gumbel_softmax) as sampler:
         output = net(torch.randn(1, 3, 4, 8), compute_reconstruction=True)
     assert sampler.call_count > 0
     for call in sampler.call_args_list:

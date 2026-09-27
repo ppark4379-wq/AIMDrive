@@ -28,7 +28,7 @@ import torch
 
 from data.src.loaders.morai_perception_dataset import MoraiPerceptionDataset
 from data.src.loaders.loader import create_perception_loader
-from models.vision_encoder import create_vision_encoder
+from models.ve.vision_encoder import create_vision_encoder
 
 
 SCHEMA = "morai-vldrive-vision-cache-v1"

@@ -44,7 +44,7 @@ def sorted_pillar_reduce(values, groups, *, reduce):
 @contextmanager
 def deterministic_pointpillar_reductions():
     """Scope the numeric adapter to the vendored PointPillar's two call sites."""
-    pointpillar = __import__('importlib').import_module('models.pointpillars')
+    pointpillar = __import__('importlib').import_module('models.ve.pointpillars')
     try:
         __import__('torch_scatter')
     except (ImportError, OSError):
@@ -79,7 +79,7 @@ def complete_visual_checkpoint_initialization():
     pretrained_backbone=False directly; this context manager stays for callers
     that build the encoder several levels down.
     """
-    encoder = __import__('importlib').import_module('models.vision_encoder')
+    encoder = __import__('importlib').import_module('models.ve.vision_encoder')
     original = encoder.create_resnet_features
     def initialize(name, pretrained=True, **kwargs):
         return original(name, pretrained=False, **kwargs)
@@ -104,10 +104,10 @@ def sha256(path):
 def bootstrap(repository):
     """Record exactly which code and library versions a run is about to use."""
     root = Path(repository).resolve()
-    required = [root / 'models/qformer.py',
-                root / 'models/tinyllama_backbone.py',
-                root / 'models/ddia_attention.py',
-                root / 'models/vision_encoder.py']
+    required = [root / 'models/connector/qformer.py',
+                root / 'models/llm/tinyllama_backbone.py',
+                root / 'models/llm/ddia_attention.py',
+                root / 'models/ve/vision_encoder.py']
     if not all(path.is_file() for path in required):
         raise ValueError('Expected a complete VLDrive checkout: ' + str(root))
     if str(root) not in sys.path:
@@ -117,7 +117,7 @@ def bootstrap(repository):
         raise RuntimeError('A different models/ package is already imported')
     import torch
     import transformers
-    implementation = sorted(set(required + list((root / 'models').glob('*.py'))
+    implementation = sorted(set(required + list((root / 'models').rglob('*.py'))
                                  + list((root / 'data/src/loaders').glob('*.py'))
                                  + [p for folder in ('utils', 'training', 'utils/common', 'utils/training', 'utils/evaluation', 'utils/config') for p in (root / folder).glob('*.py')]
                                  + [root / 'utils/visualization/vision_encoder_visualization.py']))

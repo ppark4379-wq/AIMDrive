@@ -12,8 +12,8 @@ from PIL import Image
 
 from inference.live_frame import CAMERA_KEYS, LiveFrameSource
 from inference.vldrive_runtime import TokenHistory, encode_frame, predict_window, seed_runtime
-from models.ccdp import CCDPTokenSparsifier
-from models.qformer_mefa import QFormerMEFAConfig, QFormerMEFAConnector
+from models.connector.ccdp import CCDPTokenSparsifier
+from models.connector.qformer_mefa import QFormerMEFAConfig, QFormerMEFAConnector
 from models.vldrive import VLDriveTrainingConfig, VLDriveTrainingModel
 
 

@@ -45,7 +45,7 @@ def add_vision_encoder_arguments(parser):
 def run_vision_encoder(parser, args):
     import torch
 
-    from models.vision_encoder import create_vision_encoder
+    from models.ve.vision_encoder import create_vision_encoder
     from utils.training import vision_encoder_training as stage1
 
     config = stage1.config_from_args(parser, args)

@@ -12,10 +12,10 @@ import pytest
 import torch
 from transformers import LlamaConfig, LlamaForCausalLM
 
-from models.ddia_attention import install_ddia_attention
-from models.qformer_mefa import QFormerMEFAConfig, QFormerMEFAConnector
+from models.llm.ddia_attention import install_ddia_attention
+from models.connector.qformer_mefa import QFormerMEFAConfig, QFormerMEFAConnector
 from models.vldrive import VLDriveTrainingConfig, VLDriveTrainingModel
-from models import language_model as vldrive_model
+from models.llm import language_model as vldrive_model
 
 
 @pytest.fixture(autouse=True)

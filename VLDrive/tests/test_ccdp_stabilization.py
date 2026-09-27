@@ -9,8 +9,8 @@ import json
 import pytest
 import torch
 
-from models.ccdp import CCDPTokenSparsifier
-from models.qformer_mefa import QFormerMEFAConfig, QFormerMEFAConnector
+from models.connector.ccdp import CCDPTokenSparsifier
+from models.connector.qformer_mefa import QFormerMEFAConfig, QFormerMEFAConnector
 
 
 @pytest.fixture(autouse=True)

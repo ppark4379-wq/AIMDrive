@@ -1,7 +1,7 @@
 import torch
 
-from models.multimodal_sequence import PADDING, VISUAL, build_multimodal_sequence
-from models.visual_token_interface import VisualTokenBatch
+from models.llm.multimodal_sequence import PADDING, VISUAL, build_multimodal_sequence
+from models.connector.visual_token_interface import VisualTokenBatch
 
 
 def test_visual_interface_flat_and_temporal():

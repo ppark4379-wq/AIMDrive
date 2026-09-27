@@ -707,7 +707,7 @@ def load_frozen_lmdrive_vision_encoder(
     Load only the official public LMDrive perception encoder.
     No LLM / Q-Former is constructed in Stage 6C-2.
     """
-    from models.vision_encoder import create_vision_encoder
+    from models.ve.vision_encoder import create_vision_encoder
 
     # pretrained_backbone=False: the ImageNet ResNet is overwritten in full by
     # the strict state_dict load below, so fetching it would be wasted work.

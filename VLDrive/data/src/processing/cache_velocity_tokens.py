@@ -36,9 +36,9 @@ def verified_recipe(blob, checkpoint_sha, datasets):
             or list(blob.get('token_shape', [])) != [106, 256]):
         raise ValueError('Expected complete GPS-conditioned MORAI transfer checkpoint')
     checked = {}
-    for name in ('models/vision_encoder.py', 'data/src/loaders/morai_transfer_adapter.py', 'data/src/loaders/morai_gps_speed.py'):
+    for name in ('models/ve/vision_encoder.py', 'data/src/loaders/morai_transfer_adapter.py', 'data/src/loaders/morai_gps_speed.py'):
         raw = (ROOT/name).read_bytes()
-        legacy = name.replace('data/src/loaders/', 'datasets/', 1)
+        legacy = name.replace('data/src/loaders/', 'datasets/', 1).replace('models/ve/', 'models/', 1)
         intermediate = name.replace('data/src/loaders/', 'data/loaders/', 1)
         expected = next((provenance['implementation_sha256'][key] for key in (name, intermediate, legacy)
                          if key in provenance['implementation_sha256']), None)
@@ -121,7 +121,7 @@ def main():
     from torch.utils.data import DataLoader
     from data.src.loaders.navigation_velocity_sensors import VelocityNativeNavigationSensors
     from navigation.sampling import NavigationLabels
-    from models.vision_encoder import create_vision_encoder
+    from models.ve.vision_encoder import create_vision_encoder
     torch.set_num_threads(cfg['cpu_threads'])
     torch.manual_seed(42)
     checkpoint = (ROOT/cfg['checkpoint']).resolve()
@@ -158,7 +158,7 @@ def main():
         sources_sha256={name:sha256(ROOT/name) for name in (
             'data/src/loaders/navigation_sensor_record.py','data/src/loaders/navigation_velocity_sensors.py',
             'data/src/loaders/morai_gps_speed.py','data/src/loaders/morai_transfer_adapter.py',
-            'models/vision_encoder.py','models/pointpillars.py','models/resnet.py','models/transformer.py')},
+            'models/ve/vision_encoder.py','models/ve/pointpillars.py','models/ve/resnet.py','models/ve/transformer.py')},
         inference_precision='float32',storage_precision='float16')
     output=(ROOT/cfg['output']).resolve();output.mkdir(parents=True,exist_ok=True)
     identity_path=output/'visual_source.json'

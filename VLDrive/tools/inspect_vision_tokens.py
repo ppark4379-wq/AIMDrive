@@ -45,7 +45,7 @@ from PIL import Image
 
 from data.src.loaders.morai_perception_dataset import MoraiPerceptionDataset
 from data.src.loaders.loader import create_perception_loader
-from models.vision_encoder import create_vision_encoder
+from models.ve.vision_encoder import create_vision_encoder
 
 MODEL_NAME = "memfuser_baseline_e1d3"
 TOKEN_SHAPE = (106, 256)

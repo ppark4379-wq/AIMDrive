@@ -3,9 +3,9 @@ import os
 import pytest
 import torch
 
-from models.tinyllama_backbone import load_tinyllama, resolve_torch_dtype
-from models.ddia_attention import set_ddia_modality_ids
-from models.multimodal_sequence import INSTRUCTION
+from models.llm.tinyllama_backbone import load_tinyllama, resolve_torch_dtype
+from models.llm.ddia_attention import set_ddia_modality_ids
+from models.llm.multimodal_sequence import INSTRUCTION
 
 
 @pytest.mark.skipif(not os.getenv("TINYLLAMA_TEST_CHECKPOINT"), reason="set local checkpoint for integration test")

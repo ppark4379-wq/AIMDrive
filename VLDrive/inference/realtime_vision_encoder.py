@@ -60,7 +60,7 @@ import torch
 from inference.live_frame import LiveFrameSource
 from data.src.loaders.morai_encoder_contract import checkpoint_encoder_contract
 from inference.live_view import DisplayUnavailable, LiveView, camera_panel
-from models.vision_encoder import create_vision_encoder
+from models.ve.vision_encoder import create_vision_encoder
 from utils.visualization import vision_encoder_visualization as viz
 from utils.visualization.vision_encoder_visualization import plt
 from utils.training.vision_encoder_training import MODEL_NAME, sha256_file

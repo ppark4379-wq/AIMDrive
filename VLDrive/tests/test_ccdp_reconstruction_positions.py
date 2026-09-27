@@ -1,6 +1,6 @@
 """Identifiable-token oracle for retained slot order and Eq.(8) scatter."""
 import torch
-from models.qformer_mefa import QFormerMEFAConfig, QFormerMEFAConnector
+from models.connector.qformer_mefa import QFormerMEFAConfig, QFormerMEFAConnector
 
 
 def test_distinct_tokens_survive_gather_mefa_padding_scatter_in_original_positions():

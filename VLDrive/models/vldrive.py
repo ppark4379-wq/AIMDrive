@@ -13,9 +13,9 @@ from torch import nn
 from torch.nn import functional as F
 
 from utils.common.runtime import sha256, complete_visual_checkpoint_initialization
-from .qformer_mefa import QFormerMEFAConfig, QFormerMEFAConnector
-from .frozen_vision_encoder import MoraiVisualEncoder
-from .language_model import VLDriveModel
+from .connector.qformer_mefa import QFormerMEFAConfig, QFormerMEFAConnector
+from .ve.frozen_vision_encoder import MoraiVisualEncoder
+from .llm.language_model import VLDriveModel
 
 
 def _verify_local_asset(directory, *, expected_kind):

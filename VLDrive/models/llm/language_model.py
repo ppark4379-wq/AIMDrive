@@ -13,7 +13,7 @@ from .tinyllama_backbone import (
     parameter_report,
     resolve_torch_dtype,
 )
-from .visual_token_interface import VisualTokenBatch, last_valid_indices
+from ..connector.visual_token_interface import VisualTokenBatch, last_valid_indices
 
 
 @dataclass

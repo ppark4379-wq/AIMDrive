@@ -9,7 +9,7 @@ import math
 
 import torch
 
-from models.ddia_attention import (DDIALlamaAttention, build_ddia_attention_mask,
+from models.llm.ddia_attention import (DDIALlamaAttention, build_ddia_attention_mask,
                                    repeat_kv, rotate_half)
 
 

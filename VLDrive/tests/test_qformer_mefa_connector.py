@@ -1,6 +1,6 @@
 import torch
 
-from models.qformer_mefa import QFormerMEFAConfig, QFormerMEFAConnector
+from models.connector.qformer_mefa import QFormerMEFAConfig, QFormerMEFAConnector
 
 
 def _connector():

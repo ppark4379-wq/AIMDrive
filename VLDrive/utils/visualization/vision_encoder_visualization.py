@@ -11,7 +11,7 @@ caller saves them as separate files:
 Matplotlib only, Agg backend, vector-safe: every figure is drawn with real
 metric axes so a PDF/SVG stays sharp at any zoom.
 
-Tensor layouts, verified against models/vision_encoder.py
+Tensor layouts, verified against models/ve/vision_encoder.py
 --------------------------------------------------------
 detection ``[2500, 8]`` reshapes to a 50x50 grid whose channels, once
 multiplied by :data:`DETECTION_SCALE`, are::

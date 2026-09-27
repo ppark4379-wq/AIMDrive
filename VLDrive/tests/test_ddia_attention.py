@@ -5,14 +5,14 @@ from transformers.models.llama.modeling_llama import (
     LlamaAttention, LlamaRotaryEmbedding, apply_rotary_pos_emb,
 )
 
-from models.ddia_attention import (
+from models.llm.ddia_attention import (
     apply_rope,
     DDIALlamaAttention,
     build_ddia_attention_mask,
     compose_ddia_logits,
     repeat_kv,
 )
-from models.multimodal_sequence import INSTRUCTION, PADDING, VISUAL
+from models.llm.multimodal_sequence import INSTRUCTION, PADDING, VISUAL
 
 
 def test_ddia_modality_mask_and_padding():

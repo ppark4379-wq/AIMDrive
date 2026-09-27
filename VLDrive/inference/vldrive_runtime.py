@@ -183,7 +183,7 @@ def load_stage2(contract, device):
 
 
 def load_encoder(config, contract, device):
-    from models.vision_encoder import create_vision_encoder
+    from models.ve.vision_encoder import create_vision_encoder
     path = local_path(config['stage1_checkpoint'])
     if sha256(path) != contract['meta']['checkpoint_sha256']:
         raise ValueError('Stage-1 checkpoint differs from the training cache')

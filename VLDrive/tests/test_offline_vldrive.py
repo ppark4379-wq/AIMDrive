@@ -14,7 +14,7 @@ from inference import offline_vldrive as offline
 from inference.vldrive_offline_config import ConfigError,load_config,require_checkpoint
 from inference.vldrive_runtime import seed_runtime
 from inference.vldrive_waypoint_visualization import render_vldrive_waypoints
-from models.qformer_mefa import QFormerMEFAConfig,QFormerMEFAConnector
+from models.connector.qformer_mefa import QFormerMEFAConfig,QFormerMEFAConnector
 from models.vldrive import VLDriveTrainingConfig,VLDriveTrainingModel
 from utils.visualization import vision_encoder_visualization as viz
 

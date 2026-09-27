@@ -41,7 +41,7 @@ if str(ROOT) not in sys.path:
 
 from data.src.loaders.morai_perception_dataset import MoraiPerceptionDataset
 from data.src.loaders.loader import create_perception_loader
-from models.vision_encoder import create_vision_encoder
+from models.ve.vision_encoder import create_vision_encoder
 from utils.config.vision_encoder_config import ConfigError, load_config, require_config
 
 
@@ -345,8 +345,8 @@ def implementation_provenance():
         "data/src/loaders/split_manifest.py", "data/src/loaders/traffic_labels.py",
         "data/src/loaders/morai_perception_dataset.py", "data/src/loaders/lidar.py",
         "data/src/loaders/loader.py", "data/src/loaders/transforms.py",
-        "models/vision_encoder.py", "models/pointpillars.py", "models/resnet.py",
-        "models/transformer.py",
+        "models/ve/vision_encoder.py", "models/ve/pointpillars.py", "models/ve/resnet.py",
+        "models/ve/transformer.py",
     )
     return {relative: sha256_file(ROOT / relative) for relative in paths}
 

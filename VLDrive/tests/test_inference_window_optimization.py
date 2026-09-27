@@ -7,9 +7,9 @@ from transformers import LlamaConfig, LlamaForCausalLM
 from inference.fast_window import shared_ddia
 from inference.timed_history import TimedTokenHistory
 from inference.vldrive_runtime import predict_window
-from models.ddia_attention import install_ddia_attention
-from models.language_model import VLDriveModel
-from models.qformer_mefa import QFormerMEFAConfig, QFormerMEFAConnector
+from models.llm.ddia_attention import install_ddia_attention
+from models.llm.language_model import VLDriveModel
+from models.connector.qformer_mefa import QFormerMEFAConfig, QFormerMEFAConnector
 from models.vldrive import VLDriveTrainingConfig, VLDriveTrainingModel
 
 

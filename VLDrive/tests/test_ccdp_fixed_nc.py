@@ -2,7 +2,7 @@
 from dataclasses import replace
 import pytest
 import torch
-from models.qformer_mefa import QFormerMEFAConfig, QFormerMEFAConnector
+from models.connector.qformer_mefa import QFormerMEFAConfig, QFormerMEFAConnector
 from models.vldrive import VLDriveTrainingConfig
 
 

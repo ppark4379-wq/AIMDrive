@@ -3,8 +3,8 @@ import math
 
 import torch
 
-from models.ddia_attention import apply_rope, compose_ddia_logits
-from models.multimodal_sequence import INSTRUCTION, VISUAL, PADDING
+from models.llm.ddia_attention import apply_rope, compose_ddia_logits
+from models.llm.multimodal_sequence import INSTRUCTION, VISUAL, PADDING
 
 
 def test_ddia_matches_scalar_paper_equation_with_one_joint_denominator():
@@ -38,7 +38,7 @@ def test_ddia_matches_scalar_paper_equation_with_one_joint_denominator():
 
 
 def test_equation13_reconstructs_frozen_encoder_features_not_trainable_normalization():
-    from models.qformer_mefa import QFormerMEFAConfig, QFormerMEFAConnector
+    from models.connector.qformer_mefa import QFormerMEFAConfig, QFormerMEFAConnector
     config=QFormerMEFAConfig(visual_dim=8,num_visual_tokens=4,language_dim=16,
         query_count=2,memory_size=2,qformer_hidden_size=16,qformer_num_layers=1,
         qformer_num_attention_heads=2,qformer_intermediate_size=32,
