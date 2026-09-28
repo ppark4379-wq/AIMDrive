@@ -31,11 +31,10 @@ def source_hashes(root):
     """Hash every source file a run depends on, for the checkpoint provenance."""
     from utils.common.runtime import sha256
     root = Path(root).resolve()
-    paths = {p for d in ('models', 'data/src/loaders', 'utils', 'navigation', 'training', 'utils/common', 'utils/training', 'utils/evaluation', 'utils/config',
-                        'training/common', 'training/joint', 'training/vision_encoder/recipes',
+    paths = {p for d in ('models', 'data/src/loaders', 'utils', 'navigation', 'training', 'utils/common', 'utils/evaluation', 'utils/config',
+                        'training/common', 'training/common/runtime', 'training/connector_llm', 'training/connector_llm/utils', 'training/vision_encoder/recipes',
                         'training/vision_encoder/losses', 'training/vision_encoder/utils',
-                        'training/vision_encoder', 'training/connector', 'training/connector/utils',
-                        'training/llm', 'training/llm/utils') for p in (root / d).glob('*.py')}
+                        'training/vision_encoder') for p in (root / d).glob('*.py')}
     paths.update((root / 'models').rglob('*.py'))
     paths.update(root / p for p in ('train.py', 'evaluate.py', 'utils/visualization/vision_encoder_visualization.py'))
     # Only the training-side observer belongs in checkpoint provenance.

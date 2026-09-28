@@ -92,3 +92,4 @@ def balanced_training_indices(dataset, *, indices=None, draws=640, seed=607,
         stationary_distance_m=float(stationary_distance_m), curved_lateral_m=float(curved_lateral_m),
         note='Repeated clips are oversampling, not independent driving events; evaluate unique chronological indices separately.')
     return sampled, audit
+

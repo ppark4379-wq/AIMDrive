@@ -70,7 +70,7 @@
       ]
     },
     "utils/morai_transfer_objective.py": {
-      "path": "utils/training/morai_transfer_objective.py",
+      "path": "training/vision_encoder/losses/morai_transfer.py",
       "before": [
         "2d6ae7d1ff562ca52f1201157843ac4d842c57fa7b169d0a64886adc741a4cef",
         "9ce57080d8c81b51ea68f8dcd0b45e93fbb5f73bca5396a637b0edb864993c1c"
@@ -314,8 +314,8 @@
         "c1ce31ac1b8e46c2835d5e431bdffcc1822b7ea302a75f16b1fd4079454fd202"
       ],
       "after": [
-        "357b662e7796841c500a634167bf61593ead887fcc5382ffbd85705bcdac99d3",
-        "9172f3faa8edef745fc39a3d10c3e5e5aff0023074808afda792b62c51b16189"
+        "06003ecd3dd04944c5829f584b4b0dc7c5bc823c3376cf9a2a54f6d51d2f71f8",
+        "464820974f914ed366429f3e1ff3b45e24d020151227ed8f836bb35c40e09182"
       ]
     },
     "utils/config/vision_encoder_config.py": {
@@ -369,8 +369,8 @@
         "c82523076b5186d20f20a347b83751b7dbde14bb7a17976c0e7e06641539c55f"
       ],
       "after": [
-        "62ca225503c9d920a9d1adfa34f50a92a81714081bdb500ff34c1722e7760335",
-        "b978de864fd8d6c1ac177d22677b57ea09ae9eaae42519db5cb59fdfb90e85c9"
+        "a22d326b271d7e29eb5bd4ced5611572cfb8d93652391378640d2b89c136c215",
+        "792dc4fdde3acb1a5a9989d6a572de6bd4719fc555731017279765fd54087028"
       ]
     },
     "tools/visualization/__init__.py": {
@@ -588,8 +588,8 @@
         "fa5a03ed415371b6e1091f696e9460d5060ef9d25377ea6cdb07bd5ba89bf1f8"
       ],
       "after": [
-        "232a6e888a6ad286b33995ef1617689ac1a50058af168c0ba20f8675cf37340b",
-        "2606f92a50454e32004476757515bfdb3f4acbdaeb5f0cd2529f96d67444aff3"
+        "58d999815d949889f85be29bd74b7469cc388bb4a4060d689dde50be773acbef",
+        "a4c5a4d2b5e9d008933e00605f04efe68c96727d4a4503ed273c2d421892f2b3"
       ]
     },
     "utils/morai_transfer_metrics.py": {
@@ -605,8 +605,8 @@
         "d8215e6c37548189c8ba1cd3cf00e39a43be22bd5180ce56affcea8ed92710ea"
       ],
       "after": [
-        "357b662e7796841c500a634167bf61593ead887fcc5382ffbd85705bcdac99d3",
-        "9172f3faa8edef745fc39a3d10c3e5e5aff0023074808afda792b62c51b16189"
+        "06003ecd3dd04944c5829f584b4b0dc7c5bc823c3376cf9a2a54f6d51d2f71f8",
+        "464820974f914ed366429f3e1ff3b45e24d020151227ed8f836bb35c40e09182"
       ]
     },
     "data/loaders/transforms.py": {
@@ -651,11 +651,13 @@
       ]
     },
     "training/training.py": {
-      "path": "training/joint/training.py",
+      "path": "training/connector_llm/training.py",
       "before": [
         "1620911c2c002fba1d37b050c3cad61792f4eb65115828bca2160c5fed606d95",
         "259a8c044f5f6939a17a5e149aa752f24180135ecf776377982cbf38c46cc5d0",
         "63d522a70c53a72a8237ed8b163b0babb53028b02732d7e21a52bdc44c532e0c",
+        "70a7c79d76a208bf646cd57c7c3d9411a138ab9cd952d2737163f1a281172a42",
+        "74128d517c31d253f9ee1d84f6c175ce56c4bc95c40724e8d1757d81047e8e4d",
         "7c5cb2f905affa20b2317fb1e8fb53a26379c6efd26b40b741ffaa49a01dfc50",
         "a3aa279809889f89383be88e7c5588be09b542a4b8518d042b659a329ba7cf9b",
         "b5d3e846733f78c094a448abfdf443e2e1c9878bf730e9b7faa448385fdd6e71",
@@ -665,8 +667,8 @@
         "d730e6f7227b6ded4fa899b7efb7b0475eb8f1d26676e9d2a78ed46a4bfd187b"
       ],
       "after": [
-        "70a7c79d76a208bf646cd57c7c3d9411a138ab9cd952d2737163f1a281172a42",
-        "74128d517c31d253f9ee1d84f6c175ce56c4bc95c40724e8d1757d81047e8e4d"
+        "fe06edb5c990558a3c72856b030bfd4024fccd3e68012b73509e65936e990b32",
+        "7e05942758a389b22ca9333857898d32069c9d68e9e6e9de2c4d8d774ea0592b"
       ]
     },
     "utils/training_dashboard/metrics.py": {
@@ -771,6 +773,7 @@
     "utils/__init__.py": {
       "path": "utils/__init__.py",
       "before": [
+        "177dfea7e9659bdd7118e3cbf94bd24d1cba47f13fa2b0c652a5b641b082ba01",
         "1dcebda037b37623ef1f1cdd73c30a6d15e9fe79fba446033d1e826a8ddef05b",
         "252cc9484b94ef371c4cdec9ca5370cdadab6200f4f915b76f363c2bc496e797",
         "527bf72f204e963061ad10f10403cae6d9a7efb44db596fbe696c13f06e709e0",
@@ -778,12 +781,16 @@
         "81e420eca699823c5682fbf8a5c145d1a5ab5bcf500713c2768913f5f8f2c116",
         "ae4f9f9a2c145d70f1ddfe54a08c8047b6fd1ebf72e6833b52ac6c1353b88a8e",
         "b11975d840747a2585c4aeb3662c1a938341182cb44fecec4c1e3907f30bd8c1",
-        "d0ef4cd62b1119160f0e88dce4072dd46d6ac2e2666d55bb7530c34e3b4dfeb2"
+        "bf0a5a35f5352c09c1458b1b9899aace1535fd48cd92da841731189efd294f8f",
+        "d0ef4cd62b1119160f0e88dce4072dd46d6ac2e2666d55bb7530c34e3b4dfeb2",
+        "ea547abb35e7985eb187695be656982439d30e86aecad18d9982dd5ab5ff9201",
+        "56f85ea7442535984b4286ab17a975be347c1b49f173604d09b805b14dc5852e",
+        "8dd31f3af910a02b13b24e29f76ba5dede63f0b8ad646853c715e6ea38569951",
+        "a8cc9c958a998ba27615c07e87f4cc0d90500521d2793a14f4896b0b7ebf0db6"
       ],
       "after": [
-        "177dfea7e9659bdd7118e3cbf94bd24d1cba47f13fa2b0c652a5b641b082ba01",
-        "bf0a5a35f5352c09c1458b1b9899aace1535fd48cd92da841731189efd294f8f",
-        "ea547abb35e7985eb187695be656982439d30e86aecad18d9982dd5ab5ff9201"
+        "186eb4df0a75c3ec1574712430fd78b773fe5dd0c3fa278e5b446ccc1e04e3ed",
+        "a1e2b34fedc6b6cd2485e23159b5cb77504fbcfd6c2d9d15fbdc275f91229e5a"
       ]
     },
     "tools/cache_vision_tokens.py": {
@@ -870,6 +877,7 @@
       "before": [
         "04ea9ed5d3f50961db0071273ba1278816bb2209be8ca8edb7396aa9369f5f72",
         "0a5b401954a0a9263892e3ae550465cf8f2ba6753d371d914be3b32f068d0235",
+        "0c7f26a79043e68f554a876353a4b476f89e84463f5080cf1957eaef3254172e",
         "1833988a3f65c7c76808addb11d1d7ff80e94c20ab315f99a9fc52478d43db67",
         "1f5a6cfa4fa4599ce03c78e0ab70c3efdd2bd2b554596be5448f9b0ee6f861e7",
         "2010c79ae569abe9dc8075c337808be4936c0cc925e82632ddcaed4ff82fa2e7",
@@ -889,17 +897,19 @@
         "af2cd5826c348031713c3c35fa349538b66d35a1952da6033971ceac7ec13109",
         "b09e5fb8cdbabb64a174c8bea32f139a7878152ce732db7af309d751870de887",
         "b1ca3aab82e295d03d5d79da698d13db49150504122b4e07c1fe5367433c0f1d",
+        "b99cb11f75cbd056a29169ab2bc75a335a826e908e00f63fee40ea6e01865ba5",
         "ba9ac7d7fa38053b1d094d549b711a72ec878a830482f43a75a2caac9fab050d",
         "df2a17315f047c5654f4f29c17581e81dc433d4281f221f306ecd4a92d3e8cf9",
         "e34e54c92386d559ed8f7aeea8c3bc5032be5921bbf52a7ea014eb1314b3fb42",
         "e5d482a2f094c247e93da310f267a05b2312ea3c55a54a08a48e4b1539f5c05d",
         "f2e351a941e93f64aff151b9de57bb4d69609ae77ff460dea0f3e4da460c8e76",
+        "f6c043b83b4705b81022b0046744a7ca1b176c42a1c1c0a0ad9e30afd3450952",
         "fa93e45eb050b59372e053d49e0a8bea345fd55191d241d240a0a32738495ac2"
       ],
       "after": [
-        "0c7f26a79043e68f554a876353a4b476f89e84463f5080cf1957eaef3254172e",
-        "b99cb11f75cbd056a29169ab2bc75a335a826e908e00f63fee40ea6e01865ba5",
-        "f6c043b83b4705b81022b0046744a7ca1b176c42a1c1c0a0ad9e30afd3450952"
+        "2472f5dc44b6280e2c453e26945131c408d651fe9f4b1c93fb77561a03a098d1",
+        "32f2c20fc5dbe17c00446f836fc421ceb52ff6831b5079f858a4964773d6b57d",
+        "f63159ca02d44898f29729ee1114465608558d61e1ff632dffa029c322c60fc6"
       ]
     },
     "data/loaders/loader.py": {
@@ -1129,7 +1139,7 @@
       ]
     },
     "tools/training/paired_hue_finetune.py": {
-      "path": "training/experiments/paired_hue_finetune.py",
+      "path": "tools/paired_hue_finetune.py",
       "before": [
         "35ef22c21dae5dad808ccc0c7a430e8338eeeb441f6dab601af5fab3f2d45d24",
         "65767948313d686867ceffcc26aa99ec7402b18922b8593b689ff3936b613cb0",
@@ -1139,8 +1149,7 @@
         "ebdd7cc8b8511d13e1679a3e09f3e0a172dabbd0f4d2ad33c962fa61f6ab2501"
       ],
       "after": [
-        "7d74ad5630b8deae76b7eecbb2194254bf2a591001e4f00f57526739277da5f0",
-        "dd939a503f9900972599de203cb50c1cd2a6fc7c33e4b75616c98de899f18d9d"
+        "b49607335e36e12e2cb4cbac9d855bccd363342cd8bfd0aa3e74089eaada0921"
       ]
     },
     "training/morai_transfer_training.py": {
@@ -1631,7 +1640,7 @@
       ]
     },
     "training/morai_transfer_objective.py": {
-      "path": "utils/training/morai_transfer_objective.py",
+      "path": "training/vision_encoder/losses/morai_transfer.py",
       "before": [
         "2d6ae7d1ff562ca52f1201157843ac4d842c57fa7b169d0a64886adc741a4cef",
         "9ce57080d8c81b51ea68f8dcd0b45e93fbb5f73bca5396a637b0edb864993c1c"
@@ -1680,25 +1689,41 @@
       ]
     },
     "utils/training/training_helper.py": {
-      "path": "utils/training/training_helper.py",
+      "path": "training/common/runtime/__init__.py",
       "before": [
         "165e53452e2d99e78abd5e0f1f5ad32b4e7f85d5274cc7f5f0b526dcc915700d",
         "3c1f6ef5ac4d094b3b6b0048308458c067213a772385d7656e426c955f737d16",
         "48ca56d79b0acb7aab90d511efcac2c61392e6965635f92544e301b23fb40d37",
         "5635475273706f271e6b7f0b9ed9c8fbade6877ccb5d111b1ea2559a4b54e575",
+        "647ebbbb1777d898dcb23f37d6f7e6341fda9408f10f382ac63c73a9e64bcd4d",
         "6ed17a20fc9cb136a24dc429990099e839795ea0b93c04f2a33ff16e0c8b4e33",
         "72aad7614927172d2cabb12761035441a214d8c8a51f3f3748ae84cfb6156478",
         "a9337ea0dcd10dae0c63e77b45e500d873b64a60e86658383e8281648bf827d8",
         "abdf8ee9811350d0918c8b2d41038cf48b6a07ce88ffe246275f5aa353613793",
+        "bddc98e959c22321d63a15f835fd16b6a92b6b07f9d64de406796bbc01a85a0d",
+        "c56142d989072c717c57c3f7626410b386bc93ea5bdce32a2b5006b4b870b5e8",
         "de5aa606efa64e4366d437128cd0a439c0be69a6a2decebef3324365d7931574",
         "f42d873cd135912992307d7cd3b9d07faa89f10f9d9b697f7dbcb335dac954a8",
         "f65d759c2af9ed24b5e33e1381c6a6ecb19f3515e8e9974f6ecd515879662846",
-        "fec1a65585d57b9b3eac8ddfd2b2389e142e00c65ba1a4a431e8c4f778ff817d"
+        "fec1a65585d57b9b3eac8ddfd2b2389e142e00c65ba1a4a431e8c4f778ff817d",
+        "2bb11c1d8157ff47ba728e64c61c4edc6cd6b6ef2f8f5f401143430e9e511757",
+        "a85915afa42430181760ee79afa074e8c81925f1afcfc49505cd4467b1936a2a",
+        "a9ce75bdb23ea031b1899c18c4898c6a70720438f1b82c028165a4d80a3e1129"
       ],
       "after": [
-        "647ebbbb1777d898dcb23f37d6f7e6341fda9408f10f382ac63c73a9e64bcd4d",
-        "bddc98e959c22321d63a15f835fd16b6a92b6b07f9d64de406796bbc01a85a0d",
-        "c56142d989072c717c57c3f7626410b386bc93ea5bdce32a2b5006b4b870b5e8"
+        "bb3bfc21351e768b226507aedab4d6a9057157db181d7f5a9c102d19fb278db3",
+        "5b7035cffd3e088e61a94488d935893ad67f0a573bbd0a64911e5d997e177505"
+      ]
+    },
+    "utils/training/morai_transfer_objective.py": {
+      "path": "training/vision_encoder/losses/morai_transfer.py",
+      "before": [
+        "2d6ae7d1ff562ca52f1201157843ac4d842c57fa7b169d0a64886adc741a4cef",
+        "9ce57080d8c81b51ea68f8dcd0b45e93fbb5f73bca5396a637b0edb864993c1c"
+      ],
+      "after": [
+        "2d6ae7d1ff562ca52f1201157843ac4d842c57fa7b169d0a64886adc741a4cef",
+        "9ce57080d8c81b51ea68f8dcd0b45e93fbb5f73bca5396a637b0edb864993c1c"
       ]
     },
     "tools/validation/audit_vldrive_paper.py": {
@@ -1712,8 +1737,8 @@
         "fb0652b3823432a3117c74533a3e48900446f81e6ef18250c2ba81c42024a5aa"
       ],
       "after": [
-        "175d337135fbfabd9d3ece692380f9c6ad2ad1f91e8d9eb6c0824257e72dbd02",
-        "d24450606815ec4e3d63666c7e458fb5eef2266533788260142ae8dca05a2ec2"
+        "e9104bb26bee74914c826360704aed951c4af6994442a9275e44a282f1940821",
+        "19803fd3054f41512a4fbe1d409b9e54d7258d6c7c60621393d68d8207a393a9"
       ]
     },
     "tests/test_morai_color_augmentation.py": {
@@ -1802,28 +1827,14 @@
         "a73faee5d5fbfcc1a4621dad12fd3461c95df3a34e4d75e2fde872bee97361c4"
       ]
     },
-    "tests/test_paired_hue_finetune.py": {
-      "path": "tests/test_paired_hue_finetune.py",
-      "before": [
-        "1719e037f2ca28e0e4f66e59d2a949f968688b97778d992a33d90ca819ab283d",
-        "185ae94a7bed83d1c9c4e7049522c305f2b82f270c29f083f6828d7d6f64f008",
-        "921347e70e7bd571a59bf2adb1a9d3c4844f7e13104a341afa41cd051df1ec33",
-        "9f63caa56b0e560476241af64367674b7a7d9224548054d0f08fc5bdb46a65eb",
-        "b19b12801b3eefb7fa5e76a9f34ea60a8ae174f93b445587563b6863b5b3ef02",
-        "b5ab9255762253ffbfff66a5444a4fb4cda35092a17925b5ec2a39fdc9b822bb",
-        "f6219984a353b0bf4b2d9302c5c430c1603025a3805f30696776a1cf2b0d1d9a"
-      ],
-      "after": [
-        "921347e70e7bd571a59bf2adb1a9d3c4844f7e13104a341afa41cd051df1ec33",
-        "f6219984a353b0bf4b2d9302c5c430c1603025a3805f30696776a1cf2b0d1d9a"
-      ]
-    },
     "utils/trainer.py": {
-      "path": "training/joint/training.py",
+      "path": "training/connector_llm/training.py",
       "before": [
         "1620911c2c002fba1d37b050c3cad61792f4eb65115828bca2160c5fed606d95",
         "259a8c044f5f6939a17a5e149aa752f24180135ecf776377982cbf38c46cc5d0",
         "63d522a70c53a72a8237ed8b163b0babb53028b02732d7e21a52bdc44c532e0c",
+        "70a7c79d76a208bf646cd57c7c3d9411a138ab9cd952d2737163f1a281172a42",
+        "74128d517c31d253f9ee1d84f6c175ce56c4bc95c40724e8d1757d81047e8e4d",
         "7c5cb2f905affa20b2317fb1e8fb53a26379c6efd26b40b741ffaa49a01dfc50",
         "a3aa279809889f89383be88e7c5588be09b542a4b8518d042b659a329ba7cf9b",
         "b5d3e846733f78c094a448abfdf443e2e1c9878bf730e9b7faa448385fdd6e71",
@@ -1833,8 +1844,8 @@
         "d730e6f7227b6ded4fa899b7efb7b0475eb8f1d26676e9d2a78ed46a4bfd187b"
       ],
       "after": [
-        "70a7c79d76a208bf646cd57c7c3d9411a138ab9cd952d2737163f1a281172a42",
-        "74128d517c31d253f9ee1d84f6c175ce56c4bc95c40724e8d1757d81047e8e4d"
+        "fe06edb5c990558a3c72856b030bfd4024fccd3e68012b73509e65936e990b32",
+        "7e05942758a389b22ca9333857898d32069c9d68e9e6e9de2c4d8d774ea0592b"
       ]
     },
     "tests/test_velocity_stage2_preparation.py": {
@@ -1929,8 +1940,8 @@
         "fa815d0be00bd8cdae0ce9d5364b253e25e52ae3626e13aca1786b234313841f"
       ],
       "after": [
-        "2bebf47b2fc3162bcced8451e25ed5e0da88de948cb3e34677d74d4b3235d188",
-        "6dfd961a7f8106fcbaee8d78b3e8855c27ad5e5326a9a76b2b41756e6bbc891a"
+        "62aa2b9ecb7e3d267f33fe0e46e837ebb5723158e6c3bc234b34eac08ef2c050",
+        "86d96fa5d8e78e19db53a23ecf9ff3748036f0fc88dc46cb33db4ac8823fb90a"
       ]
     },
     "utils/vision_encoder_inference_config.py": {
@@ -1949,7 +1960,7 @@
       ]
     },
     "utils/evaluation/morai_transfer_objective.py": {
-      "path": "utils/training/morai_transfer_objective.py",
+      "path": "training/vision_encoder/losses/morai_transfer.py",
       "before": [
         "2d6ae7d1ff562ca52f1201157843ac4d842c57fa7b169d0a64886adc741a4cef",
         "9ce57080d8c81b51ea68f8dcd0b45e93fbb5f73bca5396a637b0edb864993c1c"
@@ -2004,8 +2015,8 @@
         "fa815d0be00bd8cdae0ce9d5364b253e25e52ae3626e13aca1786b234313841f"
       ],
       "after": [
-        "2bebf47b2fc3162bcced8451e25ed5e0da88de948cb3e34677d74d4b3235d188",
-        "6dfd961a7f8106fcbaee8d78b3e8855c27ad5e5326a9a76b2b41756e6bbc891a"
+        "62aa2b9ecb7e3d267f33fe0e46e837ebb5723158e6c3bc234b34eac08ef2c050",
+        "86d96fa5d8e78e19db53a23ecf9ff3748036f0fc88dc46cb33db4ac8823fb90a"
       ]
     },
     "data/loaders/morai_transfer_adapter.py": {
@@ -2053,7 +2064,7 @@
       ]
     },
     "utils/training/__init__.py": {
-      "path": "utils/training/__init__.py",
+      "path": "training/__init__.py",
       "before": [
         "0d9e4244509ec231ff7e5428716856d7e5bc5a68b89448a4a7284f2df3102298",
         "8314736c6186f54367154b3919d50aca8c3010cc6ecbb6a632101e40d6ec4fac",
@@ -2063,8 +2074,7 @@
         "fed7eebdab1c63c87d781bce8463299e06a954941b9b3b48a9d29a5c327f7c90"
       ],
       "after": [
-        "8314736c6186f54367154b3919d50aca8c3010cc6ecbb6a632101e40d6ec4fac",
-        "d3391f75d9c8ee7bfbe22617199f11d304010b77378f4d2b41bb8fc66e59dda1"
+        "a6666994480f70845cca979877ffa6681917bd5d9339330a94ede71e026b2934"
       ]
     },
     "utils/training/morai_transfer_training.py": {
@@ -2343,7 +2353,7 @@
       ]
     },
     "tools/paired_hue_finetune.py": {
-      "path": "training/experiments/paired_hue_finetune.py",
+      "path": "tools/paired_hue_finetune.py",
       "before": [
         "13a12f75fa63c4827852a34d6eb7bbdab1ca785fcffc4da414723fb6dc9dbdc0",
         "30f0663574ab6ab9c3c9b87998af9072fa63c51fb62926a204129dac37c27095",
@@ -2364,8 +2374,7 @@
         "f7534b9d19e72ef965634e74e8fb13c9a8908f4113bc94554389eef90be1c17f"
       ],
       "after": [
-        "7d74ad5630b8deae76b7eecbb2194254bf2a591001e4f00f57526739277da5f0",
-        "dd939a503f9900972599de203cb50c1cd2a6fc7c33e4b75616c98de899f18d9d"
+        "b49607335e36e12e2cb4cbac9d855bccd363342cd8bfd0aa3e74089eaada0921"
       ]
     },
     "tools/build_traffic_labels.py": {
@@ -2529,12 +2538,12 @@
         "fc22339f7c29ecb2a04f63b5ca677c52d505b788c5ba201b3725dc05f4950699"
       ],
       "after": [
-        "175d337135fbfabd9d3ece692380f9c6ad2ad1f91e8d9eb6c0824257e72dbd02",
-        "d24450606815ec4e3d63666c7e458fb5eef2266533788260142ae8dca05a2ec2"
+        "e9104bb26bee74914c826360704aed951c4af6994442a9275e44a282f1940821",
+        "19803fd3054f41512a4fbe1d409b9e54d7258d6c7c60621393d68d8207a393a9"
       ]
     },
     "tools/training/__init__.py": {
-      "path": "training/experiments/__init__.py",
+      "path": "tools/__init__.py",
       "before": [
         "003d8f3ab6bfb7c68cc31152f0a489992d2046a78e1c9c9404f90ee11734dc71",
         "26c587ad497c93d2a3b6686f966b5fa6b4a94d6624c109e0ed719a9ee66a974c",
@@ -2542,8 +2551,7 @@
         "b91aca61d66eb839cc755f0ef077c04cd8214c34082b3df1866c73d9945b67b5"
       ],
       "after": [
-        "26c587ad497c93d2a3b6686f966b5fa6b4a94d6624c109e0ed719a9ee66a974c",
-        "32d183358a78616257ed6ab16d9f627ebaa3075178fe4d0cce7568ad92fdf479"
+        "056393727c38a41af7520169b8b9a7c60cc3dc13e0c90b412bc930afbbd3da10"
       ]
     },
     "tools/cache_navigation_text_tokens.py": {
@@ -2594,7 +2602,7 @@
       ]
     },
     "utils/training.py": {
-      "path": "utils/training/training_helper.py",
+      "path": "training/common/runtime/__init__.py",
       "before": [
         "165e53452e2d99e78abd5e0f1f5ad32b4e7f85d5274cc7f5f0b526dcc915700d",
         "1a489799607dc327f5ea98d61c3a068fc49370b27638d6b3d46c022ab0f54a1c",
@@ -2614,8 +2622,8 @@
         "fec1a65585d57b9b3eac8ddfd2b2389e142e00c65ba1a4a431e8c4f778ff817d"
       ],
       "after": [
-        "48ca56d79b0acb7aab90d511efcac2c61392e6965635f92544e301b23fb40d37",
-        "a9337ea0dcd10dae0c63e77b45e500d873b64a60e86658383e8281648bf827d8"
+        "bb3bfc21351e768b226507aedab4d6a9057157db181d7f5a9c102d19fb278db3",
+        "5b7035cffd3e088e61a94488d935893ad67f0a573bbd0a64911e5d997e177505"
       ]
     },
     "inference/vldrive_runtime.py": {
@@ -2636,7 +2644,8 @@
         "8f7a669138deffaa1549efc95a3a1fee8b4ba23ac7c971ecd75e77b093c61f42",
         "9ee6d48eb827feaae1754f6dc2a0b171f00b2a14eaf81a41fed8673a83b2daf1",
         "ba65536e31f294b861cd2ac8e8cd2160b59d5f1cd01c3608ebf8257b7c85aebb",
-        "cb38701a7c961656b8601e0a29af2b269932fce422faa6ac887679e23eae532f"
+        "cb38701a7c961656b8601e0a29af2b269932fce422faa6ac887679e23eae532f",
+        "e4d276edd153f3e81ccb500f6767932c0dc86f936dc3626447864d1cc1d03867"
       ],
       "after": [
         "4becab756ea2d3ad033ea2095cdeaa8dfb7f9a4060f3b28300cab610eb88358f",
@@ -2770,7 +2779,7 @@
       ]
     },
     "training/training_helper.py": {
-      "path": "utils/training/training_helper.py",
+      "path": "training/common/runtime/__init__.py",
       "before": [
         "3c1f6ef5ac4d094b3b6b0048308458c067213a772385d7656e426c955f737d16",
         "48ca56d79b0acb7aab90d511efcac2c61392e6965635f92544e301b23fb40d37",
@@ -2782,8 +2791,8 @@
         "fec1a65585d57b9b3eac8ddfd2b2389e142e00c65ba1a4a431e8c4f778ff817d"
       ],
       "after": [
-        "48ca56d79b0acb7aab90d511efcac2c61392e6965635f92544e301b23fb40d37",
-        "a9337ea0dcd10dae0c63e77b45e500d873b64a60e86658383e8281648bf827d8"
+        "bb3bfc21351e768b226507aedab4d6a9057157db181d7f5a9c102d19fb278db3",
+        "5b7035cffd3e088e61a94488d935893ad67f0a573bbd0a64911e5d997e177505"
       ]
     },
     "inference/realtime_vldrive.py": {
@@ -2909,7 +2918,7 @@
       ]
     },
     "training/common/training_helper.py": {
-      "path": "training/common/training_helper.py",
+      "path": "training/common/runtime/__init__.py",
       "before": [
         "0158a4fd85f1f4548f23753ed4913e859082e8b219b4768b5863cc06aaeffbf6",
         "17b720fbebd9e137dc108faf95442524ac4f1c2d5b7563205ecde8f9b72a0aec",
@@ -2917,12 +2926,45 @@
         "f2f18af53f953d2c4d6d6422a0cbc69cb8e0d190c7de9e8276dd20f71232c733"
       ],
       "after": [
-        "0158a4fd85f1f4548f23753ed4913e859082e8b219b4768b5863cc06aaeffbf6",
-        "17b720fbebd9e137dc108faf95442524ac4f1c2d5b7563205ecde8f9b72a0aec"
+        "bb3bfc21351e768b226507aedab4d6a9057157db181d7f5a9c102d19fb278db3",
+        "5b7035cffd3e088e61a94488d935893ad67f0a573bbd0a64911e5d997e177505"
+      ]
+    },
+    "training/common/batching.py": {
+      "path": "training/common/runtime/batching.py",
+      "before": [
+        "389e2f4e6bf7697d7b2c5721c0169148e6950d788e6f95d068008463b22908e3",
+        "6d898daa43198550c4cc1cbb2a81206bf8373490ae0988855cc2b46f2bdc81b9"
+      ],
+      "after": [
+        "1d3c05252925cc7ee2e28079b4f927e6044cb26d6eed79803fd828647ea8a652",
+        "d9166c7921aeabce49c0d85133623d6e098fe0046e7716a603da60828f419035"
+      ]
+    },
+    "training/common/precision.py": {
+      "path": "training/common/runtime/precision.py",
+      "before": [
+        "1e72638476bac34ec06eb3115a124f55a2164b72a93a14f324aa854e259401c3",
+        "5bdc8d94a2492f4c6db409f09cd3b33e716c45c44215ec7dc2a19ccb99170077"
+      ],
+      "after": [
+        "c3ea3306f9e27c30dab487c2a5410361a39c1e29c7db510f933c1b4f1b2aafd2",
+        "aa0b78a75877bea9f3a1697b2a63bc29e6c2cf6d320d67a39c60081059d86f9d"
+      ]
+    },
+    "training/common/reproducibility.py": {
+      "path": "training/common/runtime/reproducibility.py",
+      "before": [
+        "c0bf0df6b028b508923d670802f26aee153ee45d5c5741fb095a61c1db04ab31",
+        "c1c204880aa06c7967c1dd4f0cd1caa3ca287a99a07455c8a36461930810fc8d"
+      ],
+      "after": [
+        "717a2fd090098e2bf976f68eb9635b6a44591763d58200c9a8b1ca1b88ed55e7",
+        "5908a5bea18fc6c0c61212f155a1be38f59f8c40d805bc2927ccb6253525ddf3"
       ]
     },
     "training/joint/training.py": {
-      "path": "training/joint/training.py",
+      "path": "training/connector_llm/training.py",
       "before": [
         "5f50846901da7d8a1cb2eb9020188e973e0a8077f520c6fb8c7e230a48d86b8d",
         "70a7c79d76a208bf646cd57c7c3d9411a138ab9cd952d2737163f1a281172a42",
@@ -2930,8 +2972,114 @@
         "95651518a3bba53fbe22f8da1a6cb0c07a3162caae1c7282eb855dfa2be3ba08"
       ],
       "after": [
-        "70a7c79d76a208bf646cd57c7c3d9411a138ab9cd952d2737163f1a281172a42",
-        "74128d517c31d253f9ee1d84f6c175ce56c4bc95c40724e8d1757d81047e8e4d"
+        "fe06edb5c990558a3c72856b030bfd4024fccd3e68012b73509e65936e990b32",
+        "7e05942758a389b22ca9333857898d32069c9d68e9e6e9de2c4d8d774ea0592b"
+      ]
+    },
+    "training/common/checkpoints.py": {
+      "path": "training/common/checkpoints.py",
+      "before": [
+        "2e8b0123d725be1e20dd241e32abd130d4bb98733d9752c72b8ef352d8e21e25",
+        "3b1e70a67fddce5f030ef1cbec83ff1168e817698a0b55642bea66589f7c5b38",
+        "4faf604fb1a8a5c885827bc829bdafd74773fe954f0f7c41b1c19257e3554d1b",
+        "9a72270049b8447fa2604e86ad90863f1f6b4c95fbd63a40af51c6ae01423f33",
+        "f4700882f93fcb8f9755d0328c693dbac4d1cbb8e724570fe52dfbb6a9230193",
+        "760a6efbe1ae41fc1b3afa9aa13f994d7fa19bea083cd50561146550a117f496"
+      ],
+      "after": [
+        "5a147d136de4cac2042ced5f7c4d59484c56a8c3207b2502998071265b9f952e",
+        "506c75e387acd7aacb3d09d6128454f74920136cc6e86d0a8ce0020b9dc0d953"
+      ]
+    },
+    "training/joint/setup.py": {
+      "path": "training/connector_llm/setup.py",
+      "before": [
+        "3a7de9e4c11531c566f0c644de189a104415cac24f805bfce4e3fe5f5f4772f4",
+        "e4b0876a4779c559cc804bdf89f7e11a00623e4a83ec7ff7bb0e711eb09ee8a7"
+      ],
+      "after": [
+        "5bf8b91b914cf3e7b661c196a835b9016ab4c88d20b57c723c3dd412c4b9a74e",
+        "62dcbc7fb10ceb7b424611251f5970df2374c82062b513503ed07886f4b9bfb0",
+        "f81fa18e10198dd57cd1e6fd5815b5883fe67841071fe030ba26cb897dca2951"
+      ]
+    },
+    "training/connector/setup.py": {
+      "path": "training/connector_llm/setup.py",
+      "before": [
+        "b8875daef6dea1aa52ab322ee60afcb706538a17c267071e7a2a96ffb3405ad1",
+        "fe16656ad2b550561de633d2b5ce010d04646fce2e31ea73052e172ea2898343"
+      ],
+      "after": [
+        "5bf8b91b914cf3e7b661c196a835b9016ab4c88d20b57c723c3dd412c4b9a74e",
+        "62dcbc7fb10ceb7b424611251f5970df2374c82062b513503ed07886f4b9bfb0",
+        "f81fa18e10198dd57cd1e6fd5815b5883fe67841071fe030ba26cb897dca2951"
+      ]
+    },
+    "training/llm/setup.py": {
+      "path": "training/connector_llm/setup.py",
+      "before": [
+        "70cbcc669e908316720c9b9a94d9baa477c3a86951de7549dfdbf182bfe020af",
+        "a309e88a6c091030419a15ce76630c97deedcc0adeb532a69ea7dff77fba35e6"
+      ],
+      "after": [
+        "5bf8b91b914cf3e7b661c196a835b9016ab4c88d20b57c723c3dd412c4b9a74e",
+        "62dcbc7fb10ceb7b424611251f5970df2374c82062b513503ed07886f4b9bfb0",
+        "f81fa18e10198dd57cd1e6fd5815b5883fe67841071fe030ba26cb897dca2951"
+      ]
+    },
+    "training/joint/__init__.py": {
+      "path": "training/connector_llm/__init__.py",
+      "before": [
+        "695026bc27bae5101c22a62e24d84d37b6b5c77531865aafc1125cab35bb36b0",
+        "d7f5097a22960d281450aa79c5c0c34d66647e95c74df986f7f92779892d5fdf"
+      ],
+      "after": [
+        "305df0f7885a8a37660b522b5b7297cef2998618c19e533296e631b298e0c2a5",
+        "efacf25008d819668c40a058cebe5e280af38298a4838f079ecc5518c1db2e82"
+      ]
+    },
+    "training/connector/__init__.py": {
+      "path": "training/connector_llm/__init__.py",
+      "before": [
+        "5c12fe3aa9036dc8bf40cad9e65c62ce94e2306517057e3ac32c65d9021a3509",
+        "7fe6c9f53aed1f311da5ac96f522609f410930d6ad522216f151f9497e2bbd83"
+      ],
+      "after": [
+        "305df0f7885a8a37660b522b5b7297cef2998618c19e533296e631b298e0c2a5",
+        "efacf25008d819668c40a058cebe5e280af38298a4838f079ecc5518c1db2e82"
+      ]
+    },
+    "training/llm/__init__.py": {
+      "path": "training/connector_llm/__init__.py",
+      "before": [
+        "242b4ab737a19a0731477ed7af590afa7fa1c02560a42b9cc5117f6de22a46be",
+        "6d07fc96d22e85b858957e16793b1ecd511f523f57481e8ab53efbbbff41bc82"
+      ],
+      "after": [
+        "305df0f7885a8a37660b522b5b7297cef2998618c19e533296e631b298e0c2a5",
+        "efacf25008d819668c40a058cebe5e280af38298a4838f079ecc5518c1db2e82"
+      ]
+    },
+    "training/connector/utils/__init__.py": {
+      "path": "training/connector_llm/utils/__init__.py",
+      "before": [
+        "955ab92cedf627e970c1fd381f1c236e8fedf193fa9eed6d6b6ff10999d9f3e2",
+        "9d7807e93cb5490a324928a7a793a6abe066d38c751c87a3160409aacd9cb3bf"
+      ],
+      "after": [
+        "43851a7659c86b4ad369ae2fe99ef1f9011308a1a549000538b35ab1cd68bc6f",
+        "8edcee428692989f201cc81c041e99460f5fd8a7fb22e7bb94537a7a53af39b5"
+      ]
+    },
+    "training/llm/utils/__init__.py": {
+      "path": "training/connector_llm/utils/__init__.py",
+      "before": [
+        "03f77cf9cc1bae404d2a7d7285be9ec9232f25a19663663a344a06f2beaf629e",
+        "c012af780c45dd41604b94a600bad6ae6d3dd3c8f4cc166428f6dadbca117178"
+      ],
+      "after": [
+        "43851a7659c86b4ad369ae2fe99ef1f9011308a1a549000538b35ab1cd68bc6f",
+        "8edcee428692989f201cc81c041e99460f5fd8a7fb22e7bb94537a7a53af39b5"
       ]
     },
     "training/vision_encoder/recipes/pretrain.py": {
@@ -3332,24 +3480,30 @@
         "2f44915e5baf26b89272a2f95435977a6e55cd5dbac8647c2f413cf520a7bee9",
         "3a9e2723a48db7ac0ee12993e415a70f3ed441443d0e9256a952d4539ef04278",
         "57b3bd7543016d01165fa0cd458552a41cbc9d12fdf5316b225b1947478ad097",
-        "a73d6926214f14a308850080730d384a039d70ade0acbafb59aba3a7c57e4795"
+        "a73d6926214f14a308850080730d384a039d70ade0acbafb59aba3a7c57e4795",
+        "70c49131f9ba37562df8cfc7ee45257c60cd6fb76951631f1c1b5e0cd8626e15",
+        "aac64d06b489b86865f6a9de4b5c12f188629b4cf70dfe32f51c436f3df70b8b",
+        "7cb1f54cf5bca6bf20d7e2f06e8b1d2ca15dad05befb93dff8286b471ef4688a",
+        "b4ec15a7e949aab16a3ae682875fd1b2cd160d432b422e825fb1327970607f05"
       ],
       "after": [
-        "2f44915e5baf26b89272a2f95435977a6e55cd5dbac8647c2f413cf520a7bee9",
-        "a0a9217b212b99772e57653a1e2c6e1aeb4d5df822c290991b51ed8a2dfa971f"
+        "012761f6278feff1035c74f250fc5c3ef628e0222eeecc4f9ffa81fa4f9ec9cb",
+        "287f8ccc3bc951092429dec2b512d4f350297e380d2250412e236c74ecf72adf"
       ]
     },
     "training/joint/README.md": {
-      "path": "training/joint/README.md",
+      "path": "training/connector_llm/README.md",
       "before": [
         "07a5710bc2c9dc6464a6aa320d5509123987c4947412819d3ddd8c54e77a0b2f",
+        "0e60a27121ba0ab0107659261d5f21cebac1b527a1d5db78156c9fde99330408",
         "163b0c244b78e682034186cdb05f370c1ab8cb9056130da824c22f1cb2d1b22f",
         "443865bdb6deb547367341c96e6c48f2cbc66991b3779e58d2c7ef238d343d48",
         "d891d9f359809c32824e4cbe77916a94be9d0b337e4cc1fb52be2cfa79c9a4ae"
       ],
       "after": [
-        "0e60a27121ba0ab0107659261d5f21cebac1b527a1d5db78156c9fde99330408",
-        "443865bdb6deb547367341c96e6c48f2cbc66991b3779e58d2c7ef238d343d48"
+        "2e8ddbce7336de3a5b87923b9e1c27cbbcfe428b3e4fdafb50295743802cd13e",
+        "e0fc355a53b58241a886798296733f6553d76c7355f0f74c848db7c0adc36505",
+        "e8bbb676731cf2e79ad3c065e5dd74ccbb9cbc70184233fd91c245e812f47d0e"
       ]
     },
     "training/vision_encoder/README.md": {
@@ -3594,7 +3748,8 @@
       ],
       "after": [
         "27c2fab482d80dfc8560ddc454586f3844de62d475f24c9a2ec55d540d5983ed",
-        "5b75363e4a26cefb5a936703ed4b34b38ac924db59a607a19c855aa6c0ab1321"
+        "5b75363e4a26cefb5a936703ed4b34b38ac924db59a607a19c855aa6c0ab1321",
+        "160b9cf59a3d1b2b94ba3666ce3f5f5e1f8f205ce6b821963db222de651b412f"
       ]
     }
   },
@@ -3667,11 +3822,9 @@
       "74128d517c31d253f9ee1d84f6c175ce56c4bc95c40724e8d1757d81047e8e4d",
       "95651518a3bba53fbe22f8da1a6cb0c07a3162caae1c7282eb855dfa2be3ba08"
     ],
-    "training/common/training_helper.py": [
-      "0158a4fd85f1f4548f23753ed4913e859082e8b219b4768b5863cc06aaeffbf6",
-      "17b720fbebd9e137dc108faf95442524ac4f1c2d5b7563205ecde8f9b72a0aec",
-      "98bd192c1442814956b2c95742b976bee939d34faafce86354921ac95d8553f7",
-      "f2f18af53f953d2c4d6d6422a0cbc69cb8e0d190c7de9e8276dd20f71232c733"
+    "training/common/runtime/__init__.py": [
+      "bb3bfc21351e768b226507aedab4d6a9057157db181d7f5a9c102d19fb278db3",
+      "5b7035cffd3e088e61a94488d935893ad67f0a573bbd0a64911e5d997e177505"
     ],
     "training/vision_encoder/recipes/pretrain.py": [
       "536dd44dec8d210eae56e325b97a44248fb93c228e22cab7bf3372a89a620b93",
@@ -3693,13 +3846,19 @@
       "464820974f914ed366429f3e1ff3b45e24d020151227ed8f836bb35c40e09182",
       "b428599806cd5eb7f77e662aad9d5f57c0221a67da133e2d4b5c5c1e4158324b"
     ],
-    "training/common/batching.py": [
-      "389e2f4e6bf7697d7b2c5721c0169148e6950d788e6f95d068008463b22908e3",
-      "6d898daa43198550c4cc1cbb2a81206bf8373490ae0988855cc2b46f2bdc81b9"
+    "training/common/runtime/batching.py": [
+      "1d3c05252925cc7ee2e28079b4f927e6044cb26d6eed79803fd828647ea8a652",
+      "d9166c7921aeabce49c0d85133623d6e098fe0046e7716a603da60828f419035"
     ],
     "training/common/checkpoints.py": [
       "2e8b0123d725be1e20dd241e32abd130d4bb98733d9752c72b8ef352d8e21e25",
-      "3b1e70a67fddce5f030ef1cbec83ff1168e817698a0b55642bea66589f7c5b38"
+      "3b1e70a67fddce5f030ef1cbec83ff1168e817698a0b55642bea66589f7c5b38",
+      "4faf604fb1a8a5c885827bc829bdafd74773fe954f0f7c41b1c19257e3554d1b",
+      "9a72270049b8447fa2604e86ad90863f1f6b4c95fbd63a40af51c6ae01423f33",
+      "f4700882f93fcb8f9755d0328c693dbac4d1cbb8e724570fe52dfbb6a9230193",
+      "760a6efbe1ae41fc1b3afa9aa13f994d7fa19bea083cd50561146550a117f496",
+      "5a147d136de4cac2042ced5f7c4d59484c56a8c3207b2502998071265b9f952e",
+      "506c75e387acd7aacb3d09d6128454f74920136cc6e86d0a8ce0020b9dc0d953"
     ],
     "training/common/logging.py": [
       "57b5ff0e4130edd503e5367933e6c1cfc3b680af05b8f671d1d27965c6164498",
@@ -3709,17 +3868,37 @@
       "5b624e5cb8423e4f265b54ff408be57cb52344a0e175f4b1ede69b05d69ffe1f",
       "d5e0972d05000c8981380873e18c98c303305a15f48794e5798ff2b4d4d69709"
     ],
-    "training/common/precision.py": [
-      "1e72638476bac34ec06eb3115a124f55a2164b72a93a14f324aa854e259401c3",
-      "5bdc8d94a2492f4c6db409f09cd3b33e716c45c44215ec7dc2a19ccb99170077"
+    "training/common/runtime/precision.py": [
+      "c3ea3306f9e27c30dab487c2a5410361a39c1e29c7db510f933c1b4f1b2aafd2",
+      "aa0b78a75877bea9f3a1697b2a63bc29e6c2cf6d320d67a39c60081059d86f9d"
     ],
-    "training/common/reproducibility.py": [
-      "c0bf0df6b028b508923d670802f26aee153ee45d5c5741fb095a61c1db04ab31",
-      "c1c204880aa06c7967c1dd4f0cd1caa3ca287a99a07455c8a36461930810fc8d"
+    "training/common/runtime/reproducibility.py": [
+      "717a2fd090098e2bf976f68eb9635b6a44591763d58200c9a8b1ca1b88ed55e7",
+      "5908a5bea18fc6c0c61212f155a1be38f59f8c40d805bc2927ccb6253525ddf3"
     ],
     "training/common/__init__.py": [
       "057b90d814c5bb46da1808bfe74816aae320751b2e08757d4266bf2aadc3b6f8",
       "6175a9d4f098292ccfe429e5b9c995a248b9a5f58d8546b6822f32045a026fc2"
+    ],
+    "training/connector_llm/training.py": [
+      "821f74843059946bf263985228993a45689edfc179eba688477e2653687e09a4",
+      "9ba5a13dbcb6b2730c08f648ce12e9249ec931323b4a7a01f7fc383171170174",
+      "fb632bcb40c5acc9cba95c4000cbe0814b0d70142f0d272700b8776438f90c0c",
+      "fe06edb5c990558a3c72856b030bfd4024fccd3e68012b73509e65936e990b32",
+      "7e05942758a389b22ca9333857898d32069c9d68e9e6e9de2c4d8d774ea0592b"
+    ],
+    "training/connector_llm/setup.py": [
+      "5bf8b91b914cf3e7b661c196a835b9016ab4c88d20b57c723c3dd412c4b9a74e",
+      "62dcbc7fb10ceb7b424611251f5970df2374c82062b513503ed07886f4b9bfb0",
+      "f81fa18e10198dd57cd1e6fd5815b5883fe67841071fe030ba26cb897dca2951"
+    ],
+    "training/connector_llm/__init__.py": [
+      "305df0f7885a8a37660b522b5b7297cef2998618c19e533296e631b298e0c2a5",
+      "efacf25008d819668c40a058cebe5e280af38298a4838f079ecc5518c1db2e82"
+    ],
+    "training/connector_llm/utils/__init__.py": [
+      "43851a7659c86b4ad369ae2fe99ef1f9011308a1a549000538b35ab1cd68bc6f",
+      "8edcee428692989f201cc81c041e99460f5fd8a7fb22e7bb94537a7a53af39b5"
     ],
     "training/connector/setup.py": [
       "b8875daef6dea1aa52ab322ee60afcb706538a17c267071e7a2a96ffb3405ad1",

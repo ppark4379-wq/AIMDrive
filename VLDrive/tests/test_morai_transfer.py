@@ -10,7 +10,7 @@ from data.src.loaders.morai_sensor_record_dataset import (
     child, digest, PathResolver, load_publications, validate_navigation_target,
     verify_admission_recovery,
 )
-from utils.training.morai_transfer_objective import multitask_loss
+from training.vision_encoder.losses.morai_transfer import multitask_loss
 from training.vision_encoder.recipes.transfer import object_selection_score, selected_training_indices
 
 class TransferTests(unittest.TestCase):

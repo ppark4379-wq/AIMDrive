@@ -120,7 +120,7 @@ def run_vldrive(args):
     from utils.common.runtime import bootstrap
     backend = bootstrap(ROOT)
     from models.vldrive import VLDriveTrainingConfig, VLDriveTrainingModel
-    from training.joint.training import (seed_all, subset_indices, stride_indices, source_hashes, parameter_hash,
+    from training.connector_llm.training import (seed_all, subset_indices, stride_indices, source_hashes, parameter_hash,
         preflight, evaluate, make_optimizer, train, save_checkpoint, restore_checkpoint,
         save_model_checkpoint, restore_model_checkpoint, periodic_checkpoint_path,
         warm_start_model_checkpoint)

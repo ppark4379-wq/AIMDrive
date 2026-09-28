@@ -1,4 +1,4 @@
-"""Small-data VLDrive training, independent validation and exact resume.
+"""Connector and LLM joint training, independent validation and exact resume.
 
 The CPU optimizer option offloads AdamW state/master copies, not model layers.
 It uses the same PyTorch FP32 AdamW calculation as the device optimizer.
@@ -16,10 +16,10 @@ import time
 
 import numpy as np
 import torch
-from training.common.precision import autocast
-from training.common.batching import batch, batch_samples, subset_indices
+from training.common.runtime.precision import autocast
+from training.common.runtime.batching import batch, batch_samples, subset_indices
 from training.common.logging import gradient_report
-from training.common.reproducibility import seed_all
+from training.common.runtime.reproducibility import seed_all
 from training.common.checkpoints import (parameter_hash, source_hashes,
     save_checkpoint, restore_checkpoint)
 from utils.evaluation.metrics import TrajectoryMetrics
@@ -28,8 +28,8 @@ from training.common.logging import TrainingTelemetry
 
 ROOT = Path(__file__).resolve().parents[2]
 
-from training.common.batching import stride_indices, balanced_training_indices
-from training.common.reproducibility import preserve_rng_state
+from training.common.runtime.batching import stride_indices, balanced_training_indices
+from training.common.runtime.reproducibility import preserve_rng_state
 from training.common.optimizers import _optimizer_parameter_groups, set_cosine_learning_rate, CPUAdamW, make_optimizer
 from training.common.checkpoints import periodic_checkpoint_path, save_model_checkpoint, restore_model_checkpoint, warm_start_model_checkpoint
 

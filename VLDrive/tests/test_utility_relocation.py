@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from utils.common.source_compatibility import equivalent_provenance, source_matches, source_path
-from utils.training.training_helper import source_hashes
+from training.common.checkpoints import source_hashes
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = json.loads((ROOT / 'utils/common/source_relocations.json').read_text())
@@ -49,7 +49,7 @@ def test_resume_normalizes_paths_but_keeps_dataset_identity_strict():
 
 def test_training_manifest_includes_nested_sources_without_ui():
     names = {name.replace('\\', '/') for name in source_hashes(ROOT)}
-    assert {'training/joint/training.py', 'utils/training/training_helper.py',
+    assert {'training/connector_llm/training.py', 'training/common/checkpoints.py',
             'utils/common/runtime.py', 'utils/evaluation/metrics.py',
             'utils/config/vision_encoder_config.py',
             'utils/visualization/training_dashboard/telemetry.py'} <= names
