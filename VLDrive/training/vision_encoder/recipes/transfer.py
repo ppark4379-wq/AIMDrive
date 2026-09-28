@@ -19,7 +19,7 @@ from training.vision_encoder.setup import make_model, configure_trainable_scope,
 from data.src.loaders.morai_sensor_record_dataset import (
     PathResolver, load_publications, SensorRecordDataset, digest)
 from data.src.loaders.morai_encoder_contract import sensor_record_encoder_contract
-from inference.morai_route import navigation_recipe
+from inference.navigation.morai_route import navigation_recipe
 from training.vision_encoder.losses.morai_transfer import multitask_loss, DETECTION_LOSS_POLICIES
 from training.vision_encoder.utils.morai_transfer_metrics import evaluate, to_device
 
@@ -202,7 +202,7 @@ def run(args):
                     sorted((ROOT/'data/src/loaders').glob('morai_transfer*.py'))+
                     [ROOT/'data/src/loaders/morai_sensor_record_dataset.py',ROOT/'data/src/loaders/morai_gps_speed.py',
                      ROOT/'data/src/loaders/morai_encoder_contract.py',
-                     ROOT/'inference/morai_route.py',
+                     ROOT/'inference/navigation/morai_route.py',
                      ROOT/'training/vision_encoder/losses/morai_transfer.py',
                      ROOT/'training/vision_encoder/utils/morai_transfer_metrics.py']}
     provenance=dict(schema='morai_visual_transfer_v1',args=vars(args),coverage=coverage,

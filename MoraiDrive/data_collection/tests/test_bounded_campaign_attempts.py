@@ -464,105 +464,190 @@ class BoundedCampaignSelectionTests(unittest.TestCase):
                  if row["training_usable"]], [1, 3])
             self.assertTrue((campaign / "lap_results.csv").is_file())
 
-    def test_validator_cleans_and_excludes_a_validation_failed_lap(self):
+    def run_validation_failure(self, temporary, extra_arguments=()):
+        """Validate three captured laps where lap 2 fails; return its evidence."""
+        root = Path(temporary)
+        base = root / "sensor_record_auto_v1"
+        campaign = base / "campaigns" / "validation_failure"
+        campaign.mkdir(parents=True)
+        (campaign / "campaign_plan.json").write_text(json.dumps({
+            "requested_laps": 3,
+            "scenario_name": "full_loop_static",
+        }))
+        header = (
+            "lap\tseed\trun_name\tstatus\tweather\ttime_hour\t"
+            "static_obstacle\tdynamic_obstacle\tstarted_utc\tfinished_utc\n"
+        )
+        rows = "".join(
+            "%d\t%d\tvalidation_lap_%03d\tcaptured\tSUNNY\t11\t"
+            "CargoBox\tOFF\ta\tb\n" % (lap, 20 + lap, lap)
+            for lap in range(1, 4)
+        )
+        (campaign / "runs.tsv").write_text(header + rows)
+        (campaign / "COLLECTION_COMPLETE.json").write_text(json.dumps({
+            "scenario_name": "full_loop_static",
+            "attempted_laps": 3,
+            "captured_laps": 3,
+            "failed_laps": 0,
+        }))
+        failed_run = base / "validation_lap_002"
+        native = base / "native_sessions" / failed_run.name
+        coordination = (
+            failed_run / "episode_000" / "sensor_record_coordination")
+        chunks = failed_run / "episode_000" / "raw" / "chunks"
+        coordination.mkdir(parents=True)
+        chunks.mkdir(parents=True)
+        native.mkdir(parents=True)
+        (coordination / "recording_stopped.json").write_text(json.dumps({
+            "status": "stopped", "record_on": False, "error": None,
+        }))
+        (failed_run / "native_setup.json").write_text(json.dumps({
+            "native_root": str(native),
+        }))
+        (chunks / "payload.bin").write_bytes(b"raw")
+        for role in NATIVE_ROLES:
+            directory = native / role
+            directory.mkdir()
+            (directory / "payload.bin").write_bytes(b"native")
+
+        def fake_validate(row, _scenario, *_args, **_kwargs):
+            number = int(row["lap"])
+            valid = number != 2
+            return {
+                "lap": number,
+                "seed": int(row["seed"]),
+                "run_name": row["run_name"],
+                "run": str(base / row["run_name"]),
+                "weather": "SUNNY",
+                "time_hour": 11,
+                "static_obstacle": "CargoBox",
+                "dynamic_obstacle": "OFF",
+                "frames": 10,
+                "dataset_build_candidates": 8,
+                "excluded_frames": 2,
+                "native_files": 70,
+                "native_bytes": 1000,
+                "errors": [] if valid else ["synthetic cadence failure"],
+                "checks": {"synthetic": valid},
+                "valid": valid,
+            }
+
+        def temporary_cleanup(*args, **kwargs):
+            kwargs["require_storage"] = False
+            return cleanup_failed_attempt(*args, **kwargs)
+
+        arguments = [
+            "validate_sensor_record_campaign.py", "validation_failure",
+            "--no-prepare-training", "--no-nas-copy", *extra_arguments,
+        ]
+        with patch.object(validator, "BASE", base), \
+                patch.object(validator, "resolve_campaign", return_value=campaign), \
+                patch.object(validator, "complete_offline_review"), \
+                patch.object(validator, "validate_lap", side_effect=fake_validate), \
+                patch.object(validator, "cleanup_failed_attempt",
+                             side_effect=temporary_cleanup), \
+                patch.object(validator, "probe_analysis_environment",
+                             return_value={"valid": True}), \
+                patch.object(validator, "windows_path",
+                             side_effect=lambda path: "C:\\\\test\\" + Path(path).name), \
+                patch.object(sys, "argv", arguments):
+            validator.main()
+
+        report_path = next(campaign.glob("validation_*/report.json"))
+        report = json.loads(report_path.read_text())
+        self.assertTrue(report["valid"])
+        self.assertEqual(report["validation_failed_laps"], [2])
+        self.assertEqual(report["completed_valid_laps"], 2)
+        failed_lap = report["laps"][1]
+        self.assertFalse(failed_lap["training_usable"])
+        return report, failed_lap, failed_run, chunks, native
+
+    def test_validator_retains_payload_of_a_validation_failed_lap_by_default(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            base = root / "sensor_record_auto_v1"
-            campaign = base / "campaigns" / "validation_failure"
-            campaign.mkdir(parents=True)
-            (campaign / "campaign_plan.json").write_text(json.dumps({
-                "requested_laps": 3,
-                "scenario_name": "full_loop_static",
-            }))
-            header = (
-                "lap\tseed\trun_name\tstatus\tweather\ttime_hour\t"
-                "static_obstacle\tdynamic_obstacle\tstarted_utc\tfinished_utc\n"
-            )
-            rows = "".join(
-                "%d\t%d\tvalidation_lap_%03d\tcaptured\tSUNNY\t11\t"
-                "CargoBox\tOFF\ta\tb\n" % (lap, 20 + lap, lap)
-                for lap in range(1, 4)
-            )
-            (campaign / "runs.tsv").write_text(header + rows)
-            (campaign / "COLLECTION_COMPLETE.json").write_text(json.dumps({
-                "scenario_name": "full_loop_static",
-                "attempted_laps": 3,
-                "captured_laps": 3,
-                "failed_laps": 0,
-            }))
-            failed_run = base / "validation_lap_002"
-            native = base / "native_sessions" / failed_run.name
-            coordination = (
-                failed_run / "episode_000" / "sensor_record_coordination")
-            chunks = failed_run / "episode_000" / "raw" / "chunks"
-            coordination.mkdir(parents=True)
-            chunks.mkdir(parents=True)
-            native.mkdir(parents=True)
-            (coordination / "recording_stopped.json").write_text(json.dumps({
-                "status": "stopped", "record_on": False, "error": None,
-            }))
-            (failed_run / "native_setup.json").write_text(json.dumps({
-                "native_root": str(native),
-            }))
-            (chunks / "payload.bin").write_bytes(b"raw")
-            for role in NATIVE_ROLES:
-                directory = native / role
-                directory.mkdir()
-                (directory / "payload.bin").write_bytes(b"native")
+            report, failed_lap, failed_run, chunks, native = self.run_validation_failure(temporary)
+            self.assertEqual(failed_lap["payload_cleanup"]["status"], "retained")
+            self.assertFalse((failed_run / "FAILED_ATTEMPT.json").exists())
+            self.assertEqual([path.name for path in chunks.iterdir()], ["payload.bin"])
+            self.assertTrue(all((native / role / "payload.bin").is_file() for role in NATIVE_ROLES))
+            from nas_publish import retained_invalid_runs
+            self.assertEqual(retained_invalid_runs(report), [failed_run.name])
 
-            def fake_validate(row, _scenario, *_args, **_kwargs):
-                number = int(row["lap"])
-                valid = number != 2
-                return {
-                    "lap": number,
-                    "seed": int(row["seed"]),
-                    "run_name": row["run_name"],
-                    "run": str(base / row["run_name"]),
-                    "weather": "SUNNY",
-                    "time_hour": 11,
-                    "static_obstacle": "CargoBox",
-                    "dynamic_obstacle": "OFF",
-                    "frames": 10,
-                    "dataset_build_candidates": 8,
-                    "excluded_frames": 2,
-                    "native_files": 70,
-                    "native_bytes": 1000,
-                    "errors": [] if valid else ["synthetic cadence failure"],
-                    "checks": {"synthetic": valid},
-                    "valid": valid,
-                }
-
-            def temporary_cleanup(*args, **kwargs):
-                kwargs["require_storage"] = False
-                return cleanup_failed_attempt(*args, **kwargs)
-
-            arguments = [
-                "validate_sensor_record_campaign.py", "validation_failure",
-                "--no-prepare-training", "--no-nas-copy",
-            ]
-            with patch.object(validator, "BASE", base), \
-                    patch.object(validator, "resolve_campaign", return_value=campaign), \
-                    patch.object(validator, "complete_offline_review"), \
-                    patch.object(validator, "validate_lap", side_effect=fake_validate), \
-                    patch.object(validator, "cleanup_failed_attempt",
-                                 side_effect=temporary_cleanup), \
-                    patch.object(validator, "probe_analysis_environment",
-                                 return_value={"valid": True}), \
-                    patch.object(validator, "windows_path",
-                                 side_effect=lambda path: "C:\\\\test\\" + Path(path).name), \
-                    patch.object(sys, "argv", arguments):
-                validator.main()
-
-            report_path = next(campaign.glob("validation_*/report.json"))
-            report = json.loads(report_path.read_text())
-            self.assertTrue(report["valid"])
-            self.assertEqual(report["validation_failed_laps"], [2])
-            self.assertEqual(report["completed_valid_laps"], 2)
-            failed_lap = report["laps"][1]
-            self.assertFalse(failed_lap["training_usable"])
+    def test_validator_cleans_a_validation_failed_lap_only_when_requested(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            report, failed_lap, failed_run, chunks, _ = self.run_validation_failure(
+                temporary, ["--delete-invalid-payload"])
             self.assertEqual(failed_lap["payload_cleanup"]["status"], "completed")
             self.assertTrue((failed_run / "FAILED_ATTEMPT.json").is_file())
             self.assertEqual(list(chunks.iterdir()), [])
+            from nas_publish import retained_invalid_runs
+            self.assertEqual(retained_invalid_runs(report), [])
+
+
+class LapPolicyEvidenceTests(unittest.TestCase):
+    CLEAR = {"status": "mission_completed", "full_mission_completed": True,
+             "collision_summary": {"contact_events": 0, "nonempty_contact_observations": 0}}
+
+    @staticmethod
+    def stream(*counts):
+        return [{"role": "collision", "signal": {"objects": a, "objects_a": b}} for a, b in counts]
+
+    def test_collision_free_requires_clear_supervisor_and_every_raw_message(self):
+        self.assertTrue(validator.collision_evidence(
+            self.CLEAR, self.stream((0, 0), (0, 0)))["collision_free"])
+        # A brief touch that the supervisor sampling missed.
+        missed = validator.collision_evidence(self.CLEAR, self.stream((0, 0), (1, 0), (0, 0)))
+        self.assertFalse(missed["collision_free"])
+        self.assertEqual(missed["collision_stream_contacts"], 1)
+        touched = dict(self.CLEAR, status="diagnostic_lap_completed_with_collisions",
+                       collision_summary={"contact_events": 1, "nonempty_contact_observations": 3})
+        self.assertFalse(validator.collision_evidence(touched, self.stream((0, 0)))["collision_free"])
+
+    def test_missing_or_undecoded_collision_evidence_fails_closed(self):
+        self.assertFalse(validator.collision_evidence(self.CLEAR, [])["collision_free"])
+        self.assertFalse(validator.collision_evidence(
+            {"status": "mission_completed"}, self.stream((0, 0)))["collision_free"])
+        undecoded = self.stream((0, 0)) + [{"role": "collision", "signal": None}]
+        self.assertFalse(validator.collision_evidence(self.CLEAR, undecoded)["collision_free"])
+
+    def test_static_lane_markings_are_checked_only_on_the_static_segment(self):
+        self.assertIsNone(validator.static_lane_evidence("full_loop", []))
+        missing = validator.static_lane_evidence("full_loop_static", self.stream((0, 0)))
+        self.assertFalse(missing["passed"])
+        self.assertEqual(missing["reasons"], ["ego_trace_missing"])
+        # The official route through the segment keeps clear of every solid line.
+        from scenario_runner.tools import static_lane_compliance as lane
+        route, first_index = lane.load_route()
+        rows = []
+        for index in range(len(route) - 1):
+            _, tangent, _ = lane.route_pose(route, first_index, first_index + index)
+            yaw = float(lane.np.arctan2(tangent[1], tangent[0]))
+            rows.append({"role": "ego", "source_timestamp_ns": index,
+                         "signal": {"position": [float(v) for v in route[index]] + [0.0], "yaw": yaw}})
+        clear = validator.static_lane_evidence("full_loop_static", rows)
+        self.assertTrue(clear["passed"], clear["reasons"])
+        self.assertEqual(clear["avoidance_class"], "small")
+
+    def test_environment_options_come_from_the_recorded_configuration(self):
+        setup = {"scenario_config": {"profiles": [{"weather": "SUNNY"}, {"weather": "RAINY"}],
+                                     "scenario_times": [11, 17]}}
+        self.assertEqual(validator.configured_environment(setup), ({"SUNNY", "RAINY"}, {11, 17}))
+        self.assertEqual(validator.configured_environment({}),
+                         ({"SUNNY", "FOGGY"}, {11, 13, 15}))
+
+    def test_nas_only_accepts_a_direct_layout_report(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            metadata = Path(temporary) / "static_obstacle" / "campaign" / "_campaign"
+            report = metadata / "validations" / "validation_1" / "report.json"
+            report.parent.mkdir(parents=True)
+            report.write_text("{}")
+            import nas_publish
+            with patch.object(validator, "resolve_campaign", return_value=metadata), \
+                    patch.object(validator, "is_direct_campaign_metadata", return_value=True), \
+                    patch.object(nas_publish, "publish_validated", return_value={"ok": True}) as publish, \
+                    patch.object(sys, "argv", ["validate_sensor_record_campaign.py", "campaign",
+                                               "--nas-only", str(report)]):
+                validator._main()
+            publish.assert_called_once()
 
 
 if __name__ == "__main__":

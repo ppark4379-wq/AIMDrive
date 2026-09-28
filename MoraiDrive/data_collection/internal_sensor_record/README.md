@@ -45,6 +45,14 @@ MoraiDrive 루트에서 다음 entrypoint를 순서대로 사용한다.
 ./data_collection/tools/03_validate_internal_sensor_record.sh campaign_name
 ```
 
+03번에서 검증에 실패한 회차는 학습과 NAS 복사에서 제외되지만 원본은 로컬에 보존된다.
+충돌(감독 샘플 또는 녹화된 `/CollisionData` 중 하나라도 접촉)이 있으면 `collision_free`
+검사로 실패한다. `full_loop_static` 회차는 녹화된 Ego 궤적의 차체가 실선(정지선 제외)이나
+교차로 중앙선 연장 유도선에 닿거나 경로 오른쪽 4.0 m를 넘으면 `static_lane_markings_clear`로
+실패한다(`scenario_runner/tools/static_lane_compliance.py`). 원인을 확인한 뒤 공간을 회수하려면 `--delete-invalid-payload`를 붙여 다시
+실행한다. 수집 중에는 시뮬레이션 시간 180초 동안 경로 진행이 2m 미만이거나 경로를 10초 이상
+벗어나면 그 회차를 즉시 실패로 끝낸다.
+
 02번은 메인 `scenario_runner`의 6개 시나리오를 직접 선택할 수 있다. 첫 번째 인자는
 회차 수이며, `--scenario`를 생략하면 기존과 동일하게 `full_loop`를 실행한다.
 

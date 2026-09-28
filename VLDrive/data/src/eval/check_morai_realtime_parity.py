@@ -18,8 +18,8 @@ import torch
 
 from data.src.loaders.morai_sensor_record_dataset import SensorRecordDataset, PathResolver, digest, read_json
 from data.src.loaders.morai_encoder_contract import LiveInputAdapter, sensor_record_encoder_contract
-from inference.live_frame import LiveFrameSource
-from inference.morai_route import navigation_recipe, official_route_tracker
+from inference.sensors.live_frame import LiveFrameSource
+from inference.navigation.morai_route import navigation_recipe, official_route_tracker
 
 
 class RecordedReceiver:

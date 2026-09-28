@@ -139,7 +139,7 @@ def test_packet_exactly_matches_vendored_morai_ctypes(monkeypatch):
 
 @pytest.mark.parametrize('competition',[False,True])
 def test_morai_udp_speed_is_signed_longitudinal_mps(competition):
-    from inference.morai_udp import VehicleStatusReceiver, VehicleStatusPacket, CompetitionVehicleStatusPacket
+    from inference.sensors.morai_udp import VehicleStatusReceiver, VehicleStatusPacket, CompetitionVehicleStatusPacket
     cls = CompetitionVehicleStatusPacket if competition else VehicleStatusPacket
     packet = cls();packet.header = b'#MoraiInfo$'
     packet.signed_vel = 36.;packet.vel_x = -12.;packet.vel_y = 33.
@@ -338,7 +338,7 @@ def test_insufficient_remaining_path_stops_even_between_lateral_ticks(controller
 
 
 def test_control_cli_configuration_requires_live_pose():
-    from inference.realtime_vldrive import validate_config as validate_live
+    from inference.realtime.realtime_vldrive import validate_config as validate_live
     cfg = json.loads((ROOT/'../AIM2026/Inference/vldrive_realtime.json').read_text())
     cfg['control']['enabled'] = True
     validate_live(cfg)
@@ -348,7 +348,7 @@ def test_control_cli_configuration_requires_live_pose():
 
 def test_live_pipeline_publishes_actual_predict_result_and_closes_control_first(monkeypatch, tmp_path):
     import torch
-    from inference import live_pipeline as pipeline
+    from inference.realtime import live_pipeline as pipeline
     cfg = json.loads((ROOT/'../AIM2026/Inference/vldrive_realtime.json').read_text())
     cfg.pop('navigation_token_config', None)  # No real tokenizer in this pipeline fixture.
     cfg['runtime'].update(device='cpu',history_tolerance_s=.019,max_age_s=1.,resample_history=False)

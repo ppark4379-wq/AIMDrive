@@ -1,4 +1,4 @@
-"""Shared helpers grouped into common, training, evaluation, config and visualization.
+"""Shared helpers grouped into common, evaluation, config and visualization.
 
-The Stage-2 training loop lives in training/training.py.
+Training code lives under the top-level training package.
 """

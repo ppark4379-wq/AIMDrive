@@ -1,11 +1,11 @@
 # VLDrive live waypoint display
 
-`inference/realtime_vldrive.py`가 자동 실행하는 로컬 읽기 전용 화면이다. 이 폴더는 HTTP 화면과 그 표시 상태만 담당한다. 모델/UDP 수신은 `inference/`, 경로와 자연어 생성은 `navigation/`, 실행 설정은 `configs/`에 있다.
+`inference/realtime/realtime_vldrive.py`가 자동 실행하는 로컬 읽기 전용 화면이다. 이 폴더는 HTTP 화면과 그 표시 상태만 담당한다. 모델/UDP 수신은 `inference/`, 경로와 자연어 생성은 `navigation/`, 실행 설정은 `configs/`에 있다.
 
 WSL `(lmdrive)`의 VLDrive 폴더에서:
 
 ```bash
-python inference/realtime_vldrive.py --config ../AIM2026/Inference/vldrive_realtime.json
+python inference/realtime/realtime_vldrive.py --config ../AIM2026/Inference/vldrive_realtime.json
 ```
 
 브라우저 기본 주소는 `http://127.0.0.1:8502`이며 실행 시 자동으로 열린다. `--no-browser`는 자동 열기만 끈다. `visualization.enabled=false`는 서버를 끈다. `--probe-only --duration 8 --no-browser`는 모델을 로드하지 않고 센서 수신만 확인한다.
@@ -31,7 +31,7 @@ GPS/status가 오래되거나 route에서 벗어나면 navigation을 사용할 �
 현재 MORAI가 Windows localhost로 보내고 WSL에서 추론하는 중계 구성은 `configs/inference/vldrive_udp_relay.json`이다. 기존 중계가 실행 중이면 중복 실행하지 않는다. 새로 시작할 때는 Windows의 VLDrive 폴더에서:
 
 ```powershell
-python inference/udp_relay.py --config configs/inference/vldrive_udp_relay.json
+python inference/sensors/udp_relay.py --config configs/inference/vldrive_udp_relay.json
 ```
 
 이 중계는 JPEG 내용은 그대로 두고 카메라 datagram만 1,400 bytes 이하로 나눠 IP 단편화에 따른 누락을 줄인다. LiDAR/GPS/status/IMU 내용은 바꾸지 않는다. `to`는 현재 WSL 주소이며 재시작으로 주소가 바뀌면 `wsl -d Ubuntu-20.04 -- hostname -I` 결과에 맞춰 설정한다. 별도의 기존 GPS 전용 중계가 필요한 현재 센서 설정은 유지한다.

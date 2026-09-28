@@ -346,5 +346,150 @@ class StaticScenarioBatchTest(unittest.TestCase):
                 )
 
 
+class LaneAwarePlacementTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.policy = batch.load_lane_policy(batch.load_generation_policy())
+
+    def test_models_are_limited_to_the_verified_footprint_catalog(self):
+        catalog = batch.load_footprints()["models"]
+        self.assertTrue(self.policy["models"])
+        self.assertTrue(set(self.policy["models"]) <= set(catalog))
+        self.assertIn("Color_Cone", self.policy["models_without_footprint"])
+        self.assertNotIn("Color_Cone", self.policy["models"])
+
+    def test_layouts_follow_their_trajectory_target_on_both_sides(self):
+        rng = random.Random(3)
+        strata = {}
+        route, first_index = self.policy["route"]
+        yaw = -83.219
+        pools = {target: batch.target_models_for(self.policy, target, yaw)
+                 for target in batch.AVOIDANCE_TARGETS}
+        for attempt in range(160):
+            target = batch.AVOIDANCE_TARGETS[attempt % 4]
+            count = 1 + attempt % 3 if target != "late" else 2 + attempt % 2
+            required = pools[target][attempt % len(pools[target])]
+            try:
+                obstacles = batch.generate_lane_layout(self.policy, rng, count, target, required, strata)
+            except RuntimeError:
+                # Two wide right-side boxes cannot stand side by side at the zone start.
+                self.assertEqual((target, count), ("late", 3))
+                self.assertIn(required, ("NCAP_GVT", "Steel_Barricade"))
+                continue
+            self.assertEqual(len(obstacles), count)
+            self.assertIn(required, [item["model"] for item in obstacles])
+            self.assertEqual(len({item["model"] for item in obstacles}), count)
+            generation = [item["generation"] for item in obstacles]
+            roles = [row["placement_role"] for row in generation]
+            names = [row["lateral_stratum"] for row in generation]
+            if target == "straight":
+                # Every box leaves right_01 (0.3 m) clear; several mix near and far.
+                self.assertEqual(set(roles), {"clear_01"})
+                self.assertTrue(all(row["right_01_right_clearance_m"] >= batch.MEDIUM_CLEARANCE_M - 1e-3
+                                    for row in generation))
+                if count > 1:
+                    self.assertEqual(set(names), {"right_near", "right_far"})
+            elif target == "small":
+                self.assertIn("lane_small", roles)
+                if count > 1:
+                    self.assertIn("clear_02", roles)  # never all boxes on the left
+                for row in generation:
+                    if row["placement_role"] == "lane_small":
+                        self.assertGreaterEqual(row["right_02_clearance_m"], batch.SMALL_CLEARANCE_M - 1e-3)
+                    else:
+                        self.assertGreaterEqual(row["right_02_right_clearance_m"],
+                                                batch.MEDIUM_CLEARANCE_M - 1e-3)
+            elif target == "medium":
+                self.assertTrue({"right", "centre"} & set(names))
+                if count > 1:
+                    self.assertGreaterEqual(len(set(names) | {row["lane_fit"] for row in generation}), 2)
+            else:
+                # Right-side boxes close every recording but right_01 early; the lane box comes last.
+                self.assertEqual(roles, ["block_02", "lane_late"] if count == 2
+                                 else ["block_far", "block_02", "lane_late"])
+                self.assertGreaterEqual(generation[-1]["right_edge_route_lateral_m"],
+                                        batch.LATE_LANE_RIGHT_EDGE_MIN_M - 1e-3)
+                self.assertGreaterEqual(generation[-1]["longitudinal_fraction"], 0.85)
+                blocked = set()
+                for row in generation[:-1]:
+                    self.assertLessEqual(row["longitudinal_fraction"], 0.12)
+                    self.assertGreaterEqual(row["right_01_right_clearance_m"],
+                                            batch.MEDIUM_CLEARANCE_M - 1e-3)
+                    blocked.update(row["blocks_routes"])
+                self.assertLessEqual(set(batch.BLOCKED_ROUTES[:3]), blocked)
+                self.assertLessEqual(generation[-2]["right_02_right_clearance_m"],
+                                     batch.BLOCKING_MAX_CLEARANCE_M + 1e-3)
+            for item, row in zip(obstacles, generation):
+                self.assertEqual(item["scale"], [1.0, 1.0, 1.0])
+                self.assertGreaterEqual(row["right_edge_route_lateral_m"], batch.RIGHT_ROAD_LIMIT_M - 1e-3)
+                if row["placement_role"] in batch.LANE_ROLES:
+                    # No lane box forces a swing beyond right_03 (right_04/05 is about 5 m).
+                    self.assertGreaterEqual(row["right_03_clearance_m"], batch.MEDIUM_CLEARANCE_M - 1e-3)
+                    left_limit = row["lane_left_bound_m"] - batch.LANE_EDGE_MARGIN_M
+                    if row["lane_fit"] == "inside":
+                        self.assertLessEqual(row["left_edge_route_lateral_m"], left_limit + 1e-3)
+                    else:
+                        self.assertEqual(row["lane_fit"], "covers_centre_line")
+                        index = 660.0 + 20.0 * row["longitudinal_fraction"]
+                        self.assertFalse(batch.lateral_window(
+                            self.policy, item["model"], index, item["yaw_deg"])["fits"])
+                else:
+                    self.assertEqual(row["lane_fit"], "right_of_path")
+                _, lateral = batch.lane.route_frame(
+                    batch.np.array([[item["position"]["x"], item["position"]["y"]]]),
+                    route, first_index)
+                self.assertAlmostEqual(lateral[0], row["route_lateral_m"], places=3)
+                self.assertTrue(660 <= item["route_path_index"] <= 680)
+        self.assertEqual({key.split(":")[0] for key in strata}, set(batch.AVOIDANCE_TARGETS))
+
+    def test_strata_follow_the_recorded_route_envelopes(self):
+        middle, yaw = 670.0, -83.219
+        overhang = [model for model in self.policy["models"]
+                    if not batch.lateral_window(self.policy, model, middle, yaw)["fits"]]
+        self.assertEqual(sorted(overhang), ["Rockslide", "Steel_Barricade", "concrete-barrier"])
+        small = batch.lateral_window(self.policy, "Bollard01", middle, yaw)
+        self.assertEqual(batch.feasible_strata(small), ["right", "centre", "left"])
+        # right_02 has barely swung out at the zone start, so a bicycle there
+        # cannot leave it room; mid-zone it can.
+        start = batch.lateral_window(self.policy, "Bike1", 661.0, yaw)
+        self.assertNotIn("left", batch.feasible_strata(start))
+        self.assertIn("left", batch.feasible_strata(batch.lateral_window(self.policy, "Bike1", 672.0, yaw)))
+        # right_03 is still swinging out at the zone start: the lowest right edge is higher there.
+        self.assertGreater(start["right_edge_min"], small["right_edge_min"] + 0.5)
+        self.assertEqual(set(self.policy["expert_routes"]),
+                         {"right_01.csv"} | set(batch.BLOCKED_ROUTES))
+
+    def test_boxes_must_be_separated_along_or_across_the_route(self):
+        near = [(660.0, (-0.8, 0.8), -0.5, 0.5), (662.0, (-0.8, 0.8), -0.4, 0.6)]
+        self.assertFalse(batch._boxes_separated(near))
+        beside = [(660.0, (-0.8, 0.8), -1.5, -0.8), (662.0, (-0.8, 0.8), -0.4, 0.6)]
+        self.assertTrue(batch._boxes_separated(beside))
+        apart = [(660.0, (-0.8, 0.8), -0.5, 0.5), (665.0, (-0.8, 0.8), -0.4, 0.6)]
+        self.assertTrue(batch._boxes_separated(apart))
+
+    def test_attempt_cell_fills_the_fewest_accepted_count_and_target(self):
+        accepted = {"{}:{}".format(c, t): 3 for c in (1, 2) for t in batch.AVOIDANCE_TARGETS}
+        accepted.update({"1:small": 2, "1:medium": 1, "2:small": 1, "2:medium": 1})
+        manifest = {"accepted_cell_counts": accepted,
+                    "attempted_cell_counts": {"1:medium": 4, "2:small": 1, "2:medium": 2}}
+        self.assertEqual(batch.choose_attempt_cell(manifest, range(1, 3), random.Random(0)),
+                         (2, "small"))
+        # A late layout needs two boxes, and weights scale the shares.
+        empty = {"accepted_cell_counts": {"{}:{}".format(c, t): 10 for c in (1, 2, 3)
+                                          for t in batch.AVOIDANCE_TARGETS},
+                 "attempted_cell_counts": {}}
+        weights = batch.parse_avoidance_weights("1,1,1,100")
+        self.assertEqual(batch.choose_attempt_cell(empty, range(1, 4), random.Random(0), weights)[1],
+                         "late")
+        self.assertNotEqual(batch.choose_attempt_cell(empty, range(1, 2), random.Random(0), weights)[1],
+                            "late")
+
+    def test_missing_ego_trace_rejects_the_candidate(self):
+        result = batch.evaluate_lane_trace(Path("/nonexistent/trace.csv"), {})
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["reasons"], ["ego_trace_missing"])
+        self.assertEqual(batch.lane_summary(result)["reasons"], ["ego_trace_missing"])
+
+
 if __name__ == "__main__":
     unittest.main()

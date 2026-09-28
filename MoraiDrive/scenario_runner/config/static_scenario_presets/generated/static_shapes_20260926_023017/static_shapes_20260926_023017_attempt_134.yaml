@@ -1,0 +1,95 @@
+schema: morai_static_obstacle_preset_v1
+name: static_shapes_20260926_023017_attempt_134
+map_name: R_KR_PR_K-city_2025
+scenario: full_loop_static
+source: automated_static_expert_verified
+generation:
+  batch_seed: 424646920247341387
+  attempt: 134
+  candidate_only_until_expert_passes: false
+  scale_policy: morai_native_model_scale_v1
+  placement_policy: lane_aware_right_edge_strata_v1
+  avoidance_target: medium
+  footprint_catalog_sha256: 83e6ae9bab5d7a89e0958952181cbaf62c798036fc9c5b4aa94db5588f20416f
+obstacles:
+- model: Bicycle_city
+  position:
+    x: -60.779271
+    y: -145.911289
+    z: 28.376339
+  yaw_deg: -83.219
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 661
+  generation:
+    longitudinal_fraction: 0.04835726
+    lateral_offset_m: 0.178462
+    route_lateral_m: 0.930426
+    right_edge_route_lateral_m: 0.4355
+    left_edge_route_lateral_m: 1.3196
+    placement_role: lane_any
+    lateral_stratum: centre
+    lane_fit: inside
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+    lane_left_bound_m: 1.6969
+    right_02_clearance_m: 0.0812
+    right_03_clearance_m: 1.2936
+- model: Rockslide
+  position:
+    x: -61.705609
+    y: -136.881037
+    z: 28.382661
+  yaw_deg: -83.219
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 679
+  generation:
+    longitudinal_fraction: 0.95154116
+    lateral_offset_m: 1.08965
+    route_lateral_m: 1.841614
+    right_edge_route_lateral_m: -0.4966
+    left_edge_route_lateral_m: 4.1798
+    placement_role: lane_block
+    lateral_stratum: right
+    lane_fit: covers_centre_line
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+    lane_left_bound_m: 1.7284
+    right_02_clearance_m: -0.5393
+    right_03_clearance_m: 1.2441
+verification:
+  expert_completed: true
+  collision_free: true
+  runner_return_code: 0
+  max_cross_track_error_m: 3.31
+  cross_track_limit_m: 4.0
+  valid_plan_samples: 24
+  selected_routes:
+  - right_03.csv
+  lane_compliance:
+    passed: true
+    reasons: []
+    raw_samples: 752
+    max_sample_gap_m: 0.974
+    route_index_span:
+    - 487.1
+    - 752.1
+    min_marking_clearance_m: 0.16
+    closest_marking: B2256W000592:501:solid
+    touched_markings: []
+    max_right_deviation_m: 3.414
+    max_left_deviation_m: 0.094
+    avoidance_class: medium
+    trajectory_class: medium
+    swing_onset_route_index: 647.3
+    peak_route_index: 674.6
+    markings_source_sha256: f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb
+  verified_at_unix: 1790363362.914938
+  log: scenario_runner/.runtime/static_scenario_batch/static_shapes_20260926_023017/logs/static_shapes_20260926_023017_attempt_134.log
+  ego_trace: scenario_runner/.runtime/static_scenario_batch/static_shapes_20260926_023017/traces/static_shapes_20260926_023017_attempt_134.csv
+  ego_trace_sha256: 955d33af17bd2b710434eb429918449927264bc19ead1804d5d6977a6b1a5fa5

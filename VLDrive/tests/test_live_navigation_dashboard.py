@@ -10,9 +10,9 @@ import urllib.request
 import pytest
 import torch
 
-from inference.live_pipeline import current_window
-from inference.realtime_vldrive import validate_config
-from inference.vldrive_runtime import TokenHistory
+from inference.realtime.live_pipeline import current_window
+from inference.realtime.realtime_vldrive import validate_config
+from inference.runtime.vldrive_runtime import TokenHistory
 from navigation import live
 from utils.visualization.inference_dashboard.server import Dashboard
 
@@ -110,8 +110,8 @@ def test_rejected_intermediate_sample_only_expires_history_when_gap_exceeds_limi
 ])
 def test_input_availability_rejects_invalid_raw_input_and_keeps_legacy_semantics(
         raw_history,navigation,missing,expected):
-    from inference.input_windows import RawWindowHistory
-    from inference.live_pipeline import input_available
+    from inference.sensors.input_windows import RawWindowHistory
+    from inference.realtime.live_pipeline import input_available
     history=RawWindowHistory() if raw_history else TokenHistory()
     assert input_available(history,dict(navigation=navigation,missing=missing)) is expected
 
@@ -193,7 +193,7 @@ def test_prediction_limit_rejects_invalid_values(rate):
 
 
 def test_navigation_and_pipeline_do_not_transmit_to_simulator():
-    for name in ('inference/live_pipeline.py','navigation/live.py','navigation/route_source.py'):
+    for name in ('inference/realtime/live_pipeline.py','navigation/live.py','navigation/route_source.py'):
         tree=ast.parse((ROOT/name).read_text())
         for node in ast.walk(tree):
             if isinstance(node,ast.Call) and isinstance(node.func,ast.Attribute):
@@ -203,7 +203,7 @@ def test_navigation_and_pipeline_do_not_transmit_to_simulator():
 @pytest.mark.parametrize('interval,batch_size',[(.04,1),(.08,1),(.2,1),(.2,2)])
 def test_live_pipeline_passes_anchor_navigation_and_camera_with_real_history(tmp_path,monkeypatch,interval,batch_size):
     import time
-    from inference import live_pipeline as pipeline
+    from inference.realtime import live_pipeline as pipeline
     cfg=json.loads((ROOT/'../AIM2026/Inference/vldrive_realtime.json').read_text())
     cfg.pop('navigation_token_config', None)  # This fixture mocks the language model.
     cfg['runtime'].update(device='cpu',history_tolerance_s=.06 if interval==.2 else .03,prediction_hz=25.,
@@ -286,7 +286,7 @@ def test_live_pipeline_rechecks_input_after_forward_before_publishing(tmp_path,m
     """
     import threading
     import time
-    from inference import live_pipeline as pipeline
+    from inference.realtime import live_pipeline as pipeline
 
     cfg=json.loads((ROOT/'../AIM2026/Inference/vldrive_realtime.json').read_text())
     cfg.pop('navigation_token_config',None)

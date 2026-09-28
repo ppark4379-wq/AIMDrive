@@ -6,9 +6,9 @@
 - `config/`: Python configuration loaders and validators; JSON/YAML values remain in `../configs/`.
 - `visualization/`: offline token extraction/rendering, encoder figures and the inference/training dashboards.
 
-Training loops and launch scripts live in `../training/`; reusable helpers and losses live in `training/` here.
+Training loops, reusable training helpers and losses live in `../training/`.
 The root `train.py` remains the command-line entry point. Inference also uses the checkpoint loader
-in `training.training` and the precision helpers in `utils.training.training_helper`.
+in `training.connector_llm.training` and the precision helpers in `training.common.runtime.precision`.
 
 `common/source_relocations.json` records exact source hashes before and after
 this reorganization. Existing checkpoint/cache provenance can use the old paths

@@ -7,7 +7,7 @@ import pytest
 import torch
 from torch import nn
 
-from training.training import (
+from training.connector_llm.training import (
     restore_model_checkpoint,
     save_model_checkpoint,
     stride_indices,
@@ -325,7 +325,7 @@ def test_evaluation_forces_gumbel_repeats_seed_and_preserves_training_rng():
 
 def test_evaluation_source_compatibility_does_not_ignore_unreviewed_edits(tmp_path, monkeypatch):
     import hashlib
-    import inference.vldrive_runtime as runtime
+    import inference.runtime.vldrive_runtime as runtime
 
     monkeypatch.setattr(runtime, 'ROOT', tmp_path)
     folder = tmp_path / 'utils'
@@ -342,7 +342,7 @@ def test_evaluation_source_compatibility_does_not_ignore_unreviewed_edits(tmp_pa
 
 def test_evaluation_checkpoint_allows_only_reviewed_sources_not_dataset_changes(tmp_path, monkeypatch):
     import copy
-    import inference.vldrive_runtime as runtime
+    import inference.runtime.vldrive_runtime as runtime
 
     model = _Model()
     path = tmp_path / 'model.pt'

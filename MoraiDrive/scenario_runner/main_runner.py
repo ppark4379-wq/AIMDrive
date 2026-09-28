@@ -228,6 +228,15 @@ def build_parser():
             "This is a no-capture, asynchronous full_loop_static mode."
         ),
     )
+    parser.add_argument(
+        "--ego-trace",
+        default=None,
+        metavar="CSV",
+        help=(
+            "Write the Ego pose of every control tick to this CSV. "
+            "Used by scenario-only static preset verification."
+        ),
+    )
     return parser
 
 
@@ -309,6 +318,10 @@ def main():
             )
         except ValueError as error:
             parser.error(str(error))
+    if args.ego_trace:
+        base_scenario_cfg["ego_trace_path"] = str(
+            Path(args.ego_trace).expanduser().resolve()
+        )
     if args.scenario in MISSION_MODES:
         base_scenario_cfg["mission_mode"] = args.scenario
     if (

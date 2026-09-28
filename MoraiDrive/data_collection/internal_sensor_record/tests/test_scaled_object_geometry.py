@@ -105,6 +105,13 @@ class ScaledGeometryTest(unittest.TestCase):
         case["visible_return_contradiction"] = True
         self.assertIn("catalog_visible_return_contradiction", self.check(case=case)["reasons"])
 
+    def test_null_static_preset_is_valid_for_nonstatic_scenarios(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.assertEqual(resolve_pinned_preset(None, root, root), (None, None))
+            with self.assertRaises(ValueError):
+                resolve_pinned_preset("invalid", root, root)
+
     def test_preset_lookup_requires_exact_pinned_bytes(self):
         with tempfile.TemporaryDirectory() as directory:
             episode = Path(directory) / "episode_000"

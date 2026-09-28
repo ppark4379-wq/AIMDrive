@@ -1,0 +1,589 @@
+{
+ "schema": "morai_static_obstacle_footprints_v1",
+ "frame": "Box centre offset in the preset spawn frame (x along yaw_deg, y left); box heading = yaw_deg + heading_offset_deg; width across, length along it",
+ "scale_xyz": [
+  1.0,
+  1.0,
+  1.0
+ ],
+ "registry": {
+  "path": "/home/dydwns/AIMDrive/MoraiDrive/data_collection/internal_sensor_record/evidence/object_geometry_registry_v1/registry.json",
+  "sha256": "21f7927b6ea57c9299f3bf87546aba003cc1734c82589d5617a65682ea221b9e"
+ },
+ "sources": [
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_001",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_097.yaml",
+    "sha256": "60a8022d4b41eea10ce6606f4fbe35a55a60f309c433dfa1301274c5a8b8dc40"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_002",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_087.yaml",
+    "sha256": "0fea68fa2d871f14dd73461b9c16ac6f0792b3ac3942ecb25b805e7f6c942095"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_003",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_144.yaml",
+    "sha256": "afd2ee424c3c40405e5144d8b014f37c3bb63847f9b04ddfc4cc7b4e1ae7e94d"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_004",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_052.yaml",
+    "sha256": "2428eaeae5601a3aafce2b47d7325741d1c2b2cf5bd982359fb01a75daed811f"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_005",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_148.yaml",
+    "sha256": "45a81984bfb14a7c038e9a2a530ea73510af2af538d3e4997326fc93b8477bcb"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_006",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_131.yaml",
+    "sha256": "0c675f7123a743d85ee5b491feaa8efce5452b307dff2ebf68070384807aefb2"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_007",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_079.yaml",
+    "sha256": "9a381d7d43cf195efe00471ced40088d82c5362efd4f7e5cffb7760770dea3c8"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_008",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_063.yaml",
+    "sha256": "bdd931436d1e2d66430ef9bbb1447fd29e67181f0d181336a6b55dd9955f8260"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_009",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_042.yaml",
+    "sha256": "fa9e6d5221118665dff1c09691e40649b42c22da1ec7050c7344a2893bdb8616"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_010",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_177.yaml",
+    "sha256": "0386e48ec55de2a71f2d5a1f14193e4d8383ceee1eb71ac3608bf9ab53214db2"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_011",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_085.yaml",
+    "sha256": "511a4e776640283006d90d16470b1feb7bca2380b8c255fc968d6f54f8a64f7b"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_012",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_128.yaml",
+    "sha256": "536630d8bbf6176162f03c2ce2af52aa98e522209555dfe31b926558cff2bf21"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_013",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_106.yaml",
+    "sha256": "ae99430120aa999614554ee93458d7f660ffc80d9802dbc07c22ad9bbc5e9026"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_014",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_136.yaml",
+    "sha256": "971e0130462fb6ae181866a4648d195c0f12a1bdf8b648dc9793f386fb843177"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_015",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_175.yaml",
+    "sha256": "c26a80669b33a6c4a3efa90c71a42afd1e20034c9c4472a91dd702c17894a748"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_016",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_146.yaml",
+    "sha256": "9de464c239af182d76288b3a92f5070e7d3e7eb88c25a116fd8379e322df5b59"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_017",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_118.yaml",
+    "sha256": "2f6991c180d2ef9e709a4730c548a5b98471b7d6bbd6459dca6c23b4484fd2e3"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_018",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_165.yaml",
+    "sha256": "33e459c8bbaf961851fa462765869a91396dd551e13db153feeec16f990ce674"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_019",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_068.yaml",
+    "sha256": "9a9dcbdcd4c788b7771b8aa2ef0496e8fd97b0f3e7a75b6064ad83943729678b"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_020",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_161.yaml",
+    "sha256": "1182011f71e260a77aeba015cce4032b0a5c905cacffe1f1ce7a5a1819ec78c0"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_021",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_039.yaml",
+    "sha256": "ad6729a919d6b35fb21a7c33a4cee2c11c33f97b050a2a83d78587b1cff65ca5"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_022",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_024.yaml",
+    "sha256": "a2d26c4747c30d8a7e34ec642c93b4cc8a52a07cef5bf45e66b8d147ad3028b4"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_023",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_073.yaml",
+    "sha256": "e9bab4df13c0b0b10e2ad52c7f2feb5553328cd65b2a4eaf39fbb7470fdd0ca8"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_024",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_156.yaml",
+    "sha256": "abfb89d84a839480e8dab45ed3f10b5eba8aa73001d78ffb47c6a6152fb9273f"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_025",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_008.yaml",
+    "sha256": "51e0d2cfb8cf02bf61442124223574672b82865e870d2e9599110cd365aab01f"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_026",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_062.yaml",
+    "sha256": "49428890abf88d268154d116705bbec3312e1831d8b8f59a3da051ea4680d5f9"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_027",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_071.yaml",
+    "sha256": "87b603ea56b795d97b6be4cf4ac382400a223ac1348a93bb0b13cb86dd41652f"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_028",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_054.yaml",
+    "sha256": "aa135d061b84658bac59e9f7b5c8aeb5997eae7e764e150e928386dfe5bb451f"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_029",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_086.yaml",
+    "sha256": "691a0e61a1306f07539b883b014ff7d4c25093fbb7ef6e6588a95219b150cfc2"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_030",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_055.yaml",
+    "sha256": "c475aa52685c41fce00944f8022462b21d5247dd9442a2f373429cfe33d8deb6"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_031",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_041.yaml",
+    "sha256": "2e28588335aa1bcf211c52432b1b90182bd9daf3eddad9f69e613b1a2b8405c0"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_032",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_138.yaml",
+    "sha256": "ee621b36f7ab85be37fde29a689d1167983d905b0dd5ad5a6e90c0784463fbaa"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_033",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_009.yaml",
+    "sha256": "6c3b03cfa03e4a79f4fe326d96a5b0632ad950a71ce0eda4aa844ded4fa110d1"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_034",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_173.yaml",
+    "sha256": "8568ee0ed9176ef8d854f5d9e515029292015da92962637c15e0bd531a29b023"
+   }
+  },
+  {
+   "run": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/static_obstacle_lap36_20260924_144713_lap_036",
+   "preset": {
+    "path": "/home/dydwns/AIMDrive/MoraiDrive/scenario_runner/config/static_scenario_presets/generated/static_native36_probe_retry_20260923_135553/static_native36_probe_retry_20260923_135553_attempt_094.yaml",
+    "sha256": "bf315645f9f0bd90af6808574733e024e66024e29d43b6181eb84e0635fa87b2"
+   }
+  }
+ ],
+ "models": {
+  "BabyStroller1": {
+   "center_offset_spawn_xy": [
+    0.4448,
+    0.0191
+   ],
+   "heading_offset_deg": 1.347,
+   "width_m": 0.6,
+   "length_m": 1.22,
+   "observations": 139,
+   "runs": [
+    "static_obstacle_lap36_20260924_144713_lap_012"
+   ]
+  },
+  "BabyStroller2": {
+   "center_offset_spawn_xy": [
+    0.6519,
+    0.0345
+   ],
+   "heading_offset_deg": 1.347,
+   "width_m": 0.64,
+   "length_m": 1.21,
+   "observations": 171,
+   "runs": [
+    "static_obstacle_lap36_20260924_144713_lap_026"
+   ]
+  },
+  "Bicycle_city": {
+   "center_offset_spawn_xy": [
+    0.454,
+    -0.0
+   ],
+   "heading_offset_deg": 1.347,
+   "width_m": 0.66,
+   "length_m": 1.65,
+   "observations": 91,
+   "runs": [
+    "static_obstacle_lap36_20260924_144713_lap_029"
+   ]
+  },
+  "Bicycle_mountain": {
+   "center_offset_spawn_xy": [
+    0.468,
+    -0.0
+   ],
+   "heading_offset_deg": 1.347,
+   "width_m": 0.65,
+   "length_m": 1.7,
+   "observations": 141,
+   "runs": [
+    "static_obstacle_lap36_20260924_144713_lap_015"
+   ]
+  },
+  "Bike1": {
+   "center_offset_spawn_xy": [
+    -0.0,
+    0.0
+   ],
+   "heading_offset_deg": 1.347,
+   "width_m": 0.66,
+   "length_m": 1.65,
+   "observations": 113,
+   "runs": [
+    "static_obstacle_lap36_20260924_144713_lap_016"
+   ]
+  },
+  "Bike2": {
+   "center_offset_spawn_xy": [
+    -0.0,
+    -0.0
+   ],
+   "heading_offset_deg": 1.347,
+   "width_m": 0.65,
+   "length_m": 1.7,
+   "observations": 142,
+   "runs": [
+    "static_obstacle_lap36_20260924_144713_lap_001"
+   ]
+  },
+  "Bollard01": {
+   "center_offset_spawn_xy": [
+    0.0,
+    -0.0
+   ],
+   "heading_offset_deg": 1.347,
+   "width_m": 0.366,
+   "length_m": 0.366,
+   "observations": 137,
+   "runs": [
+    "static_obstacle_lap36_20260924_144713_lap_008"
+   ]
+  },
+  "Bollard04": {
+   "center_offset_spawn_xy": [
+    0.0,
+    -0.0
+   ],
+   "heading_offset_deg": 1.347,
+   "width_m": 0.366,
+   "length_m": 0.366,
+   "observations": 91,
+   "runs": [
+    "static_obstacle_lap36_20260924_144713_lap_027"
+   ]
+  },
+  "Concrete_Barricade01": {
+   "center_offset_spawn_xy": [
+    -0.0,
+    0.0
+   ],
+   "heading_offset_deg": 1.347,
+   "width_m": 1.918,
+   "length_m": 0.39,
+   "observations": 492,
+   "runs": [
+    "static_obstacle_lap36_20260924_144713_lap_036"
+   ]
+  },
+  "ElectricScooter1": {
+   "center_offset_spawn_xy": [
+    -0.0,
+    -0.0
+   ],
+   "heading_offset_deg": 1.347,
+   "width_m": 1.21,
+   "length_m": 0.56,
+   "observations": 142,
+   "runs": [
+    "static_obstacle_lap36_20260924_144713_lap_025"
+   ]
+  },
+  "ElectricScooter2": {
+   "center_offset_spawn_xy": [
+    0.0,
+    -0.0
+   ],
+   "heading_offset_deg": 1.347,
+   "width_m": 0.56,
+   "length_m": 1.21,
+   "observations": 481,
+   "runs": [
+    "static_obstacle_lap36_20260924_144713_lap_011"
+   ]
+  },
+  "NCAP_GVT": {
+   "center_offset_spawn_xy": [
+    -0.0,
+    0.0
+   ],
+   "heading_offset_deg": 1.347,
+   "width_m": 1.79,
+   "length_m": 3.99,
+   "observations": 180,
+   "runs": [
+    "static_obstacle_lap36_20260924_144713_lap_003"
+   ]
+  },
+  "PE_Firewall_Orange": {
+   "center_offset_spawn_xy": [
+    0.0,
+    0.0
+   ],
+   "heading_offset_deg": 1.347,
+   "width_m": 1.35,
+   "length_m": 0.6,
+   "observations": 113,
+   "runs": [
+    "static_obstacle_lap36_20260924_144713_lap_024"
+   ]
+  },
+  "PE_Firewall_White": {
+   "center_offset_spawn_xy": [
+    0.0,
+    0.0
+   ],
+   "heading_offset_deg": 1.347,
+   "width_m": 1.35,
+   "length_m": 0.6,
+   "observations": 174,
+   "runs": [
+    "static_obstacle_lap36_20260924_144713_lap_034"
+   ]
+  },
+  "RedBarrel": {
+   "center_offset_spawn_xy": [
+    0.0,
+    0.0124
+   ],
+   "heading_offset_deg": 1.347,
+   "width_m": 0.6529,
+   "length_m": 0.619,
+   "observations": 138,
+   "runs": [
+    "static_obstacle_lap36_20260924_144713_lap_014"
+   ]
+  },
+  "Rockslide": {
+   "center_offset_spawn_xy": [
+    0.0,
+    -0.0
+   ],
+   "heading_offset_deg": 1.347,
+   "width_m": 4.301,
+   "length_m": 2.989,
+   "observations": 180,
+   "runs": [
+    "static_obstacle_lap36_20260924_144713_lap_018"
+   ]
+  },
+  "Scooter1": {
+   "center_offset_spawn_xy": [
+    0.0,
+    0.0
+   ],
+   "heading_offset_deg": 1.347,
+   "width_m": 0.81,
+   "length_m": 2.26,
+   "observations": 115,
+   "runs": [
+    "static_obstacle_lap36_20260924_144713_lap_010"
+   ]
+  },
+  "Scooter2": {
+   "center_offset_spawn_xy": [
+    0.0,
+    -0.0
+   ],
+   "heading_offset_deg": 1.347,
+   "width_m": 0.88,
+   "length_m": 1.69,
+   "observations": 143,
+   "runs": [
+    "static_obstacle_lap36_20260924_144713_lap_021"
+   ]
+  },
+  "Scooter_02": {
+   "center_offset_spawn_xy": [
+    0.536,
+    0.0351
+   ],
+   "heading_offset_deg": 1.347,
+   "width_m": 0.88,
+   "length_m": 1.69,
+   "observations": 92,
+   "runs": [
+    "static_obstacle_lap36_20260924_144713_lap_007"
+   ]
+  },
+  "Sportbike_01": {
+   "center_offset_spawn_xy": [
+    0.6561,
+    0.0383
+   ],
+   "heading_offset_deg": 1.347,
+   "width_m": 0.75,
+   "length_m": 1.64,
+   "observations": 143,
+   "runs": [
+    "static_obstacle_lap36_20260924_144713_lap_031"
+   ]
+  },
+  "Steel_Barricade": {
+   "center_offset_spawn_xy": [
+    0.0,
+    -0.0
+   ],
+   "heading_offset_deg": 1.347,
+   "width_m": 3.01,
+   "length_m": 1.08,
+   "observations": 116,
+   "runs": [
+    "static_obstacle_lap36_20260924_144713_lap_002"
+   ]
+  },
+  "TrafficBarrel": {
+   "center_offset_spawn_xy": [
+    0.0,
+    0.0124
+   ],
+   "heading_offset_deg": 1.347,
+   "width_m": 0.6529,
+   "length_m": 0.7224,
+   "observations": 175,
+   "runs": [
+    "static_obstacle_lap36_20260924_144713_lap_009"
+   ]
+  },
+  "WoodBox": {
+   "center_offset_spawn_xy": [
+    -0.0,
+    -0.0
+   ],
+   "heading_offset_deg": 1.347,
+   "width_m": 1.2,
+   "length_m": 1.2,
+   "observations": 176,
+   "runs": [
+    "static_obstacle_lap36_20260924_144713_lap_023"
+   ]
+  },
+  "YellowBarrel": {
+   "center_offset_spawn_xy": [
+    0.0019,
+    0.0
+   ],
+   "heading_offset_deg": 1.347,
+   "width_m": 1.0,
+   "length_m": 0.6357,
+   "observations": 115,
+   "runs": [
+    "static_obstacle_lap36_20260924_144713_lap_013"
+   ]
+  },
+  "concrete-barrier": {
+   "center_offset_spawn_xy": [
+    0.0,
+    -0.0
+   ],
+   "heading_offset_deg": 1.347,
+   "width_m": 3.2,
+   "length_m": 0.617,
+   "observations": 176,
+   "runs": [
+    "static_obstacle_lap36_20260924_144713_lap_028"
+   ]
+  }
+ },
+ "skipped_approved_models": {},
+ "script_sha256": "ef4dce67410156ebd44fb4b745c6a7f60c887743045255308d5e37a0f604a228"
+}

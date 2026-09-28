@@ -9,8 +9,8 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 from models.connector.qformer_mefa import QFormerMEFAConfig, QFormerMEFAConnector
-from utils.training.training_helper import seed_all
-from training.training import train
+from training.common.runtime.reproducibility import seed_all
+from training.connector_llm.training import train
 from utils.visualization.training_dashboard.telemetry import TrainingTelemetry
 
 

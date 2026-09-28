@@ -119,7 +119,7 @@ def bootstrap(repository):
     import transformers
     implementation = sorted(set(required + list((root / 'models').rglob('*.py'))
                                  + list((root / 'data/src/loaders').glob('*.py'))
-                                 + [p for folder in ('utils', 'training', 'utils/common', 'utils/training', 'utils/evaluation', 'utils/config') for p in (root / folder).glob('*.py')]
+                                 + [p for folder in ('utils', 'training', 'utils/common', 'utils/evaluation', 'utils/config') for p in (root / folder).glob('*.py')]
                                  + [root / 'utils/visualization/vision_encoder_visualization.py']))
     def package_version(name):
         try:

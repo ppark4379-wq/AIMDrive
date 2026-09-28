@@ -8,12 +8,36 @@ import torch
 from data.src.loaders.morai_gps_speed import causal_gps_speed, parse_native_gps
 from data.src.loaders.morai_sensor_record_dataset import (
     child, digest, PathResolver, load_publications, validate_navigation_target,
-    verify_admission_recovery,
+    verify_admission_recovery, verify_subset_selection,
 )
-from utils.training.morai_transfer_objective import multitask_loss
-from training.morai_transfer_training import object_selection_score, selected_training_indices
+from training.vision_encoder.losses.morai_transfer import multitask_loss
+from training.vision_encoder.recipes.transfer import object_selection_score, selected_training_indices
 
 class TransferTests(unittest.TestCase):
+    def test_subset_loader_accepts_only_admitted_whole_laps(self):
+        index={'train':[{'lap':1}],'val':[{'lap':2}]}
+        report={
+            'subset_policy':'whole_lap_fail_closed_exclusion_with_full_variation_preservation_v1',
+            'subset_coverage_preserved':True,'all_captured_laps_valid':False,
+            'selected_laps':2,
+            'laps':[{'lap':1,'valid':True,'training_usable':True},
+                    {'lap':2,'valid':True,'training_usable':True}],
+            'excluded_laps':[{'lap':3,'valid':False,'capture_status':'succeeded'}],
+        }
+        verify_subset_selection(index,report)
+        capture_only=dict(report,all_captured_laps_valid=True,
+                          excluded_laps=[{'lap':3,'valid':False,'capture_status':'failed'}])
+        verify_subset_selection(index,capture_only)
+        with_test=dict(capture_only,selected_laps=3,
+                       laps=report['laps']+[{'lap':4,'valid':True,'training_usable':True}])
+        verify_subset_selection(dict(index,test=[{'lap':4}]),with_test)
+        with self.assertRaisesRegex(ValueError,'Subset validation'):
+            verify_subset_selection(index,dict(report,all_captured_laps_valid=True))
+        with self.assertRaisesRegex(ValueError,'Subset validation'):
+            verify_subset_selection({'train':[{'lap':1},{'lap':3}], 'val':[{'lap':2}]},report)
+        with self.assertRaisesRegex(ValueError,'Subset validation'):
+            verify_subset_selection(index,dict(report,excluded_laps=[{'lap':3,'valid':True}]))
+
     def test_object_checkpoint_selection_prefers_ap_then_f1(self):
         lower_ap = {'detection_cell_average_precision': .20,
                     'detection_cell_best_f1': .90}
@@ -100,7 +124,7 @@ class TransferTests(unittest.TestCase):
 
     def test_requested_new_campaign_cannot_be_omitted(self):
         import argparse,json
-        from training.morai_transfer_training import add_arguments,resolve_args
+        from training.vision_encoder.recipes.transfer import add_arguments,resolve_args
         with tempfile.TemporaryDirectory() as tmp:
             config=Path(tmp)/'config.json'
             config.write_text(json.dumps({'manifest_indices':['/old/index.json'],

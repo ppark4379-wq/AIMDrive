@@ -19,8 +19,8 @@ pyproj, 화면은 Python의 tkinter를 사용합니다. GPU나 LLM은 지시 생
 
 ```powershell
 python VLDrive/data/src/processing/build_instructions.py --config VLDrive/configs/navigation_lmdrive.json
-python VLDrive/inference/navigation_observer.py --config VLDrive/configs/navigation_replay.json
-python VLDrive/inference/navigation_observer.py --config VLDrive/configs/navigation_observer.json
+python VLDrive/inference/navigation/navigation_observer.py --config VLDrive/configs/navigation_replay.json
+python VLDrive/inference/navigation/navigation_observer.py --config VLDrive/configs/navigation_observer.json
 ```
 
 첫 번째 명령은 `data/processed/instructions/basic_drive_lmdrive_v2/`에 다음을 생성합니다.
@@ -188,7 +188,7 @@ GPS를 MORAI에서 Windows 127.0.0.1:10506으로 보내면 이 기존 relay에 �
 실행합니다. 기존 Status relay도 실행 중이어야 합니다. 같은 보조 relay를 중복 실행하지 않습니다.
 
 ```powershell
-python VLDrive/inference/udp_relay.py --config VLDrive/configs/navigation_gps_relay.json
+python VLDrive/inference/sensors/udp_relay.py --config VLDrive/configs/navigation_gps_relay.json
 ```
 
 이 설정은 Windows `127.0.0.1:10506` → WSL `172.18.254.59:10506`으로 GPS만 전달하며

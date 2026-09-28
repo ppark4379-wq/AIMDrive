@@ -71,6 +71,7 @@ def main():
     recovered_queries = []
     batch_count = 0
     configured_mismatch = []
+    invalid_actor_source_brackets = []
     schemas = Counter()
     total_attempts = 0
     try:
@@ -89,7 +90,14 @@ def main():
             before = row.get("before_actor_source_raw")
             after = row.get("after_actor_source_raw")
             if before is None or after is None or int(after) < int(before):
-                raise ValueError("Invalid actor-source bracket in traffic batch")
+                # The GT timeline excludes this unanchored batch too. Keep
+                # its failure visible, but never turn it into a light label.
+                invalid_actor_source_brackets.append({
+                    "record_id": meta["record_id"], "seq": row.get("seq"),
+                    "before_actor_source_raw": before,
+                    "after_actor_source_raw": after,
+                })
+                continue
             for requested, query in row.get("queries", {}).items():
                 attempts=query.get('attempts',[query]);total_attempts+=len(attempts)
                 for attempt in attempts:
@@ -171,6 +179,8 @@ def main():
         "required_route_light_ids": required_ids,
         "traffic_batches": batch_count,
         "traffic_schemas": dict(schemas),
+        "invalid_actor_source_brackets": len(invalid_actor_source_brackets),
+        "invalid_actor_source_bracket_details": invalid_actor_source_brackets,
         "query_attempts": total_attempts,
         "failed_attempts": len(attempt_failures),
         "failed_attempt_details": attempt_failures,

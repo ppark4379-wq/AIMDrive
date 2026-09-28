@@ -19,6 +19,28 @@ PATTERN = re.compile(r'^(\d{2})-(\d{2})-(\d{2})-(\d{2})-(\d{2})-(\d{2})-(\d{6})(
 FILENAME_QUANTUM_NS = 1000  # six decimal digits; retain all original values
 
 
+# The native filename clock runs about 47 ppm ahead of the ROS source clock and
+# the offset grows with simulator uptime (1 us at 40 s, 179 us at 3,722 s), so
+# a fixed 1 ms bound starts rejecting every bundle after ~21,000 s. Identity is
+# proven by exact XYZI equality; the time check only has to stay far below the
+# 100 ms capture period, with one stable offset for the whole recording.
+FILENAME_OFFSET_MAX_NS=10_000_000
+FILENAME_OFFSET_SPREAD_MAX_NS=1_000_000
+
+
+def require_stable_filename_offset(associations,errors):
+    """Move every association to errors when the per-bundle offset is not one value."""
+    offsets=[r['native_filename_time_ns']-r['scene_time_hypothesis_ns'] for r in associations]
+    stable=not offsets or max(offsets)-min(offsets)<FILENAME_OFFSET_SPREAD_MAX_NS
+    if not stable:
+        errors.extend(dict(index=r['index'],reason='filename_lidar_source_offset_unstable')
+                      for r in associations)
+        associations=[]
+    return associations,dict(min_ns=min(offsets,default=None),max_ns=max(offsets,default=None),
+                             stable=stable,bound_ns=FILENAME_OFFSET_MAX_NS,
+                             spread_bound_ns=FILENAME_OFFSET_SPREAD_MAX_NS)
+
+
 def gps_text_matches_ros(fields, ros_values):
     """Allow only .NET's text double formatting precision, not motion error."""
     names=('Latitude','Longitude','Altitude','EastOffset','NorthOffset')

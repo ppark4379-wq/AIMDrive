@@ -15,6 +15,22 @@ from async_capture.sensor_record_admission import verify_sealed_directory
 from ssd_storage import require_ssd
 
 
+RECOVERY_NAMES = {3: "ADMISSION_RECOVERY_SCALE_V1.json",
+                  4: "ADMISSION_RECOVERY_CENTER_V1.json",
+                  5: "ADMISSION_RECOVERY_FUSED_V1.json"}
+# New captures use V5 once a LiDAR registry is installed here.
+DEFAULT_GEOMETRY_REGISTRY = ROOT / "evidence/object_geometry_registry_v1/registry.json"
+RECOVERY_REASONS = {2: "training_bev_spatial_scope_v2",
+                    3: "proportional_measured_catalog_scale_v1",
+                    4: "catalog_centre_and_visible_return_geometry_v4",
+                    5: "lidar_registry_box_source_geometry_v5"}
+
+
+def registry_tag(path):
+    """V5 evidence is per registry version, so an updated registry is additive too."""
+    return digest(Path(path).expanduser().resolve())[:12]
+
+
 def load(path):
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
@@ -60,7 +76,9 @@ def validate_recovery(run, recovery_path):
             == digest(geometry.parent / "COMPLETE.json")
         and geometry_report.get("schema") in (
             "morai_sensor_record_object_geometry_audit_v2",
-            "morai_sensor_record_object_geometry_audit_v3")
+            "morai_sensor_record_object_geometry_audit_v3",
+            "morai_sensor_record_object_geometry_audit_v4",
+            "morai_sensor_record_object_geometry_audit_v5")
         and admission_report.get("input_seals", {}).get("object_geometry_audit")
             == digest(geometry.parent / "COMPLETE.json")
     ):
@@ -71,16 +89,24 @@ def validate_recovery(run, recovery_path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run", type=Path, required=True)
-    parser.add_argument("--geometry-version", type=int, choices=(2, 3),
-                        help="Explicit 3 creates a separate scale recovery pointer. "
-                             "Default preserves existing evidence; new pinned static presets use 3.")
+    parser.add_argument("--geometry-version", type=int, choices=(2, 3, 4, 5),
+                        help="Explicit 3-5 creates a separate scale, centre or fused recovery pointer. "
+                             "Default preserves existing evidence; new captures use 5 when the "
+                             "default registry exists, else 4 for pinned static presets.")
     parser.add_argument("--catalog-report", type=Path)
+    parser.add_argument("--geometry-registry", type=Path, help="Required by --geometry-version 5")
     args = parser.parse_args()
+    if args.geometry_version == 5 and args.geometry_registry is None:
+        parser.error("--geometry-version 5 requires --geometry-registry")
+    if args.geometry_version is None and args.geometry_registry is None and DEFAULT_GEOMETRY_REGISTRY.is_file():
+        args.geometry_registry = DEFAULT_GEOMETRY_REGISTRY
     run = args.run.expanduser().resolve()
     require_ssd(run, reserve_bytes=0)
     episode = run / "episode_000"
-    recovery_path = run / ("ADMISSION_RECOVERY_SCALE_V1.json" if args.geometry_version == 3
-                           else "ADMISSION_RECOVERY.json")
+    recovery_name = RECOVERY_NAMES.get(args.geometry_version, "ADMISSION_RECOVERY.json")
+    if args.geometry_version == 5:
+        recovery_name = "ADMISSION_RECOVERY_FUSED_%s.json" % registry_tag(args.geometry_registry)
+    recovery_path = run / recovery_name
     if recovery_path.is_file():
         print(json.dumps(validate_recovery(run, recovery_path)), flush=True)
         return
@@ -91,18 +117,23 @@ def main():
         # scaling from a mutable scenario file, and never replace old pointers.
         _, session = verify_run(episode / "raw", payloads=False)
         preset_record = (session.get("episode") or {}).get("static_obstacle_preset")
-        version = 3 if preset_record else 2
+        # V4 adds the catalog centre and visible-return gates to V3 scale;
+        # V5 adds the per-model LiDAR box-source registry on top of V4.
+        version = 5 if args.geometry_registry is not None else 4 if preset_record else 2
 
     original_dir = episode / "admission_v1"
     verify_sealed_directory(original_dir)
-    geometry_dir = episode / ("object_geometry_audit_v%d" % version)
-    review_dir = episode / ("review_closeout_v%d" % version)
-    admission_dir = episode / ("admission_v%d" % version)
+    suffix = "_" + registry_tag(args.geometry_registry) if version == 5 else ""
+    geometry_dir = episode / ("object_geometry_audit_v%d%s" % (version, suffix))
+    review_dir = episode / ("review_closeout_v%d%s" % (version, suffix))
+    admission_dir = episode / ("admission_v%d%s" % (version, suffix))
     geometry_arguments = [
         "--episode", str(episode), "--output", str(geometry_dir),
     ]
     if args.catalog_report is not None:
         geometry_arguments += ["--catalog-report", str(args.catalog_report)]
+    if version == 5:
+        geometry_arguments += ["--geometry-registry", str(args.geometry_registry.expanduser().resolve())]
     run_stage("audit_sensor_record_object_geometry_v%d.py" % version,
               geometry_dir, geometry_arguments)
     run_stage("summarize_sensor_record_review.py", review_dir, [
@@ -140,8 +171,7 @@ def main():
         "schema": "morai_sensor_record_admission_recovery_v1",
         "status": "completed",
         "recovery_is_additive": True,
-        "recovery_reason": ("proportional_measured_catalog_scale_v1" if version == 3
-                            else "training_bev_spatial_scope_v2"),
+        "recovery_reason": RECOVERY_REASONS[version],
         "original_admission": {
             "path": str((original_dir / "report.json").relative_to(run)),
             "sha256": digest(original_dir / "report.json"),

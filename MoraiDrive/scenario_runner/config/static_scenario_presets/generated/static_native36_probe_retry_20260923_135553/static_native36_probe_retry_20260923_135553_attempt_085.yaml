@@ -1,0 +1,38 @@
+schema: morai_static_obstacle_preset_v1
+name: static_native36_probe_retry_20260923_135553_attempt_085
+map_name: R_KR_PR_K-city_2025
+scenario: full_loop_static
+source: manually_reviewed_static_expert_verified
+generation:
+  batch_seed: 1773872564871153715
+  attempt: 85
+  candidate_only_until_expert_passes: false
+  scale_policy: morai_native_model_scale_v1
+obstacles:
+- model: ElectricScooter2
+  position:
+    x: -60.248755
+    y: -137.220531
+    z: 28.38242
+  yaw_deg: -83.219
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 678
+  generation:
+    longitudinal_fraction: 0.91719219
+    lateral_offset_m: -0.365003
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+verification:
+  accepted: true
+  automatic_gate_passed: false
+  manual_review:
+    accepted: true
+    reviewer: user_approved_cross_track
+    note: User approved goal-reached cross-track-only candidates; original deviation
+      3.340 m retained. Physical lane legality should be reviewed separately.
+    reviewed_at_unix: 1790189224.933065
+    automatic_rejection_reasons:
+    - cross_track_limit_exceeded

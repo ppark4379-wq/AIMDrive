@@ -1,0 +1,38 @@
+schema: morai_static_obstacle_preset_v1
+name: static_native36_probe_retry_20260923_135553_attempt_125
+map_name: R_KR_PR_K-city_2025
+scenario: full_loop_static
+source: automated_static_expert_verified
+generation:
+  batch_seed: 1773872564871153715
+  attempt: 125
+  candidate_only_until_expert_passes: false
+  scale_policy: morai_native_model_scale_v1
+obstacles:
+- model: Bike3
+  position:
+    x: -61.054773
+    y: -142.864074
+    z: 28.378471
+  yaw_deg: -83.219
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 667
+  generation:
+    longitudinal_fraction: 0.35296001
+    lateral_offset_m: 0.449479
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+verification:
+  expert_completed: true
+  collision_free: true
+  runner_return_code: 0
+  max_cross_track_error_m: 1.34
+  cross_track_limit_m: 3.0
+  valid_plan_samples: 15
+  selected_routes:
+  - right_02.csv
+  verified_at_unix: 1790144618.5434482
+  log: scenario_runner/.runtime/static_scenario_batch/static_native36_probe_retry_20260923_135553/logs/static_native36_probe_retry_20260923_135553_attempt_125.log

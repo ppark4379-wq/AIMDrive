@@ -20,7 +20,7 @@ from data.src.loaders.morai_encoder_contract import (
     SCHEMA, checkpoint_encoder_contract, sensor_record_encoder_contract, validate_encoder_contract,
 )
 from data.src.loaders.morai_transfer_adapter import MoraiVisionAdapterConfig
-from inference.morai_route import navigation_recipe
+from inference.navigation.morai_route import navigation_recipe
 
 
 def digest(path):

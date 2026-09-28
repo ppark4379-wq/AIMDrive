@@ -15,7 +15,7 @@ from torchvision import transforms
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from training import vision_encoder_training as trainer
+from training.vision_encoder.recipes import pretrain as trainer
 from utils.config.vision_encoder_config import ConfigError
 from data.src.loaders.loader import create_perception_loader
 from data.src.loaders.transforms import create_camera_transform

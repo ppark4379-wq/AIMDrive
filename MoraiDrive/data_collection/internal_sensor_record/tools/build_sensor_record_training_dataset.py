@@ -17,7 +17,7 @@ sys.path[:0] = [
 
 from async_capture.journal import digest, write_json
 from ssd_storage import require_ssd
-from morai_pretraining.sensor_record_manifest import build_episode_manifest
+from morai_pretraining.sensor_record_manifest import build_episode_manifest, coverage_failed_splits
 from async_capture.sensor_record_admission import verify_sealed_directory
 from scenario_runner.scenarios.segment_modes.modes import (
     PRIMARY_SCENARIOS,
@@ -125,6 +125,8 @@ def main():
                         help="Run-local immutable recovery JSON pinned by the new publication")
     parser.add_argument("--source-manifest-index", type=Path,
                         help="Pin an earlier publication and preserve its frames and split")
+    parser.add_argument("--allow-coverage-failed-source", action="store_true",
+                        help="Accept a source publication that failed only required coverage")
     args = parser.parse_args()
     report_path = args.validation_report.expanduser().resolve()
     output = args.output.expanduser().resolve()
@@ -173,7 +175,9 @@ def main():
         if source_seal.get("files", {}).get(source_index_path.name) != digest(source_index_path):
             raise ValueError("Source manifest index is not covered by its publication seal")
         source_index = load(source_index_path)
-        if (source_index.get("training_ready") is not True
+        source_ready = source_index.get("training_ready") is True or bool(
+            args.allow_coverage_failed_source and coverage_failed_splits(source_index))
+        if (not source_ready
                 or source_index.get("source_validation_sha256") != digest(report_path)):
             raise ValueError("Reprocessing source publication has different campaign evidence")
         for split in split_names:
@@ -257,6 +261,12 @@ def main():
         "scenario_name": scenario_name,
         "required_coverage": list(required),
         "split_policy": split_policy,
+        "split_selection_note": (
+            "Validation run was explicitly selected after capture; use its metrics for "
+            "development only, not unbiased generalization evaluation."
+            if args.val_lap else
+            "Validation split followed the pinned plan or deterministic last-run rule."
+        ),
         "admission_recovery_name": args.admission_recovery_name,
         "train_laps": sorted(split_laps["train"]),
         "val_laps": sorted(split_laps["val"]),
@@ -291,6 +301,8 @@ def main():
             "original_run_splits_preserved": True,
             "input_bytes_and_non_object_targets_preserved": True,
             "admission_recovery_name": args.admission_recovery_name,
+            "source_training_ready": source_index.get("training_ready") is True,
+            "source_coverage_failed_splits": coverage_failed_splits(source_index),
         }
     write_json(output / "manifest_index.json", index)
     write_json(output / "COMPLETE.json", {

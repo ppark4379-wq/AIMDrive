@@ -622,10 +622,9 @@ Expert가 플래너 오류로 막히고 유효한 회피 후보가 없는 상태
 `--invalid-plan-timeout-sec`, `--signal-stop-timeout-sec`으로 각 지속 시간을
 조정할 수 있다.
 완주와 무충돌만으로는 실선 밖 우회가 섞일 수 있으므로 공식 경로 기준 샘플링된
-최대 횡오차도 검사한다. 기본 채택 한계는 3.0m이며 필요할 때
-`--max-cross-track-error-m`으로 더 엄격하게 지정할 수 있다. 이 수치는 지도 차선
-마킹 자체의 기하 검증을 대신하지 않으므로, 최종 분포 확정 전 대표 프리셋의 MORAI
-화면 검토는 유지한다.
+최대 횡오차도 검사한다. 기본 한계는 4.0m의 보조 검사이며, 실선 접촉과 과도한 이탈은
+아래 차로 기반 배치 절의 `--ego-trace` 차선 판정이 결정한다. 이 판정은 차체 박스
+기준이므로 최종 분포 확정 전 대표 프리셋의 MORAI 화면 검토는 유지한다.
 
 자동 횡오차 기준에서 탈락했지만 실제 교차로 형상에서는 합법적인 회피로 보이는
 후보는 아래 명령으로 동일 배치를 다시 주행하며 직접 확인한다.
@@ -648,6 +647,73 @@ Expert가 플래너 오류로 막히고 유효한 회피 후보가 없는 상태
 남으며, suite manifest도 자동 승인과 수동 승인을 별도로 집계한다. 충돌, 미완주,
 유효 경로 부재, 실행 실패와 시간 초과는 눈으로 괜찮아 보이더라도 수동 승인할 수
 없다.
+
+### 차로 기반 배치와 차선 판정 (2026-09-25)
+
+기본 배치(`--placement lane`)는 LiDAR로 검증한 모델 박스
+(`config/static_obstacle_footprints_v1.json`, V5 레지스트리 승인 25종)만 쓰고 각 박스를
+자기 차로(중앙선에서 오른쪽 3.34 m) 안에 둔다. Expert는 녹화 경로 right_02(차체 약 1.3 m 이동)와
+right_03(약 3.4 m)을 먼저 쓰므로, 두 경로의 계획용 차체(후륜축부터 4.635 m, 폭 2.0 m)가
+경로 인덱스마다 차지하는 왼쪽 끝을 Expert CSV에서 읽어(수정하지 않음, SHA-256 기록)
+박스 오른쪽 끝과의 여유로 배치를 정한다.
+
+| 여유 기준 | 값 | 근거 (native36 단일 장애물 123회) |
+|---|---|---|
+| 모든 박스 vs right_03 | 0.75 m 이상 | right_03 통과 0.66 m 이상, right_04/05(약 5 m)는 0.53 m 이하 |
+| 소폭 배치 모든 박스 vs right_02 | 0.80 m 이상 | right_02 선택 0.63 m 이상, right_03은 0.71 m 이하 |
+| 중폭 배치 막는 박스 vs right_02 | 0.55 m 이하 | 위와 같음, 경계 구간은 쓰지 않음 |
+
+- 궤적 목표는 네 가지다. 궤적은 `--ego-trace`로 측정해 분류한다(`trajectory_class`).
+
+| 목표 | 배치 | 측정된 궤적 (실주행) |
+|---|---|---|
+| straight | 모든 박스를 경로 오른쪽 바깥, right_01에서 0.75 m 이상(가까움/멂 섞음) | right_01, 0.25~0.28 m |
+| small | 차로 안 left 박스 + 2개 이상이면 right_02를 막지 않는 오른쪽 박스 | right_02, 1.3 m |
+| medium | 막는 박스 1개 이상, 2개 이상이면 차로 안 구간을 섞음 | right_03, 3.4 m |
+| late | 660~662에 right_02~04를 막는 오른쪽 박스(+3개면 right_05/06을 막는 먼 박스), 676 이후 차로 박스 | right_01→right_03, 시작 669, 3.1 m |
+
+- 오른쪽 박스를 665 이후에 두면 Expert는 right_05/06으로 6.6 m 돌아가고, 오른쪽 박스로 S자
+  복귀를 유도해도 right_04/05가 그 오른쪽을 지나 5.7 m 돌아간다. 왼쪽 회피는 녹화 영역이
+  전역경로보다 왼쪽을 포함하지 않아 Expert를 바꾸지 않고는 만들 수 없다.
+- 오른쪽 박스는 교차로 모서리선(-5.45 m) 안쪽 -5.0 m까지 둔다.
+- 차로 안 구간: left(소폭 범위), centre/right(중폭 범위의 위/아래 절반). 경로가 벌어지는
+  정도가 인덱스마다 달라 범위도 위치마다 다르다. 구간 시작(660 부근)에서는 right_02가 거의
+  벌어지지 않아 자전거류는 소폭 배치를 만들 수 없다.
+- 슬롯마다 구간을 먼저 고르게 고른 뒤 덜 쓰인 모델을 넣는다. 개수(1~3) x 목표 칸 중 채택
+  수가 가중치(`--avoidance-weights`, 기본 20:20:40:20) 대비 가장 적은 칸을 먼저 만든다.
+- 그 위치에서 차로 안 여유가 0.3 m 미만인 박스(Steel_Barricade, concrete-barrier, Rockslide와
+  구간 끝의 NCAP_GVT 등)는 right_03 한계에서 0.5 m 안에 오른쪽 끝을 두고 중앙선 위로
+  걸친다(`lane_fit: covers_centre_line`). 차로 안에 밀어 넣으면 5 m 가까이 돌아야 한다.
+- 각 후보 주행은 `--ego-trace`로 매 제어 주기 Ego 위치를 남긴다.
+  `tools/static_lane_compliance.py`가 차체(4.635 x 1.890 m, 기준점 1.53 m 앞 중심, 미러 제외)를
+  궤적을 따라 옮기며 판정한다. 정지선을 뺀 모든 실선과 교차로 안의 중앙선 연장 유도선에
+  닿으면 `solid_lane_marking_touched`, 차체 중심이 경로 오른쪽 4.0 m를 넘으면
+  `lateral_deviation_limit_exceeded`로 탈락한다. 수동 승인으로 되살릴 수 없다.
+- 차선은 MORAI MGeo `lane_boundary_set.json`에서 구간 주변만
+  `config/static_segment_lane_markings.json`에 원본 SHA-256과 함께 고정했다
+  (`tools/extract_static_lane_markings.py`). 공식 경로의 링크 경계에 반복된 점은 방향 계산에서 뺀다.
+- 03 검증은 `full_loop_static` 수집 run에도 같은 판정을 적용한다(`static_lane_markings_clear`).
+  기존 static36·lap100 135회는 모두 통과했다. 최소 여유 3 cm는 초록불로 진입 커브를
+  43 km/h로 통과한 7회였고, 이는 배치가 아니라 신호 시점에 따른 Expert 주행이다.
+
+```bash
+./scenario_runner/tools/run_static_scenario_batch.sh \
+  --attempts 320 --keep-going-after 200 \
+  --name static_lane25_$(date +%Y%m%d_%H%M%S)
+
+/usr/bin/python3 scenario_runner/tools/static_collection_plan.py build \
+  --suite scenario_runner/config/static_scenario_presets/generated/<suite>/suite_manifest.json \
+  --balance-axis avoidance \
+  --footprint-catalog scenario_runner/config/static_obstacle_footprints_v1.json \
+  --output scenario_runner/config/static_scenario_presets/plans/static_lane25_100.json
+```
+
+`--balance-axis avoidance`는 궤적 판정을 통과한 프리셋만 쓰고, 실제 차체 이동량
+궤적 유형 straight/small/medium/late를 기본 20/20/40/20으로 맞춘다(개수 x 유형 표는 최소 비용 유량으로 배분).
+left 구간에 못 들어가는 14종은 소폭 회피에 들어갈 수 없어 소폭 비중이 크면 모델별 최소 등장 횟수를 채울 수 없다. 선택 후 같은 칸 안에서
+프리셋을 바꿔 모든 모델이 최소 횟수 이상 나오게 보정한다(seed 고정). 레지스트리를
+갱신하면 `data_collection/internal_sensor_record/tools/build_static_footprint_catalog.py`로
+새 카탈로그를 만든다.
 
 ### 정적 장애물 수집 분포 계획
 

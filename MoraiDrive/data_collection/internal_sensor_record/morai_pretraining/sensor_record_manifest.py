@@ -100,6 +100,21 @@ def waypoint_at_sensor_time(times, values, stamp_ns):
     return origin, result
 
 
+def coverage_failed_splits(index):
+    """Splits whose only publication failure is a missing required example.
+
+    Such a failed publication keeps sealed frames and run splits, so a
+    geometry-only revision may use it as a source.  Any other state returns an
+    empty list and remains unusable.
+    """
+    required = index.get("required_coverage") or []
+    coverage = index.get("coverage") or {}
+    if index.get("training_ready") is not False or not required or not coverage:
+        return []
+    return sorted(split for split, counts in coverage.items()
+                  if any(int(counts.get(key, 0)) <= 0 for key in required))
+
+
 def objects_for_entry(gt, geometry):
     geometry_rows = {str(row.get("instance_key")): row for row in geometry.get("objects", [])}
     result = []
@@ -116,13 +131,18 @@ def objects_for_entry(gt, geometry):
         # not have a target cell and must not invalidate or enter the renderer.
         if audit.get("training_bev_relevant") is False:
             continue
+        # V4 re-centres a box that MORAI reported at the actor pivot; the
+        # sealed GT keeps the original API position as evidence.
+        center = audit.get("training_center_world_xy") or position[:2]
+        # V5 trains on the registry-selected MORAI size (e.g. /Object_topic).
+        width, length = audit.get("training_size_wl_m") or size[:2]
         result.append({
             "id": str(obj.get("id")),
             "instance_key": key,
             "model_name": str(obj.get("model_name") or obj.get("name") or ""),
-            "x": float(position[0]), "y": float(position[1]),
+            "x": float(center[0]), "y": float(center[1]),
             "heading_deg": float(obj["heading_deg"]),
-            "width": float(size[0]), "length": float(size[1]), "height": float(size[2]),
+            "width": float(width), "length": float(length), "height": float(size[2]),
             "vel_x": float(velocity[0]) / 3.6, "vel_y": float(velocity[1]) / 3.6,
             "geometry_valid": bool(audit.get("api_box_geometry_candidate")),
         })
@@ -220,7 +240,9 @@ def effective_admission_directory(episode, recovery_name="ADMISSION_RECOVERY.jso
                 == digest(geometry_dir / "COMPLETE.json")
             and geometry.get("schema") in (
                 "morai_sensor_record_object_geometry_audit_v2",
-                "morai_sensor_record_object_geometry_audit_v3")
+                "morai_sensor_record_object_geometry_audit_v3",
+                "morai_sensor_record_object_geometry_audit_v4",
+                "morai_sensor_record_object_geometry_audit_v5")
             and geometry.get("raw_manifest_sha256") == original.get("raw_manifest_sha256")
             and geometry.get("structural_valid") is True
             and corrected.get("input_seals", {}).get("object_geometry_audit")
