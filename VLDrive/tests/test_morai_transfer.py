@@ -11,7 +11,7 @@ from data.src.loaders.morai_sensor_record_dataset import (
     verify_admission_recovery,
 )
 from utils.training.morai_transfer_objective import multitask_loss
-from training.morai_transfer_training import object_selection_score, selected_training_indices
+from training.vision_encoder.recipes.transfer import object_selection_score, selected_training_indices
 
 class TransferTests(unittest.TestCase):
     def test_object_checkpoint_selection_prefers_ap_then_f1(self):
@@ -100,7 +100,7 @@ class TransferTests(unittest.TestCase):
 
     def test_requested_new_campaign_cannot_be_omitted(self):
         import argparse,json
-        from training.morai_transfer_training import add_arguments,resolve_args
+        from training.vision_encoder.recipes.transfer import add_arguments,resolve_args
         with tempfile.TemporaryDirectory() as tmp:
             config=Path(tmp)/'config.json'
             config.write_text(json.dumps({'manifest_indices':['/old/index.json'],

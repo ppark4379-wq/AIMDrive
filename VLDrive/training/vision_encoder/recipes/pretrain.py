@@ -297,8 +297,7 @@ def sha256_file(path):
 def implementation_provenance():
     """Freeze the trainer, target construction, and encoder implementation identity."""
     paths = (
-        "train.py", "training/vision_encoder_training.py",
-        "training/vision_encoder/recipes/pretrain.py",
+        "train.py", "training/vision_encoder/recipes/pretrain.py",
         "training/vision_encoder/setup.py",
         "utils/config/vision_encoder_config.py",
         "data/src/loaders/split_manifest.py", "data/src/loaders/traffic_labels.py",

@@ -273,7 +273,7 @@
       ]
     },
     "utils/morai_transfer_training.py": {
-      "path": "training/morai_transfer_training.py",
+      "path": "training/vision_encoder/recipes/transfer.py",
       "before": [
         "043c05a26650c83387c0b6d38e833362279a1bd20b2b011aa9ca3b32c7961c13",
         "06caae2ec86245909d1b5ba64c5adebf55ac83b879196a884c07fae98d28cad8",
@@ -298,8 +298,8 @@
         "e77e9394d9e9bab1966f0bd20602a096110c38e662dc7d1d4f3a55aa16bcd8b1"
       ],
       "after": [
-        "043c05a26650c83387c0b6d38e833362279a1bd20b2b011aa9ca3b32c7961c13",
-        "3df58cb1fe87d6d6039d8575ad9c0934d6d00e78698b4d7667d3fd65ed155711"
+        "e919a51cee0199653f6f3f687489f065da780420ffa8e569f7dbce591a2af028",
+        "ed79a1f15d9366d9a68adb360ccb25581e1b67fb5d5e569b2640a6a51f4e7876"
       ]
     },
     "utils/evaluation/morai_transfer_metrics.py": {
@@ -646,7 +646,7 @@
       ]
     },
     "training/training.py": {
-      "path": "training/training.py",
+      "path": "training/joint/training.py",
       "before": [
         "1620911c2c002fba1d37b050c3cad61792f4eb65115828bca2160c5fed606d95",
         "259a8c044f5f6939a17a5e149aa752f24180135ecf776377982cbf38c46cc5d0",
@@ -660,8 +660,8 @@
         "d730e6f7227b6ded4fa899b7efb7b0475eb8f1d26676e9d2a78ed46a4bfd187b"
       ],
       "after": [
-        "7c5cb2f905affa20b2317fb1e8fb53a26379c6efd26b40b741ffaa49a01dfc50",
-        "bf20d8604f74abe047521d64b968fd7f82677c29a688d9be4b48e61bf0374fd8"
+        "70a7c79d76a208bf646cd57c7c3d9411a138ab9cd952d2737163f1a281172a42",
+        "74128d517c31d253f9ee1d84f6c175ce56c4bc95c40724e8d1757d81047e8e4d"
       ]
     },
     "utils/training_dashboard/metrics.py": {
@@ -776,8 +776,9 @@
         "d0ef4cd62b1119160f0e88dce4072dd46d6ac2e2666d55bb7530c34e3b4dfeb2"
       ],
       "after": [
-        "59dfe06acf91700700e12c24c1b7aa3f3ec507203916559467fa1f3c459816ee",
-        "81e420eca699823c5682fbf8a5c145d1a5ab5bcf500713c2768913f5f8f2c116"
+        "177dfea7e9659bdd7118e3cbf94bd24d1cba47f13fa2b0c652a5b641b082ba01",
+        "bf0a5a35f5352c09c1458b1b9899aace1535fd48cd92da841731189efd294f8f",
+        "ea547abb35e7985eb187695be656982439d30e86aecad18d9982dd5ab5ff9201"
       ]
     },
     "tools/cache_vision_tokens.py": {
@@ -887,11 +888,13 @@
         "df2a17315f047c5654f4f29c17581e81dc433d4281f221f306ecd4a92d3e8cf9",
         "e34e54c92386d559ed8f7aeea8c3bc5032be5921bbf52a7ea014eb1314b3fb42",
         "e5d482a2f094c247e93da310f267a05b2312ea3c55a54a08a48e4b1539f5c05d",
+        "f2e351a941e93f64aff151b9de57bb4d69609ae77ff460dea0f3e4da460c8e76",
         "fa93e45eb050b59372e053d49e0a8bea345fd55191d241d240a0a32738495ac2"
       ],
       "after": [
-        "04ea9ed5d3f50961db0071273ba1278816bb2209be8ca8edb7396aa9369f5f72",
-        "f2e351a941e93f64aff151b9de57bb4d69609ae77ff460dea0f3e4da460c8e76"
+        "0c7f26a79043e68f554a876353a4b476f89e84463f5080cf1957eaef3254172e",
+        "b99cb11f75cbd056a29169ab2bc75a335a826e908e00f63fee40ea6e01865ba5",
+        "f6c043b83b4705b81022b0046744a7ca1b176c42a1c1c0a0ad9e30afd3450952"
       ]
     },
     "data/loaders/loader.py": {
@@ -1130,7 +1133,7 @@
       ]
     },
     "training/morai_transfer_training.py": {
-      "path": "training/morai_transfer_training.py",
+      "path": "training/vision_encoder/recipes/transfer.py",
       "before": [
         "043c05a26650c83387c0b6d38e833362279a1bd20b2b011aa9ca3b32c7961c13",
         "06caae2ec86245909d1b5ba64c5adebf55ac83b879196a884c07fae98d28cad8",
@@ -1157,8 +1160,8 @@
         "e77e9394d9e9bab1966f0bd20602a096110c38e662dc7d1d4f3a55aa16bcd8b1"
       ],
       "after": [
-        "043c05a26650c83387c0b6d38e833362279a1bd20b2b011aa9ca3b32c7961c13",
-        "3df58cb1fe87d6d6039d8575ad9c0934d6d00e78698b4d7667d3fd65ed155711"
+        "e919a51cee0199653f6f3f687489f065da780420ffa8e569f7dbce591a2af028",
+        "ed79a1f15d9366d9a68adb360ccb25581e1b67fb5d5e569b2640a6a51f4e7876"
       ]
     },
     "datasets/morai_native_capture.py": {
@@ -1345,14 +1348,17 @@
         "8d3e5bfe851c3f7131b312d44236f7e547eccd2853aadac106f346a09c4ea0f7",
         "928254c956563c671653e6ffe60dc44de3ecae39e17af11b9d6296514db40444",
         "995e4dc9c2696ab2a530b7338d364e959e8e9e4e29c20bc89f9d2c2e7ac1fa3f",
+        "a4e8de30693b272b6f014f9f2a837d00ba95838000ec431c5c8abc419d252012",
+        "b9a6e94e9260baaecfd662e0ea4ba5bc200ccc5acf5582100e9531a0000b6d6c",
         "c547df4f6c2a0263115d578ca43720e8def1bc627c7d8fcf21c29d7a7fbab28d",
         "e85c1fd417386f915370ed98088fc2f51bde46b48f5229128d4db1b84c59bbd8",
         "ec4205afe17f73674e4188c0e5eeff649d2172a0ee4fdf757c962cf15e9bb089",
         "ecb30ef2476a59826c3925857b26b4dbd9000c90b786fc0fd37d9e7dafecbd75"
       ],
       "after": [
-        "a4e8de30693b272b6f014f9f2a837d00ba95838000ec431c5c8abc419d252012",
-        "b9a6e94e9260baaecfd662e0ea4ba5bc200ccc5acf5582100e9531a0000b6d6c"
+        "00e188ef8912e4d25e0d3ad7dc901a93bcb4fd75761a011a656a3ae1e4adae2d",
+        "7b496fb95f0ccea08e9ab4c298f3a1267b5ea79e89a84f4624fbc3208cdd045f",
+        "c2d1d947b4e0ca7d9beacc86f2531914816cfac3f9f078a256a25224ab75d784"
       ]
     },
     "tests/test_split_manifest.py": {
@@ -1533,7 +1539,7 @@
       ]
     },
     "utils/vision_encoder_training.py": {
-      "path": "training/vision_encoder_training.py",
+      "path": "training/vision_encoder/recipes/pretrain.py",
       "before": [
         "08b13fe35d0618227436b821f00a30428ff663d52e5b551feef243f2e1f77b7a",
         "148308eeccd5da0041895425755df7ea3e43934dd3e01658bce31d4cd147a942",
@@ -1557,8 +1563,9 @@
         "f449db94186bc9a92650bdd6981f2513a8415687a233c1d1dbf17905abdd272c"
       ],
       "after": [
-        "3a5e30e6b87e98236c77952dca3fcea7306761ac041a4bc8d4d691e01ea10253",
-        "48964ab341f9e7d312dabb8391e28cd87bc2a83bcc988bc1f7eedab1e21f4054"
+        "46e730404b9719430129eb356e986738ec73720c069f10dc6a97dbd8e5a4fd87",
+        "83932b325773389652f74ce2b40df2ad055a6f2b58c2e28aafa41d10149fff0c",
+        "a73faee5d5fbfcc1a4621dad12fd3461c95df3a34e4d75e2fde872bee97361c4"
       ]
     },
     "tests/test_ccdp_fixed_nc.py": {
@@ -1674,8 +1681,9 @@
         "fec1a65585d57b9b3eac8ddfd2b2389e142e00c65ba1a4a431e8c4f778ff817d"
       ],
       "after": [
-        "48ca56d79b0acb7aab90d511efcac2c61392e6965635f92544e301b23fb40d37",
-        "a9337ea0dcd10dae0c63e77b45e500d873b64a60e86658383e8281648bf827d8"
+        "647ebbbb1777d898dcb23f37d6f7e6341fda9408f10f382ac63c73a9e64bcd4d",
+        "bddc98e959c22321d63a15f835fd16b6a92b6b07f9d64de406796bbc01a85a0d",
+        "c56142d989072c717c57c3f7626410b386bc93ea5bdce32a2b5006b4b870b5e8"
       ]
     },
     "tools/validation/audit_vldrive_paper.py": {
@@ -1752,7 +1760,7 @@
       ]
     },
     "utils/training/vision_encoder_training.py": {
-      "path": "training/vision_encoder_training.py",
+      "path": "training/vision_encoder/recipes/pretrain.py",
       "before": [
         "08b13fe35d0618227436b821f00a30428ff663d52e5b551feef243f2e1f77b7a",
         "148308eeccd5da0041895425755df7ea3e43934dd3e01658bce31d4cd147a942",
@@ -1772,8 +1780,9 @@
         "f449db94186bc9a92650bdd6981f2513a8415687a233c1d1dbf17905abdd272c"
       ],
       "after": [
-        "3a5e30e6b87e98236c77952dca3fcea7306761ac041a4bc8d4d691e01ea10253",
-        "48964ab341f9e7d312dabb8391e28cd87bc2a83bcc988bc1f7eedab1e21f4054"
+        "46e730404b9719430129eb356e986738ec73720c069f10dc6a97dbd8e5a4fd87",
+        "83932b325773389652f74ce2b40df2ad055a6f2b58c2e28aafa41d10149fff0c",
+        "a73faee5d5fbfcc1a4621dad12fd3461c95df3a34e4d75e2fde872bee97361c4"
       ]
     },
     "tests/test_paired_hue_finetune.py": {
@@ -1793,7 +1802,7 @@
       ]
     },
     "utils/trainer.py": {
-      "path": "training/training.py",
+      "path": "training/joint/training.py",
       "before": [
         "1620911c2c002fba1d37b050c3cad61792f4eb65115828bca2160c5fed606d95",
         "259a8c044f5f6939a17a5e149aa752f24180135ecf776377982cbf38c46cc5d0",
@@ -1807,8 +1816,8 @@
         "d730e6f7227b6ded4fa899b7efb7b0475eb8f1d26676e9d2a78ed46a4bfd187b"
       ],
       "after": [
-        "7c5cb2f905affa20b2317fb1e8fb53a26379c6efd26b40b741ffaa49a01dfc50",
-        "bf20d8604f74abe047521d64b968fd7f82677c29a688d9be4b48e61bf0374fd8"
+        "70a7c79d76a208bf646cd57c7c3d9411a138ab9cd952d2737163f1a281172a42",
+        "74128d517c31d253f9ee1d84f6c175ce56c4bc95c40724e8d1757d81047e8e4d"
       ]
     },
     "tests/test_velocity_stage2_preparation.py": {
@@ -2042,7 +2051,7 @@
       ]
     },
     "utils/training/morai_transfer_training.py": {
-      "path": "training/morai_transfer_training.py",
+      "path": "training/vision_encoder/recipes/transfer.py",
       "before": [
         "043c05a26650c83387c0b6d38e833362279a1bd20b2b011aa9ca3b32c7961c13",
         "06caae2ec86245909d1b5ba64c5adebf55ac83b879196a884c07fae98d28cad8",
@@ -2062,8 +2071,8 @@
         "e77e9394d9e9bab1966f0bd20602a096110c38e662dc7d1d4f3a55aa16bcd8b1"
       ],
       "after": [
-        "043c05a26650c83387c0b6d38e833362279a1bd20b2b011aa9ca3b32c7961c13",
-        "3df58cb1fe87d6d6039d8575ad9c0934d6d00e78698b4d7667d3fd65ed155711"
+        "e919a51cee0199653f6f3f687489f065da780420ffa8e569f7dbce591a2af028",
+        "ed79a1f15d9366d9a68adb360ccb25581e1b67fb5d5e569b2640a6a51f4e7876"
       ]
     },
     "tools/evaluate_traffic_departures.py": {
@@ -2828,7 +2837,7 @@
       ]
     },
     "training/vision_encoder_training.py": {
-      "path": "training/vision_encoder_training.py",
+      "path": "training/vision_encoder/recipes/pretrain.py",
       "before": [
         "08b13fe35d0618227436b821f00a30428ff663d52e5b551feef243f2e1f77b7a",
         "148308eeccd5da0041895425755df7ea3e43934dd3e01658bce31d4cd147a942",
@@ -2852,8 +2861,9 @@
         "f449db94186bc9a92650bdd6981f2513a8415687a233c1d1dbf17905abdd272c"
       ],
       "after": [
-        "3a5e30e6b87e98236c77952dca3fcea7306761ac041a4bc8d4d691e01ea10253",
-        "48964ab341f9e7d312dabb8391e28cd87bc2a83bcc988bc1f7eedab1e21f4054"
+        "46e730404b9719430129eb356e986738ec73720c069f10dc6a97dbd8e5a4fd87",
+        "83932b325773389652f74ce2b40df2ad055a6f2b58c2e28aafa41d10149fff0c",
+        "a73faee5d5fbfcc1a4621dad12fd3461c95df3a34e4d75e2fde872bee97361c4"
       ]
     },
     "utils/common/source_compatibility.py": {
@@ -2898,14 +2908,17 @@
     "training/vision_encoder/recipes/pretrain.py": {
       "path": "training/vision_encoder/recipes/pretrain.py",
       "before": [
+        "3841ef938d5b6766b75e4ec58bdde32afb8c0ad8c587e560d2c46d5a0511dd9b",
         "536dd44dec8d210eae56e325b97a44248fb93c228e22cab7bf3372a89a620b93",
+        "85b019d67a47034eeaf64da5b9f29edc08a051ad122e04762d6d273c142bbf68",
         "8de45a70da0d24fcf850c644d1db97eafe95fc6fd3b7a91243652a0454a32c71",
         "c0c24378e99866c606276e818b417f2a8b1380382112926d35d93a765f77b2d3",
         "f68e8e7714b6c333243104c963fd794debe9eb90374d5f42fb4b950021068a14"
       ],
       "after": [
-        "3841ef938d5b6766b75e4ec58bdde32afb8c0ad8c587e560d2c46d5a0511dd9b",
-        "85b019d67a47034eeaf64da5b9f29edc08a051ad122e04762d6d273c142bbf68"
+        "46e730404b9719430129eb356e986738ec73720c069f10dc6a97dbd8e5a4fd87",
+        "83932b325773389652f74ce2b40df2ad055a6f2b58c2e28aafa41d10149fff0c",
+        "a73faee5d5fbfcc1a4621dad12fd3461c95df3a34e4d75e2fde872bee97361c4"
       ]
     },
     "training/vision_encoder/recipes/transfer.py": {

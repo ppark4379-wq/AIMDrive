@@ -8,7 +8,7 @@
 
 Training loops and launch scripts live in `../training/`; reusable helpers and losses live in `training/` here.
 The root `train.py` remains the command-line entry point. Inference also uses the checkpoint loader
-in `training.training` and the precision helpers in `utils.training.training_helper`.
+in `training.joint.training` and the precision helpers in `utils.training.training_helper`.
 
 `common/source_relocations.json` records exact source hashes before and after
 this reorganization. Existing checkpoint/cache provenance can use the old paths

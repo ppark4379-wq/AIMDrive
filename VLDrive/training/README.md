@@ -42,10 +42,7 @@ training/
 │  └─ README.md
 ├─ experiments/paired_hue_finetune.py
 ├─ tests/test_training_layout.py
-├─ scripts/                    # 이전 셸 실행 경로 보존
-├─ training.py                 # joint/training.py 호환 import
-├─ vision_encoder_training.py  # recipes/pretrain.py 호환 import
-└─ morai_transfer_training.py  # recipes/transfer.py 호환 import
+└─ scripts/                    # 이전 셸 실행 경로 보존
 ```
 
 패키지용 `__init__.py`는 위 트리에서 생략했습니다.
@@ -83,9 +80,9 @@ bash training/joint/scripts/train.sh --config training/vldrive_train.json
 
 | 기존 파일/기능 | 새 위치 | 처리 |
 |---|---|---|
-| 최초 `utils/trainer.py` → `training/training.py` | `joint/training.py` | 학습·평가·preflight 루프 유지, 이전 경로는 호환 import |
-| `vision_encoder_training.py` | `vision_encoder/recipes/pretrain.py` | 학습 루프 이동, 이전 경로는 호환 import |
-| `morai_transfer_training.py` | `vision_encoder/recipes/transfer.py` | 전이학습 루프 이동, 이전 경로는 호환 import |
+| 최초 `utils/trainer.py` → `training/training.py` | `joint/training.py` | 학습·평가·preflight 루프 유지, import를 canonical 경로로 변경 |
+| `vision_encoder_training.py` | `vision_encoder/recipes/pretrain.py` | 학습 루프 이동, import를 canonical 경로로 변경 |
+| `morai_transfer_training.py` | `vision_encoder/recipes/transfer.py` | 전이학습 루프 이동, import를 canonical 경로로 변경 |
 | pretrain의 동결·optimizer·LR 설정, transfer의 모델 복원·동결 범위·학습 모드 | `vision_encoder/setup.py` | 함수 본문 그대로 이동 |
 | `utils/config/vision_encoder_config.py` | `vision_encoder/setup.py`에서 재사용 | 원본 설정 클래스·검증 함수 import |
 | 기존 커넥터 설정·생성자 | `connector/setup.py` | 동일한 모델 클래스 재노출 |
@@ -107,8 +104,8 @@ bash training/joint/scripts/train.sh --config training/vldrive_train.json
 
 ## 검증과 호환성
 
-`training/tests/`는 setup 객체의 동일성, 기존 import 연결, 동결 정책 및 새 소스 파일의 해시 수집을 검사합니다.
+`training/tests/`는 setup 객체의 동일성, canonical import 연결, 동결 정책 및 새 소스 파일의 해시 수집을 검사합니다.
 기존 학습·체크포인트 테스트는 루트 `tests/`에 그대로 둡니다.
 소스 검증 메타데이터는 `utils/common/source_relocations.json`에 기록합니다.
 학습 대시보드는 기존 `utils/visualization/training_dashboard/`를 사용합니다.
-이번 구조 완성 작업은 `training/`과 승인된 소스 검증 메타데이터만 수정합니다.
+루트 진입점·추론·도구·테스트는 위 canonical 모듈 경로를 직접 import합니다.

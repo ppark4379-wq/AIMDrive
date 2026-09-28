@@ -50,12 +50,12 @@ def write(path, data):
 # --------------------------------------------------------------------------- stage 1
 
 def add_vision_encoder_arguments(parser):
-    from training import vision_encoder_training
+    from training.vision_encoder.recipes import pretrain as vision_encoder_training
     return vision_encoder_training.add_arguments(parser)
 
 
 def run_vision_encoder(parser, args):
-    from training import vision_encoder_training
+    from training.vision_encoder.recipes import pretrain as vision_encoder_training
     return vision_encoder_training.run(vision_encoder_training.config_from_args(parser, args))
 
 
@@ -120,7 +120,7 @@ def run_vldrive(args):
     from utils.common.runtime import bootstrap
     backend = bootstrap(ROOT)
     from models.vldrive import VLDriveTrainingConfig, VLDriveTrainingModel
-    from training.training import (seed_all, subset_indices, stride_indices, source_hashes, parameter_hash,
+    from training.joint.training import (seed_all, subset_indices, stride_indices, source_hashes, parameter_hash,
         preflight, evaluate, make_optimizer, train, save_checkpoint, restore_checkpoint,
         save_model_checkpoint, restore_model_checkpoint, periodic_checkpoint_path,
         warm_start_model_checkpoint)
@@ -341,7 +341,7 @@ def main(argv=None):
     stage1 = stages.add_parser('vision-encoder', help='stage 1: MORAI vision encoder pre-training')
     add_vision_encoder_arguments(stage1)
     morai = stages.add_parser('vision-encoder-morai', help='MORAI Sensor Record multitask transfer from full LMDrive weights')
-    from training import morai_transfer_training
+    from training.vision_encoder.recipes import transfer as morai_transfer_training
     morai_transfer_training.add_arguments(morai)
     stage2 = stages.add_parser('vldrive', help='stage 2: VLDrive training on cached visual tokens')
     add_vldrive_arguments(stage2)

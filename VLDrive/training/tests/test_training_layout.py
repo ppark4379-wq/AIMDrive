@@ -6,14 +6,17 @@ import torch
 from torch import nn
 
 
-def test_legacy_training_imports_share_canonical_modules():
-    from training import training, vision_encoder_training, morai_transfer_training
+def test_canonical_training_modules_share_the_project_root():
     from training.joint import training as joint
     from training.vision_encoder.recipes import pretrain, transfer
-    assert training is joint
-    assert vision_encoder_training is pretrain
-    assert morai_transfer_training is transfer
     assert joint.ROOT == pretrain.ROOT == transfer.ROOT == Path(__file__).resolve().parents[2]
+
+
+def test_removed_compatibility_modules_stay_removed():
+    root = Path(__file__).resolve().parents[1]
+    assert not (root / 'training.py').exists()
+    assert not (root / 'vision_encoder_training.py').exists()
+    assert not (root / 'morai_transfer_training.py').exists()
 
 
 def test_setup_reuses_existing_types_without_new_defaults():

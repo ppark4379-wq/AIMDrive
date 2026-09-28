@@ -145,7 +145,7 @@ def load_contract(config):
 
 def load_stage2(contract, device):
     from models.vldrive import VLDriveTrainingConfig, VLDriveTrainingModel
-    from training.training import restore_model_checkpoint
+    from training.joint.training import restore_model_checkpoint
     model_config = VLDriveTrainingConfig(**contract['description']['config'])
     for field in ('language_checkpoint', 'qformer_checkpoint'):
         if not Path(getattr(model_config, field)).is_dir():

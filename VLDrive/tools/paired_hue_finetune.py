@@ -44,7 +44,7 @@ from torchvision.transforms import functional as TF
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from training import vision_encoder_training as trainer
+from training.vision_encoder.recipes import pretrain as trainer
 from data.src.loaders.traffic_labels import traffic_record
 
 REPO = ROOT.parent

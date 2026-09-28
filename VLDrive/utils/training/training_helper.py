@@ -1,6 +1,6 @@
 """Pieces shared by the training paths: seeding, batching, autocast, checkpoints.
 
-The stage-2 loop itself lives in training/training.py; this module only holds what
+The stage-2 loop itself lives in training/joint/training.py; this module only holds what
 that loop and the tools reuse.
 
 Formerly ``LAVIS/lavis/runners/morai_trainer.py``.
