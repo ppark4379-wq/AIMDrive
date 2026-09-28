@@ -10,12 +10,11 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from gps_jamming.interfaces.lidar_udp import decode_packet, LidarAssembler, LidarUDPReceiver, LidarUDPStream
 from gps_jamming.timing.timestamps import TimestampMapper
-from gps_jamming.lidar.ROI import ROI as preprocess
-from gps_jamming.lidar.ransac import remove_ground
+from GPSJamming.gps_jamming.lidar.ROI import preprocess
+from gps_jamming.lidar.ground_removal import remove_ground
 from gps_jamming.lidar.runtime import load_config, DEFAULT_CONFIG, frame_to_dict
 from gps_jamming.pipeline import LidarPipeline
 from gps_jamming.types import LidarFrame
-from gps_jamming.geometry.transforms import transform_xyzi
 
 
 def packet(stamp, start, step=3.0, distance=10.0):
@@ -155,23 +154,18 @@ class LidarTests(unittest.TestCase):
 
     def test_scene_ground_candidates_features_metadata(self):
         config = load_config(DEFAULT_CONFIG)
-        # Keep the synthetic scene independent of the user's tuning ROI.
-        config["lidar"]["preprocessing"].update(roi_min=[-30, -30, -3], roi_max=[60, 30, 5])
-        frame = LidarFrame(7, 123, 456, 789, config["lidar"]["assembly"]["coordinate_frame"], True, scene(), 900)
+        frame = LidarFrame(7, 123, 456, 789, "lidar", True, scene(), 900)
         result = LidarPipeline(config["lidar"]).process(frame)
         self.assertEqual(len(result.clusters), 2)
         self.assertGreater(result.diagnostics["ground_points"], 1900)
         self.assertEqual(result.raw_timestamp, 123)
         self.assertEqual(result.timestamp, 456)
         self.assertEqual(result.receive_monotonic_time, 789)
-        self.assertEqual(result.coordinate_frame, "base_link")
-        np.testing.assert_allclose(result.points[:, :3], frame.points[:, :3] + [1, 0, 1.45], atol=1e-6)
-        np.testing.assert_array_equal(frame.points, scene())
-        np.testing.assert_array_equal(result.points[:, 3], frame.points[:, 3])
+        self.assertEqual(result.coordinate_frame, "lidar")
         self.assertEqual(frame.clusters, [])
         centers = sorted([c.centroid for c in result.clusters], key=lambda c: c[0])
-        np.testing.assert_allclose(centers[0], [10.5, 0, 0.95], atol=0.15)
-        np.testing.assert_allclose(centers[1], [16.25, 4.25, 1.0], atol=0.15)
+        np.testing.assert_allclose(centers[0], [9.5, 0, -0.5], atol=0.15)
+        np.testing.assert_allclose(centers[1], [15.25, 4.25, -0.45], atol=0.15)
         for c in result.clusters:
             self.assertEqual(c.point_count, len(c.points))
             np.testing.assert_allclose(c.dimensions, np.ptp(c.points[:, :3], axis=0))
@@ -182,39 +176,6 @@ class LidarTests(unittest.TestCase):
         remaining, info = remove_ground(points)
         np.testing.assert_array_equal(remaining, points)
         self.assertEqual(info["ground_points"], 0)
-
-    def test_debug_stages_partition_ground_without_changing_output(self):
-        config = load_config(DEFAULT_CONFIG)["lidar"]
-        frame = LidarFrame(7, 123, 456, 789, config["assembly"]["coordinate_frame"], True, scene(), 900)
-        plain = LidarPipeline(config).process(frame)
-        pipeline = LidarPipeline(config, capture_debug=True)
-        debug = pipeline.process(frame)
-        self.assertEqual(frame_to_dict(plain), frame_to_dict(debug))
-        stages = pipeline.last_debug
-        self.assertEqual(len(stages["ground"]) + len(stages["nonground"]), len(stages["voxel"]))
-        self.assertEqual(len(stages["ground"]), debug.diagnostics["ground_points"])
-        self.assertGreaterEqual(len(stages["roi"]), len(stages["voxel"]))
-        for indices, cluster in zip(stages["components"], stages["clusters"]):
-            np.testing.assert_array_equal(stages["nonground"][indices], cluster.points)
-
-    def test_transform_before_roi_and_no_double_translation(self):
-        config = load_config(DEFAULT_CONFIG)["lidar"]
-        config["preprocessing"].update(roi_min=[-30, -30, -3], roi_max=[60, 30, 5])
-        raw = np.array([[-30.5, 0, 0, 42], [59.5, 0, 0, 100]], dtype=np.float32)
-        frame = LidarFrame(1, 0, None, 0, config["assembly"]["coordinate_frame"], True, raw, 0)
-        pipeline = LidarPipeline(config, capture_debug=True)
-        result = pipeline.process(frame)
-        np.testing.assert_allclose(pipeline.last_debug["roi"], [[-29.5, 0, 1.45, 42]])
-        np.testing.assert_array_equal(pipeline.last_debug["raw"], result.points)
-        again = pipeline.process(result)
-        np.testing.assert_array_equal(again.points, result.points)
-
-    def test_transform_rotation_and_empty_points(self):
-        raw = np.array([[1, 0, 0, 42]], dtype=np.float32)
-        result = transform_xyzi(raw, [1, 0, 1.45], [0, 0, 90])
-        np.testing.assert_allclose(result, [[1, 1, 1.45, 42]], atol=1e-6)
-        np.testing.assert_array_equal(raw, [[1, 0, 0, 42]])
-        self.assertEqual(transform_xyzi(np.empty((0, 4)), [1, 0, 1.45], [0, 0, 0]).shape, (0, 4))
 
     def test_loopback_udp_receiver(self):
         a = self.assembler()

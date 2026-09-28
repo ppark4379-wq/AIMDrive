@@ -11,6 +11,56 @@ def packet(data, index=0, final=True, stamp=(10, 50000000)):
 
 
 class AssemblerTests(unittest.TestCase):
+    def test_explicit_sender_port_filters_before_assembly(self):
+        front = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        other = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        front.bind(('127.0.0.1', 0))
+        receiver = UdpCamera('127.0.0.1', 0, sender_port=front.getsockname()[1])
+        try:
+            other.sendto(packet(b'\xff\xd8wrong\xff\xd9'), receiver.address)
+            # Same timestamp from correct peer must still be accepted.
+            front.sendto(packet(b'\xff\xd8front\xff\xd9'), receiver.address)
+            result = receiver.get(timeout=2)
+            self.assertIsNotNone(result)
+            self.assertEqual(result.jpeg, b'\xff\xd8front\xff\xd9')
+            self.assertIsNone(receiver.get(timeout=.05))
+            self.assertEqual(receiver.filtered_packets, 1)
+        finally:
+            receiver.close()
+            front.close()
+            other.close()
+
+    def test_front_filter_isolates_peers_and_preserves_latest(self):
+        import cv2
+        import numpy as np
+        import time
+        def jpeg(width, height):
+            return cv2.imencode('.jpg', np.zeros((height, width, 3), np.uint8))[1].tobytes()
+        receiver = UdpCamera('127.0.0.1', 0, expected_image_size=(32, 24))
+        front = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        side = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            # Same acquisition timestamp across cameras must not suppress front.
+            side.sendto(packet(jpeg(16, 12), stamp=(10, 0)), receiver.address)
+            front.sendto(packet(jpeg(32, 24), stamp=(10, 0)), receiver.address)
+            result = receiver.get(timeout=2)
+            self.assertIsNotNone(result)
+            self.assertEqual(result.stamp, (10, 0))
+            self.assertEqual(receiver.selected_peer[1], front.getsockname()[1])
+            # A different peer with even the SAME resolution cannot replace it.
+            side.sendto(packet(jpeg(32, 24), stamp=(11, 0)), receiver.address)
+            front.sendto(packet(jpeg(16, 12), stamp=(12, 0)), receiver.address)
+            front.sendto(packet(jpeg(32, 24), stamp=(11, 0)), receiver.address)
+            result = receiver.get(timeout=2)
+            self.assertEqual(result.stamp, (11, 0))
+            self.assertEqual(receiver.filtered_frames, 2)
+            self.assertEqual(receiver.filtered_packets, 1)
+            self.assertIsNone(receiver.get(timeout=.02))
+        finally:
+            front.close()
+            side.close()
+            receiver.close()
+
     def test_reordered_fragments_and_duplicate(self):
         a = JpegAssembler()
         end = packet(b"end\xff\xd9", 2)

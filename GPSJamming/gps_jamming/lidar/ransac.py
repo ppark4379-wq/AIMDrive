@@ -2,7 +2,7 @@
 import numpy as np
 
 
-def remove_ground(points, expected_z=-1.48, seed_band=0.45,
+def ransac(points, expected_z=-1.48, seed_band=0.45,
                   distance_threshold=0.12, max_tilt_deg=12.0,
                   iterations=80, min_inliers=40, seed=0):
     if (seed_band <= 0 or distance_threshold <= 0 or iterations < 1
