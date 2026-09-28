@@ -10,10 +10,10 @@ import pytest
 import torch
 from torch import nn
 
-from inference import offline_vldrive as offline
-from inference.vldrive_offline_config import ConfigError,load_config,require_checkpoint
-from inference.vldrive_runtime import seed_runtime
-from inference.vldrive_waypoint_visualization import render_vldrive_waypoints
+from inference.offline import offline_vldrive as offline
+from inference.offline.vldrive_offline_config import ConfigError,load_config,require_checkpoint
+from inference.runtime.vldrive_runtime import seed_runtime
+from utils.visualization.vldrive_waypoint_visualization import render_vldrive_waypoints
 from models.connector.qformer_mefa import QFormerMEFAConfig,QFormerMEFAConnector
 from models.vldrive import VLDriveTrainingConfig,VLDriveTrainingModel
 from utils.visualization import vision_encoder_visualization as viz
@@ -201,7 +201,7 @@ def test_manifest_is_json_safe_and_contains_unselected_checkpoint(config,tmp_pat
 
 
 def test_runner_records_all_predictions_but_renders_only_selected_anchors(config,tmp_path,monkeypatch):
-    from inference import vldrive_runtime
+    from inference.runtime import vldrive_runtime
     dataset=RawFrames(13)
     cfg=replace(config,device='cpu',vldrive_checkpoint=tmp_path/'user-selected-fixture.pt',
                 output=tmp_path/'figures',stride=2,limit=2)
@@ -230,8 +230,8 @@ def test_runner_records_all_predictions_but_renders_only_selected_anchors(config
 
 
 def test_offline_entry_never_imports_udp_or_transmits():
-    for name in ('offline_vldrive.py','vldrive_offline_config.py','vldrive_waypoint_visualization.py'):
-        tree=ast.parse((ROOT/'inference'/name).read_text())
+    for name in ('inference/offline/offline_vldrive.py','inference/offline/vldrive_offline_config.py','utils/visualization/vldrive_waypoint_visualization.py'):
+        tree=ast.parse((ROOT/name).read_text())
         for node in ast.walk(tree):
             if isinstance(node,ast.ImportFrom):
                 assert not any(word in (node.module or '') for word in ('morai_udp','live_frame','realtime'))

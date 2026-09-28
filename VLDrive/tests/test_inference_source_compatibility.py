@@ -3,7 +3,7 @@ import hashlib
 
 import pytest
 
-from inference import vldrive_runtime as runtime
+from inference.runtime import vldrive_runtime as runtime
 
 
 @pytest.mark.parametrize('name,expected', [

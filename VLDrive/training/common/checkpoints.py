@@ -148,7 +148,7 @@ def restore_model_checkpoint(path, model, *, provenance, evaluation_source_compa
     if evaluation_source_compatibility and not equivalent_provenance(state.get('provenance', {}), provenance, ROOT):
         # Evaluation-only source changes must be explicitly reviewed; dataset,
         # asset, backend and model checks remain exact. Training resume stays strict.
-        from inference.vldrive_runtime import verify_sources
+        from inference.runtime.vldrive_runtime import verify_sources
         recorded = state.get('provenance', {})
         expected_provenance = copy.deepcopy(provenance)
         expected_provenance['source'] = recorded.get('source')

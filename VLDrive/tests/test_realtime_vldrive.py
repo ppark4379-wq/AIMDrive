@@ -10,8 +10,8 @@ import torch
 from torch import nn
 from PIL import Image
 
-from inference.live_frame import CAMERA_KEYS, LiveFrameSource
-from inference.vldrive_runtime import TokenHistory, encode_frame, predict_window, seed_runtime
+from inference.sensors.live_frame import CAMERA_KEYS, LiveFrameSource
+from inference.runtime.vldrive_runtime import TokenHistory, encode_frame, predict_window, seed_runtime
 from models.connector.ccdp import CCDPTokenSparsifier
 from models.connector.qformer_mefa import QFormerMEFAConfig, QFormerMEFAConnector
 from models.vldrive import VLDriveTrainingConfig, VLDriveTrainingModel
@@ -200,7 +200,7 @@ def test_live_build_decodes_packets_through_shared_recipe_and_records_identity()
 
 
 def test_receiver_sockets_only_bind_sensor_ports(monkeypatch):
-    from inference import morai_udp
+    from inference.sensors import morai_udp
     sockets=[]
     class Socket:
         def __init__(self,*args): self.bound=None;sockets.append(self)
@@ -212,6 +212,7 @@ def test_receiver_sockets_only_bind_sensor_ports(monkeypatch):
     class Thread:
         def __init__(self,**kwargs): pass
         def start(self): pass
+        def join(self,timeout=None): pass
     monkeypatch.setattr(morai_udp.socket,'socket',Socket)
     monkeypatch.setattr(morai_udp.threading,'Thread',Thread)
     ports=dict(zip([*CAMERA_KEYS,'lidar','vehicle_status'],range(10001,10007)))
@@ -223,7 +224,7 @@ def test_receiver_sockets_only_bind_sensor_ports(monkeypatch):
 
 def test_inference_modules_have_no_transmit_calls():
     root=Path(__file__).resolve().parents[1]/'inference'
-    for name in ('realtime_vldrive.py','vldrive_runtime.py','vldrive_smoke.py','live_frame.py','morai_udp.py'):
+    for name in ('realtime/realtime_vldrive.py','runtime/vldrive_runtime.py','diagnostics/vldrive_smoke.py','sensors/live_frame.py','sensors/morai_udp.py'):
         tree=ast.parse((root/name).read_text(encoding='utf-8'))
         for node in ast.walk(tree):
             if isinstance(node,ast.Call) and isinstance(node.func,ast.Attribute):

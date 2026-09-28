@@ -1,11 +1,11 @@
 import json
 import pytest
-from inference.udp_relay import parse_ports, read_relay_config
+from inference.sensors.udp_relay import parse_ports, read_relay_config
 
 
 def test_small_camera_datagrams_preserve_exact_jpeg_and_frame_identity():
-    from inference.udp_relay import camera_datagrams
-    from inference.morai_udp import CameraReceiver,CAMERA_PREFIX,CAMERA_JPEG_CAPACITY
+    from inference.sensors.udp_relay import camera_datagrams
+    from inference.sensors.morai_udp import CameraReceiver,CAMERA_PREFIX,CAMERA_JPEG_CAPACITY
     def parser():
         value=CameraReceiver.__new__(CameraReceiver)
         value._buffer=bytearray();value._expect_index=0;value._intact=False

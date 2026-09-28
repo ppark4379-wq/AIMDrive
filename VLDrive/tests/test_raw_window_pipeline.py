@@ -6,8 +6,8 @@ import queue
 import pytest
 import torch
 
-from inference.input_windows import FrameGrid, RawWindowHistory, WindowInputProducer
-from inference.timed_history import TimedTokenHistory
+from inference.sensors.input_windows import FrameGrid, RawWindowHistory, WindowInputProducer
+from inference.sensors.timed_history import TimedTokenHistory
 
 
 @pytest.mark.parametrize('key,value', [
@@ -19,8 +19,8 @@ from inference.timed_history import TimedTokenHistory
     ('encoder_batch_wait_s', .5), ('encoder_batch_wait_s', float('inf')),
 ])
 def test_history_and_transfer_configuration_is_bounded(key, value):
-    from inference.realtime_vldrive import validate_config
-    from inference.vldrive_runtime import ROOT, read_json
+    from inference.realtime.realtime_vldrive import validate_config
+    from inference.runtime.vldrive_runtime import ROOT, read_json
     cfg = copy.deepcopy(read_json(ROOT/'../AIM2026/Inference/vldrive_realtime.json'))
     cfg['runtime'][key] = value
     with pytest.raises(ValueError, match=key):
@@ -163,7 +163,7 @@ def test_large_encoded_gap_requires_new_history(tmp_path):
     ([99.55,99.69],[]),     # stale newest cannot lend freshness to first
 ])
 def test_two_frame_batch_freshness_preserves_actual_times(tmp_path,monkeypatch,stamps,expected):
-    import inference.input_windows as windows
+    import inference.sensors.input_windows as windows
     history = RawWindowHistory()
     producer, _ = producer_for(history, tmp_path)
     producer.batch_size = 2
@@ -196,7 +196,7 @@ def test_batch_timeout_keeps_single_frame_without_duplication(tmp_path):
 
 
 def test_batched_runtime_keeps_per_frame_outputs_and_quantization():
-    from inference.vldrive_runtime import encode_frames
+    from inference.runtime.vldrive_runtime import encode_frames
     class Encoder(torch.nn.Module):
         def forward(self,inputs):
             return inputs['rgb_front'][:,None,None].expand(-1,106,256)*.123456

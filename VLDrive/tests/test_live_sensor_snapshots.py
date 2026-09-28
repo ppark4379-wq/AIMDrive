@@ -7,7 +7,7 @@ import pytest
 import torch
 from PIL import Image
 
-from inference.live_frame import CAMERA_KEYS, LiveFrameSource
+from inference.sensors.live_frame import CAMERA_KEYS, LiveFrameSource
 
 
 class Receiver:

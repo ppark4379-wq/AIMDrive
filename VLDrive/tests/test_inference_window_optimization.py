@@ -4,9 +4,9 @@ import torch
 from torch import nn
 from transformers import LlamaConfig, LlamaForCausalLM
 
-from inference.fast_window import shared_ddia
-from inference.timed_history import TimedTokenHistory
-from inference.vldrive_runtime import predict_window
+from inference.runtime.fast_window import shared_ddia
+from inference.sensors.timed_history import TimedTokenHistory
+from inference.runtime.vldrive_runtime import predict_window
 from models.llm.ddia_attention import install_ddia_attention
 from models.llm.language_model import VLDriveModel
 from models.connector.qformer_mefa import QFormerMEFAConfig, QFormerMEFAConnector
@@ -107,8 +107,8 @@ def test_dense_history_reset_and_expiry_cannot_reuse_previous_generation():
 
 
 def test_optimized_configuration_rejects_invalid_cadences():
-    from inference.realtime_vldrive import validate_config
-    from inference.vldrive_runtime import read_json, ROOT
+    from inference.realtime.realtime_vldrive import validate_config
+    from inference.runtime.vldrive_runtime import read_json, ROOT
     cfg = read_json(ROOT/'../AIM2026/Inference/vldrive_realtime.json')
     cfg['runtime'].update(resample_history=True, capture_hz=10., optimized_window=True,
                           history_reset_gap_s=1., prediction_hz=10.)
@@ -122,8 +122,8 @@ def test_no_control_overrides_enabled_config_and_flags_are_exclusive(monkeypatch
     import ast
     import sys
     from pathlib import Path
-    from inference.vldrive_runtime import ROOT
-    source = ROOT/'inference/realtime_vldrive.py'
+    from inference.runtime.vldrive_runtime import ROOT
+    source = ROOT/'inference/realtime/realtime_vldrive.py'
     tree = ast.parse(source.read_text(encoding='utf-8'))
     main = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'main')
     end = next(i for i,n in enumerate(main.body) if isinstance(n, ast.If)

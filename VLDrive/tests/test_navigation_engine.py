@@ -9,7 +9,7 @@ from navigation.engine import DEFAULT_POLICY, NavigationEngine
 from navigation.build import build_episode, build
 from navigation.mgeo import roundabout_exit, junction_context
 from navigation.sampling import NavigationLabels
-from inference.navigation_observer import replay
+from inference.navigation.navigation_observer import replay
 
 
 def route(events=(), points=None):
@@ -202,10 +202,10 @@ def test_until_intersection_instruction_is_not_reissued_each_distance_chunk():
 def test_live_observer_stale_pause_recovery_and_clock_reset(monkeypatch):
     import sys
     from types import ModuleType
-    from inference import navigation_observer as observer
+    from inference.navigation import navigation_observer as observer
 
     # Exercise the live loop with receiver outputs, without a simulator or socket.
-    udp=ModuleType('inference.morai_udp');projection=ModuleType('pyproj')
+    udp=ModuleType('inference.sensors.morai_udp');projection=ModuleType('pyproj')
     closed=[]
     class Receiver:
         def __init__(self,port,bind): self.port=port;self.index=0
@@ -222,7 +222,7 @@ def test_live_observer_stale_pause_recovery_and_clock_reset(monkeypatch):
         def transform(self,x,y): return x,y
     udp.GpsReceiver=udp.VehicleStatusReceiver=Receiver
     projection.Transformer=Transformer
-    monkeypatch.setitem(sys.modules,'inference.morai_udp',udp)
+    monkeypatch.setitem(sys.modules,'inference.sensors.morai_udp',udp)
     monkeypatch.setitem(sys.modules,'pyproj',projection)
     monkeypatch.setattr(observer.time,'sleep',lambda _:None)
     config=dict(runtime=dict(hz=20,max_age_s=.5,max_pair_skew_s=.2,startup_timeout_s=30),
@@ -249,7 +249,7 @@ def test_live_observer_stale_pause_recovery_and_clock_reset(monkeypatch):
 
 
 def test_live_route_loads_configured_files_without_dataset_and_rejects_wrong_geometry(tmp_path):
-    from inference.navigation_observer import load_live_route
+    from inference.navigation.navigation_observer import load_live_route
     map_root=tmp_path/'map';map_root.mkdir()
     points=[[0,0],[10,0],[20,0]]
     (map_root/'link_set.json').write_text(json.dumps([dict(idx='road',from_node_idx='a',
@@ -278,7 +278,7 @@ def test_live_route_loads_configured_files_without_dataset_and_rejects_wrong_geo
 
 @pytest.mark.parametrize('gps,status',[(0,10909),(10506,65536),(10506,10506),(True,10909),('10506',10909)])
 def test_observer_rejects_invalid_or_conflicting_ports(gps,status):
-    from inference.navigation_observer import validate_udp
+    from inference.navigation.navigation_observer import validate_udp
     with pytest.raises(ValueError,match='distinct integer UDP ports'):
         validate_udp(dict(bind='0.0.0.0',gps_port=gps,vehicle_status_port=status))
 
@@ -288,7 +288,7 @@ def test_observer_rejects_invalid_or_conflicting_ports(gps,status):
     (10,{'x':1},1.,'stale'),(10,{'x':1},.01,'ok')])
 def test_reception_diagnostics_distinguish_transport_parsing_and_freshness(packets,sample,age,state):
     from types import SimpleNamespace
-    from inference.navigation_observer import reception, reception_text
+    from inference.navigation.navigation_observer import reception, reception_text
     receiver=SimpleNamespace(port=10506,packets=packets,samples=0 if sample is None else 10)
     status=reception(receiver,sample,age,.5)
     assert status['state']==state
@@ -299,12 +299,12 @@ def test_reception_diagnostics_distinguish_transport_parsing_and_freshness(packe
 def test_live_observer_keeps_waiting_after_startup_timeout(monkeypatch):
     import sys
     from types import SimpleNamespace
-    from inference import navigation_observer as observer
+    from inference.navigation import navigation_observer as observer
     class Receiver:
         def __init__(self,port,bind): self.port=port
         def latest(self): return None,float('inf')
         def close(self): pass
-    monkeypatch.setitem(sys.modules,'inference.morai_udp',SimpleNamespace(
+    monkeypatch.setitem(sys.modules,'inference.sensors.morai_udp',SimpleNamespace(
         GpsReceiver=Receiver,VehicleStatusReceiver=Receiver))
     monkeypatch.setitem(sys.modules,'pyproj',SimpleNamespace(Transformer=SimpleNamespace(
         from_crs=lambda *args,**kwargs:None)))

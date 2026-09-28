@@ -14,8 +14,8 @@ from data.src.loaders.morai_encoder_contract import (
 )
 from data.src.loaders.morai_transfer_adapter import MoraiLMDriveVisionAdapter, MoraiVisionAdapterConfig
 from data.src.loaders.morai_transfer_targets import render_object_target
-from inference.live_frame import LiveFrameSource
-from inference.realtime_vision_encoder import FigureWriter
+from inference.sensors.live_frame import LiveFrameSource
+from inference.realtime.realtime_vision_encoder import FigureWriter
 from utils.visualization.vision_encoder_visualization import decode_detection_map, _box_corners, forward_right
 
 

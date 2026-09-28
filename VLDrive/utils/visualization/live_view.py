@@ -1,6 +1,6 @@
 """One window showing the paper figures as they are produced, live.
 
-    from inference.live_view import LiveView
+    from utils.visualization.live_view import LiveView
     view = LiveView(["camera", "bev_detection", "traffic_light", "waypoints"])
     view.show([("camera", bgr), ("bev_detection", bgr), ...])
 
