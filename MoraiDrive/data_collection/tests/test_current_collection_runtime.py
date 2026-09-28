@@ -46,6 +46,27 @@ class CurrentCollectionRuntimeTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertIn('expert_mode=current; expert_root=' + str(PROJECT / 'expert'), result.stdout)
 
+    def test_collection_enables_stall_and_off_route_aborts(self):
+        spec = importlib.util.spec_from_file_location('collection_runner_under_test', RUNNER)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        def base_init(scenario, *args, **kwargs):
+            # Mirrors the shared YAML, which keeps both aborts off for manual runs.
+            scenario.cfg = {'progress_watchdog': {'enabled': False},
+                            'off_route_timeout_sec': 1e12}
+
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+                module.FullLoopScenario, '__init__', base_init):
+            scenario = module.RawScenario(output=Path(directory) / 'episode',
+                                          contract_path=Path(directory) / 'contract.json',
+                                          seconds=10)
+        watchdog = scenario.cfg['progress_watchdog']
+        self.assertTrue(watchdog['enabled'])
+        self.assertEqual(watchdog, module.COLLECTION_PROGRESS_WATCHDOG)
+        self.assertGreater(watchdog['timeout_sec'], 30.0)  # above a red-light wait
+        self.assertEqual(scenario.cfg['off_route_timeout_sec'], 10.0)
+
     def test_removed_mode_is_rejected_by_both_python_entrypoints(self):
         for script, args in (
             (RUNNER, ['--check', '--expert-runtime', 'proven']),

@@ -16,7 +16,8 @@ import numpy as np
 from pyproj import Transformer
 from async_capture.alignment import PayloadReader,decode,recorded_classes,distribution
 from async_capture.journal import verify_run,digest,write_json
-from async_capture.sensor_record import gps_text_matches_ros
+from async_capture.sensor_record import (FILENAME_OFFSET_MAX_NS,gps_text_matches_ros,
+    require_stable_filename_offset)
 from async_capture.portable_paths import recorded_episode_directory
 from ssd_storage import require_ssd,SSD_ROOT
 
@@ -65,8 +66,8 @@ def main():
         if lidar is None or not lidar.get('exact_xyzi_array_equal'):
             errors.append(dict(index=i,reason='native_ros_lidar_content_not_equal'));continue
         t=lidar['ros_source_timestamp_ns'];native_time=bundle['filename_simulation_time_hypothesis_ns']
-        if not 0<=native_time-t<1000000:
-            errors.append(dict(index=i,reason='filename_lidar_source_difference_exceeds_ms_format'));continue
+        if not 0<=native_time-t<FILENAME_OFFSET_MAX_NS:
+            errors.append(dict(index=i,reason='filename_lidar_source_difference_exceeds_bound'));continue
         if t not in gps:errors.append(dict(index=i,reason='same_source_ros_gps_missing'));continue
         current,values=gps[t]
         native_gps=assets[bundle['assets']['gps']]
@@ -96,7 +97,9 @@ def main():
             native_imu_file=bundle['assets']['imu'],
             gps_ego_position_error_m=positions[-1],native_gps_phase_status=row['status'],
             training_visible=False,physical_simultaneity_verified=False))
+    associations,filename_offset=require_stable_filename_offset(associations,errors)
     summary=dict(bundles=len(cat['bundles']),association_candidates=len(associations),errors=errors,
+        filename_minus_ros_lidar_offset=filename_offset,
         native_gps_phase_counts=dict(Counter(r['status'] for r in phase)),
         native_gps_lag_ns=distribution([r['native_file_minus_measurement_ns'] for r in phase if r['status']=='unique_content_match']),
         current_ros_gps_vs_ego_error_m=distribution(positions),

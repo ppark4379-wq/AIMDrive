@@ -196,8 +196,15 @@ def select_static_obstacle_placements(self, spec, count):
     return placements
 
 
-def load_static_obstacle_preset(path, expected_map_name, route_points):
-    """Validate an editor preset and bind every obstacle to this route."""
+def load_static_obstacle_preset(path, expected_map_name, route_points,
+                                route_index_offset=0):
+    """Validate an editor preset and bind every obstacle to this route.
+
+    ``route_points`` may be a mission window of the full route; the nearest
+    point is searched only there, and ``route_index_offset`` (the window's
+    first full-route index) makes ``route_path_index`` a full-route index as
+    ``path_s_at_index`` expects.
+    """
     path = Path(path).resolve()
     with path.open("r", encoding="utf-8") as source:
         document = yaml.safe_load(source)
@@ -251,7 +258,7 @@ def load_static_obstacle_preset(path, expected_map_name, route_points):
             "position": {"x": x, "y": y, "z": z},
             "yaw_deg": yaw,
             "scale": [float(value) for value in scale],
-            "route_path_index": route_index,
+            "route_path_index": int(route_index_offset) + route_index,
             "route_distance_m": route_distance,
             "source_actor_id": str(entry.get("source_actor_id", "")),
         })
@@ -441,10 +448,14 @@ def spawn_static_obstacle(self):
     spec = self.route_definition["zones"]["static_obstacle"]
     preset_path = self.cfg.get("static_obstacle_preset")
     if preset_path:
+        # In a mission mode route_points is only the segment window, while
+        # path_s_at_index() takes a full-route index.
+        window = getattr(self, "mission_route", None)
         preset = load_static_obstacle_preset(
             preset_path,
             self.global_cfg["morai"]["map_name"],
             self.route_points,
+            route_index_offset=window.first_index if window is not None else 0,
         )
         placements = preset["placements"]
         count = len(placements)

@@ -521,8 +521,9 @@ scenarios:
     goal_tolerance_m: 2.0
     timeout_sec: 0.0
     check_period_sec: 0.05
-    # Sensor collection owns a separate wall-time bound. Scenario-time
-    # progress and off-route aborts remain disabled for that proven workflow.
+    # Disabled for manual runs. Sensor collection enables its own simulation-
+    # time watchdog and off-route abort (run_proven_three_lap_scenario.py
+    # COLLECTION_PROGRESS_WATCHDOG) in addition to its wall-time bound.
     progress_watchdog:
       enabled: false
       timeout_sec: 120.0

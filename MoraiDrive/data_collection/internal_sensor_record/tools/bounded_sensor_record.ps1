@@ -83,7 +83,15 @@ function Observe([string]$name) {
  $r=New-Object SensorRecordWindow+Rect
  if (-not [SensorRecordWindow]::GetWindowRect($sim.MainWindowHandle,[ref]$r)) {throw 'No simulator window'}
  $width=$r.Right-$r.Left; $height=$r.Bottom-$r.Top
- if ($width -lt 800 -or $height -lt 600) {throw 'Simulator must remain restored'}
+ if ($width -lt 800 -or $height -lt 600) {
+  # The simulator may be minimized while a run is recording. Restore before
+  # reading the indicator so the bounded OFF transition can still complete.
+  [void][SensorRecordWindow]::ShowWindow($sim.MainWindowHandle,9)
+  Start-Sleep -Milliseconds 700
+  if (-not [SensorRecordWindow]::GetWindowRect($sim.MainWindowHandle,[ref]$r)) {throw 'No simulator window'}
+  $width=$r.Right-$r.Left; $height=$r.Bottom-$r.Top
+  if ($width -lt 800 -or $height -lt 600) {throw 'Simulator must remain restored'}
+ }
  # Unity's panel follows the smaller canvas scale on an ultrawide window.
  $s=[Math]::Min($width/1920.0,$height/1080.0)
  $bmp=New-Object System.Drawing.Bitmap($width,$height)

@@ -3800,6 +3800,24 @@ class StaticEditorPresetTest(unittest.TestCase):
         self.assertGreater(loaded["placements"][0]["route_path_index"], 600)
         self.assertLess(loaded["placements"][0]["route_distance_m"], 3.0)
 
+    def test_mission_window_binding_keeps_full_route_index_and_distance(self):
+        # Production passes only the 483..753 window; the drift/vanish monitor
+        # then needs the obstacle's distance from the segment START.
+        first, last = 483, 753
+        full = static_obstacle.load_static_obstacle_preset(
+            self.write_preset(), "R_KR_PR_K-city_2025", self.points
+        )["placements"][0]
+        windowed = static_obstacle.load_static_obstacle_preset(
+            self.write_preset(), "R_KR_PR_K-city_2025",
+            self.points[first:last + 1], route_index_offset=first,
+        )["placements"][0]
+        self.assertEqual(windowed["route_path_index"], full["route_path_index"])
+        context = SimpleNamespace(mission_route=mission_route.RouteWindow(
+            tuple(self.points), polyline_length(self.points[:first + 1]), first, last))
+        route_s = mission_route.path_s_at_index(context, windowed["route_path_index"])
+        self.assertGreater(route_s, 50.0)
+        self.assertLess(route_s, polyline_length(self.points[first:last + 1]))
+
     def test_rejects_other_map(self):
         with self.assertRaisesRegex(ValueError, "map mismatch"):
             static_obstacle.load_static_obstacle_preset(

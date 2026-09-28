@@ -27,6 +27,7 @@ from async_capture.route_review_rebuild import archive_route_review
 from cleanup_failed_sensor_record_attempt import cleanup_failed_attempt
 from ssd_storage import SSD_ROOT, require_ssd, windows_path
 from scenario_runner.scenarios.segment_modes.modes import PRIMARY_SCENARIOS
+from scenario_runner.tools import static_lane_compliance
 from python_environment import (
     build_analysis_environment,
     probe_analysis_environment,
@@ -324,6 +325,63 @@ def _lap_numbers(laps):
     return ",".join("%03d" % number for number in numbers) if numbers else "-"
 
 
+def collision_evidence(outcome, active_signals):
+    """Require no contact in the supervisor samples and in every /CollisionData message.
+
+    The supervisor samples contacts once per control loop, so a brief touch can
+    be missed there; the raw recorder keeps every message.  An absent or
+    undecoded stream cannot prove a collision-free lap.
+    """
+    summary = outcome.get("collision_summary")
+    stream = [row.get("signal") for row in active_signals if row.get("role") == "collision"]
+    decoded = [signal for signal in stream if isinstance(signal, dict)]
+    contacts = sum(1 for signal in decoded
+                   if int(signal.get("objects", 0) or 0) or int(signal.get("objects_a", 0) or 0))
+    supervisor_clear = bool(
+        isinstance(summary, dict)
+        and summary.get("contact_events") == 0
+        and summary.get("nonempty_contact_observations") == 0
+        and outcome.get("status") != "diagnostic_lap_completed_with_collisions"
+    )
+    return {
+        "supervisor_contact_events": (summary or {}).get("contact_events"),
+        "supervisor_contact_observations": (summary or {}).get("nonempty_contact_observations"),
+        "collision_stream_messages": len(stream),
+        "collision_stream_undecoded": len(stream) - len(decoded),
+        "collision_stream_contacts": contacts,
+        "collision_free": bool(supervisor_clear and stream
+                               and len(decoded) == len(stream) and contacts == 0),
+    }
+
+
+def static_lane_evidence(scenario_name, active_signals):
+    """Ego body against the static segment's painted no-cross lines.
+
+    Only full_loop_static drives the segment the pinned markings cover.  A lap
+    whose body touched a solid line or swung beyond the deviation limit is not
+    kept as an Expert demonstration.
+    """
+    if scenario_name != "full_loop_static":
+        return None
+    result = static_lane_compliance.evaluate_trace(
+        static_lane_compliance.ego_trace_from_active_signals(active_signals))
+    keys = ("passed", "reasons", "min_marking_clearance_m", "closest_marking",
+            "touched_markings", "max_right_deviation_m", "max_left_deviation_m",
+            "avoidance_class", "trajectory_class", "swing_onset_route_index",
+            "peak_route_index", "markings_source_sha256", "policy", "ego_body")
+    return {key: result.get(key) for key in keys}
+
+
+def configured_environment(setup):
+    """Weather and hour options the run's own scenario configuration allowed."""
+    config = setup.get("scenario_config") or {}
+    weathers = {str(profile.get("weather")) for profile in config.get("profiles", [])
+                if isinstance(profile, dict) and profile.get("weather")}
+    hours = {int(hour) for hour in config.get("scenario_times", [])}
+    # Runs recorded before the configuration was embedded used these values.
+    return (weathers or {"SUNNY", "FOGGY"}), (hours or {11, 13, 15})
+
+
 def validate_lap(
     row, expected_scenario="full_loop", campaign=None,
     planned_static_run=None,
@@ -371,6 +429,10 @@ def validate_lap(
     motion = safe("episode_000/motion_time_v1/report.json")
     review = safe("episode_000/review_closeout/report.json")
     intervention = safe("episode_000/scenario_intervention_audit_v3/report.json")
+    active_signals = safe("episode_000/quality/active_signals.json", default=[])
+    collision = collision_evidence(outcome, active_signals)
+    lane_markings = static_lane_evidence(expected_scenario, active_signals)
+    allowed_weather, allowed_hours = configured_environment(setup)
 
     frames = int(admission.get("frames", 0) or 0)
     counts = admission.get("counts", {})
@@ -389,8 +451,8 @@ def validate_lap(
             and int(profile_state.get("run_seed", -2)) == int(row["seed"])
         ),
         "campaign_environment": (
-            row.get("weather") in ("SUNNY", "FOGGY")
-            and int(row["time_hour"]) in (11, 13, 15)
+            row.get("weather") in allowed_weather
+            and int(row["time_hour"]) in allowed_hours
             and setup.get("profile", {}).get("weather") == row.get("weather")
             and setup.get("time_hour") == int(row["time_hour"])
             and profile_state.get("weather") == row.get("weather")
@@ -408,6 +470,9 @@ def validate_lap(
             )
         ),
         "full_lap_completed": outcome.get("full_mission_completed") is True,
+        # A lap that touched an actor is not an expert demonstration.
+        "collision_free": collision["collision_free"],
+        "static_lane_markings_clear": lane_markings is None or lane_markings["passed"] is True,
         "capture_contract": admission.get("capture_contract_valid") is True,
         "runtime_streams": admission.get("runtime_streams_valid") is True,
         "sensor_capture": admission.get("sensor_capture_status") == "admitted",
@@ -462,6 +527,8 @@ def validate_lap(
         "native_files": sum(int(value) for value in native_counts.values()) if native_counts else 0,
         "native_bytes": sum(int(item.get("size_bytes", 0)) for item in native.get("assets", [])),
         "observed_rtf": native.get("observed_rtf"),
+        "collision": collision,
+        "static_lane_compliance": lane_markings,
         "checks": checks,
         "errors": errors,
         "input_seals": seals,
@@ -478,10 +545,15 @@ def _main():
     parser.add_argument("campaign", help="campaign_id or local campaign directory")
     parser.add_argument("--no-prepare-training", action="store_true",
                         help="Only validate capture; do not build the direct-reference training manifests")
+    parser.add_argument("--val-lap", type=int, action="append", default=[],
+                        help="Explicit whole-run validation holdout for campaigns without a pinned split plan")
     parser.add_argument("--rebuild-route-review", action="store_true",
                         help="Archive route audit, review and admission, then rebuild from captured route inputs")
     parser.add_argument("--allow-valid-subset", action="store_true",
                         help="Publish only valid complete laps when failed laps are sealed and excluded")
+    parser.add_argument("--delete-invalid-payload", action="store_true",
+                        help="Delete the native payload of laps that fail validation; "
+                             "by default it is kept for review and excluded from training and NAS")
     nas = parser.add_mutually_exclusive_group()
     nas.add_argument("--no-nas-copy", action="store_true", help="Finish with local validation only")
     nas.add_argument("--nas-plan-only", action="store_true", help="Plan export without accessing NAS")
@@ -492,7 +564,12 @@ def _main():
     direct_layout = is_direct_campaign_metadata(campaign, SSD_ROOT)
     if args.nas_only:
         report_path = Path(args.nas_only).resolve()
-        if report_path.parent.parent != campaign.resolve():
+        # Legacy: <campaign>/validation_*/report.json.
+        # Direct: <campaign>/validations/validation_*/report.json.
+        owner = report_path.parent.parent
+        if direct_layout and owner.name == "validations":
+            owner = owner.parent
+        if owner != campaign.resolve():
             parser.error("--nas-only report must belong to the requested campaign")
         from nas_publish import publish_validated
         try:
@@ -520,6 +597,8 @@ def _main():
     analysis_environment_report = probe_analysis_environment(
         analysis_python, review_env)
     plan = load(campaign / "campaign_plan.json")
+    if args.val_lap and (args.no_prepare_training or plan.get("static_collection_plan_evidence")):
+        parser.error("--val-lap requires training preparation and no pinned static split plan")
     rows = completed_rows(campaign / "runs.tsv")
     requested = int(plan["requested_laps"])
     static_plan_rows = {}
@@ -628,7 +707,17 @@ def _main():
                     "validation_status": "passed" if lap["valid"] else "failed",
                     "training_usable": bool(lap["valid"]),
                 })
-                if not lap["valid"]:
+                if not lap["valid"] and not args.delete_invalid_payload:
+                    # A failed check is a judgement that may itself be wrong
+                    # (policy, environment, a clock gate); never destroy the
+                    # only copy of a captured lap without an explicit request.
+                    lap["payload_cleanup"] = {
+                        "status": "retained",
+                        "failure_kind": "validation",
+                        "reason": "validation failure keeps the payload; "
+                                  "rerun with --delete-invalid-payload to reclaim space",
+                    }
+                elif not lap["valid"]:
                     try:
                         marker = cleanup_failed_attempt(
                             row["run_name"],
@@ -872,6 +961,9 @@ def _main():
             "--validation-report", str(output / "report.json"),
             "--output", str(training_output),
         ]
+        if args.val_lap:
+            for lap_number in args.val_lap:
+                build_command.extend(["--val-lap", str(lap_number)])
         split_plan_name = plan.get("static_collection_plan_evidence")
         if split_plan_name:
             split_plan_path = campaign / split_plan_name

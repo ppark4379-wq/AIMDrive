@@ -1,0 +1,38 @@
+schema: morai_static_obstacle_preset_v1
+name: static_native36_probe_retry_20260923_135553_attempt_138
+map_name: R_KR_PR_K-city_2025
+scenario: full_loop_static
+source: automated_static_expert_verified
+generation:
+  batch_seed: 1773872564871153715
+  attempt: 138
+  candidate_only_until_expert_passes: false
+  scale_policy: morai_native_model_scale_v1
+obstacles:
+- model: Rubber_Cone
+  position:
+    x: -60.888876
+    y: -144.848199
+    z: 28.377082
+  yaw_deg: -83.219
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 663
+  generation:
+    longitudinal_fraction: 0.15452313
+    lateral_offset_m: 0.286558
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+verification:
+  expert_completed: true
+  collision_free: true
+  runner_return_code: 0
+  max_cross_track_error_m: 1.24
+  cross_track_limit_m: 3.0
+  valid_plan_samples: 17
+  selected_routes:
+  - right_02.csv
+  verified_at_unix: 1790145132.9195156
+  log: scenario_runner/.runtime/static_scenario_batch/static_native36_probe_retry_20260923_135553/logs/static_native36_probe_retry_20260923_135553_attempt_138.log

@@ -20,6 +20,11 @@ ROOT = Path(__file__).resolve().parents[2]
 SCHEMA = "morai_static_collection_plan_v1"
 COUNT_KEYS = (1, 2, 3)
 ROUTE_KEYS = ("compact", "wide")
+# Trajectory class measured by the generator's --ego-trace lane gate:
+# straight (< 0.6 m), small (< 2 m), medium (< 4 m) and late (swing onset at
+# route index 660 or later).  Presets verified before the class existed carry
+# the swing class, and all of them swung from index 647-654.
+AVOIDANCE_KEYS = ("straight", "small", "medium", "late")
 DIFFICULTY_KEYS = ("easy", "medium", "hard")
 WEATHER_KEYS = ("SUNNY", "FOGGY")
 TIME_KEYS = (11, 13, 15)
@@ -76,12 +81,13 @@ def classify_route(routes):
     return "compact"
 
 
-def challenge_score(candidate):
-    route_weight = {"compact": 0.0, "wide": 2.0}
+def challenge_score(candidate, class_key="route_class"):
+    weight = {"compact": 0.0, "wide": 2.0, "straight": 0.0, "small": 0.0,
+              "medium": 1.0, "late": 1.5}
     cte = min(float(candidate.get("max_cross_track_error_m") or 0.0), 6.0)
     return round(
         float(candidate["obstacle_count"])
-        + route_weight[candidate["route_class"]]
+        + weight[candidate[class_key]]
         + cte / 3.0,
         6,
     )
@@ -105,11 +111,13 @@ def candidate_balance_features(document, *, fixed_scale=False):
         generation = obstacle.get("generation", {})
         fraction = float(generation.get("longitudinal_fraction", 0.5))
         lateral_offset = float(generation.get("lateral_offset_m", 0.0))
+        stratum = generation.get("lateral_stratum")
         # Legacy reports may retain generation metadata. New candidates reach
         # here only after their actual scale vectors match MORAI native size.
         multiplier = 1.0 if fixed_scale else float(generation.get("scale_multiplier", 1.0))
         longitudinal[_bin(fraction, 1.0 / 3.0, 2.0 / 3.0)] += 1
-        lateral[_bin(lateral_offset, -0.20, 0.20)] += 1
+        # Lane-aware presets record the right-edge stratum they were drawn from.
+        lateral[str(stratum) if stratum else _bin(lateral_offset, -0.20, 0.20)] += 1
         scale[_bin(multiplier, 0.95, 1.05)] += 1
     return {
         "models": dict(models),
@@ -127,11 +135,13 @@ def _positive_scale(value):
         return False
 
 
-def load_fixed_scale_policy(config_path=None, route_path=None):
+def load_fixed_scale_policy(config_path=None, route_path=None, footprint_catalog=None):
     """Pin allowed models at native size; historical enlargement is ignored.
 
     route_path remains an accepted argument for older callers. Neither its
     fallback scale nor static_obstacle_model_scales defines native model size.
+    A footprint catalog further limits the models to those whose GT box was
+    verified against LiDAR, and is pinned in the policy sources.
     """
     config_path = Path(config_path or ROOT / "scenario_runner/config/full_loop.yaml")
     scenario = yaml.safe_load(config_path.read_text(encoding="utf-8"))["scenarios"]["full_loop"]
@@ -139,11 +149,22 @@ def load_fixed_scale_policy(config_path=None, route_path=None):
     if (not isinstance(models, (list, tuple)) or not models
             or not all(isinstance(model, str) and model.strip() for model in models)):
         raise ValueError("Native-scale policy requires a nonempty list of allowed model names")
+    sources = [{"path": portable_path(config_path), "sha256": sha256_file(config_path)}]
+    if footprint_catalog is not None:
+        catalog_path = resolve_path(footprint_catalog)
+        catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+        if catalog.get("schema") != "morai_static_obstacle_footprints_v1":
+            raise ValueError("Unsupported static footprint catalog: {}".format(catalog_path))
+        models = [model for model in models if model in catalog["models"]]
+        if not models:
+            raise ValueError("No configured model has a verified footprint")
+        sources.append({"path": portable_path(catalog_path),
+                        "sha256": sha256_file(catalog_path),
+                        "registry_sha256": catalog["registry"]["sha256"]})
     baselines = {model: [1., 1., 1.] for model in models}
     return {"name": FIXED_SCALE_POLICY, "model_baselines": baselines,
             "absolute_rounding_tolerance": 1e-6,
-            "sources": [{"path": portable_path(config_path),
-                         "sha256": sha256_file(config_path)}]}
+            "sources": sources}
 
 
 def validate_scale_policy(policy, *, allow_legacy=False):
@@ -260,6 +281,8 @@ def load_candidates(manifest_paths, *, scale_policy=None):
                     "Selected Expert route evidence missing: {}".format(preset_path)
                 )
             obstacles = list(document.get("obstacles", []))
+            lane_evidence = (verification.get("lane_compliance")
+                             or row.get("lane_compliance") or {})
             candidate = {
                 "preset": portable_path(preset_path),
                 "sha256": preset_hash,
@@ -274,11 +297,30 @@ def load_candidates(manifest_paths, *, scale_policy=None):
                     verification.get("max_cross_track_error_m"),
                 ),
                 "balance_features": candidate_balance_features(document, fixed_scale=True),
+                "avoidance_class": trajectory_class_of(lane_evidence),
+                "lane_compliance": {
+                    key: lane_evidence.get(key) for key in (
+                        "passed", "min_marking_clearance_m", "max_right_deviation_m",
+                        "swing_onset_route_index", "markings_source_sha256")
+                } if lane_evidence else None,
             }
             candidate["challenge_score"] = challenge_score(candidate)
             candidates.append(candidate)
             source_row["eligible_fixed_scale_presets"] += 1
     return candidates, source_rows
+
+
+def trajectory_class_of(lane_evidence):
+    """Recorded trajectory class; earlier lane evidence lacks it but carries
+    the swing size, and every earlier swing started at route index 647-654."""
+    if not lane_evidence:
+        return None
+    if lane_evidence.get("trajectory_class"):
+        return lane_evidence["trajectory_class"]
+    swing = lane_evidence.get("max_right_deviation_m")
+    if swing is not None and float(swing) < 0.6:
+        return "straight"
+    return lane_evidence.get("avoidance_class")
 
 
 def parse_quota(value, keys, total, label):
@@ -292,19 +334,82 @@ def parse_quota(value, keys, total, label):
     return dict(zip(keys, values))
 
 
-def choose_cell_counts(candidates, count_targets, route_targets):
+def _balanced_matrix(capacity, count_targets, class_targets, class_keys):
+    """Count x class table with exact margins, within capacity, closest (sum of
+    squares) to the proportional table: min-cost flow with convex unit costs."""
+    total = sum(count_targets.values())
+    if total != sum(class_targets.values()):
+        return None
+    rows = ["r%d" % c for c in COUNT_KEYS]
+    cols = ["k%s" % k for k in class_keys]
+    graph = defaultdict(list)  # node -> [to, capacity, cost, reverse index, cell]
+
+    def edge(a, b, cap, cost, cell=None):
+        graph[a].append([b, cap, cost, len(graph[b]), cell])
+        graph[b].append([a, 0, -cost, len(graph[a]) - 1, None])
+
+    for c in COUNT_KEYS:
+        edge("S", "r%d" % c, count_targets[c], 0.0)
+        for k in class_keys:
+            expected = count_targets[c] * class_targets[k] / float(total)
+            for unit in range(int(capacity[(c, k)])):
+                edge("r%d" % c, "k%s" % k, 1, 2.0 * (unit - expected) + 1.0, (c, k))
+    for k in class_keys:
+        edge("k%s" % k, "T", class_targets[k], 0.0)
+    nodes = ["S", "T"] + rows + cols
+    flow = 0
+    while flow < total:
+        distance = {node: float("inf") for node in nodes}
+        previous = {}
+        distance["S"] = 0.0
+        for _ in range(len(nodes)):
+            changed = False
+            for node in nodes:
+                if distance[node] == float("inf"):
+                    continue
+                for index, (to, cap, cost, _, _) in enumerate(graph[node]):
+                    if cap > 0 and distance[node] + cost < distance[to] - 1e-12:
+                        distance[to] = distance[node] + cost
+                        previous[to] = (node, index)
+                        changed = True
+            if not changed:
+                break
+        if distance["T"] == float("inf"):
+            return None
+        node = "T"
+        while node != "S":
+            parent, index = previous[node]
+            graph[parent][index][1] -= 1
+            back = graph[parent][index][3]
+            graph[node][back][1] += 1
+            node = parent
+        flow += 1
+    matrix = Counter()
+    for c in COUNT_KEYS:
+        for to, cap, cost, _, cell in graph["r%d" % c]:
+            if cell is not None and cap == 0:
+                matrix[cell] += 1
+    return {(c, k): matrix[(c, k)] for c in COUNT_KEYS for k in class_keys}
+
+
+def choose_cell_counts(candidates, count_targets, route_targets,
+                       class_key="route_class", class_keys=ROUTE_KEYS):
+    if len(class_keys) != 2:
+        capacity = Counter((item["obstacle_count"], item[class_key]) for item in candidates)
+        return _balanced_matrix(capacity, count_targets, route_targets, class_keys), capacity
     capacity = Counter(
-        (item["obstacle_count"], item["route_class"])
+        (item["obstacle_count"], item[class_key])
         for item in candidates
     )
     expected = {
         (count, route): count_targets[count] * route_targets[route]
         / float(sum(count_targets.values()))
-        for count in COUNT_KEYS for route in ROUTE_KEYS
+        for count in COUNT_KEYS for route in class_keys
     }
     best = None
     rows = {key: count_targets[key] for key in COUNT_KEYS}
-    compact_target = route_targets["compact"]
+    first_class, second_class = class_keys
+    compact_target = route_targets[first_class]
     for first in range(rows[1] + 1):
         for second in range(rows[2] + 1):
             third = compact_target - first - second
@@ -313,8 +418,8 @@ def choose_cell_counts(candidates, count_targets, route_targets):
             compact = {1: first, 2: second, 3: third}
             matrix = {}
             for count in COUNT_KEYS:
-                matrix[(count, "compact")] = compact[count]
-                matrix[(count, "wide")] = rows[count] - compact[count]
+                matrix[(count, first_class)] = compact[count]
+                matrix[(count, second_class)] = rows[count] - compact[count]
             if any(matrix[key] > capacity[key] for key in matrix):
                 continue
             cost = sum(
@@ -338,11 +443,11 @@ def _feature_cost(candidate, totals):
     return cost
 
 
-def select_candidates(candidates, cell_counts, seed):
+def select_candidates(candidates, cell_counts, seed, class_key="route_class"):
     rng = random.Random(seed)
     groups = defaultdict(list)
     for candidate in candidates:
-        groups[(candidate["obstacle_count"], candidate["route_class"])].append(
+        groups[(candidate["obstacle_count"], candidate[class_key])].append(
             candidate
         )
     totals = {
@@ -367,6 +472,50 @@ def select_candidates(candidates, cell_counts, seed):
     return selected
 
 
+def repair_model_coverage(selected, candidates, required_models, minimum, seed,
+                          class_key="route_class", proposals=40000):
+    """Swap presets within the same count/class cell to close model shortages.
+
+    A swap keeps the cell quotas and is kept when the summed shortage below the
+    per-model minimum does not grow; equal-shortage swaps let the search cross
+    plateaus that a strictly improving swap cannot.  Seeded, so replayable.
+    """
+    if not selected:
+        return selected
+    rng = random.Random(seed ^ 0x3C0DE)
+    chosen = {item["sha256"] for item in selected}
+    totals = Counter()
+    for item in selected:
+        totals.update(item["balance_features"]["models"])
+
+    def shortage(counts):
+        return sum(max(0, minimum - counts[model]) for model in required_models)
+
+    by_cell = defaultdict(list)
+    for item in candidates:
+        by_cell[(item["obstacle_count"], item[class_key])].append(item)
+    current = shortage(totals)
+    for _ in range(proposals):
+        if current == 0:
+            break
+        out_index = rng.randrange(len(selected))
+        out = selected[out_index]
+        pool = [item for item in by_cell[(out["obstacle_count"], out[class_key])]
+                if item["sha256"] not in chosen]
+        if not pool:
+            continue
+        incoming = rng.choice(pool)
+        after = (totals - Counter(out["balance_features"]["models"])
+                 + Counter(incoming["balance_features"]["models"]))
+        value = shortage(after)
+        if value <= current:
+            chosen.discard(out["sha256"])
+            chosen.add(incoming["sha256"])
+            selected[out_index] = incoming
+            totals, current = after, value
+    return selected
+
+
 def assign_difficulty(selected, targets):
     ordered = sorted(
         selected,
@@ -379,12 +528,12 @@ def assign_difficulty(selected, targets):
         offset += targets[label]
 
 
-def assign_splits(selected, split_targets, seed):
+def assign_splits(selected, split_targets, seed, class_key="route_class"):
     rng = random.Random(seed ^ 0x51A71C)
     remaining = dict(split_targets)
     groups = defaultdict(list)
     for item in selected:
-        groups[(item["obstacle_count"], item["route_class"], item["difficulty"])].append(item)
+        groups[(item["obstacle_count"], item[class_key], item["difficulty"])].append(item)
     for key in sorted(groups, key=str):
         group = groups[key]
         rng.shuffle(group)
@@ -737,14 +886,42 @@ def build_audit36_plan(args):
     return 0 if ready else 3
 
 
+def lane_evidence_candidates(candidates):
+    """Keep presets whose driven trace passed the lane gate within the plan classes."""
+    kept, excluded = [], []
+    for item in candidates:
+        evidence = item.get("lane_compliance") or {}
+        if evidence.get("passed") is not True:
+            reason = "lane_compliance_missing_or_failed"
+        elif item.get("avoidance_class") not in AVOIDANCE_KEYS:
+            reason = "avoidance_class_outside_plan"
+        else:
+            kept.append(item)
+            continue
+        excluded.append({"preset": item["preset"], "sha256": item["sha256"],
+                         "avoidance_class": item.get("avoidance_class"), "reason": reason})
+    for item in kept:
+        item["challenge_score"] = challenge_score(item, "avoidance_class")
+    return kept, excluded
+
+
 def build_plan(args):
     output = Path(args.output).expanduser().resolve()
     if output.exists():
         raise FileExistsError("Existing plan is preserved; choose a new output: " + str(output))
-    scale_policy = load_fixed_scale_policy()
+    scale_policy = load_fixed_scale_policy(
+        footprint_catalog=getattr(args, "footprint_catalog", None))
     candidates, sources = load_candidates(args.suite, scale_policy=scale_policy)
+    axis = getattr(args, "balance_axis", "route")
+    lane_excluded = []
+    if axis == "avoidance":
+        class_key, class_keys, quota, label = (
+            "avoidance_class", AVOIDANCE_KEYS, args.avoidance, "--avoidance")
+        candidates, lane_excluded = lane_evidence_candidates(candidates)
+    else:
+        class_key, class_keys, quota, label = "route_class", ROUTE_KEYS, args.routes, "--routes"
     count_targets = parse_quota(args.counts, COUNT_KEYS, args.runs, "--counts")
-    route_targets = parse_quota(args.routes, ROUTE_KEYS, args.runs, "--routes")
+    route_targets = parse_quota(quota, class_keys, args.runs, label)
     difficulty_targets = parse_quota(
         args.difficulty, DIFFICULTY_KEYS, args.runs, "--difficulty"
     )
@@ -765,14 +942,16 @@ def build_plan(args):
         1, total_obstacle_slots // len(required_models)
     )
     cell_counts, capacity = choose_cell_counts(
-        candidates, count_targets, route_targets
+        candidates, count_targets, route_targets, class_key, class_keys
     )
     ready = cell_counts is not None and len(candidates) >= args.runs
     selected = []
     if ready:
-        selected = select_candidates(candidates, cell_counts, args.seed)
+        selected = select_candidates(candidates, cell_counts, args.seed, class_key)
+        selected = repair_model_coverage(selected, candidates, required_models,
+                                         model_minimum_occurrences, args.seed, class_key)
         assign_difficulty(selected, difficulty_targets)
-        assign_splits(selected, split_targets, args.seed)
+        assign_splits(selected, split_targets, args.seed, class_key)
         assign_environment(selected, weather_targets, time_targets, args.seed)
     selected_model_counts = balance_distribution(selected)["models"] if selected else {}
     model_occurrence_shortages = {
@@ -785,12 +964,13 @@ def build_plan(args):
     available = {
         "total_unique_verified": len(candidates),
         "excluded_scale_presets": sum(len(row["excluded_scale_presets"]) for row in sources),
+        "excluded_lane_presets": len(lane_excluded),
         "obstacle_count": distribution(candidates, "obstacle_count"),
-        "route_class": distribution(candidates, "route_class"),
+        class_key: distribution(candidates, class_key),
         "model_occurrences": available_model_counts,
         "cell_capacity": {
             "{}:{}".format(count, route): capacity[(count, route)]
-            for count in COUNT_KEYS for route in ROUTE_KEYS
+            for count in COUNT_KEYS for route in class_keys
         },
     }
     shortages = {
@@ -799,8 +979,8 @@ def build_plan(args):
             str(key): max(0, value - available["obstacle_count"].get(key, 0))
             for key, value in count_targets.items()
         },
-        "route_class": {
-            key: max(0, value - available["route_class"].get(key, 0))
+        class_key: {
+            key: max(0, value - available[class_key].get(key, 0))
             for key, value in route_targets.items()
         },
         "joint_quota_feasible": cell_counts is not None,
@@ -810,6 +990,20 @@ def build_plan(args):
             if shortage
         },
     }
+    achieved = None
+    if selected:
+        achieved = {
+            "obstacle_count": distribution(selected, "obstacle_count"),
+            "route_class": distribution(selected, "route_class"),
+            "difficulty": distribution(selected, "difficulty"),
+            "split": distribution(selected, "split"),
+            "weather": distribution(selected, "weather"),
+            "time_hour": distribution(selected, "time_hour"),
+            "environment_by_split": environment_distribution_by_split(selected),
+            "obstacle_balance": balance_distribution(selected),
+        }
+        if axis == "avoidance":
+            achieved["avoidance_class"] = distribution(selected, "avoidance_class")
     plan = {
         "schema": SCHEMA,
         "name": args.name or Path(args.output).stem,
@@ -820,10 +1014,12 @@ def build_plan(args):
         "target_runs": int(args.runs),
         "sources": sources,
         "scale_policy": scale_policy,
+        "balance_axis": axis,
+        "lane_excluded_presets": lane_excluded,
         "selection_balance_groups": ["models", "longitudinal_bins", "lateral_bins"],
         "targets": {
             "obstacle_count": {str(k): v for k, v in count_targets.items()},
-            "route_class": route_targets,
+            class_key: route_targets,
             "difficulty": difficulty_targets,
             "split": split_targets,
             "weather": weather_targets,
@@ -832,8 +1028,8 @@ def build_plan(args):
             "required_models": required_models,
         },
         "difficulty_policy": (
-            "relative rank of obstacle_count + route_severity + "
-            "min(max_cross_track_error_m,6)/3; fixed 30/40/30 quantiles"
+            "relative rank of obstacle_count + {} weight + "
+            "min(max_cross_track_error_m,6)/3; fixed 30/40/30 quantiles".format(class_key)
         ),
         "available": available,
         "shortages": shortages,
@@ -841,16 +1037,7 @@ def build_plan(args):
             {"{}:{}".format(*key): value for key, value in cell_counts.items()}
             if cell_counts else None
         ),
-        "achieved": ({
-            "obstacle_count": distribution(selected, "obstacle_count"),
-            "route_class": distribution(selected, "route_class"),
-            "difficulty": distribution(selected, "difficulty"),
-            "split": distribution(selected, "split"),
-            "weather": distribution(selected, "weather"),
-            "time_hour": distribution(selected, "time_hour"),
-            "environment_by_split": environment_distribution_by_split(selected),
-            "obstacle_balance": balance_distribution(selected),
-        } if selected else None),
+        "achieved": achieved,
         "runs": [dict({"run": index}, **item) for index, item in enumerate(selected, 1)],
     }
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -986,6 +1173,16 @@ def parse_args(argv=None):
     build.add_argument("--runs", type=int, default=100)
     build.add_argument("--counts", default="30,34,36")
     build.add_argument("--routes", default="44,56")
+    build.add_argument(
+        "--balance-axis", choices=("route", "avoidance"), default="route",
+        help=("route: compact/wide recorded-route classes. avoidance: small/medium "
+              "body-centre swing from the generator's lane gate (lane-verified presets only)"),
+    )
+    build.add_argument("--avoidance", default="20,20,40,20", metavar="STRAIGHT,SMALL,MEDIUM,LATE",
+                       help=("Run quota per avoidance class with --balance-axis avoidance; "
+                             "models too wide for a small swing need the medium share"))
+    build.add_argument("--footprint-catalog",
+                       help="Limit required models to this LiDAR-verified footprint catalog")
     build.add_argument("--difficulty", default="30,40,30")
     build.add_argument("--splits", default="80,10,10")
     build.add_argument("--weather", default="50,50")

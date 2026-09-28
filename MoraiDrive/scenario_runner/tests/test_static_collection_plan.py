@@ -355,6 +355,72 @@ class StaticCollectionPlanTest(unittest.TestCase):
         self.assertIn('--scenario-hour "$LAP_SCENARIO_HOUR"', source)
         self.assertIn('failed_environment_mismatch', source)
 
+    def test_footprint_catalog_limits_and_pins_the_required_models(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config, catalog = Path(directory) / "config.yaml", Path(directory) / "catalog.json"
+            config.write_text(yaml.safe_dump({"scenarios": {"full_loop": {
+                "static_obstacle_models": ["Box", "Bicycle", "Cone"],
+            }}}))
+            catalog.write_text(json.dumps({
+                "schema": "morai_static_obstacle_footprints_v1",
+                "registry": {"sha256": "r"}, "models": {"Box": {}, "Bicycle": {}},
+            }))
+            policy = plan.load_fixed_scale_policy(config, footprint_catalog=catalog)
+            self.assertEqual(sorted(policy["model_baselines"]), ["Bicycle", "Box"])
+            self.assertEqual(policy["sources"][1]["sha256"], plan.sha256_file(catalog))
+            self.assertEqual(policy["sources"][1]["registry_sha256"], "r")
+            document = {"obstacles": [{"model": "Cone", "scale": [1, 1, 1]}]}
+            self.assertEqual(plan.fixed_scale_issues(document, policy)[0]["reason"],
+                             "model_missing_from_scale_policy")
+
+    def avoidance_candidate(self, count, avoidance, suffix, passed=True):
+        item = dict(self.candidate(count, "compact", suffix), preset=suffix + ".yaml")
+        item["avoidance_class"] = avoidance
+        item["lane_compliance"] = {"passed": passed, "min_marking_clearance_m": 0.1,
+                                   "max_right_deviation_m": 1.3}
+        return item
+
+    def test_avoidance_axis_keeps_lane_verified_presets_and_fills_the_quota(self):
+        candidates = [self.avoidance_candidate(count, avoidance, "{}{}{}".format(count, avoidance, i))
+                      for count in plan.COUNT_KEYS for avoidance in plan.AVOIDANCE_KEYS
+                      for i in range(20)]
+        rejected = [self.avoidance_candidate(1, "small", "fail", passed=False),
+                    self.avoidance_candidate(1, "large", "wide")]
+        rejected.append(dict(self.candidate(1, "compact", "old"), preset="old.yaml",
+                             lane_compliance=None))
+        kept, excluded = plan.lane_evidence_candidates(candidates + rejected)
+        self.assertEqual(len(kept), len(candidates))
+        self.assertEqual(sorted(row["reason"] for row in excluded), [
+            "avoidance_class_outside_plan", "lane_compliance_missing_or_failed",
+            "lane_compliance_missing_or_failed"])
+        quota = {"straight": 20, "small": 20, "medium": 40, "late": 20}
+        cells, _ = plan.choose_cell_counts(
+            kept, {1: 30, 2: 34, 3: 36}, quota, "avoidance_class", plan.AVOIDANCE_KEYS)
+        self.assertIsNotNone(cells)
+        for avoidance in plan.AVOIDANCE_KEYS:
+            self.assertEqual(sum(cells[(count, avoidance)] for count in plan.COUNT_KEYS),
+                             quota[avoidance])
+        for count, target in ((1, 30), (2, 34), (3, 36)):
+            self.assertEqual(sum(cells[(count, key)] for key in plan.AVOIDANCE_KEYS), target)
+        selected = plan.select_candidates(kept, cells, 5, "avoidance_class")
+        self.assertEqual(plan.distribution(selected, "avoidance_class"), quota)
+        # Too few late presets: the joint quota is infeasible rather than bent.
+        scarce = [item for item in kept if item["avoidance_class"] != "late"][:200]
+        self.assertIsNone(plan.choose_cell_counts(
+            scarce, {1: 30, 2: 34, 3: 36}, quota, "avoidance_class", plan.AVOIDANCE_KEYS)[0])
+        plan.assign_difficulty(selected, {"easy": 30, "medium": 40, "hard": 30})
+        plan.assign_splits(selected, {"train": 80, "val": 10, "test": 10}, 5, "avoidance_class")
+        self.assertEqual(plan.distribution(selected, "split"), {"test": 10, "train": 80, "val": 10})
+
+    def test_lane_aware_presets_balance_on_their_lateral_stratum(self):
+        document = {"obstacles": [
+            {"model": "A", "generation": {"lateral_stratum": "left", "longitudinal_fraction": 0.2}},
+            {"model": "B", "generation": {"lateral_offset_m": 0.5, "longitudinal_fraction": 0.9}},
+        ]}
+        features = plan.candidate_balance_features(document, fixed_scale=True)
+        self.assertEqual(features["lateral_bins"], {"left": 1, "high": 1})
+        self.assertEqual(features["longitudinal_bins"], {"low": 1, "high": 1})
+
 
 if __name__ == "__main__":
     unittest.main()

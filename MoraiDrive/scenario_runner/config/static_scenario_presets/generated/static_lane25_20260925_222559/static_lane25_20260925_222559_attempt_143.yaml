@@ -1,0 +1,90 @@
+schema: morai_static_obstacle_preset_v1
+name: static_lane25_20260925_222559_attempt_143
+map_name: R_KR_PR_K-city_2025
+scenario: full_loop_static
+source: automated_static_expert_verified
+generation:
+  batch_seed: 13236875660567762319
+  attempt: 143
+  candidate_only_until_expert_passes: false
+  scale_policy: morai_native_model_scale_v1
+  placement_policy: lane_aware_right_edge_strata_v1
+  avoidance_target: medium
+  footprint_catalog_sha256: 83e6ae9bab5d7a89e0958952181cbaf62c798036fc9c5b4aa94db5588f20416f
+obstacles:
+- model: PE_Firewall_White
+  position:
+    x: -59.955962
+    y: -144.757314
+    z: 28.377145
+  yaw_deg: -83.219
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 663
+  generation:
+    longitudinal_fraction: 0.16361712
+    lateral_offset_m: -0.646781
+    route_lateral_m: 0.105182
+    right_edge_route_lateral_m: -0.6051
+    left_edge_route_lateral_m: 0.8155
+    lateral_stratum: right
+    lane_fit: inside
+    lane_left_bound_m: 1.6942
+    right_02_clearance_m: -0.6724
+    right_03_clearance_m: 0.8218
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+- model: ElectricScooter1
+  position:
+    x: -59.146281
+    y: -138.442623
+    z: 28.381565
+  yaw_deg: -83.219
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 676
+  generation:
+    longitudinal_fraction: 0.79495152
+    lateral_offset_m: -1.467054
+    route_lateral_m: -0.715091
+    right_edge_route_lateral_m: -1.3533
+    left_edge_route_lateral_m: -0.0769
+    lateral_stratum: right
+    lane_fit: inside
+    lane_left_bound_m: 1.7403
+    right_02_clearance_m: -1.2435
+    right_03_clearance_m: 0.8245
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+verification:
+  expert_completed: true
+  collision_free: true
+  runner_return_code: 0
+  max_cross_track_error_m: 3.33
+  cross_track_limit_m: 4.0
+  valid_plan_samples: 25
+  selected_routes:
+  - right_03.csv
+  lane_compliance:
+    passed: true
+    reasons: []
+    raw_samples: 751
+    max_sample_gap_m: 0.965
+    route_index_span:
+    - 487.1
+    - 752.5
+    min_marking_clearance_m: 0.168
+    closest_marking: B2256W000445:505:solid
+    touched_markings: []
+    max_right_deviation_m: 3.423
+    max_left_deviation_m: 0.079
+    avoidance_class: medium
+    markings_source_sha256: f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb
+  verified_at_unix: 1790348700.5745044
+  log: scenario_runner/.runtime/static_scenario_batch/static_lane25_20260925_222559/logs/static_lane25_20260925_222559_attempt_143.log
+  ego_trace: scenario_runner/.runtime/static_scenario_batch/static_lane25_20260925_222559/traces/static_lane25_20260925_222559_attempt_143.csv
+  ego_trace_sha256: 50ba62bd194abb83a07e4253d345a2f26f6d22a31c03951713ae9ee2d38c6841

@@ -424,6 +424,16 @@ def make_tree_job(source, relative_destination, plan, target_root, state_root, t
     return job_path
 
 
+def retained_invalid_runs(report):
+    """Run folders of invalid laps whose payload the validator kept for review."""
+    return sorted({
+        Path(str(lap["run"])).name
+        for lap in report.get("laps", []) + report.get("excluded_laps", [])
+        if lap.get("valid") is not True and lap.get("run")
+        and (lap.get("payload_cleanup") or {}).get("status") == "retained"
+    })
+
+
 def publish_validated(report_path, target_root=None, dry_run=False,
                       local_publication=None):
     from runtime_paths import LOCAL_MACHINE, POWERSHELL_EXE, windows_path_from_wsl
@@ -458,10 +468,15 @@ def publish_validated(report_path, target_root=None, dry_run=False,
     results = []
     if local.get("schema") == "morai_local_dataset_campaign_v2":
         direct_root = Path(local["campaign"]).resolve()
+        # Invalid laps kept locally are review material, not shared data.
+        skipped = retained_invalid_runs(report)
+        for name in skipped:
+            print("[NAS] %s: skipped, invalid lap payload retained locally" % name, flush=True)
+            results.append(dict(publication=name, skipped="invalid_lap_payload_retained_locally"))
         publications = [
             {"path": str(child), "relative": child.name, "run_name": child.name}
             for child in sorted(direct_root.iterdir(), key=lambda item: item.name)
-            if child.is_dir() and not child.is_symlink()
+            if child.is_dir() and not child.is_symlink() and child.name not in skipped
         ]
     else:
         publications = local["runs"] + local["evidence"]

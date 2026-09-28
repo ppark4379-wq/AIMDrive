@@ -83,6 +83,11 @@ Z 드라이브는 Windows 작업자를 실행하는 사용자에게 연결되어
     ./data_collection/tools/03_validate_internal_sensor_record.py campaign_01 \
       --nas-only /mnt/c/MoraiDriveData/sensor_record_auto_v1/campaigns/<campaign>/validation_<시각>/report.json
 
+    # dataset 직접 저장 구조의 보고서도 같은 방식으로 지정한다.
+    #   <storage>/dataset/<scenario>/<campaign>/_campaign/validations/validation_<시각>/report.json
+
+검증에 실패했지만 원본을 보존한 회차(`payload_cleanup.status=retained`)는 NAS로 복사하지 않는다.
+
 검증 보고서, campaign plan, runs.tsv, COLLECTION_COMPLETE.json의 해시를 확인한다.
 전송 실패 시 종료 코드는 4이며 로컬 검증 결과와 원본은 유지된다.
 재검증으로 파일이 바뀌면 기존 NAS 임시 폴더와 충돌할 수 있으므로 전송 재시도에는 --nas-only를 사용한다.

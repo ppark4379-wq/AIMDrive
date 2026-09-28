@@ -102,6 +102,10 @@ def match_static_instances(obstacles, observations, *, position_tolerance_m=.03)
 def resolve_pinned_preset(record, episode, repository_root):
     """Resolve exact bytes locally or at the recorded path; never basename-only."""
     import yaml
+    if record is None:
+        return None, None
+    if not isinstance(record, dict):
+        raise ValueError("Pinned static preset record must be an object or null")
     expected = record.get("sha256")
     recorded = Path(record.get("path", ""))
     if not expected or not record.get("path"):

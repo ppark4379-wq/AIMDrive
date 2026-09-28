@@ -111,7 +111,17 @@ def main(*, geometry_version=2):
                         default=DEFAULT_TRAINING_BEV["left_max_m"])
     parser.add_argument("--boundary-margin-m", type=float,
                         default=DEFAULT_TRAINING_BEV["boundary_margin_m"])
+    parser.add_argument("--geometry-registry", type=Path,
+                        help="V5: per-model box-source registry built from native LiDAR")
     args = parser.parse_args()
+    registry = None
+    if geometry_version == 5:
+        from morai_pretraining.fused_geometry import REGISTRY_SCHEMA
+        if args.geometry_registry is None:
+            parser.error("V5 requires --geometry-registry")
+        registry = json.loads(args.geometry_registry.read_text())
+        if registry.get("schema") != REGISTRY_SCHEMA:
+            raise ValueError("Unsupported object geometry registry")
     for path in (args.episode, args.output):
         require_ssd(path, reserve_bytes=0)
     if args.output.exists():
@@ -132,12 +142,21 @@ def main(*, geometry_version=2):
     catalog = json.loads(args.catalog_report.read_text())
     catalog_cases = {row["model"]: row for row in catalog.get("cases", [])}
     catalog_hash = digest(args.catalog_report)
-    scale_evidence = None
-    if geometry_version == 3:
+    scale_evidence = pivot_evidence = None
+    if geometry_version >= 3:
         from morai_pretraining.scaled_object_geometry import load_scale_evidence
         scale_evidence = load_scale_evidence(
             args.episode, active, actor.get("raw_manifest_sha256"),
             SSD_ROOT, ROOT.parents[1])
+    ros_evidence = None
+    if geometry_version >= 4:
+        from morai_pretraining.center_geometry import load_pivot_evidence
+        pivot_evidence = load_pivot_evidence(
+            args.episode, active, actor.get("raw_manifest_sha256"), SSD_ROOT)
+    if geometry_version == 5:
+        from morai_pretraining.fused_geometry import load_ros_object_sizes
+        ros_evidence = load_ros_object_sizes(
+            args.episode, active, actor.get("raw_manifest_sha256"), SSD_ROOT)
     bev = {
         "forward_min_m": args.bev_forward_min_m,
         "forward_max_m": args.bev_forward_max_m,
@@ -177,7 +196,27 @@ def main(*, geometry_version=2):
                 relevant_actor_observations += 1
                 if model:
                     relevant_models.add(model)
-                if geometry_version == 3:
+                if geometry_version >= 4:
+                    from morai_pretraining.center_geometry import check_center_object_geometry
+                    check = check_center_object_geometry(
+                        item, catalog_cases, catalog_hash,
+                        args.absolute_tolerance_m, args.relative_tolerance,
+                        scale_evidence, pivot_evidence,
+                        frame["object_gt"].get("source_record_ids", []),
+                        check_object_geometry)
+                if geometry_version == 5:
+                    from morai_pretraining.fused_geometry import check_fused_object_geometry
+                    ros = ros_evidence["actors"].get(str(item.get("id")))
+                    if ros is not None and ros["kind"] != item.get("kind"):
+                        ros = None  # ids are compared only within one actor type
+                    match = scale_evidence.get("instances", {}).get(key, {})
+                    scale = ([1.0, 1.0, 1.0] if item.get("kind") != "obstacle"
+                             else match.get("scale_xyz") if match.get("valid") is True else None)
+                    pivot = pivot_evidence.get("instances", {}).get(key, {})
+                    check = check_fused_object_geometry(
+                        item, check, registry, ros, scale,
+                        pivot["offset_xyz_m"][:2] if pivot.get("valid") is True else None)
+                elif geometry_version == 3:
                     from morai_pretraining.scaled_object_geometry import check_scaled_object_geometry
                     check = check_scaled_object_geometry(
                         item, catalog_cases, catalog_hash,
@@ -274,19 +313,56 @@ def main(*, geometry_version=2):
         ),
     }
     files = ["report.json", "frames.json"]
-    if geometry_version == 3:
-        report["scale_policy"] = "proportional_to_measured_catalog_scale_v1"
+    if geometry_version >= 3:
+        report["scale_policy"] = ("proportional_to_measured_catalog_scale_v1" if geometry_version == 3
+                                  else "unity_y_up_equal_horizontal_scale_v1")
         report["scale_evidence"] = {
             "file": "scale_evidence.json",
             "preset_resolved": scale_evidence["preset_resolved"],
             "matched_instances": sum(row["valid"] for row in scale_evidence["instances"].values()),
             "unresolved_instances": sum(not row["valid"] for row in scale_evidence["instances"].values()),
-            "anisotropic_relative_scale_supported": False,
+            "anisotropic_relative_scale_supported": geometry_version == 4,
         }
         files.append("scale_evidence.json")
+    if geometry_version >= 4:
+        from morai_pretraining.center_geometry import DEFAULT_CENTER_POLICY
+        report["center_policy"] = dict(DEFAULT_CENTER_POLICY)
+        report["center_source_counts"] = dict(Counter(
+            (check.get("geometry_sources") or {}).get("center")
+            or (check.get("center_evidence") or {}).get("center_source")
+            or "unattributed"
+            for row in output for check in row["objects"]
+            if check.get("training_center_world_xy") is not None))
+        report["pivot_evidence"] = {
+            "file": "pivot_evidence.json",
+            "instances": len(pivot_evidence["instances"]),
+            "unstable_instances": sum(not row["valid"] for row in pivot_evidence["instances"].values()),
+        }
+        report["limitation"] += (
+            " V4 additionally requires the catalog visible returns to support the box and the "
+            "observed pivot-to-centre offset to match the catalog; a pivot-reported box is "
+            "re-centred horizontally from the catalog offset.")
+        files.append("pivot_evidence.json")
+    if geometry_version == 5:
+        report["geometry_registry"] = {
+            "path": str(args.geometry_registry.resolve()),
+            "sha256": digest(args.geometry_registry),
+            "approved_models": len(registry.get("approved_models", [])),
+        }
+        report["registry_application_counts"] = dict(Counter(
+            "%s:%s" % ((check.get("registry") or {}).get("applied"), (check.get("registry") or {}).get("reason"))
+            for row in output for check in row["objects"] if check.get("training_bev_relevant")))
+        report["limitation"] += (
+            " V5 replaces the catalog decision wherever the LiDAR registry has sufficient evidence "
+            "and trains on its selected MORAI-reported centre and size.")
+        files.append("ros_object_evidence.json")
     args.output.mkdir(parents=True, exist_ok=False)
     if scale_evidence is not None:
         write_json(args.output / "scale_evidence.json", scale_evidence)
+    if pivot_evidence is not None:
+        write_json(args.output / "pivot_evidence.json", pivot_evidence)
+    if ros_evidence is not None:
+        write_json(args.output / "ros_object_evidence.json", ros_evidence)
     write_json(args.output / "report.json", report)
     write_json(args.output / "frames.json", output)
     write_json(args.output / "COMPLETE.json", {
@@ -299,7 +375,12 @@ def main(*, geometry_version=2):
         "catalog_report_sha256": catalog_hash,
         "script_sha256": digest(Path(__file__)),
         **({"scale_module_sha256": digest(ROOT / "morai_pretraining/scaled_object_geometry.py")}
-           if geometry_version == 3 else {}),
+           if geometry_version >= 3 else {}),
+        **({"center_module_sha256": digest(ROOT / "morai_pretraining/center_geometry.py")}
+           if geometry_version >= 4 else {}),
+        **({"fused_module_sha256": digest(ROOT / "morai_pretraining/fused_geometry.py"),
+            "geometry_registry_sha256": digest(args.geometry_registry)}
+           if geometry_version == 5 else {}),
         "source_timestamps_modified": False,
         "training_visible": False,
     })

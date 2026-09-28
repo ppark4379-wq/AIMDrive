@@ -563,6 +563,7 @@ class FullLoopDriveBase(BaseScenario):
                 continue
 
             ego_state = self.get_ego_motion_state()
+            self.record_ego_trace(elapsed, ego_state)
             ego_x = ego_state["x"]
             ego_y = ego_state["y"]
             collision_objects = sorted(set(
@@ -870,6 +871,22 @@ class FullLoopDriveBase(BaseScenario):
 
             time.sleep(check_period_sec)
 
+    def record_ego_trace(self, elapsed, ego_state):
+        """Append the Ego pose of every control tick when --ego-trace is set."""
+        path = self.cfg.get("ego_trace_path")
+        if not path:
+            return
+        stream = getattr(self, "_ego_trace_stream", None)
+        if stream is None:
+            os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+            stream = open(path, "w", encoding="utf-8", buffering=1)
+            stream.write("elapsed_s,x,y,yaw_deg,speed\n")
+            self._ego_trace_stream = stream
+        stream.write("{:.3f},{:.4f},{:.4f},{:.3f},{:.3f}\n".format(
+            float(elapsed), float(ego_state["x"]), float(ego_state["y"]),
+            float(ego_state["yaw_deg"]), float(ego_state.get("speed", 0.0)),
+        ))
+
     def cleanup(self):
         try:
             bridge = getattr(self, "runtime_bridge", None)
@@ -877,3 +894,7 @@ class FullLoopDriveBase(BaseScenario):
                 bridge.close()
         finally:
             self.stop_expert_controller()
+            stream = getattr(self, "_ego_trace_stream", None)
+            if stream is not None:
+                self._ego_trace_stream = None
+                stream.close()

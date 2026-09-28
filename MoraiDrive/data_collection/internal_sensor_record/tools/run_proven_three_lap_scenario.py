@@ -315,11 +315,23 @@ def audit_episode(episode, python, policy_study=None, time_mode='realtime', requ
                 analysis_environment=analysis_environment)
 
 
+# A stalled or off-route expert must end the capture instead of recording until
+# the outer wall bound (static36 lap 35 stood still for ~985 simulation seconds
+# and produced 10,013 bundles). The scenario clock is simulation time in
+# simulation_free_run; the longest observed red-light wait was 30 s.
+COLLECTION_PROGRESS_WATCHDOG = dict(enabled=True, timeout_sec=180.0,
+                                    startup_grace_sec=30.0, minimum_progress_m=2.0)
+COLLECTION_OFF_ROUTE_TIMEOUT_SEC = 10.0
+
+
 class RawScenario(FullLoopScenario):
     def __init__(self, *args, output, contract_path, seconds, collision_policy='abort', time_mode='realtime', expert_clock='host_wall_ros_rate', full_lap=False, record_rosbag=False, sensor_record_coordination=None, **kwargs):
         if collision_policy not in ('abort', 'record'):
             raise ValueError('Unknown collision policy')
         super().__init__(*args, **kwargs)
+        # Recorded in episode.json through scenario_config.
+        self.cfg['progress_watchdog'] = dict(COLLECTION_PROGRESS_WATCHDOG)
+        self.cfg['off_route_timeout_sec'] = COLLECTION_OFF_ROUTE_TIMEOUT_SEC
         self.output = Path(output).resolve()
         self.output.mkdir(exist_ok=False)
         self.contract_path = Path(contract_path).resolve()
