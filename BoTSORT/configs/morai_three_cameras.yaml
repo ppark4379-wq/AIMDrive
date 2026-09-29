@@ -1,0 +1,24 @@
+# UDP is the competition input. ROS is an optional development-only source.
+transport: udp
+bind_ip: 0.0.0.0
+index_base: 0
+topic: /image_jpeg/compressed
+cameras:
+  front:
+    frame_id: Camera-1
+    sensor_id: 1
+    udp_port: 9291
+    image_size: [1280, 720]
+    expected_hz: 20
+  left:
+    frame_id: Camera-2
+    sensor_id: 2
+    udp_port: 9293
+    image_size: [640, 480]
+    expected_hz: 20
+  right:
+    frame_id: Camera-3
+    sensor_id: 3
+    udp_port: 9295
+    image_size: [640, 480]
+    expected_hz: 20

@@ -2,6 +2,7 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 from collections import deque
+from itertools import count
 
 from tracker import matching
 from tracker.gmc import GMC
@@ -59,7 +60,9 @@ class STrack(BaseTrack):
                     self.cls = c[0]
             if not found:
                 self.cls_hist.append([cls, score])
-                self.cls = cls
+                # A first observation must compete with the accumulated evidence.
+                if score > max_freq:
+                    self.cls = cls
         else:
             self.cls_hist.append([cls, score])
             self.cls = cls
@@ -104,10 +107,10 @@ class STrack(BaseTrack):
                 stracks[i].mean = mean
                 stracks[i].covariance = cov
 
-    def activate(self, kalman_filter, frame_id):
+    def activate(self, kalman_filter, frame_id, track_id=None):
         """Start a new tracklet"""
         self.kalman_filter = kalman_filter
-        self.track_id = self.next_id()
+        self.track_id = self.next_id() if track_id is None else track_id
 
         self.mean, self.covariance = self.kalman_filter.initiate(self.tlwh_to_xywh(self._tlwh))
 
@@ -230,7 +233,9 @@ class BoTSORT(object):
         self.tracked_stracks = []  # type: list[STrack]
         self.lost_stracks = []  # type: list[STrack]
         self.removed_stracks = []  # type: list[STrack]
-        BaseTrack.clear_count()
+        # Each camera owns its IDs. Constructing/resetting another tracker must
+        # not reset an active tracker's allocator.
+        self._track_ids = count(1)
 
         self.frame_id = 0
         self.args = args
@@ -419,7 +424,7 @@ class BoTSORT(object):
             if track.score < self.new_track_thresh:
                 continue
 
-            track.activate(self.kalman_filter, self.frame_id)
+            track.activate(self.kalman_filter, self.frame_id, next(self._track_ids))
             activated_starcks.append(track)
 
         """ Step 5: Update state"""

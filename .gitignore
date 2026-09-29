@@ -12,6 +12,14 @@ MoraiDrive/data_collection/internal_sensor_record/.runtime/
 MoraiDrive/data_collection/routes/generated/
 MoraiDrive/data_collection/output/
 
+# Local MORAI logs and stray command-line output files
+/MoraiDrive/data/
+/MoraiDrive/--no-sync-runtime
+/MoraiDrive/--once
+/MoraiDrive/--scenario
+/MoraiDrive/--zone
+/MoraiDrive/2
+
 # VLDrive weights, caches and training runs; see VLDrive/.gitignore for the
 # per-folder rules. Rebuild with VLDrive/tools/prepare_assets.py and
 # VLDrive/tools/cache_vision_tokens.py.
@@ -33,3 +41,7 @@ MoraiDrive/.runtime/sync_runtime/
 
 # Preserved reports from the removed data-collection scenario copy
 MoraiDrive/data_collection/internal_sensor_record/proven_three_lap_runtime/scenario_runner/.runtime/
+
+# Local MORAI GT projection investigation
+/docs/reports/MORAI_GT_CAMERA_PROJECTION_20260928.md
+/docs/reports/morai_gt_camera_projection_20260928/evidence.json

@@ -5,15 +5,25 @@ This folder imports the Windows MORAI UDP integration and the upstream
 and acknowledgements are retained below and in LICENSE.
 
 - [Windows installation and execution](docs/MORAI_WINDOWS.md)
+- [WSL three-camera UDP detection, capture and replay](docs/MORAI_MULTI_CAMERA.md)
 - [UDP camera integration](docs/MORAI_UDP.md)
 - [Download model weights](pretrained/README.md)
 
-Run commands from this `BoTSORT` directory. The current baseline is YOLOv7
-COCO detection with the original BoT-SORT, one 20 Hz camera, destination UDP
-port 15001, producing track IDs and original-resolution 2D boxes.
-YOLO26 remains an optional comparison backend. Neither checkpoint has been
-fine-tuned on MORAI yet. Environments, model binaries and captured runs are
-not included. Original upstream demo assets are retained.
+Run commands from this `BoTSORT` directory. The WSL integration uses one YOLOv7
+detector and independent BoT-SORT trackers for front/left/right cameras on
+UDP ports 9291/9293/9295. The original single-camera command still defaults to
+port 15001. Both produce track IDs and original-resolution 2D boxes.
+YOLO26 remains an optional comparison backend. The documented pretrained weights
+are the COCO baseline; local MORAI fine-tuning weights and captured runs are not
+included. Select the weights explicitly when running a local candidate.
+YOLOv7 offers optional `--yolov7-runtime cuda-graph` execution with
+`--img-size 960 --fp16`; see the WSL guide for preparation and validation.
+`--postprocess-device cpu` optionally moves YOLOv7 NMS and coordinate scaling
+to the CPU while inference stays on the GPU; neither option requires TensorRT.
+Optional TensorRT FP16 execution uses `--yolov7-runtime tensorrt --engine-manifest`
+with engines created by `tools/build_morai_tensorrt.py` on the deployment GPU.
+The WSL guide covers its separate installation, build, validation and PyTorch fallback.
+Environments and model binaries are excluded. Original upstream demo assets are retained.
 
 ---
 
@@ -282,11 +292,6 @@ A large part of the codes, ideas and results are borrowed from
 [YOLOX](https://github.com/Megvii-BaseDetection/YOLOX) and
 [YOLOv7](https://github.com/wongkinyiu/yolov7). 
 Thanks for their excellent work!
-
-
-
-
-
 
 
 

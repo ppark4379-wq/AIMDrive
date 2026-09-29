@@ -1,0 +1,17 @@
+# Python 3.10. Install torch==2.7.1 / torchvision==0.22.1 from cu128 first.
+# Source /opt/ros/noetic/setup.bash for rospy and generated sensor messages.
+# Optional YOLOv7 fine-tuning logger: pip install tensorboard==2.21.0
+numpy==1.26.4
+opencv-python==4.11.0.86
+scipy==1.15.3
+pandas==2.2.3
+matplotlib==3.10.3
+seaborn==0.13.2
+PyYAML==6.0.2
+requests==2.32.5
+tqdm==4.67.1
+lap==0.5.12
+setuptools<81
+rospkg==1.6.0
+catkin-pkg==1.1.0
+defusedxml==0.7.1

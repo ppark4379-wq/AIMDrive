@@ -21,3 +21,6 @@ venv/
 *.onnx
 !pretrained/*.source.json
 !pretrained/README.md
+
+# Local development notes
+/docs/THREE_CAMERA_DEVELOPMENT_PLAN.md
