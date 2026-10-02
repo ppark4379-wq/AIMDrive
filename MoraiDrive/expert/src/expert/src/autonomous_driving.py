@@ -64,6 +64,8 @@ class AutonomousDriving(PathController):
         current_traffic_light,
         sync_mode=False,
         control_dt=None,
+        ego_header_seq=None,
+        ego_source_ns=None,
     ):
         self._configure_runtime(sync_mode=sync_mode, control_dt=control_dt)
         # 현재 위치 기반으로 local path과 planned velocity 추출
@@ -110,6 +112,8 @@ class AutonomousDriving(PathController):
             desired_velocity=planned_velocity,
             prediction_path=prediction_path,
             global_path=self.path,
+            ego_header_seq=ego_header_seq,
+            ego_source_ns=ego_source_ns,
         )
         planning_path = lattice_result.path
         static_valid = (lattice_result.mode == 'static_obstacle' and lattice_result.active

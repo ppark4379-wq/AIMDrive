@@ -109,6 +109,7 @@ class RosManager:
         self._last_controlled_status_sequence = 0
         self._status_condition = threading.Condition()
         self._ego_source_time = None
+        self._ego_source_ns = None
         self._ego_frame = None
         self._ego_arrival_time = None
         self._last_processed_ego_source_time = None
@@ -141,6 +142,8 @@ class RosManager:
                 input_source,
                 grpc_tick,
                 grpc_tick_delta,
+                ego_frame,
+                ego_source_ns,
             ) = snapshot
             roundabout_debug.input_context(
                 ego_seq=status_sequence, object_count=len(object_info_list),
@@ -153,6 +156,8 @@ class RosManager:
                 traffic_light,
                 sync_mode=sync_mode,
                 control_dt=control_dt,
+                ego_header_seq=ego_frame,
+                ego_source_ns=ego_source_ns,
             )
             control_elapsed = time.monotonic() - control_started
             if control_elapsed > 0.1:
@@ -203,6 +208,7 @@ class RosManager:
             status_sequence = self._status_sequence
             vehicle_state = self.vehicle_state
             ego_source_time = self._ego_source_time
+            ego_source_ns = self._ego_source_ns
             ego_frame = self._ego_frame
 
             # Allow callbacks from the same simulator frame to finish. Object
@@ -266,6 +272,8 @@ class RosManager:
             input_source,
             grpc_tick,
             grpc_tick_delta,
+            ego_frame,
+            ego_source_ns,
         )
 
     def _sync_mode_active(self):
@@ -500,6 +508,11 @@ class RosManager:
             header = getattr(data, "header", None)
             self._ego_frame = (
                 int(getattr(header, "seq", 0)) if header is not None else None
+            )
+            stamp = getattr(header, "stamp", None)
+            self._ego_source_ns = (
+                int(stamp.secs) * 1_000_000_000 + int(stamp.nsecs)
+                if stamp is not None and (stamp.secs or stamp.nsecs) else None
             )
             self._ego_arrival_time = time.monotonic()
             self.is_status = True

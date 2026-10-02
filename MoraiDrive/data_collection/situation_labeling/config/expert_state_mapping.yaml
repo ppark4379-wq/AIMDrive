@@ -1,0 +1,261 @@
+static_obstacle:
+- state: APPROACH
+  match:
+    mode: static_obstacle
+    reason: static_recorded_approach
+  label: approach
+  instruction_id: approach
+- state: DRIVE_APPROACH
+  match:
+    mode: static_obstacle
+    reason: static_recorded_drive_approach
+  label: drive_approach
+  instruction_id: drive_approach
+- state: FOLLOW
+  match:
+    mode: static_obstacle
+    reason: static_recorded_follow
+  label: follow
+  instruction_id: follow_avoid
+- state: RECOVER_ALIGNMENT
+  match:
+    mode: static_obstacle
+    reason: static_recorded_recover_alignment
+  label: follow
+  instruction_id: recover_alignment
+- state: REJOINED
+  match:
+    mode: static_obstacle
+    reason: static_recorded_rejoined
+  label: follow
+  instruction_id: normal
+roundabout:
+- state: YIELD_STOPPED
+  match:
+    mode: roundabout_entry
+    roundabout_phase: yield
+    planner_target_speed_mps_lte: 0.2
+    ego_speed_mps_lte: 0.2
+  label: yield
+  instruction_id: yield_stopped
+- state: YIELD_MOVING
+  match:
+    mode: roundabout_entry
+    roundabout_phase: yield
+  label: yield
+  instruction_id: yield_moving
+- state: FOLLOW_STOPPED
+  match:
+    mode: roundabout_entry
+    roundabout_phase: follow
+    planner_target_speed_mps_lte: 0.2
+    ego_speed_mps_lte: 0.2
+  label: follow
+  instruction_id: follow_stopped
+- state: FOLLOW_DECEL
+  match:
+    mode: roundabout_entry
+    roundabout_phase: follow
+    planner_below_ego_mps: 0.3
+  label: follow
+  instruction_id: follow_decelerate
+- state: FOLLOW_MERGE
+  match:
+    mode: roundabout_entry
+    roundabout_phase: follow
+    roundabout_entering: true
+    roundabout_committed: false
+  label: follow
+  instruction_id: follow_merge
+- state: FOLLOW_RESUME
+  match:
+    mode: roundabout_entry
+    roundabout_phase: follow
+    roundabout_resume_detected: true
+  label: follow
+  instruction_id: follow_resume
+- state: FOLLOW
+  match:
+    mode: roundabout_entry
+    roundabout_phase: follow
+  label: follow
+  instruction_id: follow
+- state: COLLISION_STOPPED
+  match:
+    mode: roundabout_entry
+    roundabout_phase: collision_slowdown
+    planner_target_speed_mps_lte: 0.2
+    ego_speed_mps_lte: 0.2
+  label: collision_slowdown
+  instruction_id: collision_stopped
+- state: COLLISION_SLOWDOWN
+  match:
+    mode: roundabout_entry
+    roundabout_phase: collision_slowdown
+  label: collision_slowdown
+  instruction_id: collision_slowdown
+- state: EMERGENCY_STOPPED
+  match:
+    mode: roundabout_entry
+    roundabout_phase: emergency
+    planner_target_speed_mps_lte: 0.2
+    ego_speed_mps_lte: 0.2
+  label: emergency
+  instruction_id: emergency_stopped
+- state: EMERGENCY
+  match:
+    mode: roundabout_entry
+    roundabout_phase: emergency
+  label: emergency
+  instruction_id: emergency_braking
+- state: CRUISE_AFTER_MERGE
+  match:
+    mode: roundabout_entry
+    roundabout_phase: cruise
+    roundabout_committed: true
+  label: cruise
+  instruction_id: cruise_normal
+- state: CRUISE_MERGE
+  match:
+    mode: roundabout_entry
+    roundabout_phase: cruise
+    roundabout_entering: true
+  label: cruise
+  instruction_id: cruise_merge_plain
+- state: CRUISE_APPROACH
+  match:
+    mode: roundabout_entry
+    roundabout_phase: cruise
+    roundabout_entering: false
+    roundabout_committed: false
+  label: cruise
+  instruction_id: cruise_approach_plain
+- state: CRUISE
+  match:
+    mode: roundabout_entry
+    roundabout_phase: cruise
+  label: cruise
+  instruction_id: cruise_normal
+highway:
+- state: KEEP
+  match:
+    mode: highway_lane
+    highway_state: KEEP_LANE
+  label: KEEP_LANE
+  instruction_id: keep_lane_normal
+- state: ACC_MERGE_YIELD
+  match:
+    mode: highway_lane
+    highway_state: ACC_FOLLOW
+    reason: highway_lane_merge_acc
+  label: ACC_FOLLOW
+  instruction_id: acc_yield
+- state: ACC_EMERGENCY
+  match:
+    mode: highway_lane
+    highway_state: ACC_FOLLOW
+    reason: highway_lane_emergency_stop
+    ego_speed_mps_gt: 0.2
+  label: ACC_FOLLOW
+  instruction_id: acc_hard_brake
+- state: ACC_MERGE_STOP
+  match:
+    mode: highway_lane
+    highway_state: ACC_FOLLOW
+    reason: highway_lane_emergency_stop
+    ego_speed_mps_lte: 0.2
+  label: ACC_FOLLOW
+  instruction_id: acc_merge_stop
+- state: ACC_STOP
+  match:
+    mode: highway_lane
+    highway_state: ACC_FOLLOW
+    planner_target_speed_mps_lte: 0.2
+    ego_speed_mps_lte: 0.2
+  label: ACC_FOLLOW
+  instruction_id: acc_stop
+- state: ACC_DECEL
+  match:
+    mode: highway_lane
+    highway_state: ACC_FOLLOW
+    planner_below_ego_mps: 0.3
+  label: ACC_FOLLOW
+  instruction_id: acc_decelerate
+- state: ACC
+  match:
+    mode: highway_lane
+    highway_state: ACC_FOLLOW
+  label: ACC_FOLLOW
+  instruction_id: acc_follow
+- state: CHANGE_LEFT_STOP
+  match:
+    mode: highway_lane
+    highway_state: CHANGE_LEFT
+    planner_target_speed_mps_lte: 0.2
+    ego_speed_mps_lte: 0.2
+  label: CHANGE_LEFT
+  instruction_id: change_left_stop
+- state: CHANGE_LEFT_DECEL
+  match:
+    mode: highway_lane
+    highway_state: CHANGE_LEFT
+    planner_below_ego_mps: 0.3
+  label: CHANGE_LEFT
+  instruction_id: change_left_decelerate
+- state: CHANGE_LEFT
+  match:
+    mode: highway_lane
+    highway_state: CHANGE_LEFT
+  label: CHANGE_LEFT
+  instruction_id: change_left
+- state: CHANGE_RIGHT_STOP
+  match:
+    mode: highway_lane
+    highway_state: CHANGE_RIGHT
+    planner_target_speed_mps_lte: 0.2
+    ego_speed_mps_lte: 0.2
+  label: CHANGE_RIGHT
+  instruction_id: change_right_stop
+- state: CHANGE_RIGHT_DECEL
+  match:
+    mode: highway_lane
+    highway_state: CHANGE_RIGHT
+    planner_below_ego_mps: 0.3
+  label: CHANGE_RIGHT
+  instruction_id: change_right_decelerate
+- state: CHANGE_RIGHT
+  match:
+    mode: highway_lane
+    highway_state: CHANGE_RIGHT
+  label: CHANGE_RIGHT
+  instruction_id: change_right
+tunnel:
+- state: FOLLOW_STOPPED
+  match:
+    acc_object_type_in:
+    - 1
+    - 2
+    acc_target_speed_mps_lte: 0.2
+    ego_speed_mps_lte: 0.2
+  label: following_stopped
+  instruction_id: following_stopped
+- state: FOLLOW_DECEL
+  match:
+    acc_object_type_in:
+    - 1
+    - 2
+    acc_below_ego_mps: 0.3
+  label: follow_decelerating
+  instruction_id: follow_decelerating
+- state: FOLLOW
+  match:
+    acc_object_type_in:
+    - 1
+    - 2
+  label: following
+  instruction_id: following
+- state: NORMAL
+  match:
+    acc_object_type: null
+  label: normal
+  instruction_id: normal

@@ -1,0 +1,272 @@
+# Persisted instruction inputs for frame_features.jsonl and object_features.jsonl.
+# Each field is [type, unit, meaning]; null is allowed for unavailable evidence.
+# Internal intermediate values remain in computation but are not serialized.
+schema_version: 2
+conventions:
+  'null': unavailable or unverified; never treat as false or zero
+  'false': evaluated and false within the applicable zone and valid inputs
+  path_d: positive is left of official route tangent
+  zone_defaults: Serialized rows contain only common fields and fields for their zone; internal intermediate calculations
+    are not serialized
+  evidence:
+    observed: copied from sealed GT, admission, or geometry audit
+    derived: calculated from observations and official route/MGeo
+    candidate: current-frame heuristic; not an Expert state or safety proof
+    verified_geometry: current geometry checks passed; not future safety
+  label_flow:
+    expert_zones: Aligned Expert observation when available -> label -> rule state -> instruction ID -> template
+    dynamic_obstacle: feature rule -> rule state -> instruction ID -> template
+    missing_expert: rule-only results remain candidates, not Expert labels
+  purpose: Persisted inputs needed to reproduce rule state, render instruction, or align existing Expert logs; not every
+    intermediate feature
+common:
+  frame:
+    identity:
+      source: sealed GT and official route indices
+      evidence: observed
+      fields:
+        index: [integer, null, Sensor frame index within episode]
+        lidar_source_ns: [integer, ns, Original LiDAR source timestamp]
+        zone_id: [string, null, Official route-index zone; null outside zones]
+    admission:
+      source: admission_v2 and GT inventory
+      evidence: observed
+      fields:
+        object_inventory_usable: [boolean, null, Full inventory plus transport and identity checks pass]
+        valid: [boolean, null, Frame input checks pass; independent of each object valid]
+        invalid_reasons: [string_list, null, Frame failure reasons]
+    ego_motion:
+      source: sealed GT ego XY; adjacent admitted frames; source timestamps
+      evidence: derived
+      fields:
+        ego_world_x_m: [number, m, Ego GT world X]
+        ego_world_y_m: [number, m, Ego GT world Y]
+  object:
+    identity_and_quality:
+      source: sealed GT; admission_v2; geometry audit
+      evidence: observed
+      fields:
+        index: [integer, null, Matching sensor frame index]
+        actor_id: [id, null, Actor identifier from sealed GT]
+        kind: [string, null, GT actor class]
+    position_and_motion:
+      source: GT position/velocity; geometry audit; official route projection
+      evidence: derived
+      fields:
+        world_x_m: [number, m, Actor world X; retained even if training geometry fails]
+        world_y_m: [number, m, Actor world Y; retained even if training geometry fails]
+        distance_to_ego_m: [number, m, Euclidean world XY distance to Ego]
+zones:
+  static_obstacle:
+    label_policy:
+      expert_label: when_aligned
+      instruction_state: feature_rule
+      missing_expert: rule_only_candidate
+    frame:
+      avoidance_motion:
+        source: consecutive GT Ego offset from official route
+        evidence: candidate
+        fields:
+          avoidance_active: [boolean, null, Abs(route offset) > 0.8 m; not Expert avoid_start]
+          returning_to_reference_path: [boolean, null, Abs(offset) shrank > 0.01 m while still > 0.8 m]
+          avoid_direction: [string, null, Current displacement side; not planned side]
+          left_avoid_candidate: [boolean, null, Displaced left and not yet returning; no safety proof]
+          right_avoid_candidate: [boolean, null, Displaced right and not yet returning; no safety proof]
+      obstacle_geometry:
+        source: route-projected GT obstacles ahead <=35 m and lateral 4 m plus radius gate
+        evidence: candidate
+        fields:
+          corridor_passable_candidate: [boolean, null, Lower bound > 3 m; no verified drivable corridor]
+      optional_expert_label:
+        source: Existing static Expert supervisor log when supplied
+        evidence: observed
+        fields:
+          expert_label: [string, null, Static Expert phase translated to label; optional]
+      avoid_episode:
+        source: Expert label follow/rejoined transitions (attach_static_avoid_episode);
+          requires optional_expert_label
+        evidence: candidate
+        fields:
+          static_avoid_episode_active: [boolean, null, Ego has been in an Expert-labeled
+              follow span since its most recent transition into it]
+          static_avoid_transition_start: [boolean, null, First follow-labeled frame of
+              the current avoid episode; not every following frame]
+          static_avoid_initial_hold: [boolean, null, True for a short window (default 5
+              frames) from and including the episode start; the rule says "avoid" while
+              held and "avoid_continue" once it elapses]
+      expert_alignment:
+        source: GT nearest obstacle matched to existing Expert observations
+        evidence: derived
+        fields:
+          nearest_obstacle_id: [id, null, First obstacle ahead along route]
+          nearest_obstacle_distance_m: [number, m, Route longitudinal delta_s to first obstacle; not Euclidean]
+    object:
+      rule_actor_inputs:
+        source: Sealed GT geometry, route projection, and geometry audit
+        evidence: derived
+        fields:
+          actor_width_m: [number, m, GT size_wlh_m width]
+          actor_length_m: [number, m, GT size_wlh_m length]
+          path_d_m: [number, m, Actor signed offset from route; positive left]
+          delta_s_m: [number, m, Actor path_s minus Ego path_s; positive ahead]
+          target_side: [string, null, left/right/center from Ego-relative left_m]
+      rule_geometry:
+        source: Sealed GT position and positive dimensions with limited invalid reasons
+        evidence: candidate
+        fields:
+          rule_geometry_usable: [boolean, null, Rule geometry usable even if training BEV rejects object; independent
+              of valid]
+  dynamic_obstacle:
+    label_policy:
+      expert_label: unavailable
+      instruction_state: feature_rule
+      missing_expert: not_applicable
+    frame:
+      behavior_proxies:
+        source: Ego motion and consecutive rule-eligible frames
+        evidence: candidate
+        fields:
+          dynamic_in_yield_family: [boolean, null, Ego currently in an inferred yield episode; debounced against single-frame
+              ego_decelerating noise]
+          dynamic_yield_transition_start: [boolean, null, First inferred yield-family frame; not Expert event]
+          dynamic_resume_transition_start: [boolean, null, First clear low-speed frame after inferred yield family]
+      ego_rule_motion:
+        source: GT Ego motion estimates computed before Rule evaluation
+        evidence: derived
+        fields:
+          ego_speed_mps: [number, m/s, Backward XY difference; null without valid adjacent admitted frames]
+          ego_stopped: [boolean, null, Ego speed <= 0.2 m/s]
+    object:
+      rule_actor_inputs:
+        source: Sealed GT geometry, route projection, and geometry audit
+        evidence: derived
+        fields:
+          actor_width_m: [number, m, GT size_wlh_m width]
+          actor_length_m: [number, m, GT size_wlh_m length]
+          path_d_m: [number, m, Actor signed offset from route; positive left]
+          v_d_mps: [number, m/s, Actor velocity left of route]
+          target_side: [string, null, left/right/center from Ego-relative left_m]
+      rule_geometry:
+        source: Sealed GT position and positive dimensions with limited invalid reasons
+        evidence: candidate
+        fields:
+          rule_geometry_usable: [boolean, null, Rule geometry usable even if training BEV rejects object; independent
+              of valid]
+  roundabout:
+    label_policy:
+      expert_label: when_aligned
+      instruction_state: feature_rule
+      missing_expert: rule_only_candidate
+    frame:
+      route_phase:
+        source: official checkpoints; merge point; MGeo links
+        evidence: derived
+        fields:
+          distance_to_merge_m: [number, m, Signed route distance to merge; positive before]
+          in_entry_section: [boolean, null, Route position before merge minus 5 m]
+          in_merge_section: [boolean, null, Within 5 m route distance of merge point]
+          in_circulating_lane: [boolean, null, Ego link belongs to configured ring links]
+          roundabout_phase: [string, null, Route-derived approach/entry/merge/circulating/exit; not Expert planner state]
+          ego_merging_candidate: [boolean, null, Near merge and moving >0.5 m/s with heading error <=30 deg]
+      circulating_traffic:
+        source: GT actor inventory and MGeo ring topology
+        evidence: candidate
+        fields:
+          conflict_actor_id: [id, null, Ring actor selected by merge ETA overlap heuristic]
+          conflict_distance_m: [number, m, Selected actor lane-graph distance to merge point]
+          collision_risk: [boolean, null, Merge ETA overlap heuristic; null if traffic evidence unresolved; not Expert
+              future OBB]
+      lead_following:
+        source: MGeo forward graph and oriented GT actor boxes
+        evidence: verified_geometry
+        fields:
+          lead_actor_id: [id, null, Closest compatible circulating vehicle ahead along lane graph]
+          lead_distance_m: [number, m, Lane-graph center distance to lead]
+          lead_bumper_gap_verified: [boolean, null, Current geometric gap passed checks; not future safety]
+          lead_speed_mps: [number, m/s, Lead GT speed]
+          lead_gap_insufficient: [boolean, null, Current gap below safe_following_gap_m]
+      ego_rule_motion:
+        source: GT Ego motion estimates computed before Rule evaluation
+        evidence: derived
+        fields:
+          ego_stopped: [boolean, null, Ego speed <= 0.2 m/s]
+          ego_decelerating: [boolean, null, Ego acceleration <= -0.5 m/s2]
+          ego_hard_braking: [boolean, null, Ego acceleration <= -3.0 m/s2; motion proxy]
+    object:
+      rule_actor_inputs:
+        source: Sealed GT geometry, route projection, and geometry audit
+        evidence: derived
+        fields: {}
+      rule_geometry:
+        source: Sealed GT position and positive dimensions with limited invalid reasons
+        evidence: candidate
+        fields:
+          rule_geometry_usable: [boolean, null, Rule geometry usable even if training BEV rejects object; independent
+              of valid]
+  highway:
+    label_policy:
+      expert_label: when_aligned
+      instruction_state: feature_rule
+      missing_expert: rule_label_candidate
+    frame:
+      lane_geometry:
+        source: GT Ego motion and MGeo lane topology
+        evidence: derived
+        fields:
+          highway_nearby_geometry_unverified: [boolean, null, Relevant nearby actor geometry is unresolved]
+      lane_change_motion:
+        source: Consecutive GT Ego motion against source/target MGeo lane centers
+        evidence: candidate
+        fields:
+          lane_change_active: [boolean, null, Inferred lane transition; not Expert state]
+          lane_change_direction: [string, null, Inferred left/right current direction]
+          lane_change_aborting: [boolean, null, Observed progress reversal]
+      following:
+        source: Same-lane GT actors and MGeo forward graph
+        evidence: verified_geometry
+        fields:
+          lead_actor_id: [id, null, Nearest same-lane vehicle ahead]
+          lead_distance_m: [number, m, Lane-graph center distance to lead]
+          lead_bumper_gap_m: [number, m, Current oriented-box bumper gap]
+          lead_ttc_s: [number, s, Bumper gap over positive closing speed; null otherwise]
+          following_gap_insufficient: [boolean, null, Gap below 5 + 0.25 * Ego speed rule threshold]
+      merging_and_response:
+        source: GT actor lateral motion and MGeo lane topology
+        evidence: candidate
+        fields:
+          merging_actor_id: [id, null, Adjacent actor inferred to merge toward Ego lane]
+          merging_actor_side: [string, null, Side of inferred merging actor]
+          merging_actor_distance_m: [number, m, Current distance to inferred merging actor]
+          is_merging_into_ego_lane: [boolean, null, Adjacent actor motion points toward Ego lane]
+          merge_conflict: [boolean, null, Current geometric merge conflict heuristic]
+      ego_rule_motion:
+        source: GT Ego motion estimates computed before Rule evaluation
+        evidence: derived
+        fields:
+          ego_speed_mps: [number, m/s, Backward XY difference; null without valid adjacent admitted frames]
+          ego_stopped: [boolean, null, Ego speed <= 0.2 m/s]
+          ego_decelerating: [boolean, null, Ego acceleration <= -0.5 m/s2]
+          ego_hard_braking: [boolean, null, Ego acceleration <= -3.0 m/s2; motion proxy]
+      acc_resume_episode:
+        source: highway_rule's own classification of the previous contiguous
+          highway frame, computed in enrich_highway
+        evidence: candidate
+        fields:
+          highway_acc_prev_responding: [boolean, null, Previous frame was ACC_FOLLOW in a
+              hard_braking/stopped/yielding/decelerating sub-state; drives the single-shot
+              "resume" state instead of every frame of recommencing follow saying
+              acc_follow's generic sentence again]
+    object:
+      rule_actor_inputs:
+        source: Sealed GT geometry, route projection, and geometry audit
+        evidence: derived
+        fields:
+          forward_m: [number, m, Geometry-audit actor center forward of Ego]
+  tunnel:
+    label_policy:
+      expert_label: when_aligned
+      instruction_state: feature_rule
+      missing_expert: rule_only_candidate
+    frame: {}
+    object: {}
+    note: Tunnel currently reuses common fields; no tunnel-specific derived feature is emitted.

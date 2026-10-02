@@ -1,0 +1,74 @@
+# Exact (zone, label, instruction_state) mapping. null label means rule-only.
+# Dynamic obstacle has no Expert-sourced label (no Expert state contract
+# exists for it): its instruction_state values are themselves the only
+# label dimension, so every dynamic_obstacle row below uses label: null.
+static_obstacle:
+  - {label: null, state: normal, instruction_id: static_normal}
+  - {label: null, state: approach_maintain, instruction_id: static_approach_maintain}
+  - {label: null, state: avoid, instruction_id: static_avoid}
+  - {label: null, state: avoid_continue, instruction_id: static_avoid_continue}
+  - {label: null, state: pass_avoidance_corridor, instruction_id: static_pass_avoidance_corridor}
+  - {label: null, state: pass_between, instruction_id: static_pass_between}
+  - {label: null, state: return_to_path, instruction_id: static_return_to_path}
+  - {label: approach, state: approach_maintain, instruction_id: approach}
+  - {label: drive_approach, state: approach_maintain, instruction_id: drive_approach}
+  - {label: follow, state: avoid, instruction_id: follow_avoid}
+  - {label: follow, state: avoid_continue, instruction_id: follow_avoid_continue}
+  - {label: follow, state: pass_avoidance_corridor, instruction_id: follow_pass}
+  - {label: follow, state: pass_between, instruction_id: follow_between}
+  - {label: follow, state: return_to_path, instruction_id: recover_alignment}
+  - {label: follow, state: normal, instruction_id: normal}
+  - {label: rejoined, state: return_to_path, instruction_id: rejoined_return_to_path}
+  - {label: rejoined, state: normal, instruction_id: rejoined_normal}
+roundabout:
+  - {label: null, state: normal, instruction_id: rule_normal}
+  - {label: null, state: approach_entry, instruction_id: rule_approach_entry}
+  - {label: null, state: merge, instruction_id: rule_merge}
+  - {label: null, state: follow, instruction_id: rule_follow}
+  - {label: null, state: follow_decelerate, instruction_id: rule_follow_decelerate}
+  - {label: null, state: wait_lead, instruction_id: rule_wait_lead}
+  - {label: null, state: hard_brake_lead, instruction_id: rule_hard_brake_lead}
+  - {label: null, state: wait_conflict, instruction_id: rule_wait_conflict}
+  - {label: null, state: hard_brake_conflict, instruction_id: rule_hard_brake_conflict}
+  - {label: null, state: decelerate_conflict, instruction_id: rule_decelerate_conflict}
+  - {label: cruise, state: normal, instruction_id: cruise_normal}
+  - {label: cruise, state: approach_entry, instruction_id: cruise_approach_plain}
+  - {label: cruise, state: merge, instruction_id: cruise_merge_plain}
+  - {label: follow, state: follow, instruction_id: follow}
+  - {label: follow, state: follow_decelerate, instruction_id: follow_decelerate}
+  - {label: follow, state: wait_lead, instruction_id: follow_stopped}
+  - {label: yield, state: wait_conflict, instruction_id: yield_stopped}
+  - {label: yield, state: decelerate_conflict, instruction_id: yield_moving}
+  - {label: collision_slowdown, state: decelerate_conflict, instruction_id: collision_slowdown}
+  - {label: collision_slowdown, state: wait_conflict, instruction_id: collision_stopped}
+  - {label: emergency, state: hard_brake_conflict, instruction_id: emergency_braking}
+highway:
+  - {label: KEEP_LANE, state: normal, instruction_id: keep_lane_normal}
+  - {label: KEEP_LANE, state: approach_keep, instruction_id: keep_lane_object}
+  - {label: KEEP_LANE, state: keep_completed, instruction_id: keep_lane_completed}
+  - {label: ACC_FOLLOW, state: follow, instruction_id: acc_follow}
+  - {label: ACC_FOLLOW, state: resume, instruction_id: acc_resume}
+  - {label: ACC_FOLLOW, state: decelerating, instruction_id: acc_decelerate}
+  - {label: ACC_FOLLOW, state: stopped, instruction_id: acc_stop}
+  - {label: ACC_FOLLOW, state: hard_braking, instruction_id: acc_hard_brake}
+  - {label: ACC_FOLLOW, state: yielding, instruction_id: acc_yield}
+  - {label: CHANGE_LEFT, state: lane_change, instruction_id: change_left}
+  - {label: CHANGE_LEFT, state: decelerating, instruction_id: change_left_decelerate}
+  - {label: CHANGE_LEFT, state: stopped, instruction_id: change_left_stop}
+  - {label: CHANGE_LEFT, state: hard_braking, instruction_id: change_left_hard_brake}
+  - {label: CHANGE_LEFT, state: yielding, instruction_id: change_left_yield}
+  - {label: CHANGE_LEFT, state: return_to_source_lane, instruction_id: change_left_return}
+  - {label: CHANGE_RIGHT, state: lane_change, instruction_id: change_right}
+  - {label: CHANGE_RIGHT, state: decelerating, instruction_id: change_right_decelerate}
+  - {label: CHANGE_RIGHT, state: stopped, instruction_id: change_right_stop}
+  - {label: CHANGE_RIGHT, state: hard_braking, instruction_id: change_right_hard_brake}
+  - {label: CHANGE_RIGHT, state: yielding, instruction_id: change_right_yield}
+  - {label: CHANGE_RIGHT, state: return_to_source_lane, instruction_id: change_right_return}
+dynamic_obstacle:
+  - {label: null, state: approach, instruction_id: dynamic_approach}
+  - {label: null, state: yield_start, instruction_id: dynamic_yield_start}
+  - {label: null, state: yielding, instruction_id: dynamic_yielding}
+  - {label: null, state: waiting, instruction_id: dynamic_waiting}
+  - {label: null, state: resume, instruction_id: dynamic_resume}
+  - {label: null, state: normal, instruction_id: dynamic_normal}
+  - {label: null, state: behavior_unverified, instruction_id: dynamic_behavior_unverified}

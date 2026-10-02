@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 """Zone-aware process wrapper for static and highway lattice planning."""
 
+import json
 import math
 
 from . import parameters
@@ -103,7 +104,7 @@ class LatticePlanningProcess:
             self.recorded_static.set_live_drive(enabled)
 
     def run(self, vehicle_state, reference_path, object_info_list, desired_velocity=None,
-            prediction_path=None, global_path=None):
+            prediction_path=None, global_path=None, ego_header_seq=None, ego_source_ns=None):
         static_objects = [item['object_info'] for item in object_info_list
                           if getattr(item['object_info'], 'is_static', False)
                           and -75 < item['object_info'].position.x < -40
@@ -159,7 +160,7 @@ class LatticePlanningProcess:
             reason = "zone_not_configured" if not self._has_any_zone() else "outside_zone"
             result = LatticePlanningResult(reference_path, reason=reason)
 
-        self._update_log(result)
+        self._update_log(result, vehicle_state, ego_header_seq, ego_source_ns)
         self.last_result = result
         return result
 
@@ -501,7 +502,26 @@ class LatticePlanningProcess:
         )
         return has_static_zone or len(self.highway_zone_points) >= 2
 
-    def _update_log(self, result):
+    def _update_log(self, result, vehicle_state, ego_header_seq, ego_source_ns):
+        if (result.mode == "roundabout_entry" and ego_header_seq is not None
+                and ego_source_ns is not None):
+            # Emitted every tick (not deduped) so the collected supervisor.log
+            # carries a row for every sensor frame's exact (seq, source_ns) --
+            # situation_labeling's expert_instructions.py joins on that exact
+            # key and does not interpolate between sparse transitions.
+            details = result.debug_details.get("roundabout_entry", {})
+            print("[EXPERT_STATE] " + json.dumps({
+                "ego_header_seq": ego_header_seq,
+                "ego_source_ns": ego_source_ns,
+                "mode": "roundabout_entry",
+                "roundabout_phase": details.get("phase"),
+                "roundabout_entering": details.get("entering"),
+                "roundabout_committed": details.get("committed"),
+                "roundabout_front_id": details.get("front_id"),
+                "roundabout_conflict_id": details.get("blocker_unique_id"),
+                "planner_target_speed_mps": result.acc_target_velocity,
+                "ego_speed_mps": vehicle_state.velocity,
+            }))
         state = (
             result.mode,
             result.active,
