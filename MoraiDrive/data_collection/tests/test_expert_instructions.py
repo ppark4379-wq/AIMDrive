@@ -48,13 +48,10 @@ def test_catalog_and_mapping_keep_distinct_instruction_ids():
 def test_roundabout_committed_cruise_and_follow_are_not_entry_merge():
     mapping, catalog = load_config()
     raw = {"mode": "roundabout_entry", "roundabout_phase": "cruise",
-           "roundabout_entering": False, "roundabout_committed": False}
-    entry, reason = canonical_state("roundabout", raw, mapping)
-    assert reason is None and entry["state"] == "CRUISE_APPROACH"
-    raw["roundabout_entering"] = True
+           "roundabout_before_merge": True}
     entry, reason = canonical_state("roundabout", raw, mapping)
     assert reason is None and entry["state"] == "CRUISE_MERGE"
-    raw["roundabout_committed"] = True
+    raw["roundabout_before_merge"] = False
     entry, reason = canonical_state("roundabout", raw, mapping)
     assert reason is None and entry["state"] == "CRUISE_AFTER_MERGE"
     assert entry["instruction_id"] == "cruise_normal"
@@ -63,6 +60,10 @@ def test_roundabout_committed_cruise_and_follow_are_not_entry_merge():
     entry, reason = canonical_state("roundabout", raw, mapping)
     assert reason is None and entry["state"] == "FOLLOW"
     assert entry["instruction_id"] == "follow"
+    raw["roundabout_before_merge"] = True
+    entry, reason = canonical_state("roundabout", raw, mapping)
+    assert reason is None and entry["state"] == "FOLLOW_MERGE"
+    assert entry["instruction_id"] == "follow_merge"
 
 
 def test_committed_cruise_renders_continuing_instruction():
@@ -336,7 +337,7 @@ def test_multiple_existing_expert_logs_can_be_processed_together(tmp_path):
     highway.write_text("[HighwayDecision] pos=(10.00,20.00) yaw=0.00 speed=6.00 target=0.00 "
         "reason=highway_lane_emergency_stop lane_conflict=None merge=None\n",encoding="utf8")
     a,b = _frame(1,"roundabout",0),_frame(2,"highway",0)
-    a.update(ego_world_x_m=1.0,ego_world_y_m=2.0)
+    a.update(ego_world_x_m=1.0,ego_world_y_m=2.0,roundabout_phase="entry")
     b.update(ego_world_x_m=10.0,ego_world_y_m=20.0)
     rows = [_rule(1,"roundabout"),_rule(2,"highway")]
     apply_expert_instructions([a,b],rows,tmp_path,[roundabout,highway])
@@ -349,7 +350,7 @@ def test_standalone_postprocess_reads_existing_features_without_modifying_them(t
     features = tmp_path / "features"
     features.mkdir()
     frame = _frame(1,"roundabout",0)
-    frame.update(ego_world_x_m=1.0,ego_world_y_m=2.0)
+    frame.update(ego_world_x_m=1.0,ego_world_y_m=2.0,roundabout_phase="entry")
     rule = _rule(1,"roundabout")
     original_frame = json.dumps(frame)+"\n"
     original_rule = json.dumps(rule)+"\n"

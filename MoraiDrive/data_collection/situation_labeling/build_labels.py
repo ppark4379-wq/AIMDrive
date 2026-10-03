@@ -13,7 +13,8 @@ from .features import RouteProjector, numeric_features
 from .feature_definitions import project_feature_rows, validate_feature_rows
 from .instruction_features import enrich, number, attach_static_avoid_episode
 from .rules import evaluate_frames, summarize_rules
-from .expert_instructions import apply_expert_instructions
+from .expert_instructions import (apply_expert_instructions,
+                                  hold_roundabout_instruction_across_brief_tracking_gaps)
 from .expert_static_phase import attach_static_phase
 from .expert_roundabout_phase import build_roundabout_observations
 from .mapper import attach_rule_instructions
@@ -347,6 +348,8 @@ def main(argv=None):
             frames, rules, args.episode, args.expert_log or [],
             index_observations=roundabout_observations)
     report["instruction_mapping"] = attach_rule_instructions(rules)
+    if args.expert_log is not None or roundabout_observations is not None:
+        hold_roundabout_instruction_across_brief_tracking_gaps(rules)
     report["rules"] = summarize_rules(rules)
     report["rules"]["instruction_templates_applied"] = (
         any(row.get("instruction") is not None for row in rules))

@@ -15,6 +15,7 @@ static_obstacle:
   - {label: follow, state: avoid, instruction_id: follow_avoid}
   - {label: follow, state: avoid_continue, instruction_id: follow_avoid_continue}
   - {label: follow, state: pass_avoidance_corridor, instruction_id: follow_pass}
+  - {label: follow, state: keep_path, instruction_id: follow_keep_path}
   - {label: follow, state: pass_between, instruction_id: follow_between}
   - {label: follow, state: return_to_path, instruction_id: recover_alignment}
   - {label: follow, state: normal, instruction_id: normal}
@@ -34,7 +35,6 @@ roundabout:
   - {label: cruise, state: normal, instruction_id: cruise_normal}
   - {label: cruise, state: approach_entry, instruction_id: cruise_approach_plain}
   - {label: cruise, state: merge, instruction_id: cruise_merge_plain}
-  - {label: follow, state: follow, instruction_id: follow}
   - {label: follow, state: follow_decelerate, instruction_id: follow_decelerate}
   - {label: follow, state: wait_lead, instruction_id: follow_stopped}
   - {label: yield, state: wait_conflict, instruction_id: yield_stopped}

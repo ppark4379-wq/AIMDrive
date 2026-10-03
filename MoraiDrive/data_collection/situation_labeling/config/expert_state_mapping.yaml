@@ -63,8 +63,7 @@ roundabout:
   match:
     mode: roundabout_entry
     roundabout_phase: follow
-    roundabout_entering: true
-    roundabout_committed: false
+    roundabout_before_merge: true
   label: follow
   instruction_id: follow_merge
 - state: FOLLOW_RESUME
@@ -112,14 +111,14 @@ roundabout:
   match:
     mode: roundabout_entry
     roundabout_phase: cruise
-    roundabout_committed: true
+    roundabout_before_merge: false
   label: cruise
   instruction_id: cruise_normal
 - state: CRUISE_MERGE
   match:
     mode: roundabout_entry
     roundabout_phase: cruise
-    roundabout_entering: true
+    roundabout_before_merge: true
   label: cruise
   instruction_id: cruise_merge_plain
 - state: CRUISE_APPROACH

@@ -29,6 +29,12 @@ static_obstacle:
     required_variables:
     - object
     - position
+  follow_keep_path:
+    label: follow
+    instruction: "There is {object} {position} the ego vehicle. Maintain the current driving behavior."
+    required_variables:
+    - object
+    - position
   follow_between:
     label: follow
     instruction: "There are obstacles {position} the ego vehicle. Perform an avoidance maneuver between the two obstacles."

@@ -35,6 +35,149 @@ def test_static_approach_and_return_require_different_current_motion():
     assert row["instruction_state"] == "return_to_path"
 
 
+def test_static_follow_keeps_path_for_clear_obstacle_only():
+    # lap063 frame 74: the motorcycle is to the right of the nominal route.
+    clear = actor("obstacle", 1, 16.85, delta_s_m=16.35, path_d_m=-4.0567,
+                  actor_width_m=0.7486, actor_length_m=2.021)
+    observed = frame("static_obstacle", expert_label="follow",
+                     ego_reference_path_offset_m=-0.187,
+                     avoidance_active=False,
+                     returning_to_reference_path=False,
+                     ego_speed_mps=None)
+    row = static_obstacle_rule(observed, [clear])
+    assert row["instruction_state"] == "keep_path"
+    assert row["label"] == "follow"
+    assert row["related_actors"] == [1]
+    assert row["evidence"]["path_blocked_candidate"] is False
+    assert row["evidence"]["minimum_current_clearance_m"] > 2.0
+    assert row["unknown_reasons"] == []
+
+    # Expert approach and ongoing avoidance still need their own decisions.
+    assert static_obstacle_rule(dict(observed, expert_label="approach"),
+                                [clear])["instruction_state"] == "approach_maintain"
+    assert static_obstacle_rule(dict(observed, avoidance_active=True),
+                                [clear])["instruction_state"] != "keep_path"
+    assert static_obstacle_rule(dict(observed, ego_reference_path_offset_m=-2.5),
+                                [clear])["instruction_state"] != "keep_path"
+    blocking = dict(clear, path_d_m=-1.0)
+    assert static_obstacle_rule(observed, [blocking])["instruction_state"] != "keep_path"
+
+
+def test_static_obstacle_just_behind_stays_unresolved_on_its_own():
+    # The obstacle has gone behind Ego (delta_s_m < 0) while Ego is still
+    # laterally displaced (avoidance_active) and hasn't yet been observed
+    # recovering (returning_to_reference_path False). static_obstacle_rule
+    # alone cannot tell what maneuver was actually in progress (a one-sided
+    # avoid, a pass_between, ...), so it stays unresolved here -- it is
+    # evaluate_frames' hold-forward step (tested below) that carries the
+    # last resolved instruction across this gap, not a guess made per-frame.
+    behind = actor("obstacle", 1, 4, delta_s_m=-0.08, path_d_m=0.6,
+                   actor_width_m=3.2, actor_length_m=0.6)
+    row = static_obstacle_rule(frame("static_obstacle",
+                                      avoidance_active=True,
+                                      returning_to_reference_path=False,
+                                      avoid_direction="right"), [behind])
+    assert row["instruction_state"] is None
+    assert "return_trajectory_unverified" in row["unknown_reasons"]
+    # Confirmed recovery still wins once it starts.
+    row = static_obstacle_rule(frame("static_obstacle",
+                                      avoidance_active=True,
+                                      returning_to_reference_path=True,
+                                      avoid_direction="right"), [behind])
+    assert row["instruction_state"] == "return_to_path"
+
+
+def _static_frames_and_objects(specs):
+    """specs: list of (index, frame_changes, objects) for zone static_obstacle."""
+    frames, objects = [], []
+    for index, changes, actors in specs:
+        f = {"index": index, "zone_id": "static_obstacle", "valid": True,
+             "object_inventory_usable": True, "ego_speed_mps": 4.0,
+             "ego_stopped": False, "ego_decelerating": False,
+             "ego_hard_braking": False, **changes}
+        frames.append(f)
+        for a in actors:
+            objects.append({"index": index, **a})
+    return frames, objects
+
+
+def test_hold_forward_carries_the_last_resolved_instruction_across_the_gap():
+    # Mirrors the real lap064 sequence that prompted this: an obstacle is
+    # being avoided (avoid_continue), then two frames where the rule alone
+    # can't resolve anything (the obstacle has left range and Ego's offset
+    # hasn't been observed shrinking yet), then recovery is confirmed -- the
+    # two gap frames should keep saying "avoid_continue", not switch to an
+    # unrelated guess or go silent, until recovery is actually observed.
+    specs = [
+        (0, {"expert_label": "follow", "avoidance_active": True,
+             "returning_to_reference_path": False, "avoid_direction": "right",
+             "static_avoid_episode_active": True, "static_avoid_initial_hold": False},
+         [{"kind": "obstacle", "actor_id": 9, "valid": True,
+           "rule_geometry_usable": True, "distance_to_ego_m": 3,
+           "delta_s_m": 3, "path_d_m": 1.5,
+           "actor_width_m": 0.5, "actor_length_m": 0.5,
+           "instance_key": "obstacle:9"}]),
+        (1, {"expert_label": "follow", "avoidance_active": True,
+             "returning_to_reference_path": False},
+         [{"kind": "obstacle", "actor_id": 9, "valid": True,
+           "rule_geometry_usable": True, "distance_to_ego_m": 3,
+           "delta_s_m": -3, "path_d_m": 1.5,
+           "actor_width_m": 0.5, "actor_length_m": 0.5,
+           "instance_key": "obstacle:9"}]),
+        (2, {"expert_label": "follow", "avoidance_active": True,
+             "returning_to_reference_path": False},
+         [{"kind": "obstacle", "actor_id": 9, "valid": True,
+           "rule_geometry_usable": True, "distance_to_ego_m": 6,
+           "delta_s_m": -6, "path_d_m": 1.5,
+           "actor_width_m": 0.5, "actor_length_m": 0.5,
+           "instance_key": "obstacle:9"}]),
+        (3, {"expert_label": "follow", "avoidance_active": True,
+             "returning_to_reference_path": True},
+         [{"kind": "obstacle", "actor_id": 9, "valid": True,
+           "rule_geometry_usable": True, "distance_to_ego_m": 8,
+           "delta_s_m": -8, "path_d_m": 1.5,
+           "actor_width_m": 0.5, "actor_length_m": 0.5,
+           "instance_key": "obstacle:9"}]),
+    ]
+    frames, objects = _static_frames_and_objects(specs)
+    rows = evaluate_frames(frames, objects)
+    assert rows[0]["instruction_state"] == "avoid_continue"
+    assert rows[1]["instruction_state"] == "avoid_continue"
+    assert rows[1]["evidence"]["instruction_held_from_index"] == 0
+    assert rows[1]["label"] == "follow"
+    assert rows[2]["instruction_state"] == "avoid_continue"
+    assert rows[2]["evidence"]["instruction_held_from_index"] == 0
+    assert rows[3]["instruction_state"] == "return_to_path"
+
+
+def test_hold_forward_does_not_cross_a_zone_change_or_index_gap():
+    specs = [
+        (0, {"expert_label": "follow", "avoidance_active": True,
+             "returning_to_reference_path": False, "avoid_direction": "right"},
+         [{"kind": "obstacle", "actor_id": 9, "valid": True,
+           "rule_geometry_usable": True, "distance_to_ego_m": 3,
+           "delta_s_m": 3, "path_d_m": 1.5,
+           "actor_width_m": 0.5, "actor_length_m": 0.5,
+           "instance_key": "obstacle:9"}]),
+    ]
+    frames, objects = _static_frames_and_objects(specs)
+    # A non-contiguous next frame (index jumps) must not inherit the hold.
+    frames.append({"index": 5, "zone_id": "static_obstacle", "valid": True,
+                   "object_inventory_usable": True, "ego_speed_mps": 4.0,
+                   "ego_stopped": False, "ego_decelerating": False,
+                   "ego_hard_braking": False, "expert_label": "follow",
+                   "avoidance_active": True, "returning_to_reference_path": False})
+    objects.append({"index": 5, "kind": "obstacle", "actor_id": 9, "valid": True,
+                    "rule_geometry_usable": True, "distance_to_ego_m": 3,
+                    "delta_s_m": -3, "path_d_m": 1.5,
+                    "actor_width_m": 0.5, "actor_length_m": 0.5,
+                    "instance_key": "obstacle:9"})
+    rows = evaluate_frames(frames, objects)
+    assert rows[0]["instruction_state"] == "avoid_continue"
+    assert rows[1]["instruction_state"] is None
+    assert "instruction_held_from_index" not in rows[1]["evidence"]
+
+
 def test_static_gap_candidate_does_not_claim_safe_passage():
     left = actor("obstacle", 1, 10, delta_s_m=10, path_d_m=1.25,
                  actor_width_m=0.65, actor_length_m=1.21)

@@ -6,6 +6,7 @@ unknown; candidate geometry is never promoted to a safety certificate.
 from collections import Counter, defaultdict
 from .highway_rules import highway_rule
 from dataclasses import asdict, dataclass
+import copy
 import math
 
 
@@ -147,6 +148,13 @@ def static_obstacle_rule(frame, objects, config=RuleConfig()):
                     behind[0].get("target_side"), "obstacle")
             return _finish(result, "return_to_path")
         if behind and frame.get("avoidance_active") is True:
+            # The obstacle has gone behind but Ego's own lateral offset has
+            # not yet been observed shrinking. What maneuver was actually in
+            # progress (a one-sided avoid, a pass_between, ...) is not
+            # knowable from this frame alone -- evaluate_frames' hold-
+            # forward step carries the last resolved static_obstacle
+            # instruction across exactly this gap, so this stays an honest
+            # "no new evidence yet" rather than guessing a specific state.
             return _finish(result, reasons=["return_trajectory_unverified"])
         return _finish(result, "normal")
     first = front[0]
@@ -258,6 +266,21 @@ def static_obstacle_rule(frame, objects, config=RuleConfig()):
             result["variables"]["avoid_direction"] = direction
             return _finish(result, "avoid")
         return _finish(result, reasons=["avoidance_corridor_safety_unverified"])
+    if (expert_label == "follow" and not blocking
+            and frame.get("avoidance_active") is False
+            and frame.get("returning_to_reference_path") is not True
+            and ego_d is not None):
+        # An obstacle can be relevant to the scene without intersecting the
+        # nominal route. Preserve the Expert follow label, but instruct Ego
+        # to hold its current path only when every front obstacle also clears
+        # Ego's observed lateral position by the collision margin.
+        minimum_clearance = min(
+            abs(row["path_d_m"] - ego_d)
+            - config.ego_width_m / 2 - row["actor_width_m"] / 2
+            for row in front)
+        result["evidence"]["minimum_current_clearance_m"] = minimum_clearance
+        if minimum_clearance >= config.static_collision_margin_m:
+            return _finish(result, "keep_path")
     if frame.get("corridor_passable_candidate") is True:
         if expert_label in ("approach", "drive_approach"):
             return _finish(result, "approach_maintain",
@@ -486,7 +509,49 @@ def evaluate_frames(frames, objects, config=RuleConfig()):
             result.setdefault("label_candidate", None)
             result.setdefault("behavior_state", None)
         results.append(result)
+    _hold_static_instruction_across_unconfirmed_return(results, indexed)
     return results
+
+
+def _hold_static_instruction_across_unconfirmed_return(results, indexed):
+    """Carry the last resolved static_obstacle instruction forward across the
+    gap between an avoidance maneuver's obstacle going out of front-facing
+    range and Ego's lateral offset actually being observed shrinking
+    (returning_to_reference_path). What maneuver was in progress (a
+    one-sided avoid, a pass_between corridor, ...) is not re-derivable from
+    a single frame in that gap, so repeating the last confident instruction
+    is more honest than guessing a fresh one -- the real "normal"/
+    "return_to_path" state resumes on its own once there is new evidence.
+    """
+    held = None
+    prior_index = None
+    for result in results:
+        frame = indexed[result["index"]]
+        if frame.get("zone_id") != "static_obstacle":
+            held = None
+            prior_index = None
+            continue
+        if prior_index is not None and result["index"] != prior_index + 1:
+            held = None
+        prior_index = result["index"]
+        if (result["instruction_state"] is None
+                and frame.get("avoidance_active") is True
+                and frame.get("returning_to_reference_path") is not True
+                and held is not None):
+            held_index, current_label = held["index"], result.get("label")
+            result.clear()
+            result.update(copy.deepcopy(held))
+            result["index"] = frame["index"]
+            # This frame's own Expert label is independently known (static_
+            # obstacle_rule reads frame["expert_label"] unconditionally,
+            # before any front/behind resolution) -- only the GT-derived
+            # instruction_state is what's actually unresolved here, so keep
+            # the current label rather than the held frame's.
+            result["label"] = current_label
+            result["evidence"] = dict(result.get("evidence") or {})
+            result["evidence"]["instruction_held_from_index"] = held_index
+        elif result["instruction_state"] is not None:
+            held = result
 
 
 def summarize_rules(results, config=RuleConfig()):

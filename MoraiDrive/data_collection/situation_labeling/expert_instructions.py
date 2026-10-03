@@ -5,6 +5,7 @@ labels; absent planner states are never inferred from GT rule candidates.
 """
 from bisect import bisect_right
 from collections import Counter
+import copy
 import json
 import math
 import re
@@ -23,7 +24,14 @@ MATCH_OPERATORS = {"planner_target_speed_mps_lte", "planner_below_ego_mps",
 RAW_FIELDS = {"mode", "reason", "highway_state", "roundabout_phase",
               "roundabout_entering", "roundabout_committed",
               "pedestrian_acquired", "pedestrian_released", "acc_object_type",
-              "roundabout_resume_detected"}
+              "roundabout_resume_detected", "roundabout_before_merge"}
+# roundabout_before_merge is never present in a real Expert observation either --
+# it is computed from the frame's own route-geometric roundabout_phase (approach/
+# entry/merge/circulating/exit; a distinct field from the Expert planner's raw
+# roundabout_phase of follow/yield/cruise/...), because the planner's own
+# entering/committed bits flip together on the same tick (see roundabout_entry.py's
+# _plan), so they cannot distinguish "still approaching the merge point" from
+# "already merged" the way route geometry can.
 # roundabout_resume_detected is never present in a real Expert observation --
 # apply_expert_instructions injects it on a copy of `raw` only on the single
 # frame after a yield/decel/stop response resolves back to plain following,
@@ -362,12 +370,15 @@ def apply_expert_instructions(frames, rules, episode, expert_log, *, max_gap_ns=
         row["expert_raw_state"] = raw
         row["expert_alignment"] = alignment
         match_raw = raw
-        if zone == "roundabout" and prev_roundabout_responding:
-            # A yield/decel/stop response just resolved back to plain
-            # following -- match as FOLLOW_RESUME instead of FOLLOW through
-            # the same declarative canonical_state lookup, not a separate
-            # code path (see ROUNDABOUT_RESPONDING_STATES above).
-            match_raw = dict(raw, roundabout_resume_detected=True)
+        if zone == "roundabout":
+            match_raw = dict(raw, roundabout_before_merge=
+                              frame.get("roundabout_phase") in ("approach", "entry", "merge"))
+            if prev_roundabout_responding:
+                # A yield/decel/stop response just resolved back to plain
+                # following -- match as FOLLOW_RESUME instead of FOLLOW through
+                # the same declarative canonical_state lookup, not a separate
+                # code path (see ROUNDABOUT_RESPONDING_STATES above).
+                match_raw["roundabout_resume_detected"] = True
         entry, reason = canonical_state(frame.get("zone_id"), match_raw, mapping)
         if zone == "roundabout":
             prev_roundabout_responding = (
@@ -395,3 +406,47 @@ def apply_expert_instructions(frames, rules, episode, expert_log, *, max_gap_ns=
             counts["instruction_rendered"] += 1
         counts["expert_state_mapped"] += 1
     return dict(sorted(counts.items()))
+
+
+def hold_roundabout_instruction_across_brief_tracking_gaps(rules, max_gap=3):
+    """Bridge a brief (<= max_gap frame) interruption in the per-frame
+    lead/conflict actor association -- e.g. the frame's own lead_actor_id
+    briefly not re-identifying the vehicle the Expert observation is already
+    tracking -- that otherwise leaves a roundabout row with no instruction
+    even though nothing about the underlying situation (label, expert_state)
+    actually changed. Call this after both apply_expert_instructions and
+    attach_rule_instructions, since either can be the one that leaves
+    row["instruction"] None.
+
+    A longer gap is left alone on purpose: that is the GT rule genuinely
+    unable to verify object geometry over a real stretch (status
+    "unknown"), not a one-tick tracking blip, and should stay an honest
+    blank rather than being papered over with a stale sentence.
+    """
+    held = None
+    gap = 0
+    prior_index = None
+    for row in rules:
+        if row.get("zone_id") != "roundabout":
+            held, gap, prior_index = None, 0, None
+            continue
+        if prior_index is not None and row["index"] != prior_index + 1:
+            held, gap = None, 0
+        prior_index = row["index"]
+        if row.get("instruction") is not None:
+            held, gap = row, 0
+            continue
+        if held is None:
+            continue
+        gap += 1
+        if gap > max_gap:
+            held = None
+            continue
+        held_index = held["index"]
+        for field in ("instruction", "instruction_id", "instruction_variables",
+                      "instruction_source", "instruction_mapping_status",
+                      "expert_state", "label"):
+            row[field] = copy.deepcopy(held.get(field))
+        evidence = row.get("evidence")
+        row["evidence"] = dict(evidence) if isinstance(evidence, dict) else {}
+        row["evidence"]["instruction_held_from_index"] = held_index

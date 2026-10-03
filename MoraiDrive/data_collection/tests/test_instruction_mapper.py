@@ -33,6 +33,22 @@ def test_rule_only_static_mapping_and_template_variables():
     assert returning["instruction"] == catalog["static_obstacle"]["static_return_to_path"]["instruction"]
 
 
+def test_follow_clear_obstacle_renders_keep_path_instruction():
+    catalog = load_catalog()
+    row = rule("static_obstacle", "keep_path", label="follow", variables={
+        "target_kind": "obstacle", "target_side": "right",
+        "target_distance_m": 16.35})
+    # A directly mapped Expert FOLLOW fallback must be replaced by the
+    # more specific label + current-frame geometry decision.
+    row.update(instruction_id="follow_avoid", instruction="stale fallback",
+               instruction_source="expert_observation")
+    assert attach_rule_instructions([row]) == {"rendered": 1}
+    assert row["instruction_id"] == "follow_keep_path"
+    assert row["instruction_source"] == "expert_label_and_rule"
+    assert row["instruction"] == catalog["static_obstacle"]["follow_keep_path"][
+        "instruction"].format(**row["instruction_variables"])
+
+
 def test_same_highway_label_maps_to_distinct_instructions_without_promoting_candidate():
     rows = [rule("highway", state, candidate="ACC_FOLLOW", variables={
         "target_kind": "vehicle", "target_position": "front", "target_distance_m": 12.6})
