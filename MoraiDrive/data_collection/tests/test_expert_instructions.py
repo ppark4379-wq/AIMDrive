@@ -111,7 +111,7 @@ def test_follow_resume_fires_once_then_settles_back_to_plain_follow():
     assert rows[0]["expert_state"] == "YIELD_MOVING"
     assert rows[1]["expert_state"] == "FOLLOW_RESUME"
     assert rows[1]["label"] == "follow"
-    assert rows[1]["instruction"] == load_config()[1]["roundabout"]["follow_resume"]["instruction"].format(position="전방")
+    assert rows[1]["instruction"] == load_config()[1]["roundabout"]["follow_resume"]["instruction"].format(position="in front of")
     # The frame after that is just ordinary, continuing follow.
     assert rows[2]["expert_state"] == "FOLLOW"
 

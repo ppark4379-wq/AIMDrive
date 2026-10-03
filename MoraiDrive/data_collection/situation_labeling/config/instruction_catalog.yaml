@@ -1,373 +1,373 @@
 static_obstacle:
   approach:
     label: approach
-    instruction: 자차 {position}에 {object}가 있다. 현재 주행을 유지해라.
+    instruction: "There is {object} {position} the ego vehicle. Maintain the current driving behavior."
     required_variables:
     - object
     - position
   drive_approach:
     label: drive_approach
-    instruction: 자차 {position}에 {object}가 있다. 현재 주행을 유지해라.
+    instruction: "There is {object} {position} the ego vehicle. Maintain the current driving behavior."
     required_variables:
     - object
     - position
   follow_avoid:
     label: follow
-    instruction: 자차 {position}에 {object}가 있다. {direction}으로 회피해라.
+    instruction: "There is {object} {position} the ego vehicle. Perform an avoidance maneuver to the {direction}."
     required_variables:
     - direction
     - object
     - position
   follow_avoid_continue:
     label: follow
-    instruction: '{direction}으로 회피를 계속 진행해라.'
+    instruction: "Continue the avoidance maneuver to the {direction}."
     required_variables:
     - direction
   follow_pass:
     label: follow
-    instruction: 자차 {position}에 {object}가 있다. 현재 진행 방향을 유지하며 통과해라.
+    instruction: "There is {object} {position} the ego vehicle. Pass through while maintaining the current direction of travel."
     required_variables:
     - object
     - position
   follow_between:
     label: follow
-    instruction: 자차 {position}에 장애물들이 있다. 두 장애물 사이로 회피해라.
+    instruction: "There are obstacles {position} the ego vehicle. Perform an avoidance maneuver between the two obstacles."
     required_variables:
     - position
   recover_alignment:
     label: follow
-    instruction: 전진하며 기존 주행 경로로 복귀해라.
+    instruction: "Return to the original driving path while moving forward."
     required_variables: []
   normal:
     label: follow
-    instruction: 주행을 이어가라.
+    instruction: "Continue driving."
     required_variables: []
   rejoined_return_to_path:
     label: rejoined
-    instruction: 전진하며 기존 주행 경로로 복귀해라.
+    instruction: "Return to the original driving path while moving forward."
     required_variables: []
   rejoined_normal:
     label: rejoined
-    instruction: 주행을 이어가라.
+    instruction: "Continue driving."
     required_variables: []
   static_normal:
     label: null
-    instruction: 주행을 이어가라.
+    instruction: "Continue driving."
     required_variables: []
   static_approach_maintain:
     label: null
-    instruction: 자차 {position}에 장애물이 있다. 현재 주행을 유지해라.
+    instruction: "There is an obstacle {position} the ego vehicle. Maintain the current driving behavior."
     required_variables: [position]
   static_avoid:
     label: null
-    instruction: 자차 {position}에 장애물이 있다. {direction}으로 회피해라.
+    instruction: "There is an obstacle {position} the ego vehicle. Perform an avoidance maneuver to the {direction}."
     required_variables: [position, direction]
   static_avoid_continue:
     label: null
-    instruction: '{direction}으로 회피를 계속 진행해라.'
+    instruction: "Continue the avoidance maneuver to the {direction}."
     required_variables: [direction]
   static_pass_avoidance_corridor:
     label: null
-    instruction: 자차 {position}에 장애물이 있다. 확인된 회피 경로를 따라 통과해라.
+    instruction: "There is an obstacle {position} the ego vehicle. Pass through along the verified avoidance path."
     required_variables: [position]
   static_pass_between:
     label: null
-    instruction: 자차 {position}에 장애물이 있다. 확인된 경로를 따라 장애물 사이로 통과해라.
+    instruction: "There is an obstacle {position} the ego vehicle. Pass between the obstacles along the verified path."
     required_variables: [position]
   static_return_to_path:
     label: null
-    instruction: 전진하며 기존 주행 경로로 복귀해라.
+    instruction: "Return to the original driving path while moving forward."
     required_variables: []
 roundabout:
   cruise_approach:
     label: cruise
-    instruction: 자차 {position}에 차량이 있다. 회전교차로 진입 지점으로 진행해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Proceed to the roundabout entry point."
     required_variables:
     - position
   yield_moving:
     label: yield
-    instruction: 자차 {position}에 차량이 있다. 진입을 기다리며 양보해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Yield while waiting to enter."
     required_variables:
     - position
   yield_stopped:
     label: yield
-    instruction: 자차 {position}에 차량이 있다. 정지 상태를 유지해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Remain stopped."
     required_variables:
     - position
   cruise_merge:
     label: cruise
-    instruction: 자차 {position}에 차량이 있다. 회전교차로에 합류해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Merge into the roundabout."
     required_variables:
     - position
   follow_merge:
     label: follow
-    instruction: 자차 {position}에 차량이 있다. 앞차를 따라 회전교차로에 합류해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Merge into the roundabout while following the lead vehicle."
     required_variables:
     - position
   follow:
     label: follow
-    instruction: 자차 {position}에 차량이 있다. 앞차를 따라 주행해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Follow the lead vehicle."
     required_variables:
     - position
   follow_decelerate:
     label: follow
-    instruction: 자차 {position}에 차량이 있다. 감속해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Decelerate."
     required_variables:
     - position
   follow_stopped:
     label: follow
-    instruction: 자차 {position}에 차량이 있다. 정지 상태를 유지해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Remain stopped."
     required_variables:
     - position
   follow_resume:
     label: follow
-    instruction: 자차 {position}에 차량이 있다. 앞차를 따라 주행을 재개해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Resume driving while following the lead vehicle."
     required_variables:
     - position
   collision_slowdown:
     label: collision_slowdown
-    instruction: 자차 {position}에 차량이 있다. 감속해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Decelerate."
     required_variables:
     - position
   collision_stopped:
     label: collision_slowdown
-    instruction: 자차 {position}에 차량이 있다. 정지 상태를 유지해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Remain stopped."
     required_variables:
     - position
   emergency_braking:
     label: emergency
-    instruction: 자차 {position}에 차량이 있다. 즉시 강하게 제동해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Brake hard immediately."
     required_variables:
     - position
   emergency_stopped:
     label: emergency
-    instruction: 자차 {position}에 차량이 있다. 정지 상태를 유지해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Remain stopped."
     required_variables:
     - position
   cruise_normal:
     label: cruise
-    instruction: 주행을 이어가라.
+    instruction: "Continue driving."
     required_variables: []
   cruise_approach_plain:
     label: cruise
-    instruction: 회전교차로 진입 지점으로 진행해라.
+    instruction: "Proceed to the roundabout entry point."
     required_variables: []
   cruise_merge_plain:
     label: cruise
-    instruction: 회전교차로에 합류해라.
+    instruction: "Merge into the roundabout."
     required_variables: []
   rule_normal:
     label: null
-    instruction: 주행을 이어가라.
+    instruction: "Continue driving."
     required_variables: []
   rule_approach_entry:
     label: null
-    instruction: 회전교차로 진입 지점으로 주행해라.
+    instruction: "Drive to the roundabout entry point."
     required_variables: []
   rule_merge:
     label: null
-    instruction: 회전교차로에 합류해라.
+    instruction: "Merge into the roundabout."
     required_variables: []
   rule_follow:
     label: null
-    instruction: 자차 {position}에 앞차가 있다. 앞차를 따라 주행해라.
+    instruction: "There is a lead vehicle {position} the ego vehicle. Follow the lead vehicle."
     required_variables: [position]
   rule_follow_decelerate:
     label: null
-    instruction: 자차 {position}에 앞차가 있다. 감속해라.
+    instruction: "There is a lead vehicle {position} the ego vehicle. Decelerate."
     required_variables: [position]
   rule_wait_lead:
     label: null
-    instruction: 자차 {position}에 앞차가 있다. 정지 상태를 유지해라.
+    instruction: "There is a lead vehicle {position} the ego vehicle. Remain stopped."
     required_variables: [position]
   rule_hard_brake_lead:
     label: null
-    instruction: 자차 {position}에 앞차가 있다. 즉시 강하게 제동해라.
+    instruction: "There is a lead vehicle {position} the ego vehicle. Brake hard immediately."
     required_variables: [position]
   rule_wait_conflict:
     label: null
-    instruction: 자차 {position}에 충돌 위험 차량이 있다. 정지 상태를 유지해라.
+    instruction: "There is a vehicle posing a collision risk {position} the ego vehicle. Remain stopped."
     required_variables: [position]
   rule_hard_brake_conflict:
     label: null
-    instruction: 자차 {position}에 충돌 위험 차량이 있다. 즉시 강하게 제동해라.
+    instruction: "There is a vehicle posing a collision risk {position} the ego vehicle. Brake hard immediately."
     required_variables: [position]
   rule_decelerate_conflict:
     label: null
-    instruction: 자차 {position}에 충돌 위험 차량이 있다. 감속해라.
+    instruction: "There is a vehicle posing a collision risk {position} the ego vehicle. Decelerate."
     required_variables: [position]
 highway:
   keep_lane_object:
     label: KEEP_LANE
-    instruction: 자차 {position}에 {object}가 있다. 현재 주행을 유지해라.
+    instruction: "There is {object} {position} the ego vehicle. Maintain the current driving behavior."
     required_variables:
     - object
     - position
   keep_lane_completed:
     label: KEEP_LANE
-    instruction: 현재 차로를 따라 주행해라.
+    instruction: "Drive along the current lane."
     required_variables: []
   keep_lane_normal:
     label: KEEP_LANE
-    instruction: 주행을 이어가라.
+    instruction: "Continue driving."
     required_variables: []
   acc_follow:
     label: ACC_FOLLOW
-    instruction: 자차 {position}에 차량이 있다. 앞차를 따라 주행해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Follow the lead vehicle."
     required_variables:
     - position
   acc_decelerate:
     label: ACC_FOLLOW
-    instruction: 자차 {position}에 차량이 있다. 감속해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Decelerate."
     required_variables:
     - position
   acc_hard_brake:
     label: ACC_FOLLOW
-    instruction: 자차 {position}에 차량이 있다. 즉시 강하게 제동해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Brake hard immediately."
     required_variables:
     - position
   acc_stop:
     label: ACC_FOLLOW
-    instruction: 자차 {position}에 차량이 있다. 정지 상태를 유지해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Remain stopped."
     required_variables:
     - position
   acc_yield:
     label: ACC_FOLLOW
-    instruction: 자차 {position}에 차량이 있다. 해당 차량에 양보해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Yield to that vehicle."
     required_variables:
     - position
   change_left:
     label: CHANGE_LEFT
-    instruction: 왼쪽 차로로 이동해라.
+    instruction: "Move into the left lane."
     required_variables: []
   change_right:
     label: CHANGE_RIGHT
-    instruction: 오른쪽 차로로 이동해라.
+    instruction: "Move into the right lane."
     required_variables: []
   change_left_decelerate:
     label: CHANGE_LEFT
-    instruction: 자차 {position}에 차량이 있다. 감속해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Decelerate."
     required_variables:
     - position
   change_right_decelerate:
     label: CHANGE_RIGHT
-    instruction: 자차 {position}에 차량이 있다. 감속해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Decelerate."
     required_variables:
     - position
   change_left_stop:
     label: CHANGE_LEFT
-    instruction: 자차 {position}에 차량이 있다. 정지 상태를 유지해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Remain stopped."
     required_variables:
     - position
   change_right_stop:
     label: CHANGE_RIGHT
-    instruction: 자차 {position}에 차량이 있다. 정지 상태를 유지해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Remain stopped."
     required_variables:
     - position
   change_left_return:
     label: CHANGE_LEFT
-    instruction: 전진하며 원래 차로로 복귀해라.
+    instruction: "Return to the original lane while moving forward."
     required_variables: []
   change_right_return:
     label: CHANGE_RIGHT
-    instruction: 전진하며 원래 차로로 복귀해라.
+    instruction: "Return to the original lane while moving forward."
     required_variables: []
   acc_merge_stop:
     label: ACC_FOLLOW
-    instruction: 자차 {position}에 차량이 있다. 정지 상태를 유지해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Remain stopped."
     required_variables:
     - position
   acc_resume:
     label: ACC_FOLLOW
-    instruction: 자차 {position}에 차량이 있다. 앞차를 따라 주행을 재개해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Resume driving while following the lead vehicle."
     required_variables:
     - position
   change_left_hard_brake:
     label: CHANGE_LEFT
-    instruction: 자차 {position}에 차량이 있다. 즉시 강하게 제동해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Brake hard immediately."
     required_variables:
     - position
   change_right_hard_brake:
     label: CHANGE_RIGHT
-    instruction: 자차 {position}에 차량이 있다. 즉시 강하게 제동해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Brake hard immediately."
     required_variables:
     - position
   change_left_yield:
     label: CHANGE_LEFT
-    instruction: 자차 {position}에 차량이 있다. 해당 차량에 양보해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Yield to that vehicle."
     required_variables:
     - position
   change_right_yield:
     label: CHANGE_RIGHT
-    instruction: 자차 {position}에 차량이 있다. 해당 차량에 양보해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Yield to that vehicle."
     required_variables:
     - position
 tunnel:
   approach:
     label: approach
-    instruction: 자차 {position}에 차량이 있다. 현재 주행을 유지해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Maintain the current driving behavior."
     required_variables:
     - position
   following:
     label: following
-    instruction: 자차 {position}에 차량이 있다. 앞차를 따라 주행해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Follow the lead vehicle."
     required_variables:
     - position
   follow_decelerating:
     label: follow_decelerating
-    instruction: 자차 {position}에 차량이 있다. 감속해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Decelerate."
     required_variables:
     - position
   emergency_braking:
     label: emergency_braking
-    instruction: 자차 {position}에 차량이 있다. 즉시 강하게 제동해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Brake hard immediately."
     required_variables:
     - position
   following_stopped:
     label: following_stopped
-    instruction: 자차 {position}에 차량이 있다. 정지 상태를 유지해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Remain stopped."
     required_variables:
     - position
   resume:
     label: resume
-    instruction: 자차 {position}에 차량이 있다. 앞차를 따라 주행을 재개해라.
+    instruction: "There is a vehicle {position} the ego vehicle. Resume driving while following the lead vehicle."
     required_variables:
     - position
   normal_object:
     label: normal
-    instruction: 자차 {position}에 차량이 있다. 주행을 이어가라.
+    instruction: "There is a vehicle {position} the ego vehicle. Continue driving."
     required_variables:
     - position
   normal:
     label: normal
-    instruction: 주행을 이어가라.
+    instruction: "Continue driving."
     required_variables: []
 dynamic_obstacle:
   dynamic_approach:
     label: null
-    instruction: 자차 {position}에 {object}가 있다. 현재 주행을 유지해라.
+    instruction: "There is {object} {position} the ego vehicle. Maintain the current driving behavior."
     required_variables: [position, object]
   dynamic_yield_start:
     label: null
-    instruction: 자차 {position}에 {object}가 있다. 보행자에게 양보해라.
+    instruction: "There is {object} {position} the ego vehicle. Yield to pedestrians."
     required_variables: [position, object]
   dynamic_yielding:
     label: null
-    instruction: 자차 {position}에 {object}가 있다. 보행자에게 양보해라.
+    instruction: "There is {object} {position} the ego vehicle. Yield to pedestrians."
     required_variables: [position, object]
   dynamic_waiting:
     label: null
-    instruction: 자차 {position}에 {object}가 있다. 정지 상태를 유지해라.
+    instruction: "There is {object} {position} the ego vehicle. Remain stopped."
     required_variables: [position, object]
   dynamic_resume:
     label: null
-    instruction: 주행을 재개해라.
+    instruction: "Resume driving."
     required_variables: []
   dynamic_normal:
     label: null
-    instruction: 주행을 이어가라.
+    instruction: "Continue driving."
     required_variables: []
   dynamic_behavior_unverified:
     label: null
-    instruction: 자차 {position}에 {object}가 있다. 행동 supervision 제외.
+    instruction: "There is {object} {position} the ego vehicle. Exclude action supervision."
     required_variables: [position, object]

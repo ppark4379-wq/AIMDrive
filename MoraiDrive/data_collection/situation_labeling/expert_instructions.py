@@ -13,7 +13,7 @@ from string import Formatter
 
 import yaml
 
-from .renderer import render_template
+from .renderer import DIRECTIONS, OBJECTS, POSITIONS, render_template
 
 CONFIG = Path(__file__).resolve().parent / "config"
 PREFIX = "[EXPERT_STATE] "
@@ -207,8 +207,7 @@ def _ego_index(episode):
 
 
 def _position(value):
-    return {"front": "전방", "left": "좌측", "right": "우측",
-            "center": "전방", "rear": "후방"}.get(value)
+    return POSITIONS.get(value, value if value in POSITIONS.values() else None)
 
 
 def _variables(frame, rule, raw):
@@ -246,21 +245,15 @@ def _variables(frame, rule, raw):
     position = _position(source.get("target_position") or source.get("target_position_text")
                          or source.get("target_side"))
     if position is None and target_distance is not None:
-        position = "전방"
-    if target_kind in ("obstacle", "static_obstacle"):
-        object_name = "장애물"
-    elif target_kind in ("pedestrian", "person"):
-        object_name = "보행자"
-    elif target_kind in ("vehicle", "npc"):
-        object_name = "차량"
-    else:
-        object_name = None
-    direction = {"left": "왼쪽", "right": "오른쪽"}.get(source.get("avoid_direction"))
+        position = "in front of"
+    object_name = OBJECTS.get("pedestrian" if target_kind == "person" else target_kind)
+    direction = DIRECTIONS.get(source.get("avoid_direction"))
     pedestrian_state = None
     if raw.get("pedestrian_released") is True:
-        pedestrian_state = "보행자 상황이 해소됐다."
+        pedestrian_state = "The pedestrian situation has been resolved."
     elif target_kind in ("pedestrian", "person") and target_distance is not None:
-        pedestrian_state = f"자차 {position or '전방'} 약 {round(target_distance)}m에 보행자가 있다."
+        pedestrian_state = (f"There is a pedestrian approximately {round(target_distance)} m away "
+                            f"{position or 'in front of'} the ego vehicle.")
     return dict(position=position,
                 distance=None if target_distance is None else round(target_distance),
                 object=object_name, direction=direction, pedestrian_state=pedestrian_state)

@@ -23,10 +23,10 @@ def test_rule_only_static_mapping_and_template_variables():
     assert attach_rule_instructions([row]) == {"rendered": 1}
     assert row["instruction_id"] == "static_approach_maintain"
     assert row["instruction"] == catalog["static_obstacle"]["static_approach_maintain"][
-        "instruction"].format(position="전방")
+        "instruction"].format(position="in front of")
     assert row["instruction_source"] == "rule_state"
     assert row["label"] is None
-    assert row["instruction_variables"] == {"position": "전방"}
+    assert row["instruction_variables"] == {"position": "in front of"}
     returning = rule("static_obstacle", "return_to_path")
     attach_rule_instructions([returning])
     assert returning["instruction_id"] == "static_return_to_path"

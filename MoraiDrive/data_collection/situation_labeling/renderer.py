@@ -7,11 +7,16 @@ import yaml
 
 
 CATALOG_PATH = Path(__file__).resolve().parent / "config" / "instruction_catalog.yaml"
-POSITIONS = {"front": "전방", "center": "전방", "left": "좌측",
-             "right": "우측", "rear": "후방"}
-OBJECTS = {"obstacle": "장애물", "static_obstacle": "장애물",
-           "vehicle": "차량", "npc": "차량", "pedestrian": "보행자"}
-DIRECTIONS = {"left": "왼쪽", "right": "오른쪽"}
+# Position phrases precede "the ego vehicle"; object phrases include articles.
+# Legacy Korean values remain accepted as inputs, but always render in English.
+POSITIONS = {"front": "in front of", "center": "in front of",
+             "left": "to the left of", "right": "to the right of", "rear": "behind",
+             "전방": "in front of", "좌측": "to the left of",
+             "우측": "to the right of", "후방": "behind"}
+OBJECTS = {"obstacle": "an obstacle", "static_obstacle": "an obstacle",
+           "vehicle": "a vehicle", "npc": "a vehicle", "pedestrian": "a pedestrian",
+           "장애물": "an obstacle", "차량": "a vehicle", "보행자": "a pedestrian"}
+DIRECTIONS = {"left": "left", "right": "right", "왼쪽": "left", "오른쪽": "right"}
 
 
 def load_catalog(path=CATALOG_PATH):

@@ -1,5 +1,76 @@
 # Situation instruction features v0.3
 
+## 수집 episode에서 한 번에 라벨링
+
+수집 완료된 **Internal Sensor Record episode**에 아래 명령 하나를 실행합니다.
+저장소 루트(AIMDrive)에서, 기존 collector 전처리에 사용하는 **WSL/ROS 분석
+Python 환경**으로 실행합니다. Windows 기본 Python만으로 ROS 원본 메시지를
+역직렬화할 수는 없습니다.
+
+```bash
+python -m MoraiDrive.data_collection.situation_labeling.label_episode --episode /mnt/g/path/to/run/episode_000
+```
+
+`--episode`에는 `episode_000` 또는 episode가 하나인 부모 run 폴더를 지정합니다.
+run의 `capture_contract.json`, `sensor_contract.json`, `plan.json`과 episode의
+`episode.json`, 수집 완료된 `raw/`, `quality/`가 필요합니다. 센서 이미지 파일만
+모은 폴더는 이 collector의 입력 계약을 충족하지 않습니다. raw·quality는 수집
+중 저장되는 기록이며 이 명령을 위해 사용자가 미리 GT·geometry를 생성할 필요는 없습니다.
+
+명령은 다음 순서로 실행합니다.
+
+1. 수집 완료 기록을 확인하고 수집 당시 route/map과 원본 센서 경로를 검증합니다.
+2. native audit → association → GT timeline → traffic/actor audit → geometry V2
+   → route/motion/exposure audit → review → admission을 순서대로 실행합니다.
+3. `build_labels`를 실행하여 feature 생성 → 행동 판정 → Template 선택 → 문장
+   parameter 삽입 → 프레임별 instruction 저장을 완료합니다.
+4. 원본 센서 파일 경로와 instruction을 같은 행으로 묶은 최종 결과를 생성합니다.
+
+정적 장애물은 해당 run의 `supervisor.log`가 있으면 자동으로 연결합니다.
+로그 위치가 다르면 `--static-supervisor-log /path/to/supervisor.log`를 지정합니다.
+로그가 없으면 rule-only로 실행됨을 출력하며, Expert phase를 사용한 viewer 결과와
+동일한 결과를 보장하지 않습니다. 기존 라벨/문장 규칙의 지원 범위는 그대로 적용되므로
+이 명령이 미구현 Zone 규칙을 추가하지는 않습니다.
+
+전처리는 episode 아래 기존 결과를 해시 검증 후 재사용합니다. V1 결과를 덮어쓰지
+않도록 geometry는 `object_geometry_audit_v2`, review는 `situation_review_v2`,
+admission은 `situation_admission_v2`를 사용합니다. geometry catalog가 별도 위치에
+있으면 최초 실행에 `--catalog-report PATH`를 지정합니다. 기존 geometry가 있는
+경우 그 생성 당시 catalog를 사용하며 새 catalog 옵션을 조용히 무시하지 않습니다.
+
+기본 결과는 `EPISODE/situation_labels/`에 생성됩니다. `--output NEW_DIRECTORY`로
+바꿀 수 있으며, 기존 결과 디렉터리는 덮어쓰지 않습니다.
+
+```text
+situation_labels/
+  labeled_frames.jsonl       # 최종 결과: 프레임별 원본 센서 파일 + instruction
+  report.json               # 성공/실패, 라벨 유무 개수, 경로·입력 근거
+  COMPLETE.json             # 모든 단계가 성공했을 때만 생성
+  pipeline.log              # 전처리·라벨링 하위 도구 실행 로그
+  features/
+    frame_features.jsonl
+    object_features.jsonl
+    situation_rules.jsonl   # 기존 viewer가 읽는 instruction 결과
+    report.json
+```
+
+`labeled_frames.jsonl`의 각 행은 `episode_path`, `frame_id`, `sensor_time_ns`,
+`assets`, `zone`, `instruction`, `labeling`, 프레임 유효성 필드를 포함합니다.
+`assets`는 원본 센서의 경로·해시·크기 등 admission 메타데이터를 연결합니다.
+센서 파일을 복사하거나 원본 manifest를 수정하지 않는 참조형 결과이므로 원본 센서
+저장소도 유지해야 합니다. `labeling`에는 내부 상태·선택한 Template·판정 근거가
+들어갑니다. 미판정 프레임도 `instruction: null`로 남으며 학습 가능성을 임의로
+올리지 않습니다. 완료는 실행 성공을 뜻하며 모든 프레임에 문장이 있다는 뜻은 아닙니다.
+
+실패하면 `report.json`에 오류를 기록하고 완료 표시는 생성하지 않습니다.
+원인을 해결한 뒤 새 `--output`으로 실행하면 완료된 전처리를 재사용합니다.
+전처리 디렉터리가 미완료이거나 해시가 달라졌으면 자동으로 지우거나 덮어쓰지 않고
+해당 경로에서 중단합니다. 마지막 stdout JSON에도 최종 결과 파일 경로를 반환합니다.
+
+기존 viewer에는 `--features-dir EPISODE/situation_labels/features`를 전달하면 됩니다.
+
+## 전처리 완료 데이터에서 feature/문장만 재생성
+
 Run 'python -m MoraiDrive.data_collection.situation_labeling.build_labels' with
 '--episode', '--route-definition', '--global-path', and a new '--output'
 directory. The command writes frame_features.jsonl, object_features.jsonl,

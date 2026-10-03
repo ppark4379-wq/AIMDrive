@@ -7,6 +7,7 @@
 
 | 문서 | 내용 |
 |---|---|
+| [situation-instruction-spec.md](situation-instruction-spec.md) | 다섯 Zone의 Situation instruction 라벨·문장·학습 적용 전달 명세 |
 | [architecture.md](architecture.md) | 소스 구조, ROS 동기화, 수집 흐름, MGeo route 라벨 |
 | [dataset-format.md](dataset-format.md) | 최종 데이터셋 트리, JSON/NPY/JPEG 형식, LMDrive 차이 |
 | [validation.md](validation.md) | 구현 상태, 실주행 검증 결과, 제약 및 검증 명령 |
