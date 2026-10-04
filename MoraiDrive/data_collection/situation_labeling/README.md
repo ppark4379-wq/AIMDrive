@@ -268,6 +268,24 @@ Stage 2는 2.5초 미래 궤적을 학습하므로, 문장이 그 궤적과 어�
 `report.json`의 `motion_alignment`, `instruction_gap_frames_filled`,
 `instruction_consistency`에 단계별 변경 수가 남습니다.
 
+## 라벨 검토 뷰어 (`review_viewer.py`)
+
+카메라 4대, 프레임별 instruction, 문장을 뺀 이유(`instruction_consistency`),
+움직임 정렬 전 상태, zone_instruction, 상태 타임라인과 좌우 이동·속도 그래프를
+run별 HTML로 만듭니다. 여러 run을 만들면 출력 폴더의 `index.html`이 목록이 됩니다.
+
+```bash
+python3 -m MoraiDrive.data_collection.situation_labeling.review_viewer --run RUN_DIR [RUN_DIR ...]
+```
+
+- 라벨은 기본으로 `RUN/episode_000/situation_labels/features`에서 읽습니다.
+  다른 곳이면 `--labels`에 features 폴더, label_episode 출력 폴더,
+  또는 `<root>/<캠페인>/<run>/features` 구조의 root를 줍니다.
+- 출력 기본값 `MoraiDrive/data_collection/output/situation_label_viewer`는 git이 무시합니다.
+  페이지는 상대경로만 쓰므로 출력 폴더를 압축해 다른 PC에서 열 수 있습니다.
+- 화면은 `PAGE` 템플릿 하나이고, 데이터는 `frame_rows()`가 만든 프레임별 dict 목록(`ROWS`)이
+  JSON으로 들어갑니다. 다른 파이프라인에서도 같은 키로 `ROWS`를 만들면 화면을 그대로 쓸 수 있습니다.
+
 ## Camera frame viewer
 
 After `build_labels` has produced a feature directory, create a standalone
