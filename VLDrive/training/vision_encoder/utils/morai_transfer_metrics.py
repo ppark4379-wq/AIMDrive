@@ -1,6 +1,7 @@
 """Frame-weighted multitask metrics preserved from the MORAI v3_lav evaluation."""
 import json
 import torch
+from utils.evaluation.morai_box_metrics import box_regression_sums
 from training.vision_encoder.losses.morai_transfer import multitask_loss
 
 def to_device(batch, device):
@@ -41,12 +42,21 @@ def _occupancy_metrics(positive_histogram, negative_histogram, bins):
 
 def evaluate(model, loader, device, include_traffic_light=True, include_objects=True,
              progress_phase=None, progress_every=50,
-             detection_loss_policy="mvt_l1_v1"):
+             detection_loss_policy="mvt_l1_v1", object_entries=None):
     model.eval()
+    object_accumulator = None
+    if object_entries is not None:
+        if not include_objects:
+            raise ValueError('Object metadata diagnostics require enabled object evaluation')
+        if detection_loss_policy != 'lmdrive_lav_v1':
+            raise ValueError('Object decoding requires explicit LAV logits')
+        from utils.evaluation.morai_object_metrics import ObjectMetricsAccumulator
+        object_accumulator = ObjectMetricsAccumulator()
     loss_sum, ade_sum, fde_sum, n, waypoint_n = 0., 0., 0., 0, 0
     light_correct, light_n, object_n, tp, fp, fn = 0, 0, 0, 0, 0, 0
     light_counts, light_hits = [0, 0], [0, 0]
     task_sums, observed_sums, observed_counts = {}, {}, {}
+    box_n, center_sum, length_sum, width_sum = 0, 0., 0., 0.
     occupancy_bins = 1000
     positive_histogram = torch.zeros(occupancy_bins + 1, dtype=torch.int64)
     negative_histogram = torch.zeros(occupancy_bins + 1, dtype=torch.int64)
@@ -60,6 +70,16 @@ def evaluate(model, loader, device, include_traffic_light=True, include_objects=
             distances = (outputs[1][wm] - targets["waypoints"][wm]).norm(dim=-1)
             ade_sum += float(distances.mean(-1).double().sum())
             fde_sum += float(distances[:, -1].double().sum())
+            if object_accumulator is not None:
+                if n+b > len(object_entries):
+                    raise ValueError('Object metadata shorter than evaluation order')
+                for j in range(b):
+                    entry = object_entries[n+j]
+                    if any(int(targets[k][j]) != int(entry[k]) for k in ('frame_id','sensor_time_ns')):
+                        raise ValueError('Object entry frame/time differs from batch')
+                    if bool(targets['object_valid'][j]) != bool(entry['object_valid']):
+                        raise ValueError('Object entry supervision differs from batch')
+                    object_accumulator.update(outputs[0][j], entry)
             n += b
             # Per-frame reporting is invariant to batching and sparse masks.
             # Keep historical frame-averaged losses, also report the losses
@@ -89,6 +109,8 @@ def evaluate(model, loader, device, include_traffic_light=True, include_objects=
             object_n += int(dm.sum())
             probability = _occupancy_probability(
                 outputs[0][dm, :, 0], detection_loss_policy)
+            bn, bc, bl, bw = box_regression_sums(outputs[0][dm], targets["detection"][dm])
+            box_n += bn; center_sum += bc; length_sum += bl; width_sum += bw
             gt = targets["detection"][dm, :, 0] >= .5
             pred = probability >= .5
             tp += int((pred & gt).sum()); fp += int((pred & ~gt).sum()); fn += int((~pred & gt).sum())
@@ -103,9 +125,11 @@ def evaluate(model, loader, device, include_traffic_light=True, include_objects=
                 print(json.dumps({"phase": progress_phase, "frames": n}), flush=True)
     if not n:
         raise ValueError('Empty evaluation dataset')
+    if object_entries is not None and n != len(object_entries):
+        raise ValueError('Object metadata length differs from evaluated frames')
     occupancy = _occupancy_metrics(
         positive_histogram, negative_histogram, occupancy_bins)
-    return {"frames": n, "loss": loss_sum / n,
+    result = {"frames": n, "loss": loss_sum / n,
             "waypoint_observed_frames": waypoint_n,
             "ade_m": ade_sum / waypoint_n if waypoint_n else None,
             "fde_m": fde_sum / waypoint_n if waypoint_n else None,
@@ -122,6 +146,11 @@ def evaluate(model, loader, device, include_traffic_light=True, include_objects=
             "traffic_light_class_counts": dict(zip(('red', 'green'), light_counts)),
             "traffic_light_class_recall": {name: light_hits[i] / light_counts[i] if light_counts[i] else None
                                            for i, name in enumerate(('red', 'green'))},
+            "box_regression_positive_cells": box_n,
+            "box_center_l2_m": center_sum / box_n if box_n else None,
+            "box_length_mae_m": length_sum / box_n if box_n else None,
+            "box_width_mae_m": width_sum / box_n if box_n else None,
+            "box_regression_note": "GT-positive cells (target >=0.5), includes low-score predictions; not object-matched bbox AP.",
             "detection_cell_f1": 2 * tp / (2 * tp + fp + fn) if 2 * tp + fp + fn else None,
             "detection_cell_precision": tp / (tp + fp) if tp + fp else None,
             "detection_cell_recall": tp / (tp + fn) if tp + fn else None,
@@ -129,3 +158,7 @@ def evaluate(model, loader, device, include_traffic_light=True, include_objects=
             "detection_loss_policy": detection_loss_policy,
             **occupancy,
             "detection_metric_note": "50x50 cell occupancy; fixed-threshold F1 is not object AP. Histogram AP uses 0.001 score bins."}
+
+    if object_accumulator is not None:
+        result["object_detection"] = object_accumulator.compute()
+    return result

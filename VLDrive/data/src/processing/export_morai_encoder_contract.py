@@ -20,7 +20,7 @@ from data.src.loaders.morai_encoder_contract import (
     SCHEMA, checkpoint_encoder_contract, sensor_record_encoder_contract, validate_encoder_contract,
 )
 from data.src.loaders.morai_transfer_adapter import MoraiVisionAdapterConfig
-from inference.navigation.morai_route import navigation_recipe
+from data.src.loaders.morai_encoder_contract import navigation_recipe
 
 
 def digest(path):
@@ -48,6 +48,7 @@ def reconstruct_contract(blob):
         raise ValueError("Unsupported legacy checkpoint: requires an explicit versioned contract; "
                          "do not guess output axes from checkpoint name")
     configs, evidence, route_hashes, navigation = [], [], set(), []
+    map_manifests = []
     for publication in provenance["publications"]:
         index_path = Path(publication["path"])
         index = verified_json(index_path, publication["sha256"])
@@ -55,6 +56,7 @@ def reconstruct_contract(blob):
             for row in index[split]:
                 path = index_path.parent / row["path"]
                 doc = verified_json(path, row["sha256"])
+                map_manifests.append((path, {"map_basis": doc.get("map_basis")}))
                 source = doc["contract"]
                 # The sealed manifest carries the original sensor contract.
                 extrinsic = source["lidar_to_base"]
@@ -75,7 +77,9 @@ def reconstruct_contract(blob):
                 if recipe not in navigation:
                     navigation.append(recipe)
         evidence.append(publication)
-    contract = sensor_record_encoder_contract(configs, provenance["velocity_source"])
+    from data.src.loaders.morai_map_geometry import manifest_map_basis
+    contract = sensor_record_encoder_contract(configs, provenance["velocity_source"],
+                                              map_basis=manifest_map_basis(map_manifests))
     contract["route_source_sha256s"] = sorted(route_hashes)
     contract["navigation_recipes"] = navigation
     return validate_encoder_contract(contract), evidence
