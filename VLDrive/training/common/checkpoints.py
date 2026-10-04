@@ -13,10 +13,16 @@ from utils.common.source_compatibility import equivalent_provenance
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def _checkpoint_parameter(model, name, parameter):
+    # Temporarily frozen warmup weights are not immutable external assets:
+    # save them too, so resume/transition does not reconstruct random heads.
+    return parameter.requires_grad or name in getattr(model, '_stage_base_trainable_names', ())
+
+
 def parameter_hash(model, *, trainable):
     digest = hashlib.sha256()
     for name, parameter in model.named_parameters():
-        if parameter.requires_grad != trainable:
+        if _checkpoint_parameter(model, name, parameter) != trainable:
             continue
         digest.update(name.encode())
         digest.update(parameter.detach().cpu().contiguous().reshape(-1).view(torch.uint8).numpy().tobytes())
@@ -36,6 +42,9 @@ def source_hashes(root):
                         'training/vision_encoder/losses', 'training/vision_encoder/utils',
                         'training/vision_encoder') for p in (root / d).glob('*.py')}
     paths.update((root / 'models').rglob('*.py'))
+    paths.update((root / 'instruction').rglob('*.py'))
+    paths.update((root / 'instruction').rglob('*.json'))
+    paths.update((root / 'data/src/processing').glob('build_path_features.py'))
     paths.update(root / p for p in ('train.py', 'evaluate.py', 'utils/visualization/vision_encoder_visualization.py'))
     # Only the training-side observer belongs in checkpoint provenance.
     # UI/export/plot changes must not invalidate an otherwise identical resume.
@@ -46,7 +55,7 @@ def source_hashes(root):
 def save_checkpoint(path, model, optimizer, *, updates, provenance, settings):
     from utils.common.runtime import sha256
     path = Path(path)
-    trainable = {n: p.detach().cpu().clone() for n, p in model.named_parameters() if p.requires_grad}
+    trainable = {n: p.detach().cpu().clone() for n, p in model.named_parameters() if _checkpoint_parameter(model, n, p)}
     state = dict(schema=getattr(model, 'checkpoint_schema', 'morai-goal-stack-v1'), model_config=asdict(model.config), trainable_state=trainable,
         trainable_hash=parameter_hash(model, trainable=True), frozen_hash=parameter_hash(model, trainable=False),
         optimizer=optimizer.state_dict(), updates=updates, provenance=provenance, settings=settings,
@@ -75,7 +84,7 @@ def restore_checkpoint(path, model, optimizer, *, provenance, restore_rng=True):
     if parameter_hash(model, trainable=False) != state['frozen_hash']:
         raise ValueError('Frozen base weights/buffers mismatch')
     parameters = dict(model.named_parameters())
-    if set(state['trainable_state']) != {n for n, p in parameters.items() if p.requires_grad}:
+    if set(state['trainable_state']) != {n for n, p in parameters.items() if _checkpoint_parameter(model, n, p)}:
         raise ValueError('Checkpoint trainability policy mismatch')
     with torch.no_grad():
         for name, value in state['trainable_state'].items():
@@ -111,7 +120,7 @@ def save_model_checkpoint(path, model, *, updates, provenance, settings, metrics
         model_config=asdict(model.config),
         trainable_state={
             name: parameter.detach().cpu().clone()
-            for name, parameter in model.named_parameters() if parameter.requires_grad
+            for name, parameter in model.named_parameters() if _checkpoint_parameter(model, name, parameter)
         },
         trainable_hash=parameter_hash(model, trainable=True),
         frozen_hash=parameter_hash(model, trainable=False),
@@ -166,12 +175,12 @@ def restore_model_checkpoint(path, model, *, provenance, evaluation_source_compa
         raise ValueError('Model-only checkpoint contract/provenance mismatch')
     if parameter_hash(model, trainable=False) != state.get('frozen_hash'):
         raise ValueError('Model-only checkpoint frozen asset mismatch')
-    expected = {name for name, parameter in model.named_parameters() if parameter.requires_grad}
+    expected = {name for name, parameter in model.named_parameters() if _checkpoint_parameter(model, name, parameter)}
     if set(state.get('trainable_state', {})) != expected:
         raise ValueError('Model-only checkpoint parameter set mismatch')
     with torch.no_grad():
         for name, parameter in model.named_parameters():
-            if parameter.requires_grad:
+            if _checkpoint_parameter(model, name, parameter):
                 parameter.copy_(state['trainable_state'][name])
     if parameter_hash(model, trainable=True) != state['trainable_hash']:
         raise ValueError('Restored model-only weights differ')
@@ -180,7 +189,8 @@ def restore_model_checkpoint(path, model, *, provenance, evaluation_source_compa
     return state
 
 
-def warm_start_model_checkpoint(path, model, *, provenance, reset_prefixes=(), transfer_reason):
+def warm_start_model_checkpoint(path, model, *, provenance, reset_prefixes=(), transfer_reason,
+                                new_prefixes=()):
     """Explicit weight transfer into a new experiment, never an exact resume.
 
     Source/config/dataset changes require a recorded reason. Frozen assets stay
@@ -192,6 +202,11 @@ def warm_start_model_checkpoint(path, model, *, provenance, reset_prefixes=(), t
     if not isinstance(transfer_reason, str) or not transfer_reason.strip():
         raise ValueError('Warm start requires a documented transfer_reason')
     prefixes = tuple(reset_prefixes)
+    additions = tuple(new_prefixes)
+    if (len(additions) != len(set(additions)) or any(not isinstance(p, str) or not p or not p.endswith('.') for p in additions)
+            or any(a != b and b.startswith(a) for a in additions + prefixes for b in additions + prefixes)
+            or set(additions) & set(prefixes)):
+        raise ValueError('New module prefixes must be unique, nonoverlapping and end in a dot')
     if (len(prefixes) != len(set(prefixes))
             or any(not isinstance(p, str) or not p or not p.endswith('.') for p in prefixes)
             or any(a != b and b.startswith(a) for a in prefixes for b in prefixes)):
@@ -234,13 +249,17 @@ def warm_start_model_checkpoint(path, model, *, provenance, reset_prefixes=(), t
         saved_digest.update(value.detach().cpu().contiguous().reshape(-1).view(torch.uint8).numpy().tobytes())
     if saved_digest.hexdigest() != state.get('trainable_hash'):
         raise ValueError('Warm-start trainable state hash mismatch')
-    expected = {name: parameter for name, parameter in model.named_parameters() if parameter.requires_grad}
+    expected = {name: parameter for name, parameter in model.named_parameters() if _checkpoint_parameter(model, name, parameter)}
     reset = lambda name: any(name.startswith(prefix) for prefix in prefixes)
+    new = lambda name: any(name.startswith(prefix) for prefix in additions)
+    for prefix in additions:
+        if any(name.startswith(prefix) for name in saved) or not any(name.startswith(prefix) for name in expected):
+            raise ValueError('New prefix must exist only in the destination: ' + prefix)
     for prefix in prefixes:
         if not any(name.startswith(prefix) for name in saved) or not any(name.startswith(prefix) for name in expected):
             raise ValueError('Reset prefix must match old and new trainable parameters: ' + prefix)
     old_loaded = {name for name in saved if not reset(name)}
-    new_loaded = {name for name in expected if not reset(name)}
+    new_loaded = {name for name in expected if not reset(name) and not new(name)}
     if old_loaded != new_loaded:
         raise ValueError('Warm-start parameter set mismatch outside explicit reset prefixes')
     if not old_loaded:
@@ -258,6 +277,7 @@ def warm_start_model_checkpoint(path, model, *, provenance, reset_prefixes=(), t
         source_updates=int(state.get('updates', 0)), old_provenance=state['provenance'],
         new_provenance=copy.deepcopy(provenance), old_model_config=state['model_config'],
         new_model_config=new_config, reset_prefixes=list(prefixes),
+        initialized_new_keys=sorted(name for name in expected if new(name)),
         reset_old_keys=sorted(name for name in saved if reset(name)),
         reset_new_keys=sorted(name for name in expected if reset(name)),
         loaded_keys=sorted(old_loaded), loaded_parameter_count=sum(expected[name].numel() for name in old_loaded),

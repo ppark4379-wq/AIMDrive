@@ -10,9 +10,14 @@ class NavigationCacheDataset:
     trajectory_coordinate_convention='lmdrive_left_negative_forward'
     def __init__(self, cache_root, instructions, split, sequence_length=11, seed=42,
                  train_variants=tuple(range(8)), validation_variants=tuple(range(8)),
-                 frame_sampling_interval=1, include_validation_in_train=False):
+                 frame_sampling_interval=1, include_validation_in_train=False, path_feature_cache=None):
         self.root=Path(cache_root).resolve()
         self.labels=NavigationLabels(instructions)
+        self.path_features = None
+        if path_feature_cache:
+            from instruction.global_path.encoder import PathFeatureCache
+            self.path_features = PathFeatureCache(path_feature_cache,
+                hashlib.sha256((self.labels.root/'manifest.json').read_bytes()).hexdigest())
         self.split='validation' if split in ('val','validation') else split
         if self.split not in ('train','validation'): raise ValueError('Invalid cache split')
         self.include_validation_in_train=include_validation_in_train
@@ -61,7 +66,8 @@ class NavigationCacheDataset:
                 continuous=rows[end-span:end]
                 # Validate the entire source span before subsampling. A missing
                 # cached frame must not be mistaken for a larger sample interval.
-                if self.labels.eligible(identity,[r['sensor_source_ns'] for r in continuous]):
+                eligible = self.path_features.eligible if self.path_features is not None else self.labels.eligible
+                if eligible(identity,[r['sensor_source_ns'] for r in continuous]):
                     self.windows.append(continuous[::frame_sampling_interval])
         if not self.windows: raise ValueError('No valid navigation cache windows')
         self._verified=set()
@@ -91,9 +97,17 @@ class NavigationCacheDataset:
     def _sample(self,index,epoch):
         import torch
         rows=self.windows[index];identity=rows[0]['episode_id'];times=[r['sensor_source_ns'] for r in rows]
-        instruction=self.labels.sample(identity,times,self.seed,epoch,self.variants,
-                                       sampling_interval=self.frame_sampling_interval)
-        return {'model_inputs':{'visual_feature':torch.stack([self._array(r['visual_feature'],(106,256)) for r in rows]),
+        path_inputs = {}
+        if self.path_features is None:
+            instruction=self.labels.sample(identity,times,self.seed,epoch,self.variants,
+                                           sampling_interval=self.frame_sampling_interval)
+        else:
+            selection, features = self.path_features.sample(identity, times)
+            path_inputs['path_features'] = {key: torch.tensor(value, dtype=torch.bool if key == 'path_valid' else torch.float32)
+                                            for key, value in features.items()}
+            instruction = dict(text=selection['text'], instruction_id=selection['kind'], variant_id=0,
+                               instruction_instance_id=identity + '/' + str(times[0]) + '/' + selection['event_id'])
+        return {'model_inputs':{**path_inputs,'visual_feature':torch.stack([self._array(r['visual_feature'],(106,256)) for r in rows]),
                                 'instruction':instruction['text']},
                 'training_targets':{'future_trajectory':torch.stack([self._array(r['future_trajectory'],(5,2)) for r in rows])},
                 'metadata':{'run_id':identity,'sample_ids':[identity+'/'+str(t) for t in times],
@@ -102,9 +116,13 @@ class NavigationCacheDataset:
                             'input_mode':'cached','purpose':self.split}}
 
     def describe(self):
-        return dict(schema='navigation-cache-dataset-v1',windows=len(self),split=self.split,
+        result = dict(schema='navigation-cache-dataset-v1',windows=len(self),split=self.split,
                     sequence_length=self.sequence_length,frame_sampling_interval=self.frame_sampling_interval,
                     include_validation_in_train=self.include_validation_in_train,
                     checkpoint_sha256=self.checkpoint_sha256,cache_meta=self.cache_meta,
                     labels_manifest_sha256=hashlib.sha256((self.labels.root/'manifest.json').read_bytes()).hexdigest(),
                     template_variants=list(self.variants),seed=self.seed)
+        if self.path_features is not None:
+            result['path_feature_cache_sha256'] = self.path_features.sha256
+            result['instruction_policy'] = 'first-frame-planned-route-v1'
+        return result

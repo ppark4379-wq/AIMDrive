@@ -28,6 +28,10 @@
     "cpu_fused": true
   },
   "model": {
+    "path_navigation": false,
+    "path_fusion": "mlp",
+    "path_width": 256,
+    "path_heads": 4,
     "input_mode": "cached",
     "visual_checkpoint": "outputs/checkpoints/vision_encoder/checkpoint-best-object.pth.tar",
     "visual_sha256": "3b792386602413aa1fc3bb3a7bd0ff1fbe97a2aa9fe6653d5e4f2fc4b0a895bc",
@@ -51,6 +55,11 @@
     "retention_logit_weight": 0.0,
     "selector_task_gradient_mode": "legacy",
     "inference_selection_mode": "argmax"
+  },
+  "path_instruction": {
+    "feature_cache": null,
+    "stage": "joint",
+    "new_module_prefixes": []
   },
   "navigation_sampling": {
     "train_variants": [0, 1, 2, 3, 4, 5, 6, 7],

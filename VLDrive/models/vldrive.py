@@ -62,8 +62,17 @@ class VLDriveTrainingConfig:
     inference_selection_mode: str = 'argmax'
     retention_logit_weight: float = 0.
     selector_task_gradient_mode: str = 'legacy'
+    path_navigation: bool = False
+    path_width: int = 256
+    path_heads: int = 4
+    path_fusion: str = 'cross_attention'
 
     def validate(self):
+        if (type(self.path_navigation) is not bool or type(self.path_width) is not int
+                or type(self.path_heads) is not int or self.path_width < 1 or self.path_heads < 1
+                or self.path_fusion not in ('cross_attention', 'mlp')
+                or (self.path_fusion == 'cross_attention' and self.path_width % self.path_heads)):
+            raise ValueError('Invalid path navigation settings')
         if self.input_mode not in ('raw', 'cached'):
             raise ValueError('input_mode must be raw or cached frozen features')
         if self.precision not in ('bf16', 'fp32'):
@@ -127,7 +136,8 @@ class VLDriveTrainingModel(nn.Module):
         self.language_model = VLDriveModel(str(asset), local_files_only=True,
             freeze_tinyllama=False, use_ddia=True, visual_feature_dim=hidden,
             use_visual_projection=False, max_instruction_length=config.max_instruction_tokens,
-            precision=config.precision)
+            precision=config.precision, path_navigation=config.path_navigation,
+            path_width=config.path_width, path_heads=config.path_heads, path_fusion=config.path_fusion)
         # No vocabulary or instruction-completion supervision exists in Eq. 10.
         # Keep legacy modules for API compatibility, but exclude unused heads.
         self.language_model.tinyllama.lm_head.requires_grad_(False)
@@ -172,7 +182,10 @@ class VLDriveTrainingModel(nn.Module):
 
     def predict(self, inputs, *, compute_auxiliary=None, token_selection_mode=None):
         feature_key = 'sensors' if self.config.input_mode == 'raw' else 'visual_feature'
-        if set(inputs) != {feature_key, 'instruction'}:
+        allowed = {feature_key, 'instruction'}
+        if self.config.path_navigation:
+            allowed.add('path_features')
+        if set(inputs) != allowed:
             raise ValueError('VLDrive input allowlist permits only visual inputs and instruction')
         texts = inputs['instruction']
         if (not isinstance(texts, (list, tuple)) or not texts
@@ -185,8 +198,9 @@ class VLDriveTrainingModel(nn.Module):
             raise ValueError('The paper path uses a frozen encoder or detached frozen feature cache')
         connected = self.connector(features.float(), selection_mode=token_selection_mode,
                                    compute_reconstruction=compute_auxiliary)
+        path_args = {'path_features': inputs['path_features']} if self.config.path_navigation else {}
         language = self.language_model(texts, connected['language_tokens'],
-            connected['selected_valid_mask'], predict_per_frame=True)
+            connected['selected_valid_mask'], predict_per_frame=True, **path_args)
         batch, frames = features.shape[:2]
         selector = connected['selector']
         return dict(trajectory=language.predicted_waypoints.reshape(batch, frames, 5, 2),
@@ -239,13 +253,22 @@ class VLDriveTrainingModel(nn.Module):
             for projection in ('q_proj', 'k_proj', 'v_proj'):
                 groups['lm_{}_{}'.format(index, projection)] = (
                     'language_model.tinyllama.model.layers.{}.self_attn.{}.'.format(index, projection))
-        return groups
+        if self.config.path_navigation:
+            if self.config.path_fusion == 'cross_attention':
+                groups.update(path_tokenizer='language_model.path_tokenizer.',
+                              navigation_cross_attention='language_model.navigation_cross_attention.')
+            else:
+                groups['navigation_mlp'] = 'language_model.navigation_mlp.'
+        trainable = [n for n, p in self.named_parameters() if p.requires_grad]
+        return {group: prefix for group, prefix in groups.items() if any(n.startswith(prefix) for n in trainable)}
 
     def describe(self):
         return dict(config=asdict(self.config), connector=self.connector.config.to_dict(),
             language_asset=self.language_manifest, qformer_asset=self.qformer_manifest, frozen_encoder=True,
             visual_encoder=self.visual_encoder.describe() if self.visual_encoder else 'cached frozen features',
-            training_policy='all used TinyLlama decoder parameters including text embeddings',
+            training_policy=('path tokenizer and navigation cross attention only' if
+                getattr(self, 'instruction_stage', 'joint') == 'path_warmup' else
+                'all used TinyLlama decoder parameters including text embeddings'),
             trainable_parameters=sum(p.numel() for p in self.parameters() if p.requires_grad),
             inference_policy=('fixed budget top-k; ranking learned, token count enforced'
                 if self.config.inference_selection_mode == 'topk'

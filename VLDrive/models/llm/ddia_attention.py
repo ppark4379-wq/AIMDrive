@@ -7,7 +7,7 @@ from torch import nn
 from .multimodal_sequence import INSTRUCTION, PADDING, VISUAL
 
 
-def build_ddia_attention_mask(modality_ids: torch.Tensor) -> torch.Tensor:
+def build_ddia_attention_mask(modality_ids: torch.Tensor, frame_ids=None) -> torch.Tensor:
     """Return [B,Q,K] allowed-key mask implementing VLDrive Eq. (9)."""
     if modality_ids.ndim != 2:
         raise ValueError("modality_ids must have shape [B,S]")
@@ -19,6 +19,12 @@ def build_ddia_attention_mask(modality_ids: torch.Tensor) -> torch.Tensor:
 
     instruction_to_instruction = (query == INSTRUCTION) & (key == INSTRUCTION)
     visual_to_instruction = (query == VISUAL) & (key == INSTRUCTION)
+    if frame_ids is not None:
+        if frame_ids.shape != modality_ids.shape:
+            raise ValueError('frame_ids and modality_ids must have equal shapes')
+        same_frame = frame_ids.unsqueeze(2) == frame_ids.unsqueeze(1)
+        instruction_to_instruction &= same_frame
+        visual_to_instruction &= same_frame
     # Paper notation {V | < j}: a visual token does not attend to itself.
     visual_to_earlier_visual = (query == VISUAL) & (key == VISUAL) & (key_index < query_index)
     allowed = instruction_to_instruction | visual_to_instruction | visual_to_earlier_visual
@@ -60,6 +66,7 @@ def compose_ddia_logits(
     query_rope: torch.Tensor,
     key_rope: torch.Tensor,
     modality_ids: torch.Tensor,
+    frame_ids=None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Compose raw/rotated blocks before one shared softmax."""
     scale = 1.0 / math.sqrt(query_raw.shape[-1])
@@ -69,7 +76,7 @@ def compose_ddia_logits(
         modality_ids[:, None, None, :] == INSTRUCTION
     )
     logits = torch.where(visual_instruction, raw_logits, rope_logits)
-    allowed = build_ddia_attention_mask(modality_ids).unsqueeze(1)
+    allowed = build_ddia_attention_mask(modality_ids, frame_ids).unsqueeze(1)
     return logits, allowed
 
 
@@ -94,6 +101,7 @@ class DDIALlamaAttention(nn.Module):
         self.attention_dropout = getattr(config, "attention_dropout", 0.0)
         self.use_ddia = use_ddia
         self.modality_ids: Optional[torch.Tensor] = None
+        self.frame_ids: Optional[torch.Tensor] = None
 
     def forward(self, hidden_states, attention_mask=None, position_ids=None, past_key_value=None,
                 output_attentions=False, use_cache=False, **kwargs):
@@ -120,7 +128,7 @@ class DDIALlamaAttention(nn.Module):
         key_rope = repeat_kv(key_rope, self.num_key_value_groups)
         value = repeat_kv(value, self.num_key_value_groups)
 
-        logits, allowed = compose_ddia_logits(query_raw, key_raw, query_rope, key_rope, self.modality_ids)
+        logits, allowed = compose_ddia_logits(query_raw, key_raw, query_rope, key_rope, self.modality_ids, self.frame_ids)
         # Avoid NaNs for padding queries; their output is zeroed immediately after attention.
         no_key = ~allowed.any(dim=-1, keepdim=True)
         safe_allowed = allowed | (no_key & torch.eye(length, device=allowed.device, dtype=torch.bool)[None, None])
@@ -148,8 +156,9 @@ def install_ddia_attention(model: nn.Module, use_ddia: bool = True):
     return model
 
 
-def set_ddia_modality_ids(model: nn.Module, modality_ids: torch.Tensor) -> None:
+def set_ddia_modality_ids(model: nn.Module, modality_ids: torch.Tensor, frame_ids=None) -> None:
     decoder = getattr(model, "model", model)
     for layer in decoder.layers:
         if isinstance(layer.self_attn, DDIALlamaAttention):
             layer.self_attn.modality_ids = modality_ids
+            layer.self_attn.frame_ids = frame_ids

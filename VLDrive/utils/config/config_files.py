@@ -63,7 +63,8 @@ def load_config(path, role='training'):
         original = bundle['config']
         for key in ('feature_cache', 'instructions', 'split_file'):
             value[key] = original[key]
-        value['navigation_sampling']['token_cache'] = original['navigation_sampling']['token_cache']
+        if not value.get('model', {}).get('path_navigation', False):
+            value['navigation_sampling']['token_cache'] = original['navigation_sampling']['token_cache']
     if 'preprocessing' not in value:
         return value  # Existing standalone configs and saved run snapshots.
     preparation = value.pop('preprocessing')

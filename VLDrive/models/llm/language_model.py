@@ -6,7 +6,7 @@ from torch import nn
 
 
 from .ddia_attention import set_ddia_modality_ids
-from .multimodal_sequence import MultimodalSequence, build_multimodal_sequence
+from .multimodal_sequence import MultimodalSequence, build_multimodal_sequence, build_frame_multimodal_sequence
 from .tinyllama_backbone import (
     DEFAULT_TINYLLAMA_CHECKPOINT,
     load_tinyllama,
@@ -36,8 +36,11 @@ class VLDriveModel(nn.Module):
                  tinyllama_cache_dir=None, local_files_only=False, freeze_tinyllama=False,
                  use_ddia=True, visual_feature_dim=256, use_visual_projection=True,
                  max_instruction_length=64, debug_vldrive=False, precision="fp16",
-                 torch_dtype=None):
+                 torch_dtype=None, path_navigation=False, path_width=256, path_heads=4,
+                 path_fusion='cross_attention'):
         super().__init__()
+        if path_fusion not in ('cross_attention', 'mlp'):
+            raise ValueError('path_fusion must be cross_attention or mlp')
         if torch_dtype is None:
             torch_dtype = resolve_torch_dtype(precision)
         components = load_tinyllama(
@@ -48,6 +51,22 @@ class VLDriveModel(nn.Module):
         self.tinyllama = components.model
         hidden_size = self.tinyllama.config.hidden_size
         language_dtype = self.tinyllama.get_input_embeddings().weight.dtype
+        self.path_navigation = path_navigation
+        self.path_fusion = path_fusion
+        if path_navigation:
+            if not use_ddia:
+                raise ValueError('Frame path navigation requires frame-aware DDIA')
+            # Do not shift the RNG stream used by existing heads/connector.
+            # Their frozen initialization fingerprints must survive warm start.
+            with torch.random.fork_rng(devices=[]):
+                if path_fusion == 'cross_attention':
+                    from instruction.global_path.tokenizer.path_tokenizer import PathTokenizer
+                    from instruction.navigation.navigation_cross_attention import NavigationCrossAttention
+                    self.path_tokenizer = PathTokenizer(path_width).to(dtype=language_dtype)
+                    self.navigation_cross_attention = NavigationCrossAttention(hidden_size, path_width, path_heads).to(dtype=language_dtype)
+                else:
+                    from instruction.navigation.navigation_mlp import NavigationMLP
+                    self.navigation_mlp = NavigationMLP(hidden_size, path_width).to(dtype=language_dtype)
         if visual_feature_dim != hidden_size:
             if not use_visual_projection:
                 raise ValueError("visual_feature_dim differs from TinyLLaMA hidden size but projection is disabled")
@@ -78,7 +97,8 @@ class VLDriveModel(nn.Module):
         return {key: value.to(device) for key, value in encoded.items()}
 
     def forward(self, instructions, visual_tokens, visual_attention_mask=None,
-                waypoint_token_indices=None, return_debug=False, predict_per_frame=False):
+                waypoint_token_indices=None, return_debug=False, predict_per_frame=False,
+                path_features=None):
         visual_batch = VisualTokenBatch(visual_tokens, visual_attention_mask).flattened()
         device = visual_batch.visual_tokens.device
         encoded = self._tokenize(instructions, device)
@@ -93,13 +113,29 @@ class VLDriveModel(nn.Module):
         visual_embeddings = self.visual_to_language_projection(
             visual_batch.visual_tokens.to(dtype=language_dtype)
         )
-        sequence = build_multimodal_sequence(
-            instruction_embeddings, encoded["attention_mask"], visual_embeddings,
-            visual_batch.visual_attention_mask
-        )
+        if self.path_navigation:
+            if path_features is None or visual_tokens.ndim != 4:
+                raise ValueError('Path navigation requires per-frame features and visual[B,T,K,D]')
+            if path_features['path_valid'].shape != visual_tokens.shape[:2]:
+                raise ValueError('Path and visual frames differ')
+            if self.path_fusion == 'cross_attention':
+                path_tokens = self.path_tokenizer(path_features)
+                navigation = self.navigation_cross_attention(instruction_embeddings, path_tokens,
+                    encoded['attention_mask'], path_features['path_valid'])
+            else:
+                navigation = self.navigation_mlp(instruction_embeddings, path_features, encoded['attention_mask'])
+            sequence = build_frame_multimodal_sequence(navigation, encoded['attention_mask'],
+                visual_embeddings.reshape(*visual_tokens.shape[:3], -1),
+                visual_batch.visual_attention_mask.reshape(visual_tokens.shape[:3]))
+        else:
+            if path_features is not None:
+                raise ValueError('Path features supplied while path_navigation is disabled')
+            sequence = build_multimodal_sequence(
+                instruction_embeddings, encoded["attention_mask"], visual_embeddings,
+                visual_batch.visual_attention_mask)
         if bool((sequence.attention_mask.sum(1) > self.tinyllama.config.max_position_embeddings).any()):
             raise ValueError("Visual window exceeds TinyLlama context length")
-        set_ddia_modality_ids(self.tinyllama, sequence.modality_ids)
+        set_ddia_modality_ids(self.tinyllama, sequence.modality_ids, sequence.frame_ids)
         # Driving needs decoder states, not vocabulary logits or every layer's states.
         outputs = self.tinyllama.model(
             inputs_embeds=sequence.inputs_embeds,
@@ -116,13 +152,14 @@ class VLDriveModel(nn.Module):
             batch, frames, retained = visual_tokens.shape[:3]
             mask = visual_batch.visual_attention_mask.reshape(batch, frames, retained)
             offsets = torch.arange(frames, device=device) * retained
-            indices = last_valid_indices(mask) + offsets + sequence.visual_start_index
+            indices = (sequence.frame_readout_indices if sequence.frame_readout_indices is not None else
+                       last_valid_indices(mask) + offsets + sequence.visual_start_index)
             waypoint_hidden = hidden_states[torch.arange(batch, device=device)[:, None], indices]
         else:
             if waypoint_token_indices is None:
                 # Padding can occur BETWEEN frames. Count-1 is not a token index.
-                waypoint_token_indices = sequence.visual_start_index + last_valid_indices(
-                    visual_batch.visual_attention_mask)
+                waypoint_token_indices = (sequence.frame_readout_indices[:, -1] if sequence.frame_readout_indices is not None else
+                    sequence.visual_start_index + last_valid_indices(visual_batch.visual_attention_mask))
             indices = waypoint_token_indices.to(device=device)
             if indices.dtype != torch.long:
                 raise ValueError("Waypoint indices must be int64")
@@ -149,6 +186,7 @@ class VLDriveModel(nn.Module):
                 "inputs_embeds_shape": tuple(sequence.inputs_embeds.shape),
                 "hidden_states_shape": tuple(hidden_states.shape),
                 "trainable_percentage": 100.0 * report["trainable"] / report["total"],
+                "path_fusion": self.path_fusion if self.path_navigation else 'disabled',
             }
         predicted_waypoints = self.waypoints_predictor(waypoint_hidden)
         predicted_end_logits = self.end_predictor(waypoint_hidden)
