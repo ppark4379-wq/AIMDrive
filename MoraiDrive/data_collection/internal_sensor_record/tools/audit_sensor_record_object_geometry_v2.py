@@ -215,7 +215,8 @@ def main(*, geometry_version=2):
                     pivot = pivot_evidence.get("instances", {}).get(key, {})
                     check = check_fused_object_geometry(
                         item, check, registry, ros, scale,
-                        pivot["offset_xyz_m"][:2] if pivot.get("valid") is True else None)
+                        pivot["offset_xyz_m"][:2] if pivot.get("valid") is True else None,
+                        pivot_evidence=pivot)
                 elif geometry_version == 3:
                     from morai_pretraining.scaled_object_geometry import check_scaled_object_geometry
                     check = check_scaled_object_geometry(
@@ -379,7 +380,9 @@ def main(*, geometry_version=2):
         **({"center_module_sha256": digest(ROOT / "morai_pretraining/center_geometry.py")}
            if geometry_version >= 4 else {}),
         **({"fused_module_sha256": digest(ROOT / "morai_pretraining/fused_geometry.py"),
-            "geometry_registry_sha256": digest(args.geometry_registry)}
+            "geometry_registry_sha256": digest(args.geometry_registry),
+            "static_unit_module_sha256": digest(ROOT / "morai_pretraining/static_unit_geometry.py"),
+            "dynamic_default_module_sha256": digest(ROOT / "morai_pretraining/dynamic_default_geometry.py")}
            if geometry_version == 5 else {}),
         "source_timestamps_modified": False,
         "training_visible": False,

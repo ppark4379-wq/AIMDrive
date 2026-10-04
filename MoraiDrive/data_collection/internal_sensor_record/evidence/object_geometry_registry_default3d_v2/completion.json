@@ -1,0 +1,49 @@
+{
+  "status": "completed",
+  "completed_at_utc": "2026-09-28T20:33:35.671354+00:00",
+  "scope": "Current configured native/default-scale model geometry: pedestrian family29 + NPC vehicle36. Actual motion followed by held-pose RGB/LiDAR verification; not moving exposure synchronization.",
+  "pedestrian_family": {
+    "total": 29,
+    "approved": 29,
+    "failed": 0,
+    "pending": 0,
+    "reviewed_velocity_parameters_mps": [
+      2.5,
+      3.0
+    ]
+  },
+  "npc_vehicles": {
+    "total": 36,
+    "approved": 36,
+    "failed": 0,
+    "pending": 0
+  },
+  "static_unit_profiles_preserved": 36,
+  "full_3d_profiles_total": 101,
+  "confirmation_views": 592,
+  "usable_lidar_confirmation_views": 553,
+  "minimum_pipeline_containment_with_10cm_face_margin": 0.9714285714285714,
+  "maximum_pipeline_center_difference_from_projected_grid_m": 0.03656881238002019,
+  "unit_tests_passed": 64,
+  "pipeline_full_actor_pose_preserved": true,
+  "raw_api_gt_modified": false,
+  "existing_sealed_training_publications_rebuilt": false,
+  "registry": "/home/dydwns/AIMDrive/MoraiDrive/data_collection/internal_sensor_record/evidence/object_geometry_registry_default3d_v2/registry.json",
+  "registry_sha256": "d4a53be1fe6792513fd5e0af4b5ea3b9e1aff2ecf1809a0350bf0c3744bb5da5",
+  "default_recovery_registry_verified": true,
+  "surface_profiles_sha256": "a33a9efeb0394740ce9d306ec54a90d8818ae62375245429e2bd41c008b33964",
+  "runtime_api_contracts_sha256": "558ebcc11b095da60771f6e5751100eb02b21ad2ff62563a55705f23059dcdd9",
+  "confirmation_sha256": "8f3edcf394d13637ac18ebcf32c71eceacc7e47711169ac1bc4fcd88cbc66c8c",
+  "camera_review_sha256": "9c50e0356c7792b1186db8a23d9534bd49827e02fe79b34de2ff8f9135b82c52",
+  "pipeline_application_sha256": "07ffb31a6b656cf3d38c70e22a2f2ba663d526598ddc1e226bc0a22bba6723c2",
+  "cleanup_sha256": "91a8de02a5e9839bb03b6da13a01983f7c62ac33c51dcb2e13d93df487f3737f",
+  "gallery": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/index.html",
+  "simulator_cleanup": "Ego only; free-running; 7 sensors attached; bridge not restarted",
+  "physical_simultaneity_verified": false,
+  "limitations": [
+    "Model-level visible-surface envelopes, not exact per-frame skinned-mesh minimal boxes.",
+    "10cm per-face tolerance; views with fewer than10 foreground points do not qualify as LiDAR confirmation.",
+    "Native pedestrian velocity parameter outside 0/9/10.8 km/h, changed API geometry contract, unverified scale or unstable pivot evidence fail closed.",
+    "Old normalized timelines missing full actor poses cannot apply the tilted-actor correction; rebuild those as a new version before republishing."
+  ]
+}

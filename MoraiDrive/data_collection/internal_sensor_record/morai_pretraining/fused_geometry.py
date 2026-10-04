@@ -217,7 +217,7 @@ def lidar_world_points(points, ego):
     return world, points[:, 2] + LIDAR_OFFSET_XZ[1]
 
 
-def check_fused_object_geometry(item, v4_result, registry, ros, scale, pivot_offset_xy=None):
+def check_fused_object_geometry(item, v4_result, registry, ros, scale, pivot_offset_xy=None, pivot_evidence=None):
     """V4 result refined by the registry: its evidence overrides the catalog.
 
     No registry entry, or too few LiDAR observations, keeps the V4 decision;
@@ -226,9 +226,29 @@ def check_fused_object_geometry(item, v4_result, registry, ros, scale, pivot_off
     result = dict(v4_result)
     if item.get("kind") == "obstacle" and scale is None:
         result["registry"] = {"key": None, "applied": False, "reason": "instance_scale_unknown"}
+        unit_entry = registry.get("models", {}).get(model_key(item, [1, 1, 1]), {})
+        if "geometry_3d" in unit_entry:
+            for field in ("training_center_world_xy", "training_center_world_xyz", "training_size_wl_m", "training_size_wlh_m", "training_rotation_rpy_deg"):
+                result.pop(field, None)
+            result.update(reasons=["instance_scale_unknown"], api_box_geometry_candidate=False)
         return result
     key = model_key(item, scale)
     entry = registry.get("models", {}).get(key)
+    if entry is not None and "geometry_3d" in entry:
+        if entry['geometry_3d'].get('validation_scope') == 'dynamic_default_held_motion_surface_multiview_3d':
+            from .dynamic_default_geometry import apply_dynamic_default_profile
+            fused, reason = apply_dynamic_default_profile(item, entry, scale, pivot_evidence)
+        else:
+            from .static_unit_geometry import apply_static_unit_profile
+            fused, reason = apply_static_unit_profile(item, entry, scale, pivot_evidence)
+        for field in ("training_center_world_xy", "training_center_world_xyz", "training_size_wl_m", "training_size_wlh_m", "training_rotation_rpy_deg"):
+            result.pop(field, None)
+        result["registry"] = {"key": key, "applied": fused is not None, "reason": reason}
+        if fused is None:
+            result.update(reasons=[reason], api_box_geometry_candidate=False)
+        else:
+            result.update(fused, reasons=[], api_box_geometry_candidate=True)
+        return result
     if entry is None or entry.get("reason") == "insufficient_lidar_observations":
         reason = "no_registry_entry" if entry is None else entry["reason"]
         result["registry"] = {"key": key, "applied": False, "reason": reason}

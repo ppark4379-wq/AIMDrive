@@ -97,6 +97,15 @@ def grpc_object_value(payload, model_identities):
             heading_deg=rotation[2],velocity_kmh=velocity,
             acceleration_mps2=acceleration,size_wlh_m=[2*value for value in extent],
             geometry_source='GetAllActorsState.bounding_box')
+        if actor.get('transform') is not None:
+            transform=actor['transform']
+            pivot_xyz=[float(transform['location'][axis]) for axis in 'xyz']
+            actor_rpy=[float(transform['rotation'][axis]) for axis in 'xyz']
+            if not all(math.isfinite(v) for v in pivot_xyz+actor_rpy):
+                raise ValueError('Invalid full actor transform: '+actor_id)
+            objects[key].update(actor_pivot_world_xyz=pivot_xyz,
+                                actor_rotation_rpy_deg=actor_rpy,
+                                rotation_rpy_deg=rotation)
         counts[kind]+=1
     return dict(objects=objects,counts=dict(npc=counts['npc'],
         pedestrian=counts['pedestrian'],obstacle=counts['obstacle']),

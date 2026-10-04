@@ -35,6 +35,27 @@ LMDrive는 expert 주행에서 약 10 Hz raw sensor/measurement를 모으고 후
 CCDP·MEFA·DDIA를 적용한다. 따라서 이 backend는 raw frame을 먼저 보존하고,
 2~20초 clip은 학습 dataset 단계에서 구성한다.
 
+## 학습용 지도 방향 기준 보정
+
+원본 Ego/actor attitude는 true ENU이고, 기록된 월드 위치는 projected grid다.
+`VLDrive/data/src/processing/correct_morai_map_basis.py`로 검증된 full-pose publication을
+추가 변환한 뒤 학습한다. 지도 CRS의 위치별 meridian convergence를 사용하며,
+상수 yaw 보정값이나 timestamp 이동을 사용하지 않는다. Ego 방향, 모델 기준점에서
+계산한 bbox 중심·방향, local waypoint를 함께 변환한다. 원본 위치·속도·크기와
+센서 extrinsic은 유지하며, 지도 원점은 기록된 GPS offset으로 대조한다.
+
+VLDrive 루트에서 `python -m data.src.processing.correct_morai_map_basis --config <기존_fullpose_config.json> --map-metadata <검증한_map.json> --output <새_출력_디렉터리>`를 실행한다.
+새 `morai_transfer.grid.json`을 학습에 지정한다. 원본 seal과 프레임·분할을 보존하고,
+경계 객체 제외를 재입증하지 못한 프레임의 객체 supervision만 마스킹한다.
+기존 신호 라벨은 보정 후에도 heading gate를 만족한다는 보수적 검사가 통과할 때 유지한다.
+
+학습기는 보정 전 manifest를 기본 거부한다. `--allow-legacy-map-basis`는 과거 실험
+재현용이다. 기존 체크포인트를 새 입력·정답 기준으로 평가할 때는
+`--allow-map-basis-migration`을 명시하며, 이전 GT 기준 지표와 직접 비교하지 않는다.
+새 체크포인트에는 `map_basis`가 포함된다. LiveInputAdapter의 `world_target`은 입력
+방향이 `true_enu`인지 `projected_grid`인지 명시해야 하며 이미 변환된 방향을 중복
+보정하지 않는다. 실제 차량 수신기와의 연결 및 전 데이터 노출 시각 인증은 별도 검증이다.
+
 ## 실행
 
 MoraiDrive 루트에서 다음 entrypoint를 순서대로 사용한다.
@@ -181,3 +202,13 @@ task loss를 mask한다. 입력 센서 누락은 mask로 덮지 않고 frame 전
 `tools/migrate_canonical_dataset_to_relative_v2.py <dataset> --apply`로 작은
 manifest와 검증 경로만 상대경로로 바꿀 수 있다. 이 작업은 센서 payload를
 복사하지 않는다.
+
+## 기본 스케일 정적 36종 bbox 보정 (2026-09-29)
+
+정적 장애물 36종의 unit scale `(1,1,1)` 중심 XYZ·크기 보정값을 재측정하고 별도 288장으로 확인했다. 새 수집 후처리에서는 [검증된 3D registry](evidence/object_geometry_registry_unit3d_v1/README.md)를 기본 사용한다. 원본 GT와 이전 publication은 보존하며, 기존 데이터에는 별도 registry 해시를 가진 additive recovery/publication을 만든다. 확대한 모델과 동적 모델은 이번 36종 검증에 포함하지 않는다.
+
+## 기본 스케일 동적 65종 3D bbox (2026-09-29)
+
+[default3d v2](evidence/object_geometry_registry_default3d_v2/README.md)가 현재 V5 recovery 기본값이다. 보행자·동물·자전거 계열 29종과 NPC 차량 36종을 실제 MORAI 다방향/이동 후 자세 촬영으로 검증하고, 정적 unit 36종을 보존했다. 원본 GT를 유지하며 중심 XYZ·크기와 full actor RPY를 보정 결과에 전달한다. 시간 보간도 actor pivot/RPY를 보존한다.
+
+이 승인은 기본 스케일의 모델 형상 범위이며 병진 이동 중 센서 시간 정합 승인은 별도다. 보행자 속도 파라미터 2.5/3.0m/s를 검증했다. 기존 sealed timeline/manifest는 자동으로 바뀌지 않는다. full pose가 없는 과거 timeline의 기울어진 동적 객체는 새 timeline 버전으로 다시 생성·검증해야 한다. [최종 결과](evidence/object_geometry_registry_default3d_v2/completion.json), [모델별 목록](evidence/object_geometry_registry_default3d_v2/dynamic65.csv).

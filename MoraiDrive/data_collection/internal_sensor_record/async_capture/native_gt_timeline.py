@@ -105,6 +105,13 @@ def interpolate_object_value(before,after,stamp):
             row[name]=[(1-f)*x+f*y for x,y in zip(aa[name],bb[name])]
         delta=(bb['heading_deg']-aa['heading_deg']+180)%360-180
         row['heading_deg']=aa['heading_deg']+f*delta
+        pose_fields=('actor_pivot_world_xyz','actor_rotation_rpy_deg','rotation_rpy_deg')
+        if all(name in aa and name in bb for name in pose_fields):
+            row['actor_pivot_world_xyz']=[(1-f)*x+f*y for x,y in zip(aa['actor_pivot_world_xyz'],bb['actor_pivot_world_xyz'])]
+            for name in ('actor_rotation_rpy_deg','rotation_rpy_deg'):
+                row[name]=[x+f*((y-x+180)%360-180) for x,y in zip(aa[name],bb[name])]
+        else:
+            for name in pose_fields:row.pop(name,None)
         result['objects'][key]=row
     return result
 
