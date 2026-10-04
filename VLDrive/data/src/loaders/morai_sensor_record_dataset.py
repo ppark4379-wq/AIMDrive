@@ -18,7 +18,7 @@ from .morai_transfer_adapter import MoraiLMDriveVisionAdapter, MoraiVisionAdapte
 from .morai_encoder_contract import world_target_to_local
 from .morai_transfer_targets import render_object_target, OBJECT_TARGET_POLICIES
 from .morai_gps_speed import parse_native_gps, causal_gps_speed
-from .morai_ego_speed import ego_speed_timeline, causal_ego_speed
+from .morai_ego_speed import CausalEgoSpeed
 
 
 def digest(path):
@@ -419,7 +419,11 @@ class SensorRecordDataset(Dataset):
                 verify_seal(episode/'quality', 'QUALITY_COMPLETE.json')
                 if digest(episode/'quality/QUALITY_COMPLETE.json') != doc['evidence_seal_sha256']['quality']:
                     raise ValueError('Changed Ego speed evidence')
-                ego_times, ego_speeds = ego_speed_timeline(read_json(episode/'quality/active_signals.json'))
+                # active_signals holds the same decoded /Ego_topic hypot(vx, vy) as raw/, without ROS.
+                ego_speed = CausalEgoSpeed([
+                    (int(row['source_timestamp_ns']), float(row['signal']['speed']), row['record_id'])
+                    for row in read_json(episode/'quality/active_signals.json')
+                    if row.get('role') == 'ego' and row.get('source_timestamp_ns') is not None])
             previous = None
             previous_stamp = None
             for entry_number, entry in enumerate(doc['entries']):
@@ -452,11 +456,11 @@ class SensorRecordDataset(Dataset):
                         continue
                     previous = fix
                 if velocity_source == 'ego_topic':
-                    try:
-                        speed = causal_ego_speed(ego_times, ego_speeds, stamp)
-                    except ValueError:
-                        self.excluded['ego_missing_or_stale'] += 1
+                    value, reason = ego_speed.at(stamp)
+                    if reason:
+                        self.excluded[reason] += 1
                         continue
+                    speed = value['velocity_mps']
                 nav = entry['navigation']
                 validate_navigation_target(nav, doc.get('navigation_contract', {}))
                 wp = np.asarray(entry['waypoints'])

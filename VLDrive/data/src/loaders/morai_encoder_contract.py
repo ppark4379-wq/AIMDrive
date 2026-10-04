@@ -51,7 +51,8 @@ def sensor_record_encoder_contract(adapter_configs, velocity_source, map_basis=N
                 camera_recipe="lmdrive_compat_front_focus_resize800x600_center128",
                 waypoint_output_axes=WAYPOINT_AXES, target_point_axes=WAYPOINT_AXES,
                 detection_output_axes=DETECTION_AXES,
-                velocity_input={"gps": "causal_gps_source_time", "zero": "constant_zero", "ego_topic": "causal_ego_topic_speed_mps_50ms"}[velocity_source],
+                velocity_input={"gps": "causal_gps_source_time", "zero": "constant_zero",
+                                "ego_topic": "causal_ego_topic_speed_mps_50ms"}[velocity_source],
                 target_point_input="official_route_25m", target_lookahead_m=25.0,
                 waypoint_offsets_source_seconds=[0.5, 1., 1.5, 2., 2.5],
                 feature_shape=[106, 256], token_order="bev100_light1_waypoint5",
@@ -72,7 +73,8 @@ def validate_encoder_contract(contract):
         raise ValueError("Target/waypoint axes disagree")
     if contract.get("detection_output_axes") != DETECTION_AXES:
         raise ValueError("Unsupported detection output axes")
-    if contract.get("velocity_input") not in ("causal_gps_source_time", "constant_zero", "causal_ego_topic_speed_mps_50ms"):
+    if contract.get("velocity_input") not in ("causal_gps_source_time", "constant_zero",
+                                               "causal_ego_topic_speed_mps_50ms"):
         raise ValueError("Unsupported velocity input contract")
     if contract.get("target_point_input") not in ("official_route_25m", "constant_zero"):
         raise ValueError("Unsupported navigation input contract")
