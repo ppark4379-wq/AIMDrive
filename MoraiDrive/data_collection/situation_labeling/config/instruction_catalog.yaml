@@ -150,6 +150,11 @@ roundabout:
     instruction: "There is a vehicle {position} the ego vehicle. Remain stopped."
     required_variables:
     - position
+  rear_pressure:
+    label: rear_pressure
+    instruction: "There is a vehicle {position} the ego vehicle. Maintain the current driving behavior."
+    required_variables:
+    - position
   cruise_normal:
     label: cruise
     instruction: "Continue driving."

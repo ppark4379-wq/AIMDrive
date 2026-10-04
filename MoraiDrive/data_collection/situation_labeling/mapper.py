@@ -45,6 +45,22 @@ def attach_rule_instructions(rules, *, mapping=None, catalog=None):
     counts = Counter()
     for row in rules:
         zone, state = row.get("zone_id"), row.get("instruction_state")
+        if (zone == "roundabout" and row.get("expert_state") is not None
+                and row.get("label") is not None and row.get("instruction_id") is not None):
+            # Preserve the Expert mapping result (including its speed-based
+            # variants); subsequent GT rules must not replace that selection.
+            missing = (row.get("expert_alignment") or {}).get("missing_variables")
+            if row.get("instruction") is None:
+                row["instruction_mapping_status"] = "missing_variables"
+                if missing:
+                    row["instruction_missing_variables"] = missing
+                counts["missing_variables"] += 1
+            else:
+                row["instruction_source"] = "expert_observation"
+                row["instruction_mapping_status"] = "expert_state_only"
+                row.pop("instruction_missing_variables", None)
+                counts["expert_state_only"] += 1
+            continue
         if row.get("status") != "matched" or state is None:
             if row.get("instruction_id") is not None and row.get("label") is not None:
                 row["instruction_source"] = "expert_observation"

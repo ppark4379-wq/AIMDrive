@@ -1,5 +1,12 @@
 # Situation instruction features v0.3
 
+회전교차로에서 매칭된 Expert 관측이 있으면 Expert phase와 진입·합류 플래그에
+따라 Expert 매핑에서 선택한 instruction을 우선 사용합니다. 이 매핑의 기존
+`0.2m/s` 정지 기준과 `0.3m/s` 목표 속도 차이 기준은 유지합니다.
+이후 규칙 기반 판정이 해당 instruction을 다른 문장으로 덮어쓰지 않습니다.
+Expert 관측이 없는 경우의 기존 규칙 기반 라벨링은 유지합니다.
+객체 위치 등 필수 변수가 부족하면 Expert 라벨은 보존하되 문장은 생성하지 않습니다.
+
 ## 수집 episode에서 한 번에 라벨링
 
 수집 완료된 **Internal Sensor Record episode**에 아래 명령 하나를 실행합니다.

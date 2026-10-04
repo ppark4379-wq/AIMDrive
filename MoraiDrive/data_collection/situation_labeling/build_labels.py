@@ -346,7 +346,7 @@ def main(argv=None):
     if args.expert_log is not None or roundabout_observations is not None:
         report["expert_instructions"] = apply_expert_instructions(
             frames, rules, args.episode, args.expert_log or [],
-            index_observations=roundabout_observations)
+            index_observations=roundabout_observations, objects=objects)
     report["instruction_mapping"] = attach_rule_instructions(rules)
     if args.expert_log is not None or roundabout_observations is not None:
         hold_roundabout_instruction_across_brief_tracking_gaps(rules)

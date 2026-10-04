@@ -107,6 +107,12 @@ roundabout:
     roundabout_phase: emergency
   label: emergency
   instruction_id: emergency_braking
+- state: REAR_PRESSURE
+  match:
+    mode: roundabout_entry
+    roundabout_phase: rear_pressure
+  label: rear_pressure
+  instruction_id: rear_pressure
 - state: CRUISE_AFTER_MERGE
   match:
     mode: roundabout_entry
