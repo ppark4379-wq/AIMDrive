@@ -510,7 +510,44 @@ def evaluate_frames(frames, objects, config=RuleConfig()):
             result.setdefault("behavior_state", None)
         results.append(result)
     _hold_static_instruction_across_unconfirmed_return(results, indexed)
+    _latch_static_avoid_direction(results, indexed)
     return results
+
+
+STATIC_AVOID_STATES = ("avoid", "avoid_continue")
+SIDE_CROSSING_M = 0.3
+
+
+def _latch_static_avoid_direction(results, indexed):
+    """Keep one avoidance direction for a continuous static avoidance span.
+
+    The per-frame direction is the opposite of the current blocking
+    obstacle's side, so passing a second obstacle on the far side flipped a
+    right swing to "left" for a few frames. Inside a span the first direction
+    holds; it changes only once Ego's offset from the reference path is
+    actually on the new side (a real S-curve), never just because another
+    obstacle became the nearest one.
+    """
+    latched = None
+    for row in results:
+        variables = row.get("variables") or {}
+        direction = variables.get("avoid_direction")
+        if (row.get("zone_id") != "static_obstacle"
+                or row.get("instruction_state") not in STATIC_AVOID_STATES
+                or direction not in ("left", "right")):
+            latched = None
+            continue
+        if latched is None or direction == latched:
+            latched = direction
+            continue
+        offset = _number(indexed.get(row["index"], {}).get("ego_reference_path_offset_m"))
+        crossed = offset is not None and (
+            offset > SIDE_CROSSING_M if direction == "left" else offset < -SIDE_CROSSING_M)
+        if crossed:
+            latched = direction
+            continue
+        row["evidence"]["frame_avoid_direction"] = direction
+        variables["avoid_direction"] = latched
 
 
 def _hold_static_instruction_across_unconfirmed_return(results, indexed):

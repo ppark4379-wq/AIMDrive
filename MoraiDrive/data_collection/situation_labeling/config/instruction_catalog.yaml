@@ -56,6 +56,16 @@ static_obstacle:
     label: rejoined
     instruction: "Continue driving."
     required_variables: []
+  approach_normal:
+    label: approach
+    instruction: "Continue driving."
+    required_variables: []
+  follow_approach_maintain:
+    label: follow
+    instruction: "There is {object} {position} the ego vehicle. Maintain the current driving behavior."
+    required_variables:
+    - object
+    - position
   static_normal:
     label: null
     instruction: "Continue driving."
@@ -370,6 +380,10 @@ dynamic_obstacle:
     label: null
     instruction: "There is {object} {position} the ego vehicle. Remain stopped."
     required_variables: [position, object]
+  dynamic_wait_clear:
+    label: null
+    instruction: "Remain stopped."
+    required_variables: []
   dynamic_resume:
     label: null
     instruction: "Resume driving."

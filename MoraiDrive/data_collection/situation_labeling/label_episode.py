@@ -18,6 +18,26 @@ REPOSITORY = Path(__file__).resolve().parents[3]
 GEOMETRY = "object_geometry_audit_v2"
 REVIEW = "situation_review_v2"
 ADMISSION = "situation_admission_v2"
+# Course zone as an integer, from the ego's official-route zone (map position
+# only). Frames outside every zone are 0 (general driving).
+ZONE_INSTRUCTION = {"static_obstacle": 1, "dynamic_obstacle": 2, "roundabout": 3,
+                    "highway": 4, "tunnel": 5}
+
+
+def evidence_dirs(geometry_tag=None):
+    """Geometry/review/admission folders that must be used together.
+
+    Default: the V2 set this pipeline creates. A tag selects an existing
+    corrected V5 set (object_geometry_audit_v5_TAG, review_closeout_v5_TAG,
+    admission_v5_TAG); that set is reused only, never generated here.
+    """
+    if geometry_tag is None:
+        return {"geometry": GEOMETRY, "review": REVIEW, "admission": ADMISSION, "generated": True}
+    if not geometry_tag or not geometry_tag.isalnum():
+        raise ValueError("Invalid geometry tag: " + str(geometry_tag))
+    return {"geometry": "object_geometry_audit_v5_" + geometry_tag,
+            "review": "review_closeout_v5_" + geometry_tag,
+            "admission": "admission_v5_" + geometry_tag, "generated": False}
 
 
 def read_json(path):
@@ -75,8 +95,14 @@ def resolve_episode(source):
     return episode, run
 
 
-def preprocessing_stages(episode, run, catalog=None):
-    """Ordered existing tools; V2 review/admission never overwrite V1 outputs."""
+def preprocessing_stages(episode, run, catalog=None, evidence=None):
+    """Ordered existing tools; V2 review/admission never overwrite V1 outputs.
+
+    With a reused V5 evidence set the geometry/review/admission stages are
+    left out, so no V2 geometry is generated beside the corrected one.
+    """
+    evidence = evidence or evidence_dirs()
+    generate = evidence["generated"]
     stages = []
 
     def add(tool, folder, arguments):
@@ -93,6 +119,8 @@ def preprocessing_stages(episode, run, catalog=None):
         ("audit_sensor_record_route_signals.py", "route_signal_audit_v1"),
         ("audit_sensor_record_motion_time.py", "motion_time_v1"),
     ):
+        if folder == GEOMETRY and not generate:
+            continue
         args = ["--episode", episode, "--output", episode / folder]
         if folder == GEOMETRY and catalog is not None:
             args += ["--catalog-report", catalog]
@@ -100,13 +128,14 @@ def preprocessing_stages(episode, run, catalog=None):
     add("audit_sensor_record_exposure.py", "exposure_v1",
         ["--audit", episode / "native_audit", "--quality", episode / "quality",
          "--output", episode / "exposure_v1"])
-    add("summarize_sensor_record_review.py", REVIEW,
-        ["--episode", episode, "--object-geometry-dir", GEOMETRY,
-         "--output", episode / REVIEW])
-    add("admit_sensor_record_collection.py", ADMISSION,
-        ["--episode", episode, "--capture-contract", run / "capture_contract.json",
-         "--run-plan", run / "plan.json", "--review-dir", REVIEW,
-         "--object-geometry-dir", GEOMETRY, "--output", episode / ADMISSION])
+    if generate:
+        add("summarize_sensor_record_review.py", REVIEW,
+            ["--episode", episode, "--object-geometry-dir", GEOMETRY,
+             "--output", episode / REVIEW])
+        add("admit_sensor_record_collection.py", ADMISSION,
+            ["--episode", episode, "--capture-contract", run / "capture_contract.json",
+             "--run-plan", run / "plan.json", "--review-dir", REVIEW,
+             "--object-geometry-dir", GEOMETRY, "--output", episode / ADMISSION])
     return stages
 
 
@@ -143,15 +172,16 @@ def read_jsonl(path):
         return [json.loads(line) for line in stream if line.strip()]
 
 
-def verify_admission_inputs(episode, run):
+def verify_admission_inputs(episode, run, evidence=None):
     """A valid seal alone does not prove a reused admission belongs to this run."""
-    report = read_json(episode / ADMISSION / "report.json")
+    evidence = evidence or evidence_dirs()
+    report = read_json(episode / evidence["admission"] / "report.json")
     dependencies = {
         "native_audit": "native_audit", "quality": "quality",
         "native_associations": "native_associations", "motion_time": "motion_time_v1",
-        "review": REVIEW, "gt_timeline": "gt_timeline_v1",
+        "review": evidence["review"], "gt_timeline": "gt_timeline_v1",
         "traffic_audit": "traffic_audit_v1", "actor_inventory_audit": "actor_inventory_audit_v1",
-        "object_geometry_audit": GEOMETRY, "route_signal_audit": "route_signal_audit_v1",
+        "object_geometry_audit": evidence["geometry"], "route_signal_audit": "route_signal_audit_v1",
     }
     for key, folder in dependencies.items():
         seal = "QUALITY_COMPLETE.json" if key == "quality" else "COMPLETE.json"
@@ -164,11 +194,11 @@ def verify_admission_inputs(episode, run):
             raise ValueError("Admission has different capture identity: " + key)
 
 
-def export_labeled_frames(episode, native_root, features, destination):
+def export_labeled_frames(episode, native_root, features, destination, admission_dir=ADMISSION):
     """Join all frames, including unlabeled ones, to their original assets."""
     frames = indexed(read_jsonl(features / "frame_features.jsonl"), "features")
     rules = indexed(read_jsonl(features / "situation_rules.jsonl"), "rules")
-    admissions = indexed(read_json(episode / ADMISSION / "frames.json"), "admission")
+    admissions = indexed(read_json(episode / admission_dir / "frames.json"), "admission")
     if not frames or frames.keys() != rules.keys() or frames.keys() != admissions.keys():
         raise ValueError("Feature/rule/admission frame indices differ or are empty")
     counts = Counter()
@@ -190,10 +220,13 @@ def export_labeled_frames(episode, native_root, features, destination):
             counts["labeled" if instruction else "unlabeled"] += 1
             row = {"episode_path": str(episode), "frame_id": index,
                    "sensor_time_ns": stamp, "assets": assets,
-                   "zone": frame.get("zone_id"), "instruction": instruction,
+                   "zone": frame.get("zone_id"),
+                   "zone_instruction": ZONE_INSTRUCTION.get(frame.get("zone_id"), 0),
+                   "instruction": instruction,
                    "labeling": rule,
-                   "dataset_build_candidate": frame.get("dataset_build_candidate"),
-                   "object_training_label_valid": frame.get("object_training_label_valid"),
+                   # Persisted features omit these; the admission row is the source.
+                   "dataset_build_candidate": admission.get("dataset_build_candidate"),
+                   "object_training_label_valid": admission.get("object_training_label_valid"),
                    "frame_valid": frame.get("valid"),
                    "frame_invalid_reasons": frame.get("invalid_reasons", [])}
             stream.write(json.dumps(row, ensure_ascii=False, allow_nan=False) + "\n")
@@ -210,7 +243,19 @@ def main(argv=None):
                         help="geometry catalog used when creating the V2 geometry audit")
     parser.add_argument("--static-supervisor-log", type=Path,
                         help="defaults to this run's supervisor.log, if present")
+    parser.add_argument("--roundabout-supervisor-log", type=Path,
+                        help="supervisor.log for roundabout Expert phases of episodes "
+                             "recorded before per-tick Expert observations")
+    parser.add_argument("--geometry-tag",
+                        help="reuse the corrected V5 evidence set object_geometry_audit_v5_TAG, "
+                             "review_closeout_v5_TAG and admission_v5_TAG instead of generating V2")
+    parser.add_argument("--native-root", type=Path,
+                        help="sensor file root when the run was moved from its capture storage; "
+                             "every referenced file is still checked")
     args = parser.parse_args(argv)
+    evidence = evidence_dirs(args.geometry_tag)
+    if args.catalog_report is not None and not evidence["generated"]:
+        raise ValueError("--catalog-report only applies when generating V2 geometry")
     if args.catalog_report is not None:
         args.catalog_report = args.catalog_report.expanduser().resolve()
     if args.static_supervisor_log is not None:
@@ -234,7 +279,20 @@ def main(argv=None):
     # Also check dependencies used specifically by labeling before preprocessing.
     subprocess.run([str(python), "-c", "import yaml"], env=env, check=True)
     sources = resolve_route_sources(episode, read_json(run / "sensor_contract.json"))
-    native_root = recorded_native_root(run, SSD_ROOT).resolve()
+    if args.native_root is not None:
+        native_root = args.native_root.expanduser().resolve()
+        if not native_root.is_dir():
+            raise FileNotFoundError(native_root)
+    else:
+        native_root = recorded_native_root(run, SSD_ROOT).resolve()
+    if not evidence["generated"]:
+        for key in ("geometry", "review", "admission"):
+            verify_stage(episode / evidence[key])
+    roundabout_log = args.roundabout_supervisor_log
+    if roundabout_log is not None:
+        roundabout_log = roundabout_log.expanduser().resolve()
+        if not roundabout_log.is_file():
+            raise FileNotFoundError(roundabout_log)
     static_log = args.static_supervisor_log or run / "supervisor.log"
     if args.static_supervisor_log is not None and not static_log.is_file():
         raise FileNotFoundError(static_log)
@@ -251,6 +309,8 @@ def main(argv=None):
               "episode": str(episode), "native_root": str(native_root),
               "route_provenance": sources["provenance"],
               "static_supervisor_log": str(static_log) if static_log else None,
+              "roundabout_supervisor_log": str(roundabout_log) if roundabout_log else None,
+              "evidence_dirs": {k: evidence[k] for k in ("geometry", "review", "admission")},
               "sensor_files_copied": False}
     write_json(output / "report.json", report)
     try:
@@ -264,20 +324,23 @@ def main(argv=None):
                                stdout=log, stderr=subprocess.STDOUT, check=True)
 
             report["preprocessing"] = run_stages(
-                preprocessing_stages(episode, run, args.catalog_report), execute)
-            verify_admission_inputs(episode, run)
+                preprocessing_stages(episode, run, args.catalog_report, evidence), execute)
+            verify_admission_inputs(episode, run, evidence)
             features = output / "features"
             print("[LABEL] Generating frame instructions", flush=True)
             command = ["-m", "MoraiDrive.data_collection.situation_labeling.build_labels",
                        "--episode", episode, "--route-definition", sources["route_definition"],
                        "--global-path", sources["global_path"], "--route-key", sources["route_key"],
-                       "--object-geometry-dir", GEOMETRY, "--admission-dir", ADMISSION,
-                       "--output", features]
+                       "--object-geometry-dir", evidence["geometry"],
+                       "--admission-dir", evidence["admission"], "--output", features]
             if static_log is not None:
                 command += ["--static-supervisor-log", static_log]
+            if roundabout_log is not None:
+                command += ["--roundabout-supervisor-log", roundabout_log]
             execute(command)
         destination = output / "labeled_frames.jsonl"
-        report["frame_counts"] = export_labeled_frames(episode, native_root, features, destination)
+        report["frame_counts"] = export_labeled_frames(episode, native_root, features, destination,
+                                                       evidence["admission"])
         report["labeled_frames"] = str(destination)
         report["instruction_report"] = read_json(features / "report.json")
         report["status"] = "completed"

@@ -11,6 +11,8 @@ static_obstacle:
   - {label: null, state: pass_between, instruction_id: static_pass_between}
   - {label: null, state: return_to_path, instruction_id: static_return_to_path}
   - {label: approach, state: approach_maintain, instruction_id: approach}
+  - {label: approach, state: normal, instruction_id: approach_normal}
+  - {label: follow, state: approach_maintain, instruction_id: follow_approach_maintain}
   - {label: drive_approach, state: approach_maintain, instruction_id: drive_approach}
   - {label: follow, state: avoid, instruction_id: follow_avoid}
   - {label: follow, state: avoid_continue, instruction_id: follow_avoid_continue}
@@ -69,6 +71,7 @@ dynamic_obstacle:
   - {label: null, state: yield_start, instruction_id: dynamic_yield_start}
   - {label: null, state: yielding, instruction_id: dynamic_yielding}
   - {label: null, state: waiting, instruction_id: dynamic_waiting}
+  - {label: null, state: wait_clear, instruction_id: dynamic_wait_clear}
   - {label: null, state: resume, instruction_id: dynamic_resume}
   - {label: null, state: normal, instruction_id: dynamic_normal}
   - {label: null, state: behavior_unverified, instruction_id: dynamic_behavior_unverified}

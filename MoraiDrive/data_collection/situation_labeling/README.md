@@ -45,6 +45,22 @@ admission은 `situation_admission_v2`를 사용합니다. geometry catalog가 �
 있으면 최초 실행에 `--catalog-report PATH`를 지정합니다. 기존 geometry가 있는
 경우 그 생성 당시 catalog를 사용하며 새 catalog 옵션을 조용히 무시하지 않습니다.
 
+교정된 V5 기하가 이미 있는 episode는 `--geometry-tag TAG`로 그 묶음을 그대로
+사용합니다. `object_geometry_audit_v5_TAG`, `review_closeout_v5_TAG`,
+`admission_v5_TAG` 세 폴더를 함께 검증해 사용하고, V2 geometry/review/admission은
+생성하지 않습니다. 비전 인코더 학습 데이터와 같은 박스를 쓰려면 이 옵션을 사용합니다.
+수집 당시 저장소에서 옮겨진 run은 `--native-root RUN_DIR`로 센서 파일 위치를
+지정합니다(참조하는 모든 파일의 존재는 그대로 검사합니다). Expert가 tick별
+상태를 남기기 전에 수집된 회전교차로 run은 `--roundabout-supervisor-log RUN/supervisor.log`를
+함께 지정합니다. 분석 Python은 ROS 경로와 함께 cv2·pyproj·scipy를 불러올 수
+있어야 하며, 이 PC에서는 `--analysis-python ~/miniconda3/envs/lmdrive/bin/python3.8`을 사용했습니다.
+
+```bash
+python3 -m MoraiDrive.data_collection.situation_labeling.label_episode \
+  --episode RUN/episode_000 --geometry-tag d4a53be1fe67 --native-root RUN \
+  --analysis-python ~/miniconda3/envs/lmdrive/bin/python3.8 --output NEW_DIRECTORY
+```
+
 기본 결과는 `EPISODE/situation_labels/`에 생성됩니다. `--output NEW_DIRECTORY`로
 바꿀 수 있으며, 기존 결과 디렉터리는 덮어쓰지 않습니다.
 
@@ -216,6 +232,41 @@ The new directory contains `situation_instructions.jsonl` and `report.json`;
 the input feature directory is read only. `--episode EPISODE_DIR` is needed
 only for a separately supplied journal with true ROS header seq and source
 time. Existing sparse logs do not require it.
+
+## 학습 라벨용 움직임 정렬 (`consistency.py`)
+
+Stage 2는 2.5초 미래 궤적을 학습하므로, 문장이 그 궤적과 어긋나면 모델이
+문장을 무시하도록 배웁니다. `build_labels`는 규칙 판정 뒤에 녹화된 자차
+움직임으로 다음을 적용합니다. 미래를 쓰므로 학습 라벨 전용이며 실시간
+규칙이 아닙니다.
+
+- 정적 회피 방향은 한 회피 구간 안에서 처음 방향을 유지합니다. 자차가 경로
+  반대편으로 0.3 m 이상 넘어간 경우에만 바뀝니다 (`rules.py`).
+- `align_static_avoidance`: 2.5초 안에 실제 옆 이동이 시작되기 전은 "유지",
+  시작부터 "회피" 5프레임 뒤 "회피 계속", 2.5초 안에 경로 쪽으로 0.3 m 이상
+  돌아오면 "원래 경로로 복귀".
+- `hold_dynamic_wait_until_moving`: 양보로 이어지는 접근 구간은 크게 감속하기
+  시작한 프레임부터 "양보". 양보 뒤 자차가 서 있으면 "Remain stopped.",
+  출발 중(3 m/s 미만)이면 "Resume driving.", 그 뒤 "Continue driving.".
+- `align_highway_lane_changes`: 고주로 차선 변경은 지도 링크 상태 대신 실제 좌우
+  이동으로 정합니다. 경로 기준 2 m 이상 옆으로 움직인 구간이 차선 변경이며, 2.5초
+  안에 0.3 m 이상 이동이 시작되는 프레임부터 이동이 끝날 때까지입니다. 경로 차선에서
+  멀어지면 "Move into the left/right lane.", 경로 차선으로 돌아오면 "Return to the
+  original lane while moving forward.". 구간 밖에 남은 차선 변경 판정은 앞차 정보로
+  따라가기 / 앞차 있음 유지 / 계속 주행 중 하나로 다시 정합니다.
+- `fill_short_instruction_gaps`: 같은 문장 사이 3프레임 이하 판정 공백을 메웁니다.
+- `smooth_short_instruction_islands`: 같은 문장 사이 1~2프레임의 다른 문장은 앞뒤
+  문장으로 맞춥니다. 고주로의 계속 주행 / 앞차 있음 유지 / 따라가기는 1초 미만까지 맞춥니다.
+- `use_stopped_roundabout_sentences`: 회전교차로에서 0.3초 이상 서 있으면 양보·추종·감속
+  문장을 카탈로그의 "Remain stopped." 변형으로 바꿉니다.
+- `drop_contradicted_instructions`: 2.5초 미래와 모순되는 문장을 `null`로 비우고
+  원문은 `instruction_dropped`, 이유는 `instruction_consistency`에 남깁니다.
+  회피·차선 변경 방향 반대, 서 있는데 기동 문장, 감속해 멈추는데 "계속/유지",
+  서 있는데 "계속/유지"를 모순으로 봅니다. 0.3초 미만 모순은 유지하고,
+  비운 구간 사이 0.5초 미만의 같은 문장은 같이 비웁니다.
+
+`report.json`의 `motion_alignment`, `instruction_gap_frames_filled`,
+`instruction_consistency`에 단계별 변경 수가 남습니다.
 
 ## Camera frame viewer
 
