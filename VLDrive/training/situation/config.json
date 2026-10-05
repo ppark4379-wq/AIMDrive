@@ -1,0 +1,21 @@
+{
+  "schema": "situation-training-v1",
+  "datasets": [
+    {"root": "data/raw/static_obstacle", "namespace": "static_obstacle"},
+    {"root": "data/raw/dynamic_obstacle", "namespace": "dynamic_obstacle"}
+  ],
+  "checkpoint": "outputs/checkpoints/vision_encoder/checkpoint-best-object.pth.tar",
+  "checkpoint_sha256": "6824d3998ec4be85bf40f96de37a195d12ff00aa8181d6739ed75125a7bb5e5b",
+  "cache_output": "data/processed/situation_v001/vision_tokens",
+  "sequence_length": 11,
+  "max_frame_gap_ms": 150,
+  "allow_no_future": false,
+  "cache": {"device": "cuda", "batch_size": 2, "workers": 0, "cpu_threads": 2, "log_interval": 100},
+  "model": {"visual_dim": 256, "hidden_dim": 256, "output_dim": 2048, "layers": 2, "heads": 8, "dropout": 0.1},
+  "training": {"epochs": 20, "learning_rate": 0.0001, "weight_decay": 0.01, "grad_clip": 1.0, "log_every": 20, "device": "cuda"},
+  "batch_size": 4,
+  "workers": 0,
+  "dashboard": {"enabled": true, "port": 8514, "refresh_seconds": 2, "open_browser": true},
+  "seed": 42,
+  "output_root": "outputs/checkpoints/situation"
+}

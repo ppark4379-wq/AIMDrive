@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Resume a multi-dataset GPS-conditioned native visual cache for Stage 2."""
+"""Cache GPS-conditioned Stage 2 features or Ego-conditioned Situation features."""
 import argparse
 from collections import Counter
 from dataclasses import asdict
@@ -102,11 +102,164 @@ def discover(cfg):
     return episodes
 
 
+def cache_situation(cfg, *, audit_only=False, max_frames_per_episode=None):
+    """VE-only export from existing Situation labels; no navigation/trajectory GT."""
+    import numpy as np
+    import torch
+    from torch.utils.data import DataLoader, Subset
+    if str(ROOT.parent) not in sys.path:
+        sys.path.insert(0, str(ROOT.parent))
+    from VLDrive.data.src.loaders.situation_dataset import (
+        CACHE_SCHEMA, SituationSensorFrames, labeled_episodes, project_path,
+    )
+    from VLDrive.data.src.loaders.morai_encoder_contract import validate_encoder_contract
+    from VLDrive.models.llm.zone_embedding import ZONE_SCHEMA
+    from models.ve.vision_encoder import create_vision_encoder
+    options = cfg['cache']
+    if (type(options['batch_size']) is not int or options['batch_size'] < 1
+            or options['workers'] < 0 or options['cpu_threads'] < 1
+            or options['log_interval'] < 1
+            or (max_frames_per_episode is not None and max_frames_per_episode < 1)):
+        raise ValueError('Invalid Situation cache settings')
+    torch.set_num_threads(options['cpu_threads'])
+    checkpoint = project_path(cfg['checkpoint'])
+    if sha256(checkpoint) != cfg['checkpoint_sha256']:
+        raise ValueError('Situation VE checkpoint SHA256 mismatch')
+    blob = torch.load(checkpoint, map_location='cpu', weights_only=True, mmap=True)
+    if (blob.get('feature_model_name') != 'memfuser_baseline_e1d3_return_feature'
+            or blob.get('token_shape') != [106, 256]
+            or blob.get('pretraining', {}).get('velocity_source') != 'ego_topic'):
+        raise ValueError('Expected Ego-conditioned MORAI feature checkpoint')
+    recipe = validate_encoder_contract(blob['morai_encoder_contract'])
+    if (recipe['velocity_input'] != 'causal_ego_topic_speed_mps_50ms'
+            or recipe.get('feature_shape') != [106, 256]
+            or recipe.get('token_order') != 'bev100_light1_waypoint5'):
+        raise ValueError('Unsupported Situation VE feature/velocity contract')
+    implementations = {}
+    for name in ('models/ve/vision_encoder.py', 'models/ve/pointpillars.py',
+                 'models/ve/resnet.py', 'models/ve/transformer.py',
+                 'data/src/loaders/morai_transfer_adapter.py'):
+        data = (ROOT / name).read_bytes()
+        expected = blob['pretraining']['implementation_sha256'].get(name)
+        if expected not in {hashlib.sha256(data).hexdigest(),
+                            hashlib.sha256(data.replace(b'\r\n', b'\n')).hexdigest()}:
+            raise ValueError('VE training implementation differs: ' + name)
+        implementations[name] = expected
+    for name in ('data/src/loaders/morai_ego_speed.py', 'data/src/loaders/situation_dataset.py',
+                 'data/src/processing/cache_velocity_tokens.py'):
+        implementations[name] = sha256(ROOT / name)
+    episodes = labeled_episodes(cfg['datasets'])
+    sources = {e['identity']: dict(labels_sha256=e['label_sha256'],
+                   sensor_contract_sha256=sha256(e['native'] / 'sensor_contract.json'),
+                   raw_manifest_sha256=sha256(e['path'] / 'raw/raw_manifest.json')) for e in episodes}
+    source = dict(schema=CACHE_SCHEMA, checkpoint_sha256=cfg['checkpoint_sha256'],
+                  encoder_contract=recipe, implementations=implementations, episodes=sources,
+                  inference_precision='float32', storage_precision='float16',
+                  diagnostic_frame_limit=max_frames_per_episode)
+    # Contract tuples become JSON arrays on disk; compare the serialized representation.
+    source = json.loads(json.dumps(source, allow_nan=False))
+    output = project_path(cfg['cache_output'])
+    if not audit_only:
+        output.mkdir(parents=True, exist_ok=True)
+        if (output / 'source.json').exists() and json.loads((output / 'source.json').read_text()) != source:
+            raise ValueError('Existing cache uses different weights, labels, sources or export settings')
+        write_json(output / 'source.json', source)
+    model, strict = None, None
+    if not audit_only:
+        model = create_vision_encoder({'name': blob['feature_model_name']}, pretrained_backbone=False)
+        strict = str(model.load_state_dict(blob['state_dict'], strict=True))
+        model.requires_grad_(False).to(options['device']).eval()
+    del blob
+    totals, per_episode, exported = Counter(), {}, []
+    for number, episode in enumerate(episodes, 1):
+        print(f"[Situation cache] episode {number}/{len(episodes)}: {episode['identity']}", flush=True)
+        dataset = SituationSensorFrames(episode, recipe)
+        eligible = [i for i, speed in enumerate(dataset.speed_rows) if speed is not None]
+        totals['source_frames'] += len(dataset)
+        totals['valid_speed_frames'] += len(eligible)
+        totals.update(dataset.reasons)
+        if max_frames_per_episode is not None:
+            eligible = eligible[:max_frames_per_episode]
+        per_episode[episode['identity']] = dict(frames=len(dataset), valid_speed_frames=
+            sum(s is not None for s in dataset.speed_rows), export_frames=len(eligible),
+            exclusions=dict(dataset.reasons))
+        if audit_only:
+            continue
+        pending, records = [], {}
+        for i in eligible:
+            row = episode['rows'][i]
+            identity = dict(episode_id=episode['identity'], frame_index=row['frame_id'],
+                            sensor_source_ns=row['sensor_time_ns'],
+                            velocity_source='ego_topic', **dataset.speed_rows[i])
+            key = hashlib.sha256(f"{episode['identity']}|{row['frame_id']}|{row['sensor_time_ns']}".encode()).hexdigest()
+            cached = valid_record(output / 'records' / (key + '.json'), output)
+            if cached is not None:
+                if any(cached.get(k) != v for k, v in identity.items()):
+                    raise ValueError('Cached Ego speed/frame identity differs')
+                exported.append(cached)
+                totals['reused'] += 1
+            else:
+                pending.append(i)
+                records[i] = (key, identity)
+        loader = DataLoader(Subset(dataset, pending), batch_size=options['batch_size'],
+                            shuffle=False, num_workers=options['workers'],
+                            pin_memory=options['device'].startswith('cuda'))
+        cursor = 0
+        for inputs in loader:
+            count = inputs['rgb_front'].shape[0]
+            indices = pending[cursor:cursor+count]
+            cursor += count
+            inputs = {k: v if k == 'num_points' else v.to(options['device'], non_blocking=True)
+                      for k, v in inputs.items()}
+            with torch.inference_mode(), deterministic_pointpillar_reductions():
+                features = model(inputs).float().cpu().numpy()
+            if features.shape != (count, 106, 256) or not np.isfinite(features).all():
+                raise ValueError('Invalid VE output')
+            features = features.astype(np.float16)
+            if not np.isfinite(features).all():
+                raise ValueError('FP16 cache overflow')
+            for i, feature in zip(indices, features):
+                key, record = records[i]
+                record['visual_feature'] = tensor_ref(output, 'visual_feature/' + key + '.npy', feature)
+                (output / 'records').mkdir(exist_ok=True)
+                write_json(output / 'records' / (key + '.json'), record)
+                exported.append(record)
+                totals['inferred'] += 1
+            if totals['inferred'] % options['log_interval'] < count:
+                print(json.dumps(dict(totals)), flush=True)
+    summary = dict(episodes=len(episodes), counts=dict(totals), per_episode=per_episode)
+    if not audit_only:
+        if not exported:
+            raise ValueError('No VE tokens exported')
+        exported.sort(key=lambda r: (r['episode_id'], r['sensor_source_ns']))
+        pending = output / 'manifest.pending'
+        pending.write_text(''.join(json.dumps(r, sort_keys=True, allow_nan=False) + '\n'
+                                   for r in exported), encoding='utf-8')
+        pending.replace(output / 'manifest.jsonl')
+        meta = dict(schema=CACHE_SCHEMA, feature_kind='vision_encoder', zone_schema=ZONE_SCHEMA,
+                    checkpoint_sha256=cfg['checkpoint_sha256'], encoder_contract=recipe,
+                    manifest_sha256=sha256(output / 'manifest.jsonl'),
+                    source_sha256=sha256(output / 'source.json'),
+                    labels_sha256={e['identity']: e['label_sha256'] for e in episodes},
+                    strict_load=strict, frames=len(exported), diagnostic_frame_limit=max_frames_per_episode,
+                    audit=summary)
+        write_json(output / 'cache_meta.json', meta)
+    print(json.dumps({k: v for k, v in summary.items() if k != 'per_episode'}), flush=True)
+    return summary
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--config', required=True, type=Path)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument('--config', type=Path, help='Existing GPS/Stage 2 export config')
+    mode.add_argument('--situation-config', type=Path, help='Ego/Situation VE-only export config')
     parser.add_argument('--audit-only', action='store_true', help='verify all metadata/scalars; do not run the VE')
     args = parser.parse_args()
+    if args.situation_config is not None:
+        sys.path.insert(0, str(ROOT.parent))
+        from VLDrive.data.src.loaders.situation_dataset import load_config
+        cache_situation(load_config(args.situation_config), audit_only=args.audit_only)
+        return
     from utils.config.config_files import load_config
     cfg = load_config(args.config, 'vision')
     fields = {'schema','datasets','instructions','checkpoint','checkpoint_sha256','contract_sidecar',
