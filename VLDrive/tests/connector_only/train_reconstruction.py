@@ -7,7 +7,7 @@ import sys
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from training.connector_only.run import (
+from tests.connector_only.run import (
     ROOT, torch, np, QFormerMEFAConfig, QFormerMEFAConnector, load_records,
     save_checkpoint, sha256, write_json, emit,
 )

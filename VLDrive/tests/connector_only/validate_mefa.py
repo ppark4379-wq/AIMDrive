@@ -6,7 +6,7 @@ import random
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from training.connector_only.run import (
+from tests.connector_only.run import (
     ROOT, QFormerMEFAConfig, QFormerMEFAConnector, cache, configure_runtime,
     emit, load_records, np, paired_evaluation, sha256, torch, write_json,
 )

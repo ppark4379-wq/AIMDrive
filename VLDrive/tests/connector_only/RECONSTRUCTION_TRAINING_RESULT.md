@@ -56,6 +56,6 @@ validation 오차는 0.13029208, 20개 주행 오차는 0.13459849로 증가했�
 이전 체크포인트와 모든 state tensor를 비교해 복원 관련 54개 key만 바뀐 것을 확인했다.
 기존 가중치는 보존했다. 원본 센서 데이터는 변경하지 않았다.
 
-실행기: `training/connector_only/train_reconstruction.py`.
+실행기: `tests/connector_only/train_reconstruction.py`.
 실행 폴더가 이미 있으면 덮어쓰지 않고 중단한다. 다른 실험을 하려면 별도 출력 경로를 지정하도록
 실행기를 수정하거나 분리해야 한다. 일반 connector/LLM 학습 실행기를 대체하는 스크립트는 아니다.

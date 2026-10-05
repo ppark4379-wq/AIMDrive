@@ -5,10 +5,10 @@ Vision encoder는 지정된 체크포인트를 strict load한 뒤 고정한다.
 원본 F: 데이터는 읽기만 하며 특징 캐시와 결과는 `outputs/logs/`에 저장한다.
 
 ```powershell
-& 'C:\conda-envs\botsort\python.exe' VLDrive/training/connector_only/run.py --stage cache
-& 'C:\conda-envs\botsort\python.exe' VLDrive/training/connector_only/run.py --stage train
-& 'C:\conda-envs\botsort\python.exe' VLDrive/training/connector_only/run.py --stage evaluate
-& 'C:\conda-envs\botsort\python.exe' VLDrive/training/connector_only/diagnose.py --output VLDrive/outputs/logs/connector_mefa_local_pilot --selection-mode topk
+& 'C:\conda-envs\botsort\python.exe' VLDrive/tests/connector_only/run.py --stage cache
+& 'C:\conda-envs\botsort\python.exe' VLDrive/tests/connector_only/run.py --stage train
+& 'C:\conda-envs\botsort\python.exe' VLDrive/tests/connector_only/run.py --stage evaluate
+& 'C:\conda-envs\botsort\python.exe' VLDrive/tests/connector_only/diagnose.py --output VLDrive/outputs/logs/connector_mefa_local_pilot --selection-mode topk
 ```
 
 기본 설정은 `local_mefa.json`이다. 다른 실험은 설정을 복사하고 `output`을
@@ -68,8 +68,8 @@ CCDP 선택은 학습에서 Gumbel, 평가에서 argmax를 사용한다.
 원본 추출 설정을 보존한다. 캐시 생성 단계를 다시 실행하지 않고 다음을 사용한다.
 
 ```powershell
-& 'C:\conda-envs\botsort\python.exe' VLDrive/training/connector_only/run.py --stage train --config VLDrive/training/connector_only/dynamic_anneal.json
-& 'C:\conda-envs\botsort\python.exe' VLDrive/training/connector_only/diagnose.py --output VLDrive/outputs/logs/connector_mefa_dynamic_anneal
+& 'C:\conda-envs\botsort\python.exe' VLDrive/tests/connector_only/run.py --stage train --config VLDrive/tests/connector_only/dynamic_anneal.json
+& 'C:\conda-envs\botsort\python.exe' VLDrive/tests/connector_only/diagnose.py --output VLDrive/outputs/logs/connector_mefa_dynamic_anneal
 ```
 
 진단 기본 정책은 argmax다. 각 프레임에서 실제 선택된 개수만큼 무작위 토큰을 골라
@@ -83,13 +83,13 @@ CCDP 선택은 학습에서 Gumbel, 평가에서 argmax를 사용한다.
 
 ```powershell
 # 기존 validation cache 재확인 (원본 F: 드라이브 없이 가능)
-& 'C:\conda-envs\botsort\python.exe' VLDrive/training/connector_only/validate_mefa.py --stage evaluate --cached-only --output VLDrive/outputs/logs/mefa_history_cached_recheck
+& 'C:\conda-envs\botsort\python.exe' VLDrive/tests/connector_only/validate_mefa.py --stage evaluate --cached-only --output VLDrive/outputs/logs/mefa_history_cached_recheck
 # 기존 train/validation 주행을 모두 제외한 새 20개 주행으로 확대
-& 'C:\conda-envs\botsort\python.exe' VLDrive/training/connector_only/validate_mefa.py
+& 'C:\conda-envs\botsort\python.exe' VLDrive/tests/connector_only/validate_mefa.py
 # 현재 PC의 encoder 경로와 데이터 경로를 명시
-& 'C:\conda-envs\botsort\python.exe' VLDrive/training/connector_only/validate_mefa.py --visual-checkpoint 'C:\Users\장원정\Desktop\checkpoint-best-object.pth.tar' --dataset-root 'F:\dataset_label'
+& 'C:\conda-envs\botsort\python.exe' VLDrive/tests/connector_only/validate_mefa.py --visual-checkpoint 'C:\Users\장원정\Desktop\checkpoint-best-object.pth.tar' --dataset-root 'F:\dataset_label'
 # 완료된 확대 검증 결과를 표/그림/보고서로 출력
-& 'C:\conda-envs\botsort\python.exe' VLDrive/training/connector_only/summarize_mefa.py --output VLDrive/outputs/logs/mefa_history_validation_20_drives
+& 'C:\conda-envs\botsort\python.exe' VLDrive/tests/connector_only/summarize_mefa.py --output VLDrive/outputs/logs/mefa_history_validation_20_drives
 ```
 
 확대 검증은 F: 원본 데이터와 encoder 가중치가 연결되어 있어야 한다.

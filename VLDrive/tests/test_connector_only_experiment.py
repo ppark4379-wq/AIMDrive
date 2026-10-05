@@ -1,8 +1,8 @@
 import torch
 
 from models.connector.qformer_mefa import QFormerMEFAConfig, QFormerMEFAConnector
-from training.connector_only.native_inputs import causal_speed
-from training.connector_only.run import paired_evaluation, select_windows, noise_scale_at_update
+from tests.connector_only.native_inputs import causal_speed
+from tests.connector_only.run import paired_evaluation, select_windows, noise_scale_at_update
 
 
 def test_noise_schedule_and_zero_noise_match_argmax():

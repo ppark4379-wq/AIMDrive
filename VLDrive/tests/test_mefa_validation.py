@@ -1,4 +1,4 @@
-from training.connector_only.validate_mefa import episode_summary
+from tests.connector_only.validate_mefa import episode_summary
 
 
 def test_episode_weighting_and_cluster_bootstrap():

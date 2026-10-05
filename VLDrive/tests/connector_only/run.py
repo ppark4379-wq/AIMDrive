@@ -1,6 +1,6 @@
 """Cache real sensors, train CCDP/MEFA with reconstruction, and pair history ablations.
 
-Run from VLDrive: python training/connector_only/run.py --stage all
+Run from VLDrive: python tests/connector_only/run.py --stage all
 No LLM or future-waypoint labels enter this experiment.
 """
 import argparse
@@ -62,7 +62,7 @@ def select_windows(times, speeds, length, interval, count, max_gap_ns):
 
 def cache(cfg, output, chosen=None):
     from models.ve.vision_encoder import create_vision_encoder
-    from training.connector_only.native_inputs import EgoNativeSensors
+    from tests.connector_only.native_inputs import EgoNativeSensors
     weights = Path(cfg['visual_checkpoint'])
     blob = torch.load(weights, map_location='cpu', weights_only=True)
     recipe = blob['morai_encoder_contract']
