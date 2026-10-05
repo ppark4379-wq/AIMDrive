@@ -7,7 +7,7 @@ from instruction.navigation.selector import select_instruction, TEMPLATES
 from instruction.global_path.preprocess.process import process_path
 from instruction.global_path.encoder import PathEncoder, PathFeatureCache
 from data.src.processing.build_path_features import build_path_features
-from test_navigation_cache import cache
+from .test_navigation_cache import cache
 
 
 def encoder(events):

@@ -6,8 +6,8 @@ import pytest
 import torch
 
 from instruction.navigation.navigation_mlp import NavigationMLP
-from test_instruction_crossattention import features
-from test_instruction_integration import make_model, sample
+from .test_instruction_crossattention import features
+from .test_instruction_integration import make_model, sample
 from training.connector_llm.stages import apply_instruction_stage, MLP_PREFIXES
 from models.vldrive import VLDriveTrainingConfig
 from training.common.checkpoints import (save_model_checkpoint, restore_model_checkpoint,
@@ -178,7 +178,7 @@ def test_mlp_warm_start_checkpoint_resume_and_joint_transfer(tmp_path):
 
 
 def test_cross_attention_checkpoint_cannot_silently_load_into_mlp(tmp_path):
-    from test_instruction_data_checkpoint import CheckpointModel
+    from .test_instruction_data_checkpoint import CheckpointModel
     source, destination = CheckpointModel(True), MLPCheckpointModel(True)
     path = tmp_path / 'attention.pt'
     save_model_checkpoint(path, source, updates=3, provenance={}, settings={}, metrics={})

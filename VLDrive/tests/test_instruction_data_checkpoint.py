@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import pytest
 import torch
 
-from test_navigation_cache import cache
+from .test_navigation_cache import cache
 from data.src.processing.build_path_features import build_path_features
 from data.src.loaders.navigation_cache_dataset import NavigationCacheDataset
 from training.common.checkpoints import (save_model_checkpoint, restore_model_checkpoint,

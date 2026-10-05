@@ -10,7 +10,7 @@ from instruction.global_path.preprocess.load import load_path
 from validation.navigation.path_report import build_report, route_segments
 from data.src.processing.build_path_features import build_path_features
 from instruction.global_path.encoder import PathFeatureCache
-from test_navigation_cache import cache
+from .test_navigation_cache import cache
 
 
 def detect(k, **kwargs):
