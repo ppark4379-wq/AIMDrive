@@ -131,6 +131,7 @@ def _native(root, camera, config):
                                                finite(frame.get('yaw_rad')))
         frames.append(frame)
     return dict(format='audited_sensor_record', episode_id=document['episode_id'], frames=frames,
+                pose_policy=document.get('pose_policy'),
                 route=document['route'], sources=document['sources'], source_path=str(root))
 
 

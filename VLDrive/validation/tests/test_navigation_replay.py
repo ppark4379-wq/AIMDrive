@@ -64,6 +64,17 @@ def test_future_pose_does_not_choose_earlier_common_text(run):
     assert before['frames'][-1]['features'] != after['frames'][-1]['features']
 
 
+def test_descriptive_window_flags_when_named_bend_has_been_passed(run):
+    _, encoder, frames = prepared(run)
+    # Synthetic event deliberately ends during the recorded window.
+    encoder.route['events'] = [dict(id='short', start_m=45., end_m=55.,
+                                     direction='left', curv_event=.07)]
+    window = build_window(frames, encoder, 0, instruction_options=dict(scheme='descriptive'))
+    assert window['common_navigation'] == 'Follow the sharp left bend.'
+    assert window['frames'][0]['common_semantics_ok'] is True
+    assert window['frames'][-1]['common_semantics_ok'] is False
+
+
 @pytest.mark.parametrize('camera,pose,scene,status', [
     (100_000_000, 90_000_000, 100_000_000, 'declared_timestamps_match'),
     (100_000_000, 101_000_000, 100_000_000, 'future_pose_or_camera'),

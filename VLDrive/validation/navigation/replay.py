@@ -58,6 +58,10 @@ def prepare_frames(recording, encoder, path_identity, *, max_skew_ms=50., max_ga
         previous_s = candidate['progress_m'] if usable else None
         previous = frame
         frames.append(dict(index=frame['index'], sensor_source_ns=stamp,
+                           pose_source=frame.get('pose_source'), pose_age_ms=frame.get('pose_age_ms'),
+                           ego_signal_record_id=frame.get('ego_signal_record_id'),
+                           source_invalid_reason=frame.get('reason') if frame.get('valid') is False else None,
+                           route_audit_reason=frame.get('route_audit_reason'),
                            camera_source_ns=frame.get('camera_source_ns'), pose_source_ns=frame.get('pose_source_ns'),
                            image_path=frame['image_path'], pose=pose, finite_pose=finite_pose,
                            sync=sync, route_identity=path_identity, invalid_reasons=reasons,
@@ -118,6 +122,9 @@ def build_window(frames, encoder, start, *, window_id=0, length=11, interval=2,
             row['common_semantics_ok'] = event is None
         elif selection and selection['event'] is not None:
             row['common_semantics_ok'] = event['start_m'] <= p['progress_m'] <= event['end_m']
+        elif selection and selection.get('planned_event_ids'):
+            row['common_semantics_ok'] = (event is not None and
+                                         event['instance_id'] in selection['planned_event_ids'])
         else:
             row['common_semantics_ok'] = True if selection and selection['kind'] == 'follow' else None
         result['frames'].append(row)

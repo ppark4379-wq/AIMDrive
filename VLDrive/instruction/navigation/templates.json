@@ -8,5 +8,7 @@
   "sharp_left": "Follow the sharp left bend.",
   "sharp_right": "Follow the sharp right bend.",
   "left_then_right": "Follow the left bend, then the right bend.",
-  "right_then_left": "Follow the right bend, then the left bend."
+  "right_then_left": "Follow the right bend, then the left bend.",
+  "left_then_left": "Follow two successive left bends.",
+  "right_then_right": "Follow two successive right bends."
 }

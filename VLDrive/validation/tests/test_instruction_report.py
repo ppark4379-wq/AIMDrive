@@ -17,6 +17,8 @@ def test_current_route_refines_only_region_five_and_keeps_other_map_labels():
     if not path.is_file():
         pytest.skip('Competition map is not present beside this checkout')
     options = json.loads(DEFAULT_OPTIONS.read_text(encoding='utf-8'))
+    # This regression fixes the historical geometry-policy region numbering.
+    options['instruction']['scheme'] = 'geometry'
     old_options = dict(options, geometry={key: value for key, value in options['geometry'].items()
                                          if key != 'bend_refinements'})
     baseline = build_instruction_report(path, old_options)

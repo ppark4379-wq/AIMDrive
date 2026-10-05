@@ -52,7 +52,38 @@ def test_geometry_scheme_ignores_future_actual_ego_positions():
     a = select_instruction(e, [first, dict(progress_m=10)], scheme='geometry')
     b = select_instruction(e, [first, dict(progress_m=250)], scheme='geometry')
     assert a == b
-    assert len(TEMPLATES) == 10
+    assert len(TEMPLATES) == 12
+
+
+@pytest.mark.parametrize('direction,k,kind', [('left', .07, 'sharp_left'),
+                                           ('right', -.02, 'gentle_right')])
+def test_descriptive_names_upcoming_short_bend(direction, k, kind):
+    e = encoder([(30, 45, direction, k)])
+    assert select_instruction(e, [dict(progress_m=0)], scheme='geometry')['kind'] == 'follow'
+    for progress in (0, 29, 35, 44):
+        selected = select_instruction(e, [dict(progress_m=progress)], scheme='descriptive')
+        assert selected['kind'] == kind
+        assert selected['event'] is None
+    assert select_instruction(e, [dict(progress_m=46)], scheme='descriptive')['kind'] == 'straight'
+
+
+@pytest.mark.parametrize('first,second', [('left','right'), ('right','left'),
+                                         ('left','left'), ('right','right')])
+def test_descriptive_short_sequence_and_future_pose_independence(first, second):
+    e = encoder([(10, 20, first, .04), (30, 40, second, -.04)])
+    before = select_instruction(e, [dict(progress_m=0)], scheme='descriptive')
+    after = select_instruction(e, [dict(progress_m=0),dict(progress_m=250)], scheme='descriptive')
+    assert before == after
+    assert before['kind'] == first + '_then_' + second
+    assert before['event'] is None
+
+
+def test_descriptive_does_not_invent_a_turn_beyond_horizon_or_in_exclusion():
+    e = encoder([(80, 100, 'left', .04)])
+    assert select_instruction(e, [dict(progress_m=0)], scheme='descriptive')['kind'] == 'straight'
+    exclusion = dict(route_sha256=e.route['route_sha256'], start_m=0., end_m=10.)
+    assert select_instruction(e, [dict(progress_m=0)], scheme='descriptive',
+                              straight_exclusions=[exclusion])['kind'] == 'follow'
 
 
 @pytest.mark.parametrize('options', [dict(scheme='unknown'), dict(gentle_curvature=.1),
@@ -62,10 +93,11 @@ def test_invalid_selection_options(options):
         select_instruction(encoder([]), [dict(progress_m=0)], **options)
 
 
-def test_instruction_policy_is_recorded_and_reused_in_cache(cache, tmp_path):
+@pytest.mark.parametrize('scheme', ['geometry', 'descriptive'])
+def test_instruction_policy_is_recorded_and_reused_in_cache(cache, tmp_path, scheme):
     _, bundle, _, _ = cache
     path = tmp_path / 'expanded.json'
-    options = dict(scheme='geometry', gentle_curvature=.025, sharp_curvature=.06)
+    options = dict(scheme=scheme, gentle_curvature=.025, sharp_curvature=.06)
     build_path_features(bundle, path, instruction_options=options)
     digest = hashlib.sha256((bundle / 'manifest.json').read_bytes()).hexdigest()
     prepared = PathFeatureCache(path, digest)

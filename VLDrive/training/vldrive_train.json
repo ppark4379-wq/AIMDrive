@@ -28,7 +28,7 @@
     "cpu_fused": true
   },
   "model": {
-    "path_navigation": false,
+    "path_navigation": true,
     "path_fusion": "mlp",
     "path_width": 256,
     "path_heads": 4,
@@ -57,9 +57,9 @@
     "inference_selection_mode": "argmax"
   },
   "path_instruction": {
-    "feature_cache": null,
+    "feature_cache": "outputs/caches/path_features_mlp.json",
     "stage": "joint",
-    "new_module_prefixes": []
+    "new_module_prefixes": ["language_model.navigation_mlp."]
   },
   "navigation_sampling": {
     "train_variants": [0, 1, 2, 3, 4, 5, 6, 7],

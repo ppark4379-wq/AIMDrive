@@ -266,7 +266,8 @@ class VLDriveTrainingModel(nn.Module):
         return dict(config=asdict(self.config), connector=self.connector.config.to_dict(),
             language_asset=self.language_manifest, qformer_asset=self.qformer_manifest, frozen_encoder=True,
             visual_encoder=self.visual_encoder.describe() if self.visual_encoder else 'cached frozen features',
-            training_policy=('path tokenizer and navigation cross attention only' if
+            training_policy=(('navigation MLP only' if self.config.path_fusion == 'mlp' else
+                'path tokenizer and navigation cross attention only') if
                 getattr(self, 'instruction_stage', 'joint') == 'path_warmup' else
                 'all used TinyLlama decoder parameters including text embeddings'),
             trainable_parameters=sum(p.numel() for p in self.parameters() if p.requires_grad),

@@ -29,7 +29,7 @@
     "curvature_scale": 0.1
   },
   "instruction": {
-    "scheme": "geometry",
+    "scheme": "descriptive",
     "gentle_curvature": 0.025,
     "sharp_curvature": 0.06
   },

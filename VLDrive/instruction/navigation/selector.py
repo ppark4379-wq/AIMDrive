@@ -40,7 +40,11 @@ def select_instruction(encoder, projections, *, scheme='legacy', gentle_curvatur
     """Use first-frame planned geometry only, never future ego progress.
 
     ``legacy`` preserves the original four-kind policy. ``geometry`` additionally
-    distinguishes bend tightness and two opposite-sign planned bends. Both use
+    distinguishes bend tightness and two opposite-sign planned bends. ``descriptive``
+    also names approaching/short bends and the next pair without requiring them
+    to span the entire lookahead. These are planned bend targets, not commands
+    to turn immediately; signed numeric distances encode approach/entry/exit.
+    All schemes use
     only the first ego projection and already known planned route geometry.
 
     A generic sentence is deliberately used around upcoming transitions. A
@@ -51,7 +55,7 @@ def select_instruction(encoder, projections, *, scheme='legacy', gentle_curvatur
     """
     if not projections or any(p is None for p in projections):
         raise ValueError('Instruction selection requires valid frame projections')
-    if (scheme not in ('legacy', 'geometry')
+    if (scheme not in ('legacy', 'geometry', 'descriptive')
             or not math.isfinite(gentle_curvature) or not math.isfinite(sharp_curvature)
             or not 0 < gentle_curvature < sharp_curvature):
         raise ValueError('Invalid navigation instruction scheme or curvature thresholds')
@@ -61,8 +65,23 @@ def select_instruction(encoder, projections, *, scheme='legacy', gentle_curvatur
     horizon = encoder.options['lookahead_m']
     event = encoder.next_event(progress, horizon)
     kind, target = 'follow', None
+    planned_event_ids = None
     if event is None:
         kind = 'follow' if any(start <= local_progress < end for start, end in exclusions) else 'straight'
+    elif scheme == 'descriptive':
+        # Describe the nearest planned bend(s), even when short or upcoming.
+        # Only the FIRST pose chooses the common sentence. Future recorded ego
+        # positions must never influence it. Do not pin an event after its exit;
+        # each frame's numeric inputs still follow its current/next event.
+        cursor, limit = event['end_m'] + 1e-6, progress + horizon
+        second = encoder.next_event(cursor, limit - cursor) if cursor < limit else None
+        planned_event_ids = [e['instance_id'] for e in (event, second) if e is not None]
+        if second is not None:
+            kind = event['direction'] + '_then_' + second['direction']
+        else:
+            curvature = abs(event['curv_event'])
+            kind = ('gentle_' if curvature < gentle_curvature else
+                    'sharp_' if curvature >= sharp_curvature else '') + event['direction']
     elif scheme == 'geometry' and event.get('reviewed_section'):
         # Reviewed geometry is a planned bend target, including its approach
         # and exit. Positive/negative per-frame distances distinguish phases;
@@ -90,5 +109,8 @@ def select_instruction(encoder, projections, *, scheme='legacy', gentle_curvatur
             kind = event['direction'] + '_then_' + second['direction']
         # No fixed event target: numeric features must update the current/next
         # bend independently at each frame, never mix two distances in 8 fields.
-    return dict(text=TEMPLATES[kind], kind=kind, event=target,
-                event_id=target['instance_id'] if target else '')
+    result = dict(text=TEMPLATES[kind], kind=kind, event=target,
+                  event_id=target['instance_id'] if target else '')
+    if planned_event_ids is not None:
+        result['planned_event_ids'] = planned_event_ids
+    return result

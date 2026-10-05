@@ -19,10 +19,12 @@ DEFAULT_OPTIONS = Path(__file__).resolve().parents[2] / 'instruction/global_path
 LABELS = dict(follow='계획 경로 추종', straight='직진 경로 추종', left='좌측 굽음', right='우측 굽음',
               gentle_left='완만한 좌측 굽음', gentle_right='완만한 우측 굽음',
               sharp_left='급한 좌측 굽음', sharp_right='급한 우측 굽음',
-              left_then_right='좌측 → 우측 굽음', right_then_left='우측 → 좌측 굽음')
+              left_then_right='좌측 → 우측 굽음', right_then_left='우측 → 좌측 굽음',
+              left_then_left='연속 좌측 굽음', right_then_right='연속 우측 굽음')
 COLORS = dict(follow='#94a3b8', straight='#21966f', left='#277ac9', right='#e88820',
               gentle_left='#79bcf1', gentle_right='#ebbf66', sharp_left='#164d9b', sharp_right='#c44620',
-              left_then_right='#9253ba', right_then_left='#d44f90')
+              left_then_right='#9253ba', right_then_left='#d44f90',
+              left_then_left='#437db5', right_then_right='#bd7440')
 
 
 def instruction_regions(encoder, instruction_options=None):

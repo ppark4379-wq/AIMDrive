@@ -1,6 +1,6 @@
 # 프레임별 경로 수치 Navigation 구현
 
-기존 `VLDrive/navigation/`은 변경하지 않는다. 이 패키지는 Global Path와 각 프레임의 위치·방향으로 경로 수치를 계산하고, 공통 방향 문장 임베딩과 MLP 또는 Cross-attention으로 결합한다. 현재 학습 JSON의 선택값은 `model.path_fusion="mlp"`이며 기존 Cross-attention 코드는 보존했다. 경로 기능은 기본 비활성이며, 실제 데이터의 경로 캐시를 준비한 후 `model.path_navigation=true`로 켠다. Zone과 Situation은 아직 구현하지 않았다.
+이 패키지는 Global Path와 각 프레임의 위치·방향으로 경로 수치를 계산하고, 공통 방향 문장 임베딩과 MLP 또는 Cross-attention으로 결합한다. 기본 학습 JSON은 `model.path_navigation=true`, `model.path_fusion="mlp"`로 수치 입력을 활성화하며 기존 Cross-attention 코드도 보존한다. 학습 전에 같은 navigation bundle로 `outputs/caches/path_features_mlp.json`을 준비해야 한다. Python 모델 API는 기존 호출의 호환성을 위해 기본 비활성 상태를 유지한다. `navigation/adapters.py`는 Sensor Record의 XY·yaw를 동일한 과거 ego 메시지에서 읽도록 개선했다. 이 입력 경로는 별도 Situation/Zone 모듈을 LLM에 연결하지 않는다.
 
 ## 폴더와 호출 흐름
 
@@ -16,7 +16,7 @@ instruction/
 │  └─ tokenizer/
 │     └─ path_tokenizer.py          학습되는 2토큰 변환
 ├─ navigation/
-│  ├─ templates.json               경로 전용 공통 방향 문장 10종
+│  ├─ templates.json               경로 전용 공통 방향 문장 12종
 │  ├─ selector.py                  방향 문장과 안내 대상 선택
 │  ├─ navigation_cross_attention.py 기존 Cross-attention 보존
 │  └─ navigation_mlp.py             8개 수치의 MLP 결합
@@ -82,7 +82,7 @@ VLDriveTrainingModel.predict
 
 ## 공통 문장 선택 정책
 
-템플릿은 10종이며 같은 뜻의 표현만 늘린 것이 아니라 경로 형상에 따라 구분한다. 기본 경로 추종과 직진, 일반 좌/우 굽음, 완만한 좌/우 굽음, 급한 좌/우 굽음, 좌→우와 우→좌 연속 굽음이다. 신호등·고속도로·장애물·속도·차선 변경·목적지 도착 의미는 포함하지 않는다. 공통 문장은 **첫 프레임의 위치와 계획 경로**로 선택한다. 미래 실제 차량 위치를 읽어 과거 프레임에 줄 문장을 결정하지 않는다. 템플릿은 모두 동시에 입력하지 않고 한 윈도우에 하나만 선택한다.
+템플릿은 12종이며 같은 뜻의 표현만 늘린 것이 아니라 경로 형상에 따라 구분한다. 기본 경로 추종과 직진, 일반 좌/우 굽음, 완만한 좌/우 굽음, 급한 좌/우 굽음, 좌→우·우→좌·연속 좌측·연속 우측 굽음이다. 신호등·고속도로·장애물·속도·차선 변경·목적지 도착 의미는 포함하지 않는다. 공통 문장은 **첫 프레임의 위치와 계획 경로**로 선택한다. 미래 실제 차량 위치를 읽어 과거 프레임에 줄 문장을 결정하지 않는다. 템플릿은 모두 동시에 입력하지 않고 한 윈도우에 하나만 선택한다.
 
 기존 캐시와 Python API는 `scheme="legacy"`의 4종 정책을 그대로 사용한다.
 
@@ -90,7 +90,7 @@ VLDriveTrainingModel.predict
 - 현재 진행 중인 한 회전 이벤트가 lookahead 전체를 덮으면 left 또는 right. 동일 이벤트를 프레임별로 다시 거리 계산한다.
 - 회전 진입·종료나 복합 구간처럼 전환 가능성이 있으면 follow. 프레임별 현재/다음 이벤트를 각각 선택한다.
 
-새 `mlp_options.json`의 `instruction.scheme="geometry"`는 이 보수적 정책에 다음 구분을 추가한다.
+`instruction.scheme="geometry"`는 이 보수적 정책에 다음 구분을 추가한다.
 
 - 한 굽음이 현재 위치부터 lookahead 전체를 덮을 때 대표 곡률 절댓값이 `0.025/m` 미만이면 gentle, `0.06/m` 이상이면 sharp, 그 사이이면 일반 left/right를 선택한다. 이 두 임계값은 초기 분류 기준이며 `gentle_curvature`, `sharp_curvature`로 바꿀 수 있다. sharp는 이벤트 안에 급한 부분이 있다는 의미이지 모든 점의 곡률이 크다는 보장이 아니다.
 - lookahead 안에 반대 방향의 다음 굽음도 있고 두 번째 굽음이 lookahead 끝까지 이어지면 left_then_right 또는 right_then_left를 선택한다. 이는 계획된 순서를 설명하는 공통 문장이지 모든 프레임에 즉시 같은 회전을 명령하는 문장이 아니다.
@@ -99,6 +99,19 @@ VLDriveTrainingModel.predict
 연속 굽음 안내에서도 8개 수치는 프레임별 **현재/다음 한 이벤트**를 나타낸다. 다음 두 이벤트의 거리와 곡률을 동시에 넣는 스키마로 확장하지 않았다. 현재 이벤트가 끝나면 해당 프레임의 다음 이벤트로 수치 대상이 바뀐다. 어떤 scheme과 임계값을 사용했는지는 경로 캐시의 `instruction_options`에 기록하고 학습 때 재사용한다. 10종을 사용하려면 새 옵션으로 캐시를 다시 만들어야 하며 기존 캐시를 묵시적으로 바꾸지 않는다.
 
 이것은 인과성을 우선한 보수적 초기 정책이라 일반적인 짧은 회전에서는 follow가 많이 선택될 수 있다. 현재 경로에 없는 유형을 억지로 생성하거나 10종이 균등하게 학습된다고 가정하지 않는다. 긴 윈도우에서도 특정 방향 안내를 더 적극적으로 사용하려면 명령 유지·완료 정책을 별도로 검증해야 한다. 숫자는 공통 문장 안에 고정하지 않고 각 프레임 pose 기준으로 따로 계산한다.
+
+현재 `mlp_options.json`의 기본값은 `instruction.scheme="descriptive"`다.
+이 정책은 lookahead 안에 확인된 굽음이 있으면 접근 중이거나 짧은 구간이어도
+완만한/일반/급한 좌·우 굽음을 문장으로 명시한다. 다음 굽음도 lookahead 안에 있으면
+좌→우, 우→좌, 연속 좌측, 연속 우측처럼 처음 두 굽음의 순서를 표현한다.
+두 번째 굽음이 lookahead 끝까지 이어져야 한다는 이전 제한은 적용하지 않는다.
+문장은 계획된 굽음 대상을 설명하며 즉시 조향하라는 뜻은 아니다. 진입 전·중·후는
+각 프레임의 부호 있는 거리로 구분한다. 윈도우 문장은 여전히 첫 pose만으로 고르고,
+미래에 기록된 차량 위치를 보지 않는다. 수치 대상은 현재/다음 이벤트로 갱신한다.
+명시적인 straight exclusion 구간에서 확인된 이벤트가 없으면 근거 없이 직진이나
+회전을 만들어내지 않고 follow를 유지한다. 기존 geometry/legacy 캐시는 그대로이며,
+새 정책을 학습에 적용하려면 새 옵션으로 path feature 캐시를 다시 생성해야 한다.
+문장은 학습 시 TinyLlama tokenizer로 처리한다. 기존 문장 토큰 캐시는 사용하지 않는다.
 
 ## MLP와 Cross attention 학습
 
@@ -131,7 +144,7 @@ python data/src/processing/build_path_features.py --instructions <navigation_bun
 }
 ```
 
-별도의 실험용 학습 설정에서 아래 항목을 설정한다. 기존 `training/vldrive_train.json`은 MLP 선택값을 기록했지만 경로 기능의 비활성 상태와 빈 캐시 설정은 유지했다. 현재 체크아웃에 실제 학습 데이터 버전과 경로 캐시가 없으므로 이를 임의로 활성화하거나 학습을 실행하지 않았다.
+`training/vldrive_train.json`은 MLP 경로 기능을 활성화하고 위 경로 캐시를 읽도록 설정되어 있다. 기존 base 체크포인트에서 신규 MLP를 추가하는 warm-start 후 `joint` 학습을 사용한다. 먼저 MLP만 학습하려면 별도 실험 설정에서 아래처럼 `path_warmup`을 선택한다. 현재 체크아웃에는 실제 학습 데이터 버전·경로 캐시·모델 체크포인트가 없어 실제 데이터 학습은 실행하지 않았다. 누락된 캐시를 무시하고 문장만으로 학습하지는 않는다.
 
 ```json
 {
@@ -189,12 +202,12 @@ CSV/JSON의 `common_navigation`은 기존 보수적 selector가 윈도우 첫 �
 | train.py | 신규 캐시 설정, stage 적용, 명시적 신규 모듈 warm-start | 기존 실행 진입점 유지 |
 | training/connector_llm/training.py | 미래 경로 수치 perturbation preflight | 기존 loss와 학습 루프 유지 |
 | training/common/checkpoints.py | 신규 코드 provenance, 새 prefix whitelist, warmup base 보존 | 묵시적 strict=False 로딩은 도입하지 않음 |
-| training/vldrive_train.json | MLP 선택값·비활성 기능 설정·빈 캐시 설정 | 기존 학습 값 유지 |
+| training/vldrive_train.json | MLP 활성화·경로 캐시 경로·신규 MLP warm-start prefix | 기존 학습 하이퍼파라미터 유지 |
 | training/connector_llm/stages.py | MLP 또는 Cross-attention에 맞는 warmup prefix 선택 | 기존 Cross-attention prefix와 정책 유지 |
 | utils/common/runtime.py | path feature cache의 path_root 기준 경로 해석 | 기존 경로 해석 유지 |
 | utils/config/config_files.py | 새 모드에서 legacy text cache 자동 주입 제외 | 기존 모드는 유지 |
 
-새 파일은 위 `instruction/` 모듈, `data/src/processing/build_path_features.py`, `training/connector_llm/stages.py`, `tests/test_instruction_*.py`다. 검증 코드 분리 때 `instruction/global_path/preprocess/visualize.py`를 `validation/navigation/path_report.py`로 이동하고 호출 경로를 갱신했다. 기존 `navigation/`, vision encoder, connector 구현, GT 생성 및 loss 계산식은 변경하지 않았다.
+새 파일은 위 `instruction/` 모듈, `data/src/processing/build_path_features.py`, `training/connector_llm/stages.py`, `tests/test_instruction_*.py`다. 검증 코드 분리 때 `instruction/global_path/preprocess/visualize.py`를 `validation/navigation/path_report.py`로 이동하고 호출 경로를 갱신했다. navigation adapter의 pose 선택은 개선했으며, vision encoder, connector 구현, GT 생성 및 loss 계산식은 변경하지 않았다. 기존에 만들어 둔 navigation bundle은 adapter 변경으로 자동 갱신되지 않는다. 과거 ego pose 정책을 적용하려면 원본 기록에서 navigation bundle을 새로 만들고, 그 bundle과 같은 manifest를 사용하는 visual/path 캐시를 준비해야 한다.
 
 ## 구현 검증 결과
 
