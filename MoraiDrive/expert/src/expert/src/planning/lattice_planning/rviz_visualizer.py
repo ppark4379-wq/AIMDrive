@@ -70,7 +70,7 @@ class LatticeRvizVisualizer:
             if not candidate.valid:
                 marker.scale.x = 0.03
                 self._set_color(marker, 0.5, 0.5, 0.5, 0.5)
-            elif candidate.points is result.path:
+            elif candidate.points is result.path or getattr(candidate, 'selected_preview', False):
                 marker.scale.x = 0.15
                 self._set_color(marker, 1.0, 0.0, 0.0, 1.0)
             else:
@@ -157,6 +157,17 @@ class LatticeRvizVisualizer:
                 self._set_color(marker, 1.0, 0.15, 0.05, 1.0)
             else:
                 self._set_color(marker, 0.1, 0.8, 1.0, 1.0)
+        elif result.debug_details.get('jamming_dynamic'):
+            details=result.debug_details['jamming_dynamic']
+            conflict=details.get('collision') or {}
+            marker.text='JAMMING: DYNAMIC {}\n{:.1f}km/h gap={}m collision={}s'.format(
+                details['state'],result.acc_target_velocity*3.6,
+                details.get('lead_gap_m'),conflict.get('time','none'))
+            if details.get('tracking_error'):
+                marker.text+='\nstop='+str(details['tracking_error'])
+            if details.get('replanning'):
+                marker.text+=' (replanning)'
+            self._set_color(marker,1.0,.2,.1,1.) if details['emergency'] else self._set_color(marker,.1,.8,1.,1.)
         elif result.debug_details.get("merge_safety"):
             safety = result.debug_details["merge_safety"]
             conflict = safety.get("conflict") or {}
@@ -197,8 +208,9 @@ class LatticeRvizVisualizer:
                 details.get("speed_source", "planner"),
             )
             if details.get('planner') == 'recorded_route_graph':
-                marker.text = 'STATIC: RECORDED {}\n{}\n{:.1f}km/h source={}'.format(
-                    details.get('phase', '').upper(), ' -> '.join(details.get('selected_routes', [])),
+                section_name = 'JAMMING' if result.debug_details.get('jamming') else 'STATIC'
+                marker.text = '{}: RECORDED {}\n{}\n{:.1f}km/h source={}'.format(
+                    section_name, details.get('phase', '').upper(), ' -> '.join(details.get('selected_routes', [])),
                     details.get('final_target_velocity', result.acc_target_velocity)*3.6,
                     details.get('speed_source', 'planner'))
                 if details.get('live_preview'):

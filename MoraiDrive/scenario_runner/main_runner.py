@@ -205,6 +205,14 @@ def build_parser():
         ),
     )
     parser.add_argument(
+        "--tunnel-candidate-id",
+        metavar="ID",
+        help=(
+            "Trial one route-relative tunnel pedestrian path by ID. "
+            "Requires full_loop_tunnel_dynamic --once --manual-ego."
+        ),
+    )
+    parser.add_argument(
         "--dynamic-review",
         action="append",
         metavar="CROSSING:MODEL:SPEED_MPS",
@@ -280,6 +288,12 @@ def main():
         args.scenario != "full_loop_tunnel_dynamic" or not args.once
     ):
         parser.error("--manual-ego requires --scenario full_loop_tunnel_dynamic --once")
+    if args.tunnel_candidate_id and not (
+        args.scenario == "full_loop_tunnel_dynamic" and args.once and args.manual_ego
+    ):
+        parser.error(
+            "--tunnel-candidate-id requires full_loop_tunnel_dynamic --once --manual-ego"
+        )
 
     global_cfg, zone_cfg, base_scenario_cfg = load_configuration()
     if args.static_editor:
@@ -301,6 +315,9 @@ def main():
     if args.manual_ego:
         base_scenario_cfg.setdefault("sync_runtime", {})["enabled"] = False
         base_scenario_cfg["drive_control_mode"] = "morai_keyboard"
+    if args.tunnel_candidate_id:
+        base_scenario_cfg.setdefault("tunnel_dynamic", {})[
+            "trial_candidate_id"] = args.tunnel_candidate_id
     if args.dynamic_review:
         if args.scenario != "full_loop_dynamic" or not args.once or not args.no_sync_runtime:
             parser.error("--dynamic-review requires full_loop_dynamic --once --no-sync-runtime")

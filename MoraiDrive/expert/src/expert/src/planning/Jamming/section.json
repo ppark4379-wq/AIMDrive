@@ -1,0 +1,12 @@
+{
+  "start_enu": [31.42, -486.50, 29.91],
+  "end_enu": [-84.01, -547.78, 30.02],
+  "start_longitudinal_tolerance_m": 5.0,
+  "start_lateral_half_width_m": 12.0,
+  "end_longitudinal_tolerance_m": 5.0,
+  "activation_half_width_m": 12.0,
+  "approach_distance_m": 20.0,
+  "return_blend_m": 10.0,
+  "global_tail_m": 10.0,
+  "spacing_m": 0.2
+}

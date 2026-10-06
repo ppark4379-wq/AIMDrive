@@ -11,6 +11,7 @@ from ...utils.transform_utils import (
     interpolate_on_polyline,
     project_distance_on_polyline,
 )
+from .tunnel_dynamic_catalog import generate_tunnel_candidates
 
 
 def _number(value, name):
@@ -49,6 +50,9 @@ class TunnelDynamicHandler:
     def validate(self, context):
         cfg = context.cfg["tunnel_dynamic"]
         zone = context.route_definition["zones"]["tunnel"]
+        if cfg.get("trial_candidate_id"):
+            self._validate_candidate(context, cfg, zone)
+            return
         path_id = str(cfg.get("path_id", "")).strip()
         path = (zone.get("dynamic_paths") or {}).get(path_id)
         if not isinstance(path, dict):
@@ -124,6 +128,49 @@ class TunnelDynamicHandler:
             "path_length_m": sum(segment_lengths),
         }
 
+    def _validate_candidate(self, context, cfg, zone):
+        path_id = str(cfg["trial_candidate_id"]).strip()
+        candidates = generate_tunnel_candidates(
+            context.route_points, context.tunnel_entry_s, context.tunnel_exit_s,
+            zone.get("candidate_catalog"),
+        )
+        path = next((item for item in candidates if item["id"] == path_id), None)
+        if path is None:
+            raise RuntimeError(f"Unknown tunnel candidate ID: {path_id!r}")
+        if path["status"] == "disabled":
+            raise RuntimeError(f"Tunnel candidate is disabled: {path_id}")
+        points = [path["start_xyz"], path["end_xyz"]]
+        distance = _distance(*points)
+        _direction(*points)
+        speed = _number(cfg.get("speed_mps"), "speed_mps")
+        tolerance = _number(cfg.get("arrival_tolerance_m"), "arrival_tolerance_m")
+        timeout = _number(cfg.get("max_run_sec"), "max_run_sec")
+        trigger_before = _number(
+            cfg.get("trial_trigger_before_start_m"), "trial_trigger_before_start_m")
+        model = str(cfg.get("model", "")).strip()
+        if not model or not 0.0 < speed <= 5.0:
+            raise RuntimeError("Tunnel candidate model and speed must be valid")
+        if not 0.0 < tolerance < distance / 2 or timeout <= distance / speed:
+            raise RuntimeError("Tunnel candidate tolerance or timeout is outside path limits")
+        start_s = path["start_sd"]["s_m"]
+        trigger_s = start_s - trigger_before
+        if trigger_before <= 0 or trigger_s < 0:
+            raise RuntimeError("Tunnel candidate trigger precedes scenario START")
+        context.tunnel_dynamic_plan = {
+            "path_id": path_id,
+            "waypoints": points,
+            "model": model,
+            "speed_mps": speed,
+            "speed_kmh": speed * 3.6,
+            "trigger_s": trigger_s,
+            "crossing_s": start_s,
+            "arrival_tolerance_m": tolerance,
+            "max_run_sec": timeout,
+            "path_length_m": distance,
+            "trial_candidate": True,
+            "review_status": path["status"],
+        }
+
     def arm(self, context):
         plan = context.tunnel_dynamic_plan
         if plan["model"] not in context.grpc.get_available_pedestrian_models():
@@ -144,14 +191,20 @@ class TunnelDynamicHandler:
         print(f"[TunnelDynamic] armed seed={context.run_seed} "
               f"path={plan['path_id']} model={plan['model']} "
               f"trigger_s={plan['trigger_s']:.1f}")
+        if plan.get("trial_candidate"):
+            start, end = plan["waypoints"]
+            print(f"[TunnelDynamic] trial candidate={plan['path_id']} "
+                  f"status={plan['review_status']} "
+                  f"start=({start['x']:.2f},{start['y']:.2f},{start['z']:.2f}) "
+                  f"end=({end['x']:.2f},{end['y']:.2f},{end['z']:.2f})")
 
-    def _command(self, context, target_index, start):
+    def _command(self, context, target_index):
         plan = context.tunnel_dynamic_plan
         target = plan["waypoints"][target_index]
-        dx, dy = _direction(start, target)
-        if not context.grpc.control_pedestrian(
-                context.tunnel_dynamic_actor, dx, dy, plan["speed_kmh"]):
-            raise RuntimeError(f"Tunnel pedestrian control failed toward waypoint {target_index}")
+        if not context.grpc.set_pedestrian_waypoint(
+                context.tunnel_dynamic_actor,
+                target["x"], target["y"], target["z"], plan["speed_mps"]):
+            raise RuntimeError(f"Tunnel pedestrian waypoint failed: {target_index}")
         context.tunnel_dynamic_target_index = target_index
 
     def _destroy(self, context):
@@ -179,14 +232,15 @@ class TunnelDynamicHandler:
         a, b = plan["waypoints"][:2]
         dx, dy = _direction(a, b)
         yaw = math.degrees(math.atan2(dy, dx))
+        transform = context.grpc.make_transform(a["x"], a["y"], a["z"], yaw)
+        label = f"tunnel_dynamic_{context.run_instance_id}"
+        # Straight candidates use the same native yaw/velocity movement as
+        # dynamic_obstacle. In the live tunnel trial, both waypoint APIs
+        # reported the destination immediately instead of observed traversal.
         actor = context.grpc.spawn_pedestrian(
-            transform=context.grpc.make_transform(a["x"], a["y"], a["z"], yaw),
-            model_name=plan["model"],
-            label=f"tunnel_dynamic_{context.run_instance_id}",
-            velocity=plan["speed_kmh"],
-            active_dist=0.0,
-            move_dist=plan["path_length_m"] + 2.0,
-            start_action=True,
+            transform=transform, model_name=plan["model"], label=label,
+            velocity=plan["speed_kmh"], active_dist=0.0,
+            move_dist=plan["path_length_m"] + 2.0, start_action=True,
         )
         if actor is None:
             self._fail(context, "Failed to spawn tunnel pedestrian")
@@ -201,12 +255,20 @@ class TunnelDynamicHandler:
         context.tunnel_dynamic_result.update(
             spawned=True, actor_id=actor_id, spawn_elapsed_sec=float(elapsed))
         context.tunnel_dynamic_spawn_elapsed = float(elapsed)
-        try:
-            self._command(context, 1, a)
-        except RuntimeError as error:
-            self._fail(context, error)
+        context.tunnel_dynamic_last_position = {"x": a["x"], "y": a["y"]}
+        context.tunnel_dynamic_last_observed_elapsed = float(elapsed)
+        context.tunnel_dynamic_last_log_elapsed = float("-inf")
+        if plan.get("trial_candidate"):
+            context.tunnel_dynamic_target_index = 1
+        else:
+            try:
+                self._command(context, 1)
+            except RuntimeError as error:
+                self._fail(context, error)
         context.tunnel_dynamic_phase = "moving"
-        print(f"[TunnelDynamic] spawned actor={actor_id} A->B")
+        print(f"[TunnelDynamic] spawned actor={actor_id} A->B "
+              f"method={'native_straight' if plan.get('trial_candidate') else 'set_waypoint'} "
+              f"yaw={yaw:.1f} speed={plan['speed_mps']:.2f}m/s")
 
     def update(self, context, elapsed, ego_state, current_s):
         phase = context.tunnel_dynamic_phase
@@ -217,7 +279,7 @@ class TunnelDynamicHandler:
             if current_s >= plan["trigger_s"]:
                 self._spawn(context, elapsed)
             return
-        if phase in ("completed", "disabled"):
+        if phase in ("completed", "disabled", "diagnostic_hold"):
             return
         if phase == "failed":
             raise RuntimeError("Tunnel dynamic event already failed")
@@ -236,15 +298,34 @@ class TunnelDynamicHandler:
         context.tunnel_dynamic_state_misses = 0
         if not math.isfinite(x) or not math.isfinite(y):
             self._fail(context, "Tunnel pedestrian position is not finite")
+        previous = context.tunnel_dynamic_last_position
+        dt = max(0.0, float(elapsed) - context.tunnel_dynamic_last_observed_elapsed)
+        step_m = math.hypot(x - previous["x"], y - previous["y"])
+        max_plausible_step_m = max(5.0, plan["speed_mps"] * 3.0) * dt + 1.0
+        if plan.get("trial_candidate") and step_m > max_plausible_step_m:
+            context.tunnel_dynamic_phase = "diagnostic_hold"
+            context.tunnel_dynamic_result["failure_reason"] = "implausible_pedestrian_jump"
+            context.tunnel_dynamic_result["last_position"] = {"x": x, "y": y}
+            print(f"[TunnelDynamic] implausible jump: "
+                  f"({previous['x']:.2f},{previous['y']:.2f})->({x:.2f},{y:.2f}) "
+                  f"step={step_m:.2f}m dt={dt:.2f}s; actor held until shutdown")
+            return
+        context.tunnel_dynamic_last_position = {"x": x, "y": y}
+        context.tunnel_dynamic_last_observed_elapsed = float(elapsed)
         target_index = context.tunnel_dynamic_target_index
         target = plan["waypoints"][target_index]
         remaining = math.hypot(x - target["x"], y - target["y"])
         context.tunnel_dynamic_result["last_position"] = {"x": x, "y": y}
+        if float(elapsed) - context.tunnel_dynamic_last_log_elapsed >= 1.0:
+            print(f"[TunnelDynamic] actor=({x:.2f},{y:.2f}) "
+                  f"remaining={remaining:.2f}m elapsed_since_spawn="
+                  f"{float(elapsed) - context.tunnel_dynamic_spawn_elapsed:.2f}s")
+            context.tunnel_dynamic_last_log_elapsed = float(elapsed)
         if remaining > plan["arrival_tolerance_m"]:
             return
-        if target_index == 1:
+        if target_index < len(plan["waypoints"]) - 1:
             try:
-                self._command(context, 2, target)
+                self._command(context, target_index + 1)
             except RuntimeError as error:
                 self._fail(context, error)
             print("[TunnelDynamic] reached B; B->C")
@@ -258,7 +339,8 @@ class TunnelDynamicHandler:
         context.tunnel_dynamic_phase = "completed"
         context.tunnel_dynamic_result.update(
             completed=True, completed_elapsed_sec=float(elapsed))
-        print("[TunnelDynamic] reached C; pedestrian removed")
+        print(f"[TunnelDynamic] reached final waypoint; pedestrian removed "
+              f"path={plan['path_id']}")
 
 
 TUNNEL_DYNAMIC_HANDLER = TunnelDynamicHandler()

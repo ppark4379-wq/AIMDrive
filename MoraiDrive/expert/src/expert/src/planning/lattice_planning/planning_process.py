@@ -77,6 +77,10 @@ class LatticePlanningProcess:
         self.recorded_static = (RecordedStaticPlanner(self.planner, background=True)
                                 if zone_bounds is None and zone_start == STATIC_OBSTACLE_ZONE_START
                                 else None)
+        from ..Jamming.recorded_planner import JammingPlanner
+        self.recorded_jamming = (JammingPlanner(background=True)
+                                 if zone_bounds is None and zone_start == STATIC_OBSTACLE_ZONE_START
+                                 else None)
         self.centerline_lattice = CenterlineLattice(map_data_dir)
 
         self.highway_zone_points = tuple(highway_zone_points or ())
@@ -97,11 +101,15 @@ class LatticePlanningProcess:
         """Enable scene-change replanning only for the interactive editor."""
         if self.recorded_static is not None:
             self.recorded_static.set_live_preview(enabled)
+        if self.recorded_jamming is not None:
+            self.recorded_jamming.set_live_preview(enabled)
 
     def set_static_editor_driving(self, enabled):
         """Commit the current editor route to normal Expert tracking."""
         if self.recorded_static is not None:
             self.recorded_static.set_live_drive(enabled)
+        if self.recorded_jamming is not None:
+            self.recorded_jamming.set_live_drive(enabled)
 
     def run(self, vehicle_state, reference_path, object_info_list, desired_velocity=None,
             prediction_path=None, global_path=None, ego_header_seq=None, ego_source_ns=None):
@@ -124,6 +132,13 @@ class LatticePlanningProcess:
             if self.highway_lane_planner is not None:
                 self.highway_lane_planner.reset()
             result = roundabout_result
+        elif self.recorded_jamming is not None and (jamming_result := self.recorded_jamming.run(
+                vehicle_state, reference_path, object_info_list, prediction_path, global_path,
+                desired_velocity=desired_velocity)) is not None:
+            self.static_avoidance.reset()
+            if self.highway_lane_planner is not None:
+                self.highway_lane_planner.reset()
+            result = jamming_result
         elif self.recorded_static is not None and (
                 (self.recorded_static.interactive_preview and (
                     self.recorded_static.active
@@ -557,6 +572,13 @@ class LatticePlanningProcess:
             print("[STATIC] {} offset={:+.2f}m target={:.1f}km/h".format(
                 result.reason, result.selected_offset, result.acc_target_velocity * 3.6
             ))
+            details = result.debug_details.get("static_avoidance", {})
+            if details.get("error") or result.reason == "static_recorded_no_complete_route":
+                print("[STATIC_FAILURE] reason={} error={} search={} rejections={} "
+                      "tracking_error_m={} heading_error_deg={}".format(
+                          result.reason, details.get("error"), details.get("corridor_search"),
+                          details.get("search_rejections"), details.get("tracking_error_m"),
+                          details.get("heading_error_deg")))
         elif result.acc_override:
             ttc_text = "inf" if result.ttc == float("inf") else "{:.2f}s".format(result.ttc)
             print(

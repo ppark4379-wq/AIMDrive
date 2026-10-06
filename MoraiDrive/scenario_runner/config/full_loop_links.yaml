@@ -1129,6 +1129,18 @@ full_loop:
             - {x: -13.882, y: -515.447, z: 28.449}  # A
             - {x: -18.296, y: -517.834, z: 28.449}  # B
             - {x: -20.429, y: -513.871, z: 28.449}  # C
+      # Offline straight-path candidates. s is measured from checkpoint 14;
+      # positive d is left of the official route heading. Every path starts
+      # as a candidate and needs a live MORAI review before approval.
+      candidate_catalog:
+        positions_from_entry_m: [25.0, 40.0, 55.0]
+        endpoint_margin_m: 10.0
+        side_offset_m: 2.5
+        straight_length_m: 15.0
+        cross_delta_s_m: 3.0
+        diagonal_delta_s_m: 8.0
+        approved_ids: []
+        disabled_ids: []
       # Same direction and lane as Ego. A long initial gap prevents a
       # close-range pop-in before the one-time sudden-brake event.
       npc_route_links:

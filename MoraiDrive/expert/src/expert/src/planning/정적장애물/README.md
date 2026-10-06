@@ -80,9 +80,12 @@ Ubuntu 20.04 WSL 터미널에서 실행:
 cd /mnt/c/Users/dydwn/AIMDrive/MoraiDrive/expert
 source /opt/ros/noetic/setup.bash
 source devel/setup.bash
-/usr/bin/python3 record_static_route.py --check
-/usr/bin/python3 record_static_route.py straight
+/usr/bin/python3 record_static_route.py --section static --check
+/usr/bin/python3 record_static_route.py --section static straight
 ```
+
+기록기의 기본 구간은 [Jamming](../Jamming/README.md)입니다. 기존 정적장애물
+구간을 기록할 때는 위와 같이 `--section static`을 지정합니다.
 
 정지선 부근에서 Enter를 눌러 기록을 시작합니다. 장애물을 지나 전역경로에
 복귀한 곳까지 직접 운전하고 Ctrl+C 한 번으로 저장합니다. 같은 시작점에서

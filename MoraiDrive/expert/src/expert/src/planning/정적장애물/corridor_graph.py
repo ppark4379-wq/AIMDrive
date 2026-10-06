@@ -33,6 +33,12 @@ def search_recordings(owner, ego, obstacles, connector):
     if goal <= start:
         return None
     levels = np.unique(np.r_[np.arange(start, goal, 3.), goal])
+    # Each route/level state is reused by many edges. Evaluate the splines
+    # once in batches, retaining the exact same positions and derivatives.
+    states = [np.column_stack((levels, curve(levels), curve(levels, 1), curve(levels, 2)))
+              for curve in owner.curves]
+    goal_state = owner._state(owner.global_curve, goal)
+    expanded = checked = 0
     source = (-1, 0)
     queue, costs, previous = [(goal-start, 0., source)], {source: 0.}, {}
     while queue and time.monotonic()-begin < getattr(owner, 'recording_search_timeout', 2.):
@@ -40,6 +46,7 @@ def search_recordings(owner, ego, obstacles, connector):
         if cost != costs[node]:
             continue
         route_id, level = node
+        expanded += 1
         if level == len(levels)-1:
             pieces, names = [], []
             while node != source:
@@ -52,9 +59,10 @@ def search_recordings(owner, ego, obstacles, connector):
                 return None
             owner.selected_names = list(dict.fromkeys(reversed(names)))
             owner.search_details = dict(method='recorded_connections', status='complete',
-                                        elapsed_s=time.monotonic()-begin)
+                                        elapsed_s=time.monotonic()-begin,
+                                        expanded=expanded, checked_edges=checked)
             return np.vstack([pieces[0]]+[p[1:] for p in pieces[1:]]+[tail[1:]])
-        a = owner._state(owner.curves[route_id], levels[level]) if route_id >= 0 else (
+        a = states[route_id][level] if route_id >= 0 else (
             start, ego.position.x, math.cos(ego.yaw)/max(.5, math.sin(ego.yaw)), 0.)
         for advance in (1, 2, 3, 4):
             target_level = level+advance
@@ -63,7 +71,7 @@ def search_recordings(owner, ego, obstacles, connector):
             for target_id, curve in enumerate(owner.curves):
                 if (target_level == len(levels)-1 and getattr(owner, 'require_goal_alignment', False)
                         and any(abs(a-b) > 1e-5 for a, b in zip(
-                            owner._state(curve, goal)[1:], owner._state(owner.global_curve, goal)[1:]))):
+                            states[target_id][-1][1:], goal_state[1:]))):
                     continue
                 if route_id == target_id and advance != 1:
                     continue
@@ -71,7 +79,8 @@ def search_recordings(owner, ego, obstacles, connector):
                 penalty = 1.5 if route_id >= 0 and route_id != target_id else 0.
                 if cost+levels[target_level]-levels[level]+penalty >= costs.get(target, float('inf')):
                     continue
-                transfer = curve if route_id == target_id else connector(a, owner._state(curve, levels[target_level]))
+                transfer = curve if route_id == target_id else connector(a, states[target_id][target_level])
+                checked += 1
                 edge = owner._edge(transfer, levels[level], levels[target_level], obstacles)
                 if edge is None:
                     continue
@@ -79,6 +88,10 @@ def search_recordings(owner, ego, obstacles, connector):
                 if new_cost < costs.get(target, float('inf')):
                     costs[target], previous[target] = new_cost, (node, edge)
                     heapq.heappush(queue, (new_cost+HEURISTIC_WEIGHT*(goal-levels[target_level]), new_cost, target))
+    owner.search_details = dict(method='recorded_connections',
+                                status='timeout' if queue else 'blocked',
+                                elapsed_s=time.monotonic()-begin,
+                                expanded=expanded, checked_edges=checked)
     return None
 
 

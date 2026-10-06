@@ -65,6 +65,7 @@ class TunnelDynamicTest(unittest.TestCase):
         grpc.get_available_pedestrian_models.return_value = ["Man1"]
         grpc.spawn_pedestrian.return_value = actor
         grpc.control_pedestrian.return_value = True
+        grpc.set_pedestrian_waypoint.return_value = True
         context = SimpleNamespace(
             cfg={"tunnel_dynamic": {
                 "enabled": True, "model": "Man1", "path_id": "walk_then_cross",
@@ -101,7 +102,13 @@ class TunnelDynamicTest(unittest.TestCase):
         self.assertEqual(context.tunnel_dynamic_phase, "completed")
         self.assertTrue(context.tunnel_dynamic_result["completed"])
         self.assertEqual(context.grpc.spawn_pedestrian.call_count, 1)
-        self.assertEqual(context.grpc.control_pedestrian.call_count, 3)
+        self.assertEqual(context.grpc.set_pedestrian_waypoint.call_count, 2)
+        context.grpc.set_pedestrian_waypoint.assert_any_call(
+            actor, 50.0, 2.0, 0.0, 1.5)
+        context.grpc.set_pedestrian_waypoint.assert_any_call(
+            actor, 50.0, -2.0, 0.0, 1.5)
+        context.grpc.control_pedestrian.assert_called_once_with(
+            actor, 0.0, 0.0, 0.0)
         actor.destroy.assert_called_once()
         self.assertEqual(context.scenario_actors, [])
 
@@ -123,6 +130,92 @@ class TunnelDynamicTest(unittest.TestCase):
         self.assertEqual(context.tunnel_dynamic_phase, "failed")
         actor.destroy.assert_called_once()
         self.assertEqual(context.scenario_actors, [])
+
+    def test_explicit_straight_candidate_uses_native_yaw_and_velocity(self):
+        context, actor = self.make_route_context()
+        context.cfg["tunnel_dynamic"].update(
+            trial_candidate_id="straight_same_direction_01",
+            trial_trigger_before_start_m=10.0,
+        )
+        context.route_definition["zones"]["tunnel"]["candidate_catalog"] = {
+            "positions_from_entry_m": [25.0],
+            "endpoint_margin_m": 10.0,
+            "side_offset_m": 2.5,
+            "straight_length_m": 15.0,
+            "cross_delta_s_m": 3.0,
+            "diagonal_delta_s_m": 8.0,
+            "approved_ids": [],
+            "disabled_ids": [],
+        }
+        actor.get_actor_state.side_effect = [
+            SimpleNamespace(transform=SimpleNamespace(
+                location=SimpleNamespace(x=38.0, y=2.5))),
+            SimpleNamespace(transform=SimpleNamespace(
+                location=SimpleNamespace(x=50.0, y=2.5))),
+        ]
+        prepare_tunnel_dynamic(context)
+        self.assertEqual(context.tunnel_dynamic_plan["path_id"],
+                         "straight_same_direction_01")
+        self.assertEqual(context.tunnel_dynamic_plan["trigger_s"], 25.0)
+        arm_tunnel_dynamic(context)
+        update_tunnel_dynamic(context, 1.0, {}, 25.0)
+        context.grpc.spawn_pedestrian.assert_called_once()
+        spawn = context.grpc.spawn_pedestrian.call_args.kwargs
+        self.assertEqual(spawn["velocity"], 5.4)
+        self.assertEqual(spawn["active_dist"], 0.0)
+        self.assertEqual(spawn["move_dist"], 17.0)
+        self.assertTrue(spawn["start_action"])
+        context.grpc.make_transform.assert_called_once_with(35.0, 2.5, 0.0, 0.0)
+        context.grpc.spawn_pedestrian_with_waypoints.assert_not_called()
+        context.grpc.set_pedestrian_waypoint.assert_not_called()
+        update_tunnel_dynamic(context, 2.0, {}, 26.0)
+        self.assertEqual(context.tunnel_dynamic_phase, "moving")
+        update_tunnel_dynamic(context, 5.0, {}, 27.0)
+        self.assertEqual(context.tunnel_dynamic_phase, "completed")
+        actor.destroy.assert_called_once()
+
+    def test_implausible_candidate_jump_is_held_for_inspection(self):
+        context, actor = self.make_route_context()
+        context.cfg["tunnel_dynamic"].update(
+            trial_candidate_id="straight_same_direction_01",
+            trial_trigger_before_start_m=10.0,
+        )
+        context.route_definition["zones"]["tunnel"]["candidate_catalog"] = {
+            "positions_from_entry_m": [25.0],
+            "endpoint_margin_m": 10.0,
+            "side_offset_m": 2.5,
+            "straight_length_m": 15.0,
+            "cross_delta_s_m": 3.0,
+            "diagonal_delta_s_m": 8.0,
+        }
+        actor.get_actor_state.return_value = SimpleNamespace(
+            transform=SimpleNamespace(location=SimpleNamespace(x=50.0, y=2.5)))
+        prepare_tunnel_dynamic(context)
+        arm_tunnel_dynamic(context)
+        update_tunnel_dynamic(context, 1.0, {}, 25.0)
+        update_tunnel_dynamic(context, 1.1, {}, 25.0)
+        self.assertEqual(context.tunnel_dynamic_phase, "diagnostic_hold")
+        self.assertEqual(context.tunnel_dynamic_result["failure_reason"],
+                         "implausible_pedestrian_jump")
+        actor.destroy.assert_not_called()
+        update_tunnel_dynamic(context, 25.0, {}, 25.0)
+        actor.destroy.assert_not_called()
+
+    def test_disabled_candidate_cannot_spawn(self):
+        context, _ = self.make_route_context()
+        context.cfg["tunnel_dynamic"]["trial_candidate_id"] = "straight_same_direction_01"
+        context.route_definition["zones"]["tunnel"]["candidate_catalog"] = {
+            "positions_from_entry_m": [25.0],
+            "endpoint_margin_m": 10.0,
+            "side_offset_m": 2.5,
+            "straight_length_m": 15.0,
+            "cross_delta_s_m": 3.0,
+            "diagonal_delta_s_m": 8.0,
+            "disabled_ids": ["straight_same_direction_01"],
+        }
+        with self.assertRaisesRegex(RuntimeError, "disabled"):
+            prepare_tunnel_dynamic(context)
+        context.grpc.spawn_pedestrian.assert_not_called()
 
 
 if __name__ == "__main__":

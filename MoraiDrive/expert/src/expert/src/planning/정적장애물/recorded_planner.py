@@ -11,6 +11,7 @@ import math
 from pathlib import Path
 import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 
 import numpy as np
 from scipy.interpolate import CubicHermiteSpline, CubicSpline, UnivariateSpline
@@ -47,17 +48,39 @@ ALIGNMENT_FULL_CROSS_TRACK_ERROR = .25 # 경로 횡오차에 따른 최대 감�
 ALIGNMENT_PREVIEW = 3.0               # 추종 제어에 전달할 전방 최대 곡률을 조회하는 경로 길이 [m]
 
 
-def load_routes(root=ROOT):
+@dataclass(frozen=True)
+class RecordedRouteGeometry:
+    """Section coordinates in the planner's forward-Y frame.
+
+    Defaults preserve the original northbound static-obstacle section.
+    A rotated section changes geometry only, never collision/speed policies.
+    """
+    rejoin_point: tuple = GLOBAL_REJOIN_POINT
+    active_x: tuple = (-65., -44.)
+    active_start_y: float = -164.
+    reset_y: float = -158.
+    entry_y: float = p.STATIC_PREPLAN_ENTRY_Y
+    route_x: tuple = (-65., -54.)
+    route_y: tuple = (-180., -85.)
+    obstacle_x: tuple = (-75., -40.)
+    tail_length: float = 10.
+
+
+def load_routes(root=ROOT, directory="후보전역경로", transform=None):
     names = json.loads((root / "routes.json").read_text(encoding="utf-8"))["routes"]
     routes, report = [], []
     for name in names:
         if Path(name).name != name or not name.endswith(".csv"):
             raise ValueError("Invalid recording filename")
-        with (root / "\ud6c4\ubcf4\uc804\uc5ed\uacbd\ub85c" / name).open(encoding="utf-8-sig", newline="") as stream:
+        with (root / directory / name).open(encoding="utf-8-sig", newline="") as stream:
             rows = list(csv.DictReader(stream))
         data = np.array([[float(r[k]) for k in ("x", "y", "yaw_rad")] for r in rows])
         if len(data) < 10 or not np.isfinite(data).all():
             raise ValueError(name + ": insufficient or non-finite data")
+        if transform is not None:
+            data = transform(name, data)
+            if len(data) < 10 or not np.isfinite(data).all():
+                raise ValueError(name + ": insufficient or non-finite section data")
         delta = np.diff(data[:, :2], axis=0)
         distance = np.linalg.norm(delta, axis=1)
         forward = delta[:, 0] * np.cos(data[:-1, 2]) + delta[:, 1] * np.sin(data[:-1, 2])
@@ -105,8 +128,9 @@ def connector(a, b):
 
 
 class RecordedStaticPlanner:
-    def __init__(self, planner, root=ROOT, background=False):
+    def __init__(self, planner, root=ROOT, background=False, geometry=None):
         self.planner = planner
+        self.geometry = geometry or RecordedRouteGeometry()
         self.executor = ThreadPoolExecutor(max_workers=1) if background else None
         self.pending = None
         self.error = None
@@ -122,11 +146,19 @@ class RecordedStaticPlanner:
         self._live_preview_ego_pose = None
         self.preview_ego_on_route = False
         try:
-            self.records, self.audit = load_routes(root)
+            self.records, self.audit = self._load_routes(root)
         except (OSError, ValueError, KeyError) as exc:
             self.records, self.audit = [], []
             self.error = str(exc)
         self.reset()
+
+    def _load_routes(self, root):
+        return load_routes(root)
+
+    def _global_route_section(self, points):
+        g = self.geometry
+        return [v for v in points if g.route_y[0] < v.y < g.route_y[1]
+                and g.route_x[0] < v.x < g.route_x[1]]
 
     def reset(self):
         if self.pending is not None:
@@ -150,6 +182,7 @@ class RecordedStaticPlanner:
         self.handoff_y = None
         self.return_start_y = None
         self.search_details = {}
+        self._center_bounds_cache = {}
         self.recovery_until_y = None
         self.recovery_count = 0
         self.heading_error = 0.
@@ -230,8 +263,8 @@ class RecordedStaticPlanner:
         self._live_preview_obstacle_key = obstacle_key
         self._live_preview_ego_pose = ego_pose
         self.preview_ego_on_route = (
-            -65 < ego.position.x < -44
-            and -164 < ego.position.y < GLOBAL_REJOIN_POINT[1]
+            self.geometry.active_x[0] < ego.position.x < self.geometry.active_x[1]
+            and self.geometry.active_start_y < ego.position.y < self.geometry.rejoin_point[1]
             and math.sin(ego.yaw) > .5
         )
         return changed
@@ -242,11 +275,12 @@ class RecordedStaticPlanner:
         The worker owns its geometry/state. A reset or a changed GT snapshot
         cannot let an obsolete worker overwrite the live planner.
         """
-        if self.done and ego.position.y < p.STATIC_PREPLAN_ENTRY_Y and -65 < ego.position.x < -44:
+        g = self.geometry
+        if self.done and ego.position.y < g.entry_y and g.active_x[0] < ego.position.x < g.active_x[1]:
             self.reset()
         if self.executor is None or self.active or self.done or self.error:
             return
-        if ego.position.y >= p.STATIC_PREPLAN_ENTRY_Y and self.contains(ego):
+        if ego.position.y >= g.entry_y and self.contains(ego):
             return  # A late start is planned from the measured pose by plan().
         if not obstacles:
             return
@@ -259,13 +293,13 @@ class RecordedStaticPlanner:
             self.pending = None
         if time.monotonic()-self.last_attempt < 1.:
             return
-        route = [point for point in global_path if -180 < point.y < -85 and -65 < point.x < -54]
+        route = self._global_route_section(global_path)
         if len(route) < 10:
             return
         xy = np.array(route)
         xy = xy[np.r_[True, np.diff(xy[:, 1]) > .01]]
-        y = p.STATIC_PREPLAN_ENTRY_Y
-        if np.any(np.diff(xy[:, 1]) <= 0) or xy[0, 1] > y or xy[-1, 1] < GLOBAL_REJOIN_POINT[1]+10.:
+        y = g.entry_y
+        if np.any(np.diff(xy[:, 1]) <= 0) or xy[0, 1] > y or xy[-1, 1] < g.rejoin_point[1]+g.tail_length:
             return
         curve = CubicSpline(xy[:, 1], xy[:, 0], bc_type='natural')
         entry = VehicleState(float(curve(y)), y, math.atan2(1., float(curve(y, 1))), 0.)
@@ -284,9 +318,10 @@ class RecordedStaticPlanner:
 
     def approach_result(self, ego, reference_path):
         """Brake for a known entry bend before reaching the lateral handoff."""
+        g = self.geometry
         if (self.pending is None or not self.pending.done() or not self.preplanned
-                or not -65 < ego.position.x < -44 or math.sin(ego.yaw) <= .5
-                or not 0. <= p.STATIC_PREPLAN_ENTRY_Y-ego.position.y <= 100.):
+                or not g.active_x[0] < ego.position.x < g.active_x[1] or math.sin(ego.yaw) <= .5
+                or not 0. <= g.entry_y-ego.position.y <= 100.):
             return None
         try:
             worker = self.pending.result()
@@ -295,7 +330,7 @@ class RecordedStaticPlanner:
         if not worker.path:
             return None
         entry_limit, _ = worker._curve_speed_limit(worker.path)
-        distance = max(0., p.STATIC_PREPLAN_ENTRY_Y-ego.position.y-p.STATIC_SPEED_PREVIEW)
+        distance = max(0., g.entry_y-ego.position.y-p.STATIC_SPEED_PREVIEW)
         speed = math.sqrt(entry_limit**2+2*p.STATIC_END_DECELERATION*distance)
         return LatticePlanningResult(reference_path, mode='static_obstacle',
             acc_target_velocity=speed, reason='static_recorded_approach',
@@ -383,27 +418,28 @@ class RecordedStaticPlanner:
         return bool(self.path)
 
     def contains(self, ego):
-        if self.done and ego.position.y < -158:
+        g = self.geometry
+        if self.done and ego.position.y < g.reset_y:
             self.reset()
-        return (not self.done and -65 < ego.position.x < -44
-                and -164 < ego.position.y < GLOBAL_REJOIN_POINT[1] and math.sin(ego.yaw) > 0.5)
+        return (not self.done and g.active_x[0] < ego.position.x < g.active_x[1]
+                and g.active_start_y < ego.position.y < g.rejoin_point[1] and math.sin(ego.yaw) > 0.5)
 
     def past_rejoin(self, ego):
-        threshold = self.handoff_y if self.done and self.handoff_y is not None else GLOBAL_REJOIN_POINT[1]
+        threshold = self.handoff_y if self.done and self.handoff_y is not None else self.geometry.rejoin_point[1]
         return (ego.position.y >= threshold
-                and abs(ego.position.x-GLOBAL_REJOIN_POINT[0]) <= 3.
+                and abs(ego.position.x-self.geometry.rejoin_point[0]) <= 3.
                 and math.sin(ego.yaw) > .5)
 
     def _setup(self, global_path, ego):
-        points = np.array([(v.x, v.y) for v in global_path
-                           if -180 < v.y < -85 and -65 < v.x < -54])
+        self._center_bounds_cache = {}
+        points = np.array([(v.x, v.y) for v in self._global_route_section(global_path)])
         if len(points) < 10:
             raise ValueError("global return path unavailable")
         points = points[np.r_[True, np.diff(points[:, 1]) > 0.01]]
         if np.any(np.diff(points[:, 1]) <= 0):
             raise ValueError("global return path is not forward")
-        self.rejoin_y = GLOBAL_REJOIN_POINT[1]
-        self.goal_y = self.rejoin_y + 10.0
+        self.rejoin_y = self.geometry.rejoin_point[1]
+        self.goal_y = self.rejoin_y + self.geometry.tail_length
         if points[-1, 1] < self.goal_y:
             raise ValueError("global preview ends before complete return")
         self.route = list(global_path)
@@ -471,8 +507,17 @@ class RecordedStaticPlanner:
         return bool(np.all(self._envelope_mask(xy, yaw, body_margin)))
 
     def _envelope_mask(self, xy, yaw, body_margin=0.):
-        centers = np.array([c(xy[:, 1]) for c in self.curves + [self._global_return_corridor]])
-        valid = (xy[:, 0] >= centers.min(axis=0)-.15) & (xy[:, 0] <= centers.max(axis=0)+.15)
+        # Many graph edges share identical longitudinal samples. Cache exact
+        # curve bounds for those samples; do not interpolate or widen them.
+        key = (len(xy), xy[:, 1].tobytes())
+        bounds = self._center_bounds_cache.get(key)
+        if bounds is None:
+            centers = np.array([c(xy[:, 1]) for c in self.curves + [self._global_return_corridor]])
+            bounds = (centers.min(axis=0)-.15, centers.max(axis=0)+.15)
+            if len(self._center_bounds_cache) >= 256:
+                self._center_bounds_cache.clear()
+            self._center_bounds_cache[key] = bounds
+        valid = (xy[:, 0] >= bounds[0]) & (xy[:, 0] <= bounds[1])
         for along in (-body_margin, self.planner.vehicle_length+body_margin):
             for side in (-self.planner.vehicle_half_width-body_margin, self.planner.vehicle_half_width+body_margin):
                 x = xy[:, 0] + along*np.cos(yaw) - side*np.sin(yaw)
@@ -493,7 +538,8 @@ class RecordedStaticPlanner:
         start_min = max(float(complete[0, 1])+1., self.rejoin_y-RETURN_WINDOW)
         # The rear of the car must already have cleared the local static cluster.
         for obj in obstacles:
-            if -75 < obj.position.x < -40 and complete[0, 1] <= obj.position.y < self.rejoin_y:
+            if (self.geometry.obstacle_x[0] < obj.position.x < self.geometry.obstacle_x[1]
+                    and complete[0, 1] <= obj.position.y < self.rejoin_y):
                 radius = .5*math.hypot(max(obj.size_x, 1.), max(obj.size_y, 1.))
                 start_min = max(start_min, obj.position.y+radius+self.planner.collision_margin+.2)
         options = []
@@ -804,6 +850,8 @@ class RecordedStaticPlanner:
                 preview_ego_on_route=self.preview_ego_on_route,
                 selected_routes=self.selected_names, recording_audit=self.audit, error=error,
                 corridor_search=dict(self.search_details),
+                search_rejections=dict(self.rejections),
+                search_progress=self.search_progress,
                 heading_error_deg=math.degrees(self.heading_error), tracking_error_m=self.tracking_error,
                 cross_track_error_m=self.cross_track_error, alignment_slow=self.alignment_slow,
                 preview_curvature=preview_curvature, speed_policy_reason=speed_reason,
@@ -841,6 +889,12 @@ class RecordedStaticPlanner:
                 self.pending = None
                 self.last_attempt = time.monotonic()
                 if not worker.path:
+                    # Keep the failed worker's evidence through subsequent
+                    # retries without adopting its geometry or an unsafe path.
+                    self.search_details = dict(worker.search_details)
+                    self.rejections = dict(worker.rejections)
+                    self.search_progress = worker.search_progress
+                    self.plan_count = worker.plan_count
                     return self._result(reference_path, False, "no_complete_route")
                 # All adopted lambdas close over the isolated completed worker.
                 for name, value in vars(worker).items():

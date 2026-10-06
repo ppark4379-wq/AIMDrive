@@ -1,0 +1,140 @@
+{
+  "routes": [
+    "jamming_01.csv",
+    "jamming_02.csv",
+    "jamming_03.csv",
+    "jamming_04.csv",
+    "jamming_05.csv",
+    "jamming_06.csv",
+    "jamming_07.csv",
+    "jamming_08.csv",
+    "jamming_09.csv"
+  ],
+  "directory": "공통종료선 경로",
+  "source_directory": "후보 전역경로",
+  "common_end_forward_m": 125.89877633299514,
+  "requested_end_enu": [
+    -80.1,
+    -546.66
+  ],
+  "requested_end_forward_m": 126.70920792010043,
+  "actual_end_before_requested_m": 0.8104315871052847,
+  "common_end_center_enu": [
+    -79.7800224509332,
+    -545.5343704045151
+  ],
+  "forward_unit_enu": [
+    -0.8832494301359645,
+    -0.46890344865920364
+  ],
+  "audit": [
+    {
+      "name": "jamming_01.csv",
+      "source_sha256": "84aecb3c7ec9cf8b92cdc9d56f14cd65a87855ca5bb1ef55210e334da0e8f2e7",
+      "source_points": 547,
+      "prepared_points": 533,
+      "discarded_tail_points": 14,
+      "end_enu": [
+        -80.13606836153274,
+        -544.8637049433449,
+        28.781110755998956
+      ]
+    },
+    {
+      "name": "jamming_02.csv",
+      "source_sha256": "aecee51f68b21deed4b24e1badf6a7a1b3733edbc5201b44cc4fa47e71f1f6a9",
+      "source_points": 539,
+      "prepared_points": 534,
+      "discarded_tail_points": 5,
+      "end_enu": [
+        -79.9690240292662,
+        -545.1783578035527,
+        28.783448465923456
+      ]
+    },
+    {
+      "name": "jamming_03.csv",
+      "source_sha256": "f0f4dba0bf389846445b654b6fc626aebae0ec0cb6b3eb60662a62d22f1659be",
+      "source_points": 434,
+      "prepared_points": 428,
+      "discarded_tail_points": 6,
+      "end_enu": [
+        -79.24643020727791,
+        -546.5394708073403,
+        28.827186533365975
+      ]
+    },
+    {
+      "name": "jamming_04.csv",
+      "source_sha256": "5dd2e88b8acdd15c4c98502765c4cc5337697cb3e0fddbd15eb990d45856a604",
+      "source_points": 415,
+      "prepared_points": 414,
+      "discarded_tail_points": 1,
+      "end_enu": [
+        -78.83950805664062,
+        -547.3059692382812,
+        28.803022384643555
+      ]
+    },
+    {
+      "name": "jamming_05.csv",
+      "source_sha256": "daaa732edc77ef7d556cd0b919735df66e253af407778c129dc1d0cd28c7cb20",
+      "source_points": 468,
+      "prepared_points": 454,
+      "discarded_tail_points": 14,
+      "end_enu": [
+        -78.58100660052116,
+        -547.7928952023783,
+        28.797847353892852
+      ]
+    },
+    {
+      "name": "jamming_06.csv",
+      "source_sha256": "e3a160b6ff89af3df978ef1550926c0da3f8b5b711dc8bd7b5b9b0b5d33a2463",
+      "source_points": 509,
+      "prepared_points": 505,
+      "discarded_tail_points": 4,
+      "end_enu": [
+        -78.1803521154976,
+        -548.5475875523501,
+        28.801954637542323
+      ]
+    },
+    {
+      "name": "jamming_07.csv",
+      "source_sha256": "0fb9bd0007f1bda906c754c55f714f9c8f89a181ce60032910825ed718ccf435",
+      "source_points": 424,
+      "prepared_points": 402,
+      "discarded_tail_points": 22,
+      "end_enu": [
+        -77.51351336476958,
+        -549.8036775816669,
+        28.84164369837122
+      ]
+    },
+    {
+      "name": "jamming_08.csv",
+      "source_sha256": "f86825dbbdcae4545fecbd5c6277282162a2d2ca1120ead1c92af8105dced70f",
+      "source_points": 521,
+      "prepared_points": 507,
+      "discarded_tail_points": 14,
+      "end_enu": [
+        -76.8847460340451,
+        -550.9880544254255,
+        28.838087934227786
+      ]
+    },
+    {
+      "name": "jamming_09.csv",
+      "source_sha256": "435fc27889e3a52a95caa4d3b66a5b0e9dd26a47fc2179efa7608dd9147b4f45",
+      "source_points": 511,
+      "prepared_points": 505,
+      "discarded_tail_points": 6,
+      "end_enu": [
+        -76.97429724434352,
+        -550.8193713933638,
+        28.81028455837884
+      ]
+    }
+  ]
+}

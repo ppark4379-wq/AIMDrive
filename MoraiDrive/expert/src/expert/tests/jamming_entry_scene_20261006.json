@@ -1,0 +1,94 @@
+{
+    "ego":  [
+                31.44,
+                -486.36,
+                -2.5422465884549403,
+                0
+            ],
+    "objects":  [
+                    {
+                        "group":  "obstacle_list",
+                        "x":  23.293834686279297,
+                        "y":  -491.6062316894531,
+                        "velocity":  0.0,
+                        "object_type":  2,
+                        "is_static":  true,
+                        "size_x":  0.49000000953674316,
+                        "size_y":  0.49000000953674316,
+                        "heading_deg":  -89.99935913085938
+                    },
+                    {
+                        "group":  "obstacle_list",
+                        "x":  1.125741958618164,
+                        "y":  -507.80523681640625,
+                        "velocity":  0.0,
+                        "object_type":  2,
+                        "is_static":  true,
+                        "size_x":  0.75,
+                        "size_y":  0.75,
+                        "heading_deg":  -89.98355102539062
+                    },
+                    {
+                        "group":  "obstacle_list",
+                        "x":  0.823786199092865,
+                        "y":  -509.3263854980469,
+                        "velocity":  0.0,
+                        "object_type":  2,
+                        "is_static":  true,
+                        "size_x":  0.75,
+                        "size_y":  0.75,
+                        "heading_deg":  -89.9930419921875
+                    },
+                    {
+                        "group":  "obstacle_list",
+                        "x":  -8.21386432647705,
+                        "y":  -509.5643310546875,
+                        "velocity":  0.0,
+                        "object_type":  2,
+                        "is_static":  true,
+                        "size_x":  0.75,
+                        "size_y":  0.75,
+                        "heading_deg":  -90.01107788085938
+                    },
+                    {
+                        "group":  "obstacle_list",
+                        "x":  -9.022429466247559,
+                        "y":  -508.3244934082031,
+                        "velocity":  0.0,
+                        "object_type":  2,
+                        "is_static":  true,
+                        "size_x":  0.75,
+                        "size_y":  0.75,
+                        "heading_deg":  -65.6162109375
+                    },
+                    {
+                        "group":  "obstacle_list",
+                        "x":  -33.82118225097656,
+                        "y":  -524.185791015625,
+                        "velocity":  0.0,
+                        "object_type":  2,
+                        "is_static":  true,
+                        "size_x":  0.49000000953674316,
+                        "size_y":  0.49000000953674316,
+                        "heading_deg":  -89.99969482421875
+                    },
+                    {
+                        "group":  "obstacle_list",
+                        "x":  -33.959102630615234,
+                        "y":  -525.2647094726562,
+                        "velocity":  0.0,
+                        "object_type":  2,
+                        "is_static":  true,
+                        "size_x":  0.49000000953674316,
+                        "size_y":  0.49000000953674316,
+                        "heading_deg":  -89.99969482421875
+                    }
+                ],
+    "approach_ego":  [
+                         39.86911392211914,
+                         -480.0331115722656,
+                         -2.5309215598352446,
+                         0.0
+                     ],
+    "ego_source":  "Stopped pose from driving_debug_20261006_215351_pid2183.log; obstacle GT captured via read-only ROS subscriber"
+}
