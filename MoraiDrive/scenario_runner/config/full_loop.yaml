@@ -471,6 +471,11 @@ scenarios:
           start_link: {id: A2256W000175, point_idx: 78}
           end_link: {id: A2256W000422, point_idx: 59}
 
+    # Tunnel pedestrian crossing scaffold. Enable after its placement and
+    # lifecycle handler have been validated in MORAI.
+    tunnel_dynamic:
+      enabled: false
+
     tunnel_sudden_brake:
       enabled: true
       # The model is inherited from highway_npc.model.

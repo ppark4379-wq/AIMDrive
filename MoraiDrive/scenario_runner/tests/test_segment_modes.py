@@ -304,6 +304,16 @@ class MissionModesTest(unittest.TestCase):
         scenario.grpc.start_world.assert_not_called()
         scenario.grpc.spawn_vehicle.assert_not_called()
 
+    def test_tunnel_dynamic_without_validated_handler_fails_before_world_start(self):
+        scenario = self.make_scenario("full_loop_normal")
+        scenario.cfg["tunnel_dynamic"] = {"enabled": True}
+        with redirect_stdout(io.StringIO()), self.assertRaisesRegex(
+            RuntimeError, "Tunnel dynamic obstacle has no validated placement"
+        ):
+            scenario.setup()
+        scenario.grpc.start_world.assert_not_called()
+        scenario.grpc.spawn_pedestrian.assert_not_called()
+
     def test_each_setup_spawns_only_selected_zone(self):
         for name, mode in MISSION_MODES.items():
             with self.subTest(name=name):

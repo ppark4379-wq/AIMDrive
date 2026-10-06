@@ -17,6 +17,7 @@ from .full_loop_parts import (
     static_obstacle,
     traffic_light_override,
     tunnel,
+    tunnel_dynamic,
     vehicle_common,
 )
 
@@ -97,6 +98,7 @@ class FullLoopScenario(FullLoopDriveBase):
 
         self.route_definition = self.load_route_definition()
         self.prepare_full_loop_route()
+        tunnel_dynamic.prepare_tunnel_dynamic(self)
         traffic_light_override.prepare(self)
         self.profile_index, self.profile, self.previous_profile_state = self.select_profile()
         self.scenario_hour = self.select_scenario_hour()
@@ -123,7 +125,10 @@ class FullLoopScenario(FullLoopDriveBase):
                 self.spawn_dynamic_obstacle()
                 self.spawn_roundabout_npcs()
                 self.spawn_highway_npcs()
-                self.arm_tunnel_sudden_brake()
+                if self.tunnel_dynamic_handler is None:
+                    self.arm_tunnel_sudden_brake()
+                else:
+                    tunnel_dynamic.arm_tunnel_dynamic(self)
             self.configure_drive_with_retries()
             self.persist_profile_state()
         except Exception:
@@ -250,7 +255,10 @@ class FullLoopScenario(FullLoopDriveBase):
             and current_s >= self.highway_exit_s
         ):
             self.deactivate_highway_npcs(current_s)
-        self.update_tunnel_sudden_brake(elapsed, ego_state, current_s)
+        if self.tunnel_dynamic_handler is None:
+            self.update_tunnel_sudden_brake(elapsed, ego_state, current_s)
+        else:
+            tunnel_dynamic.update_tunnel_dynamic(self, elapsed, ego_state, current_s)
 
     def run_timeline(self):
         try:
