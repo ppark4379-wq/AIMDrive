@@ -18,6 +18,11 @@ from .expert_instructions import (apply_expert_instructions,
 from .expert_static_phase import attach_static_phase
 from .expert_roundabout_phase import build_roundabout_observations
 from .mapper import attach_rule_instructions
+from .consistency import (HIGHWAY_KEEP_FOLLOW_IDS, HIGHWAY_MAX_ISLAND_FRAMES,
+                          align_highway_lane_changes, align_static_avoidance,
+                          drop_contradicted_instructions,
+                          fill_short_instruction_gaps, hold_dynamic_wait_until_moving,
+                          smooth_short_instruction_islands, use_stopped_roundabout_sentences)
 
 
 FEATURE_NAMES = ("forward_m", "left_m", "actor_width_m", "actor_length_m",
@@ -228,7 +233,7 @@ def build_frame_features(episode, route, gt_dir="gt_timeline_v1",
         if admission.get("lidar_source_time_ns") != stamp:
             raise ValueError(f"source timestamp mismatch at frame {index}")
         row = {"index": index, "lidar_source_ns": stamp,
-               "ego_path_s_m": None, "ego_path_segment_index": None,
+               "ego_path_s_m": None, "ego_path_d_m": None, "ego_path_segment_index": None,
                "ego_speed_mps": None, "ego_speed_source": None,
                "ego_speed_invalid_reason": None, "zone_id": None,
                "ego_world_x_m": None, "ego_world_y_m": None,
@@ -252,9 +257,10 @@ def build_frame_features(episode, route, gt_dir="gt_timeline_v1",
         else:
             try:
                 current_xy = (float(xy[0]), float(xy[1]))
-                s, _, segment, _, _ = projector.project(*current_xy)
+                s, d, segment, _, _ = projector.project(*current_xy)
                 row["ego_world_x_m"], row["ego_world_y_m"] = current_xy
                 row["ego_path_s_m"] = s
+                row["ego_path_d_m"] = d
                 row["ego_path_segment_index"] = segment
                 row["zone_id"] = next((name for name, start, end in intervals
                                        if start <= segment <= end), None)
@@ -346,10 +352,20 @@ def main(argv=None):
     if args.expert_log is not None or roundabout_observations is not None:
         report["expert_instructions"] = apply_expert_instructions(
             frames, rules, args.episode, args.expert_log or [],
-            index_observations=roundabout_observations)
+            index_observations=roundabout_observations, objects=objects)
+    report["motion_alignment"] = {"static": align_static_avoidance(frames, rules),
+                                  "dynamic": hold_dynamic_wait_until_moving(frames, rules),
+                                  "highway": align_highway_lane_changes(frames, rules, objects)}
     report["instruction_mapping"] = attach_rule_instructions(rules)
     if args.expert_log is not None or roundabout_observations is not None:
         hold_roundabout_instruction_across_brief_tracking_gaps(rules)
+    report["instruction_gap_frames_filled"] = fill_short_instruction_gaps(rules)
+    report["instruction_island_frames_smoothed"] = (
+        smooth_short_instruction_islands(rules)
+        + smooth_short_instruction_islands(rules, HIGHWAY_MAX_ISLAND_FRAMES, "highway",
+                                           HIGHWAY_KEEP_FOLLOW_IDS))
+    report["roundabout_stopped_sentences"] = use_stopped_roundabout_sentences(frames, rules)
+    report["instruction_consistency"] = drop_contradicted_instructions(frames, rules)
     report["rules"] = summarize_rules(rules)
     report["rules"]["instruction_templates_applied"] = (
         any(row.get("instruction") is not None for row in rules))

@@ -31,6 +31,8 @@ def _command(root, run_dir, options):
         command = [str(python) if python.is_file() else sys.executable, str(helper), '--run-dir', str(run_dir)]
     command += ['--port', str(options.get('port', 8501)),
                 '--refresh', str(options.get('refresh_seconds', 2))]
+    if options.get('app') == 'situation':
+        command += ['--app', 'situation']
     if options.get('open_browser', True):
         command.append('--open-browser')
     return command
@@ -92,7 +94,7 @@ def _save_status(folder, state):
     pending.replace(folder / 'status.json')
 
 
-def start_server(run_dir, *, port=8501, refresh=2, open_browser=True):
+def start_server(run_dir, *, port=8501, refresh=2, open_browser=True, app='vldrive'):
     """Run in a disposable helper process on the same OS as the UI Python."""
     folder = Path(run_dir).resolve() / 'dashboard'
     folder.mkdir(parents=True, exist_ok=True)
@@ -100,9 +102,12 @@ def start_server(run_dir, *, port=8501, refresh=2, open_browser=True):
     try:
         if not 0 <= port <= 65535 or not 1 <= refresh <= 5:
             raise ValueError('dashboard port must be 0..65535 and refresh_seconds 1..5')
+        if app not in ('vldrive', 'situation'):
+            raise ValueError('Unknown dashboard app')
         port = _available_port(port)
         url = f'http://127.0.0.1:{port}'
-        command = [sys.executable, '-m', 'streamlit', 'run', str(Path(__file__).with_name('app.py')),
+        app_file = 'situation_app.py' if app == 'situation' else 'app.py'
+        command = [sys.executable, '-m', 'streamlit', 'run', str(Path(__file__).with_name(app_file)),
                    '--server.headless=true', '--server.address=127.0.0.1', f'--server.port={port}',
                    '--server.fileWatcherType=none', '--browser.gatherUsageStats=false', '--',
                    '--run-dir', str(Path(run_dir).resolve()), '--refresh', str(refresh)]
@@ -162,5 +167,6 @@ if __name__ == '__main__':
     parser.add_argument('--port', type=int, default=8501)
     parser.add_argument('--refresh', type=int, default=2)
     parser.add_argument('--open-browser', action='store_true')
+    parser.add_argument('--app', choices=('vldrive', 'situation'), default='vldrive')
     args = parser.parse_args()
-    start_server(args.run_dir, port=args.port, refresh=args.refresh, open_browser=args.open_browser)
+    start_server(args.run_dir, port=args.port, refresh=args.refresh, open_browser=args.open_browser, app=args.app)

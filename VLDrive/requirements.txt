@@ -14,6 +14,9 @@ numpy==1.26.4
 pillow
 opencv-python
 scikit-image
+# MORAI projected-map orientation and full-pose label conversion.
+scipy>=1.7
+pyproj>=3.4
 pyyaml
 tqdm
 

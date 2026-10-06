@@ -1,6 +1,7 @@
 """Input adapters for audited Sensor Record, legacy routes, and portable episodes."""
 import json
 import math
+from bisect import bisect_right
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -42,6 +43,50 @@ def json_array_items(path):
 
 def load(path):
     return json.loads(Path(path).read_text(encoding='utf-8-sig'))
+
+
+class CausalEgoSamples:
+    """Select one fresh past sample for both position and heading.
+
+    Signal-label interpolation audits are not localization availability checks.
+    Never interpolate with a future sample or combine XY and yaw from different
+    times. Route projection remains the downstream navigation engine's job.
+    """
+    max_age_ns = 50_000_000
+
+    def __init__(self, rows):
+        self.rows = sorted((dict(record_id=row['record_id'],
+                                source_timestamp_ns=row['source_timestamp_ns'],
+                                signal=row.get('signal') or {})
+                            for row in rows if row.get('role') == 'ego'
+                            and type(row.get('source_timestamp_ns')) is int
+                            and row['source_timestamp_ns'] >= 0),
+                           key=lambda row: (row['source_timestamp_ns'], row['record_id']))
+        self.times = [row['source_timestamp_ns'] for row in self.rows]
+
+    def at(self, stamp):
+        if type(stamp) is not int or stamp < 0:
+            raise ValueError('Scene source timestamp must be a nonnegative integer')
+        i = bisect_right(self.times, stamp) - 1
+        if i < 0:
+            return dict(valid=False, reason='missing_past_ego_sample')
+        row = self.rows[i]
+        age = stamp - row['source_timestamp_ns']
+        result = dict(valid=False, ego_signal_record_id=row['record_id'],
+                      pose_source_ns=row['source_timestamp_ns'], pose_age_ms=age / 1e6,
+                      pose_source='latest_past_ego')
+        if age > self.max_age_ns:
+            return dict(result, reason='stale_past_ego_sample')
+        signal = row['signal']
+        position, yaw = signal.get('position'), signal.get('yaw')
+        finite = lambda v: type(v) in (int, float) and math.isfinite(v)
+        if (not isinstance(position, (list, tuple)) or len(position) < 2
+                or not all(finite(v) for v in position[:2]) or not finite(yaw)):
+            return dict(result, reason='invalid_past_ego_pose')
+        result.update(valid=True, reason=None, x=float(position[0]), y=float(position[1]), yaw_rad=float(yaw))
+        if finite(signal.get('speed')):
+            result['speed_mps'] = float(signal['speed'])
+        return result
 
 
 def portable(path, policy):
@@ -111,47 +156,34 @@ def sensor_record(episode, config, policy=None):
         'route_signal_audit_v1/frames.json','gt_timeline_v1/frames.json','native_associations/associations.json')]
     if len({len(rows) for rows in timelines}) != 1:
         raise ValueError('Sensor Record timeline lengths disagree')
-    needed={i for row in timelines[0] for i in row.get('ego_source_record_ids',[])}
-    ego={}
     signal_path=episode/'quality/active_signals.json'
+    ego = CausalEgoSamples(json_array_items(signal_path) if signal_path.is_file() else [])
     if signal_path.is_file():
         from data.src.processing.build_instructions import sha256
-        for row in json_array_items(signal_path):
-            if row.get('record_id') in needed and row.get('role')=='ego': ego[row['record_id']]=row
         sources['ego_signals']={'path':str(signal_path),'sha256':sha256(signal_path)}
     frames = []
     for signal, gt, assoc in zip(*timelines):
         stamp = signal['sensor_source_ns']
         if stamp != gt['lidar_source_ns'] or stamp != assoc['scene_time_hypothesis_ns']:
             raise ValueError('Sensor Record scene timestamp mismatch')
-        xy = gt.get('ego_xy')
         frame = dict(index=signal['index'],sensor_source_ns=stamp,
-                     x=xy[0] if xy else 0,y=xy[1] if xy else 0,
-                     route_index=signal.get('route_index'),
-                     valid=bool(xy) and signal.get('route_index') is not None,
-                     reason='missing_audited_route_position',
+                     x=None, y=None, yaw_rad=None, route_index=None,
+                     audited_route_index=signal.get('route_index'),
+                     route_audit_reason=signal.get('reason'),
                      camera_files=assoc['camera_files'],lidar_file=assoc['lidar_file'],
                      native_filename_time_ns=assoc['native_filename_time_ns'])
-        if frame['valid']:
-            idx=frame['route_index']
-            # Original audit is still tied to exactly the verified map.
+        idx = signal.get('route_index')
+        if idx is not None:
+            # Retain the original map-integrity check when audit data exists.
+            # Do not reuse its interpolated route position as a causal hint.
             if (type(idx) is not int or not 0<=idx<len(point_links) or
                     signal['route_link_id'] != point_links[idx] or
                     signal['route_link_index'] != point_link_indices[idx]):
                 raise ValueError('Audited route link mismatch')
-            # Use a causal, fresh source sample for heading; do not estimate
-            # ego heading from the planned route or from a future trajectory.
-            candidates=[ego[i] for i in signal.get('ego_source_record_ids',[]) if i in ego and
-                        ego[i].get('source_timestamp_ns') is not None and
-                        0<=stamp-ego[i]['source_timestamp_ns']<=50_000_000]
-            if candidates:
-                current=max(candidates,key=lambda r:r['source_timestamp_ns'])
-                values=current.get('signal') or {}
-                if values.get('yaw') is not None: frame['yaw_rad']=float(values['yaw'])
-                if values.get('speed') is not None: frame['speed_mps']=float(values['speed'])
-                frame['ego_signal_record_id']=current['record_id']
+        frame.update(ego.at(stamp))
         frames.append(frame)
     return dict(schema='navigation-episode-v1', episode_id=episode.parent.name+'/'+episode.name,
+                pose_policy=dict(method='latest_past_ego_xy_yaw', max_age_ms=50., future_samples_used=False),
                 route=route,frames=frames,sources=sources,source_path=str(episode))
 
 

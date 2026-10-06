@@ -35,7 +35,7 @@ def world_target_to_local(target_xy, ego_xy, yaw, axes=WAYPOINT_AXES):
     return out
 
 
-def sensor_record_encoder_contract(adapter_configs, velocity_source):
+def sensor_record_encoder_contract(adapter_configs, velocity_source, map_basis=None):
     """Record actual loader recipes, including each calibrated sensor origin."""
     configs = []
     for config in adapter_configs:
@@ -45,17 +45,23 @@ def sensor_record_encoder_contract(adapter_configs, velocity_source):
             configs.append(doc)
     if not configs:
         raise ValueError("Cannot build an encoder contract without a dataset adapter")
-    if velocity_source not in ("gps", "zero"):
+    if velocity_source not in ("gps", "zero", "ego_topic"):
         raise ValueError("Unsupported SensorRecord velocity source")
-    return dict(schema=SCHEMA, adapter=configs[0], native_adapter_configs=configs,
+    contract = dict(schema=SCHEMA, adapter=configs[0], native_adapter_configs=configs,
                 camera_recipe="lmdrive_compat_front_focus_resize800x600_center128",
                 waypoint_output_axes=WAYPOINT_AXES, target_point_axes=WAYPOINT_AXES,
                 detection_output_axes=DETECTION_AXES,
-                velocity_input="causal_gps_source_time" if velocity_source == "gps" else "constant_zero",
+                velocity_input={"gps": "causal_gps_source_time", "zero": "constant_zero",
+                                "ego_topic": "causal_ego_topic_speed_mps_50ms"}[velocity_source],
                 target_point_input="official_route_25m", target_lookahead_m=25.0,
                 waypoint_offsets_source_seconds=[0.5, 1., 1.5, 2., 2.5],
                 feature_shape=[106, 256], token_order="bev100_light1_waypoint5",
                 lidar_tensor_frame="base_fru", raw_lidar_frame="sensor_flu")
+    if map_basis is not None:
+        from .morai_map_geometry import validate_map_basis
+        validate_map_basis(map_basis)
+        contract["map_basis"] = copy.deepcopy(map_basis)
+    return contract
 
 
 def validate_encoder_contract(contract):
@@ -67,10 +73,14 @@ def validate_encoder_contract(contract):
         raise ValueError("Target/waypoint axes disagree")
     if contract.get("detection_output_axes") != DETECTION_AXES:
         raise ValueError("Unsupported detection output axes")
-    if contract.get("velocity_input") not in ("causal_gps_source_time", "constant_zero"):
+    if contract.get("velocity_input") not in ("causal_gps_source_time", "constant_zero",
+                                               "causal_ego_topic_speed_mps_50ms"):
         raise ValueError("Unsupported velocity input contract")
     if contract.get("target_point_input") not in ("official_route_25m", "constant_zero"):
         raise ValueError("Unsupported navigation input contract")
+    if contract.get('map_basis') is not None:
+        from .morai_map_geometry import validate_map_basis
+        validate_map_basis(contract['map_basis'])
     cfg = adapter_config(contract["adapter"])
     if cfg.use_previous_lidar_sweep or cfg.preprocessing != "lmdrive_compat":
         raise ValueError("Live adapter currently supports one-sweep lmdrive_compat only")
@@ -139,6 +149,16 @@ class LiveInputAdapter:
             raise ValueError("Set lidar.frame to sensor_flu or base_flu after checking the UDP origin")
         self.adapter = MoraiLMDriveVisionAdapter(config)
 
+    def world_target(self, target_xy, ego_xyz, yaw, *, orientation_frame):
+        """Live navigation entry point; callers must declare raw vs grid attitude."""
+        basis = self.contract.get('map_basis')
+        if basis is None:
+            raise ValueError('Legacy checkpoint has no verified map basis for live world targets')
+        from .morai_map_geometry import grid_yaw
+        corrected = grid_yaw(yaw, ego_xyz, basis, source_frame=orientation_frame)
+        return world_target_to_local(target_xy, ego_xyz[:2], corrected,
+                                     axes=self.contract['target_point_axes'])
+
     def assemble(self, images, points, *, velocity, target_point, rng_seed=0):
         tensors = self.adapter.camera_tensors(**{
             name + "_rgb": images["rgb_" + name] for name in ("front", "left", "right", "rear")})
@@ -156,3 +176,21 @@ class LiveInputAdapter:
                        velocity=torch.tensor([velocity], dtype=torch.float32),
                        target_point=torch.from_numpy(target))
         return tensors
+
+
+def navigation_recipe(navigation_contract):
+    """Serialize recorded route provenance without depending on live inference code."""
+    nav = navigation_contract
+    hashes = dict(nav['route_source_resolution']['recorded_sha256'])
+    required = ('global_path', 'link_set', 'node_set', 'route_definition')
+    if any(not isinstance(hashes.get(k), str) or len(hashes[k]) != 64
+           or any(c not in '0123456789abcdef' for c in hashes[k]) for k in required):
+        raise ValueError('Invalid recorded navigation hashes')
+    if (hashes['global_path'] != nav['global_path_sha256']
+            or hashes['route_definition'] != nav['route_definition_sha256']):
+        raise ValueError('Inconsistent recorded navigation hashes')
+    distance = float(nav['target_distance_m'])
+    if not math.isfinite(distance) or distance <= 0 or not nav.get('route_key'):
+        raise ValueError('Invalid route lookahead recipe')
+    return {'route_key': nav['route_key'], 'source_sha256': {k: hashes[k] for k in required},
+            'target_distance_m': distance}

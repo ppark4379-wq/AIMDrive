@@ -1,7 +1,8 @@
 """Read the audited Sensor Record v2 publication, without ROS or local checkout imports.
 
 Keeps the old v3_lav pixels, point-cloud preprocessing, geometry targets and
-masks. GPS interval speed is the explicit new input. Remapping paths never
+masks. Velocity is explicitly GPS, recorded Ego-topic speed, or legacy zero.
+Remapping paths never
 rewrites signed manifests; all hashes still refer to their original bytes.
 """
 import hashlib
@@ -15,8 +16,9 @@ import torch
 from torch.utils.data import Dataset
 from .morai_transfer_adapter import MoraiLMDriveVisionAdapter, MoraiVisionAdapterConfig
 from .morai_encoder_contract import world_target_to_local
-from .morai_transfer_targets import render_object_target
+from .morai_transfer_targets import render_object_target, OBJECT_TARGET_POLICIES
 from .morai_gps_speed import parse_native_gps, causal_gps_speed
+from .morai_ego_speed import CausalEgoSpeed
 
 
 def digest(path):
@@ -283,6 +285,7 @@ def load_publications(paths, resolver):
     """
     combined = {'train': [], 'val': []}
     episodes, bundles, publications = {}, {}, []
+    manifest_scenarios = {}
     for path in paths:
         index, rows = load_publication(path, resolver)
         publications.append({'path': str(resolver(path)), 'sha256': digest(resolver(path))})
@@ -302,18 +305,78 @@ def load_publications(paths, resolver):
                     bundles[key] = episode
                 episodes[episode] = identity
                 combined[split].append((p, doc))
+                manifest_scenarios[str(p)] = index.get('scenario_name')
     if not all(combined.values()):
         raise ValueError('Both train and validation publications are required')
-    return {'publications': publications,
+    return {'publications': publications, 'manifest_scenarios': manifest_scenarios,
             'validation_scope': 'Original held-out full laps preserved for each campaign; same-map/route evaluation'}, combined
 
 
+def verify_geometry_derivation(doc, resolver, parent, episode):
+    """Bind additive full-pose labels to sealed audits and their source recording."""
+    if doc.get('map_basis_reprocessing') is not None:
+        from .morai_map_derivation import verify_map_derivation
+        return verify_map_derivation(doc, resolver, parent, episode)
+    if doc.get('map_basis') is not None:
+        raise ValueError('Map basis lacks verified additive derivation')
+    evidence = doc.get('geometry_reprocessing')
+    if evidence is None:
+        return
+    if (evidence.get('schema') != 'morai_fullpose_geometry_derivation_v1'
+            or evidence.get('policy') != 'source_admitted_frames_intersect_fullpose_geometry_pass'):
+        raise ValueError('Unsupported geometry derivation')
+    source = resolver(evidence['source_manifest'], parent)
+    if digest(source) != evidence['source_manifest_sha256']:
+        raise ValueError('Changed geometry source manifest')
+    raw_hash = digest(episode / 'raw/raw_manifest.json')
+    directories = {}
+    for kind in ('timeline', 'geometry'):
+        folder = resolver(evidence[kind + '_directory'], parent)
+        if folder.parent != episode:
+            raise ValueError('Geometry derivation escapes episode')
+        seal = verify_seal(folder)
+        if digest(folder/'COMPLETE.json') != evidence[kind + '_seal_sha256']:
+            raise ValueError('Changed geometry derivation seal')
+        bound_raw_hash = (seal.get('raw_manifest_sha256') if kind == 'timeline'
+                          else read_json(folder/'report.json').get('raw_manifest_sha256'))
+        if bound_raw_hash != raw_hash:
+            raise ValueError('Geometry derivation belongs to another recording')
+        directories[kind] = folder
+    if read_json(directories['geometry']/'COMPLETE.json').get('gt_timeline_seal_sha256') != digest(directories['timeline']/'COMPLETE.json'):
+        raise ValueError('Geometry audit references another GT timeline')
+    frames = {row['index']: row for row in read_json(directories['geometry']/'frames.json')}
+    original = {row['frame_id']: row for row in read_json(source)['entries']}
+    admission = {row['index']: row for row in read_json(episode/'admission_v1/frames.json')}
+    for entry in doc['entries']:
+        frame = frames.get(entry['frame_id'], {})
+        before = original.get(entry['frame_id'])
+        if (frame.get('api_box_geometry_candidate') is not True
+                or frame.get('lidar_source_ns') != entry['sensor_time_ns']
+                or before is None or entry.get('object_valid') is not True):
+            raise ValueError('Unapproved geometry frame')
+        if not before.get('object_valid'):
+            prior = admission.get(entry['frame_id'], {})
+            if (prior.get('lidar_source_time_ns') != entry['sensor_time_ns'] or not all(prior.get(k) is True for k in ('dataset_build_candidate','object_gt_transport_timing_candidate','full_actor_inventory_transport_candidate','object_model_identity_candidate'))):
+                raise ValueError('Geometry correction cannot approve missing transport or identity')
+        for key in set(before) | set(entry):
+            if key not in ('objects', 'object_valid', 'object_positive') and before.get(key) != entry.get(key):
+                raise ValueError('Geometry derivation changed non-object data: ' + key)
+
+
 class SensorRecordDataset(Dataset):
-    def __init__(self, manifests, resolver, velocity_source='gps', verify_evidence=True):
-        if velocity_source not in ('gps', 'zero'):
-            raise ValueError('velocity_source must be gps or explicit legacy zero')
+    def __init__(self, manifests, resolver, velocity_source='gps', verify_evidence=True,
+                 object_target_policy='footprint_v1', include_object_instance_ids=False):
+        if velocity_source not in ('gps', 'zero', 'ego_topic'):
+            raise ValueError('velocity_source must be gps, ego_topic or explicit legacy zero')
+        if object_target_policy not in OBJECT_TARGET_POLICIES:
+            raise ValueError('Unsupported object target policy')
+        self.object_target_policy = object_target_policy
+        self.include_object_instance_ids = bool(include_object_instance_ids)
+        from .morai_map_geometry import manifest_map_basis
+        self.map_basis = manifest_map_basis(manifests)
         self.velocity_source = velocity_source
         self.rows = []
+        self.row_manifest_paths = []
         self.excluded = Counter()
         self.coverage = Counter()
         self.manifest_hashes = {}
@@ -343,6 +406,7 @@ class SensorRecordDataset(Dataset):
                 verify_admission_recovery(
                     episode, doc.get('evidence_seal_sha256', {}),
                     doc.get('admission_recovery_path', 'ADMISSION_RECOVERY.json'))
+            verify_geometry_derivation(doc, resolver, path.parent, episode)
             if (contract.get('raw_lidar_axes') != 'FLU' or contract.get('lidar_sweeps') != 1
                     or contract.get('preprocessing') != 'lmdrive_compat'):
                 raise ValueError('Unsupported LiDAR input contract')
@@ -351,11 +415,20 @@ class SensorRecordDataset(Dataset):
                 use_previous_lidar_sweep=False, lidar_intensity_policy='reflectance_uint8_unit',
                 lidar_translation_xyz=tuple(extrinsic['translation_xyz']),
                 lidar_rotation_xyzw=tuple(extrinsic['rotation_xyzw'])))
+            if velocity_source == 'ego_topic':
+                verify_seal(episode/'quality', 'QUALITY_COMPLETE.json')
+                if digest(episode/'quality/QUALITY_COMPLETE.json') != doc['evidence_seal_sha256']['quality']:
+                    raise ValueError('Changed Ego speed evidence')
+                # active_signals holds the same decoded /Ego_topic hypot(vx, vy) as raw/, without ROS.
+                ego_speed = CausalEgoSpeed([
+                    (int(row['source_timestamp_ns']), float(row['signal']['speed']), row['record_id'])
+                    for row in read_json(episode/'quality/active_signals.json')
+                    if row.get('role') == 'ego' and row.get('source_timestamp_ns') is not None])
             previous = None
             previous_stamp = None
             for entry_number, entry in enumerate(doc['entries']):
                 if entry_number % 1000 == 0:
-                    print('[DATA] %s: GPS/metadata %d/%d' % (path.name, entry_number, len(doc['entries'])), flush=True)
+                    print('[DATA] %s: sensor metadata %d/%d' % (path.name, entry_number, len(doc['entries'])), flush=True)
                 stamp = int(entry['sensor_time_ns'])
                 if previous_stamp is not None and stamp <= previous_stamp:
                     raise ValueError('Nonadvancing episode sensor time')
@@ -382,23 +455,31 @@ class SensorRecordDataset(Dataset):
                         previous = fix
                         continue
                     previous = fix
+                if velocity_source == 'ego_topic':
+                    value, reason = ego_speed.at(stamp)
+                    if reason:
+                        self.excluded[reason] += 1
+                        continue
+                    speed = value['velocity_mps']
                 nav = entry['navigation']
                 validate_navigation_target(nav, doc.get('navigation_contract', {}))
                 wp = np.asarray(entry['waypoints'])
                 if wp.shape != (5,2) or not np.isfinite(wp).all():
                     raise ValueError('Invalid timed future waypoint targets')
                 self.rows.append((native, entry, adapter, speed))
+                self.row_manifest_paths.append(str(path))
                 self.coverage['frames'] += 1
                 self.coverage['object_valid'] += bool(entry['object_valid'])
                 self.coverage['object_positive'] += bool(entry['object_positive'])
                 self.coverage['traffic_light_%s' % entry['traffic_light']] += 1
             print('[DATA] admitted total=%d; excluded=%s' % (len(self.rows), dict(self.excluded)), flush=True)
         if not self.rows:
-            raise ValueError('Empty training dataset after GPS/mask validation')
+            raise ValueError('Empty training dataset after speed/mask validation')
 
     @staticmethod
     def read_asset(native, entry, rel):
-        raw = child(native, rel).read_bytes()
+        from .morai_native_asset_io import read_native_bytes
+        raw = read_native_bytes(native, rel)
         if len(raw) != entry['asset_sizes'][rel] or hashlib.sha256(raw).hexdigest() != entry['assets'][rel]:
             raise ValueError('Changed native asset: ' + rel)
         return raw
@@ -433,14 +514,25 @@ class SensorRecordDataset(Dataset):
         inputs.update(lidar=torch.from_numpy(lidar), num_points=torch.tensor(num),
                       velocity=torch.tensor([speed],dtype=torch.float32), target_point=torch.from_numpy(target))
         det,valid = np.zeros((2500,8),np.float32), False
+        instance_ids = np.full(2500, -1, dtype=np.int64)
         if entry['object_valid']:
-            det,valid,_ = render_object_target({'ego_raw':ego,'capture':{}},entry['objects'])
+            rendered = render_object_target(
+                {'ego_raw':ego,'capture':{}}, entry['objects'],
+                target_policy=self.object_target_policy,
+                return_instance_ids=self.include_object_instance_ids)
+            det,valid,_ = rendered[:3]
+            if self.include_object_instance_ids:
+                instance_ids = rendered[3]
             if not valid:
                 raise ValueError('Object geometry validity changed')
         light = int(entry['traffic_light'])
         if light not in (-1,0,1):
             raise ValueError('Invalid traffic-light target')
-        targets = dict(detection=torch.from_numpy(det), object_valid=torch.tensor(valid),
+        targets = dict(frame_id=torch.tensor(entry['frame_id'], dtype=torch.int64),
+                       sensor_time_ns=torch.tensor(entry['sensor_time_ns'], dtype=torch.int64),
+                       detection=torch.from_numpy(det), object_valid=torch.tensor(valid),
                        waypoint_valid=torch.tensor(True), waypoints=torch.tensor(entry['waypoints'],dtype=torch.float32),
                        traffic_light=torch.tensor(light))
+        if self.include_object_instance_ids:
+            targets['object_instance_ids'] = torch.from_numpy(instance_ids)
         return inputs, targets

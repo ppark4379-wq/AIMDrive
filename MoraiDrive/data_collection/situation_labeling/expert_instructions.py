@@ -218,7 +218,23 @@ def _position(value):
     return POSITIONS.get(value, value if value in POSITIONS.values() else None)
 
 
-def _variables(frame, rule, raw):
+def _variables(frame, rule, raw, objects=()):
+    if (frame.get("zone_id") == "roundabout"
+            and raw.get("roundabout_phase") == "rear_pressure"):
+        selected_id = raw.get("roundabout_conflict_id")
+        matches = [obj for obj in objects if selected_id is not None
+                   and obj.get("actor_id") is not None
+                   and str(obj["actor_id"]) == str(selected_id)]
+        position = None
+        if len(matches) == 1 and matches[0].get("rule_geometry_usable") is True:
+            forward, left = matches[0].get("forward_m"), matches[0].get("left_m")
+            if all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                   and math.isfinite(v) for v in (forward, left)):
+                if abs(forward) >= abs(left):
+                    position = _position("front" if forward >= 0 else "rear")
+                else:
+                    position = _position("left" if left > 0 else "right")
+        return dict(position=position)
     source = rule.get("variables") or {}
     target_kind = source.get("target_kind")
     target_distance = source.get("target_distance_m")
@@ -267,7 +283,7 @@ def _variables(frame, rule, raw):
                 object=object_name, direction=direction, pedestrian_state=pedestrian_state)
 
 def apply_expert_instructions(frames, rules, episode, expert_log, *, max_gap_ns=25_000_000,
-                              config_dir=CONFIG, index_observations=None):
+                              config_dir=CONFIG, index_observations=None, objects=()):
     """Add Expert fields to rule rows without changing GT rule decisions.
 
     `index_observations`, if given, is a {frame_index: raw_dict} mapping
@@ -278,6 +294,9 @@ def apply_expert_instructions(frames, rules, episode, expert_log, *, max_gap_ns=
     and before the weaker unique-position spatial match.
     """
     mapping, catalog = load_config(config_dir)
+    objects_by_index = {}
+    for obj in objects:
+        objects_by_index.setdefault(obj["index"], []).append(obj)
     exact, observations = load_expert_log(expert_log)
     if exact:
         if episode is None:
@@ -393,7 +412,7 @@ def apply_expert_instructions(frames, rules, episode, expert_log, *, max_gap_ns=
         row["expert_raw_state"] = raw
         row["label"] = entry["label"]
         row["instruction_id"] = entry["instruction_id"]
-        values = _variables(frame, row, raw)
+        values = _variables(frame, row, raw, objects_by_index.get(row["index"], ()))
         rendered, selected, missing = render_template(template, values)
         row["instruction_variables"] = selected
         if missing:

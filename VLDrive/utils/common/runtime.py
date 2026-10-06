@@ -166,6 +166,9 @@ def resolve_settings(settings, args):
     navigation = value.get('navigation_sampling', {})
     if navigation.get('token_cache'):
         navigation['token_cache'] = resolve(navigation['token_cache'])
+    path_instruction = value.get('path_instruction', {})
+    if path_instruction.get('feature_cache'):
+        path_instruction['feature_cache'] = resolve(path_instruction['feature_cache'])
     model = value.get('model', value)
     for key, suffix in [('visual_checkpoint', 'vision_encoder/vision-encoder-r50.pth.tar'),
                         ('language_checkpoint', 'TinyLlama-1.1B-3T'),

@@ -1,0 +1,30 @@
+{
+  "seed": 607,
+  "device": "cuda",
+  "cpu_threads": 4,
+  "dataset_root": "F:/dataset_label",
+  "visual_checkpoint": "F:/dataset_label/checkpoint-best-object.pth.tar",
+  "output": "outputs/logs/connector_mefa_dynamic_anneal",
+  "train_episodes_per_category": 2,
+  "validation_episodes_per_category": 1,
+  "windows_per_episode": 8,
+  "frame_interval": 2,
+  "max_sensor_gap_ms": 150,
+  "epochs": 10,
+  "learning_rate": 1e-05,
+  "weight_decay": 0.06,
+  "connector": {
+    "memory_size": 10,
+    "target_retention": 0.3,
+    "reconstruction_reduction": "mean",
+    "reconstruction_feature_space": "encoder",
+    "lambda_pruning": 10.0,
+    "lambda_reconstruction": 1.0,
+    "inference_selection_mode": "argmax"
+  },
+  "gumbel_noise_schedule": {
+    "start": 1.0,
+    "end": 0.0,
+    "decay_updates": 256
+  }
+}

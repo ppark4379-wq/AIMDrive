@@ -117,6 +117,13 @@ def preflight(model, sample, device):
         baseline = model.predict(inputs, compute_auxiliary=False)
         future = model.predict(perturb(inputs), compute_auxiliary=False)
         delta = (baseline['trajectory'][:, :-1] - future['trajectory'][:, :-1]).abs().max().item()
+        path_delta = 0.
+        if 'path_features' in inputs:
+            changed_path = copy.deepcopy(inputs)
+            changed_path['path_features']['ego_relation'][:, -1] += 1.
+            changed_path['path_features']['path_context'][:, -1] += 1.
+            path_future = model.predict(changed_path, compute_auxiliary=False)
+            path_delta = (baseline['trajectory'][:, :-1] - path_future['trajectory'][:, :-1]).abs().max().item()
         history = model.predict(perturb(inputs, history=True), compute_auxiliary=False)
         history_delta = (baseline['trajectory'][:, -1] - history['trajectory'][:, -1]).abs().max().item()
     rejected = {}
@@ -128,10 +135,11 @@ def preflight(model, sample, device):
             rejected[name] = True
         else:
             rejected[name] = False
-    return dict(passed=gradients['passed'] and delta < 1e-5 and history_delta > 0 and all(rejected.values()),
+    return dict(passed=gradients['passed'] and delta < 1e-5 and path_delta < 1e-5 and history_delta > 0 and all(rejected.values()),
         optimizer_updates=0, gradients=gradients, initial_losses=initial,
         trajectory_shape=list(baseline['trajectory'].shape),
         future_to_past_max_delta=delta, history_dependency_delta=history_delta,
+        future_path_to_past_max_delta=path_delta,
         rejected=rejected, selected_count=baseline['selected_count'].tolist(),
         real_history_frames=min(model.config.memory_size, sample['training_targets']['future_trajectory'].shape[0] - 1))
 

@@ -11,7 +11,7 @@ from data.src.loaders.morai_sensor_record_dataset import (
     verify_admission_recovery, verify_subset_selection,
 )
 from training.vision_encoder.losses.morai_transfer import multitask_loss
-from training.vision_encoder.recipes.transfer import object_selection_score, selected_training_indices
+from training.vision_encoder.recipes.transfer import object_selection_score, selected_training_indices, is_static_avoidance
 
 class TransferTests(unittest.TestCase):
     def test_subset_loader_accepts_only_admitted_whole_laps(self):
@@ -106,6 +106,29 @@ class TransferTests(unittest.TestCase):
         self.assertNotIn(3,indices)
         self.assertEqual(summary['object_positive_frames'],1)
         self.assertEqual(summary['selected_verified_empty_frames'],1)
+
+    def test_static_avoidance_oversamples_only_route_leaving_static_frames(self):
+        import math
+        def entry(lateral, obstacle_y=8.):
+            # Ego faces +y, so world +x is the ego's right.
+            return dict(ego_pose=dict(x=0., y=0., yaw=math.pi/2), navigation=dict(target_x=0., target_y=25.),
+                        waypoints=[[0., -2.], [0., -4.], [0., -6.], [0., -8.], [lateral, -10.]],
+                        objects=[dict(x=.5, y=obstacle_y)])
+        static='/data/static_obstacle__lap/lap_002_train_manifest.json'
+        self.assertTrue(is_static_avoidance(entry(1.2), static))
+        self.assertFalse(is_static_avoidance(entry(.1), static))
+        self.assertFalse(is_static_avoidance(entry(1.2, obstacle_y=40.), static))
+        self.assertFalse(is_static_avoidance(entry(1.2), '/data/roundabout__lap/lap_002_train_manifest.json'))
+        class Dataset:
+            rows=[(None,entry(1.2),None,0.),(None,entry(.1),None,0.),(None,entry(.1),None,0.)]
+            row_manifest_paths=[static]*3
+            def __len__(self): return len(self.rows)
+        args=type('Args',(),dict(frame_sampling='static_avoidance',seed=42,avoidance_repeat=3,
+                                 avoidance_other_frames=1,diagnostic_limit=0))()
+        indices,summary=selected_training_indices(Dataset(),args)
+        self.assertEqual(indices.count(0),3)
+        self.assertEqual(len(indices),4)
+        self.assertEqual((summary['avoidance_frames'],summary['other_frames']),(1,1))
 
     def test_gps_speed_is_causal_interval(self):
         a=(1000000000,37.,127.)

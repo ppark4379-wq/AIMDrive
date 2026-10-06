@@ -33,3 +33,37 @@ CSS = """
 @media(max-width:1100px) {.cards {grid-template-columns:repeat(4,1fr)} .health-grid{grid-template-columns:repeat(3,1fr)}}
 </style>
 """
+
+# Scoped to the Situation preview: fixed readable colors even with a dark host theme.
+SITUATION_CSS = """
+<style>
+.stApp {background:#f3f6fa; color:#172b4d; color-scheme:light;}
+.block-container {max-width:1680px; padding:1.6rem 2.2rem 1.4rem;}
+.sit-header {display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:14px;}
+.sit-eyebrow {font-size:11px; letter-spacing:1.8px; font-weight:700; color:#475569;}
+.sit-header h1 {color:#172b4d !important; font-size:30px; font-weight:700; letter-spacing:-.7px; padding:4px 0; margin:0;}
+.sit-subtitle {font-size:13px; color:#475569;}
+.sit-badge {border:1px solid #9db6e0; border-radius:6px; background:#eaf1ff; color:#204b96; padding:9px 13px; font-size:12px; font-weight:700; white-space:nowrap;}
+.sit-preview {color:#734213; background:#fff6e8; border:1px solid #e7c996; border-radius:6px; padding:10px 14px; font-size:12px; margin-bottom:12px;}
+.sit-cards {display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px;}
+.sit-card {border:1px solid #cbd5e1; background:#fff; border-radius:7px; padding:15px 18px;}
+.sit-label {font-size:13px; color:#475569; font-weight:600;}
+.sit-value {font-size:26px; line-height:1.4; color:#172b4d; font-weight:700; margin:5px 0; font-variant-numeric:tabular-nums;}
+.sit-note {font-size:11px; color:#526277;}
+.sit-progress {height:4px; background:#dbe4ef; margin:13px 0 10px; border-radius:4px; overflow:hidden;}
+.sit-progress>div {height:100%; background:#245dcc;}
+.sit-heading {display:flex; justify-content:space-between; align-items:center; gap:12px; margin:13px 0 7px;}
+.sit-heading h2 {font-size:16px; font-weight:700; color:#172b4d !important; margin:0; padding:0;}
+.sit-heading>span {color:#475569; font-size:12px;}
+.sit-heading b {color:#172b4d; font-variant-numeric:tabular-nums;}
+.sit-chart-heading {display:flex; justify-content:space-between; align-items:center; color:#172b4d; font-size:14px; padding:6px 2px 3px;}
+.sit-chart-heading b {color:#245dcc; font-size:20px; font-variant-numeric:tabular-nums;}
+[data-testid="stPlotlyChart"] {background:#fff; border:1px solid #cbd5e1; border-radius:7px;}
+.sit-accuracy {display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px;}
+.sit-accuracy-card {border-top:3px solid #245dcc;}
+.sit-accuracy-card .sit-value {color:#204b96;}
+.sit-footer {color:#475569; font-size:12px; border-top:1px solid #cbd5e1; margin-top:18px; padding-top:12px; line-height:1.7;}
+@media(max-width:900px) {.sit-cards {grid-template-columns:repeat(2,minmax(0,1fr));} .sit-accuracy {grid-template-columns:repeat(2,minmax(0,1fr));} .sit-header {align-items:flex-start;} .sit-heading {flex-wrap:wrap;}}
+@media(max-width:500px) {.block-container {padding:1rem;} .sit-header {flex-direction:column;} .sit-value {font-size:21px;}}
+</style>
+"""

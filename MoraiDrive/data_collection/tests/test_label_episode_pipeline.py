@@ -31,6 +31,19 @@ class LabelEpisodeTests(unittest.TestCase):
         self.assertIn(pipeline.GEOMETRY, stages[-1][2])
         self.assertIn(pipeline.REVIEW, stages[-1][2])
 
+    def test_v5_evidence_set_is_reused_without_generating_v2(self):
+        episode = self.root / "episode_000"
+        evidence = pipeline.evidence_dirs("d4a53be1fe67")
+        self.assertEqual(evidence["admission"], "admission_v5_d4a53be1fe67")
+        self.assertEqual(evidence["review"], "review_closeout_v5_d4a53be1fe67")
+        folders = [folder.name for _, folder, _ in
+                   pipeline.preprocessing_stages(episode, self.root, evidence=evidence)]
+        for generated in (pipeline.GEOMETRY, pipeline.REVIEW, pipeline.ADMISSION):
+            self.assertNotIn(generated, folders)
+        self.assertIn("gt_timeline_v1", folders)
+        with self.assertRaises(ValueError):
+            pipeline.evidence_dirs("../v5")
+
     def test_completed_stages_reused_and_missing_stage_executed(self):
         existing, missing = self.root / "existing", self.root / "missing"
         self.seal(existing)
@@ -93,7 +106,18 @@ class LabelEpisodeTests(unittest.TestCase):
         self.assertEqual(rows[1]["frame_id"], 1)
         self.assertIsNone(rows[1]["instruction"])
         self.assertEqual(rows[0]["assets"]["camera_1"]["path"], str(native / "frame.png"))
+        self.assertEqual([row["zone_instruction"] for row in rows], [1, 1])
         self.assertEqual((native / "frame.png").read_bytes(), b"original sensor bytes")
+
+    def test_export_joins_the_selected_admission(self):
+        episode, native, features, admissions = self.fixture()
+        v5 = pipeline.evidence_dirs("abc123")["admission"]
+        (episode / v5).mkdir()
+        pipeline.write_json(episode / v5 / "frames.json", admissions)
+        (episode / pipeline.ADMISSION / "frames.json").unlink()
+        counts = pipeline.export_labeled_frames(episode, native, features,
+                                                self.root / "v5.jsonl", v5)
+        self.assertEqual(counts, {"labeled": 1, "unlabeled": 1})
 
     def test_timestamp_mismatch_rejected(self):
         episode, native, features, admissions = self.fixture()

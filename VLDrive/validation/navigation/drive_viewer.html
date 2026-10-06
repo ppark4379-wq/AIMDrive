@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>주행 navigation 검증</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#0e1520;color:#e9eff8;font:15px system-ui,"Malgun Gothic",sans-serif}main{max-width:1600px;margin:auto;padding:22px}h1{font-size:25px;margin:0 0 8px}p{line-height:1.55}small,.muted{color:#9eafc4}.bar,.panel{border:1px solid #293a50;background:#162131;border-radius:12px;padding:16px}.bar{margin:14px 0}.controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}button,select,input[type=number]{background:#24354b;color:#fff;border:1px solid #415773;border-radius:7px;padding:8px;font:inherit}button{cursor:pointer}input[type=range]{flex:1;min-width:140px;accent-color:#6ee0b6}.grid{display:grid;grid-template-columns:minmax(0,1.75fr) minmax(340px,1fr);gap:16px}.camera{width:100%;aspect-ratio:16/9;object-fit:contain;background:#080d15;border-radius:8px}canvas{width:100%;display:block}.instruction{font-size:24px;color:#78e5b9;margin:8px 0}.numeric{font-size:18px;line-height:1.55}.metrics{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:14px 0}.metric{padding:10px;background:#0f1927;border-radius:8px}.metric b{display:block;font-size:21px;margin-top:4px}.good{color:#78e5b9}.bad{color:#ffce7b}#status{margin:10px 0}table{width:100%;border-collapse:collapse;font-size:13px}td{padding:6px;border-bottom:1px solid #293a50}td:last-child{text-align:right;font-family:monospace}details{margin-top:12px}#map{height:225px}#timeline{height:95px;cursor:pointer}#reason{overflow-wrap:anywhere}#features{font-variant-numeric:tabular-nums}@media(max-width:1000px){.grid{grid-template-columns:1fr}}a{color:#9dc7ff}
+</style>
+<main>
+<h1>주행 화면 · Navigation 입력 검증</h1>
+<div class="muted" id="episode"></div>
+<p>영상과 같은 시점의 거리·곡률·오차를 확인합니다. <b>MLP에 들어가기 전 입력</b>이며, 아래 수치 설명은 계산값을 풀어 쓴 문장입니다.</p>
+<div class="bar">
+ <div id="summary"></div>
+ <div class="controls" style="margin-top:12px"><button id="play">재생</button><button id="prev">이전</button><button id="next">다음</button><input id="slider" type="range" min="0" value="0" aria-label="주행 프레임"><input id="frameNumber" type="number" min="0" value="0" style="width:95px" aria-label="프레임 위치"><select id="speed" aria-label="재생 배속"><option value="0.5">0.5배속</option><option value="1" selected>1배속</option><option value="2">2배속</option><option value="4">4배속</option></select></div>
+ <p id="position" style="margin:8px 0"></p>
+ <div class="controls"><select id="mode" aria-label="안내 기준"><option value="frame">현재 프레임 안내</option><option value="window">학습 윈도우 입력</option></select><select id="jump" aria-label="문장 전환 구간"><option value="">문장 전환 / 무효 구간으로 이동</option></select><button id="invalid">다음 무효 입력</button><button id="warning">다음 문장 재확인 구간</button></div>
+ <canvas id="timeline" width="1400" height="95" aria-label="주행 거리 변화 및 무효 구간"></canvas>
+ <small>노랑: 유효하지 않은 윈도우 · 초록: 회전 시작까지 거리 (−60~60m 범위로 표시) · 클릭하여 이동</small>
+</div>
+<div class="grid">
+ <section class="panel"><img class="camera" id="camera" alt="기록된 전방 카메라"><div id="status"></div><div class="muted" id="window"></div><div class="instruction" id="instruction"></div><div class="numeric" id="numeric"></div><p class="bad" id="reason"></p><canvas id="map" width="900" height="225" aria-label="계획 경로와 차량 위치"></canvas><small>지도: 계획 경로 · 주황: 선택된 회전 구간 · 초록: 차량 위치/방향</small></section>
+ <aside class="panel"><b>현재 프레임의 물리량</b><div class="metrics" id="metrics"></div><p class="muted" id="signedDistance"></p><b>MLP 입력 8개 · 정규화 후</b><p class="muted" style="font-size:13px" id="featureNote"></p><table id="features"></table><details open><summary>학습 윈도우 / 시각</summary><p id="trainingInstruction"></p><p class="muted" id="sync"></p><p class="muted">Sensor Record는 기록된 scene association 기준입니다. 카메라 하드웨어 촬영 시각의 일치까지 입증한 것은 아닙니다.</p></details><details><summary>확인할 항목</summary><p>① 화면의 실제 굽음과 좌·우 문장이 맞는지<br>② 접근할 때 시작 거리가 줄어드는지<br>③ 회전 진입 후 시작 거리가 음수인지<br>④ 횡오차·방향 오차가 영상과 맞는지<br>⑤ 문장이 바뀌거나 무효화되는 위치가 자연스러운지</p><p>굽은 도로도 bend 이벤트입니다. 모든 bend가 교차로 회전 지시는 아닙니다.</p></details><p><a href="frames.csv">전체 수치 CSV</a> · <a href="review.json">전체 검증 JSON</a></p></aside>
+</div></main>
+<script type="application/json" id="data">__REVIEW_DATA__</script>
+<script>
+'use strict';
+const data=JSON.parse(document.getElementById('data').textContent),rows=data.frames,$=id=>document.getElementById(id);
+const fmt=(x,n=2)=>Number.isFinite(x)?x.toFixed(n):'—';
+let index=0,timer=null,playing=false;
+$('episode').textContent=data.episode_id;
+$('summary').textContent=`전체 ${rows.length.toLocaleString()} 프레임 · 수치 유효 ${data.summary.valid_frames.toLocaleString()} · 윈도우 유효 ${data.summary.valid_windows.toLocaleString()} · 초기 이력 부족 ${data.summary.insufficient_history} · 문장 재확인 ${data.summary.semantic_warnings}`;
+$('slider').max=$('frameNumber').max=rows.length-1;
+const frameMode=()=>$('mode').value==='frame';
+const eventFor=row=>frameMode()?row.frame_event:row.event;
+function fillJumps(){const first=document.createElement('option');first.value='';first.textContent='문장 전환 / 무효 구간으로 이동';$('jump').replaceChildren(first);let last=null;for(const row of rows){const key=frameMode()?(row.path_valid?row.frame_kind:'fallback'):(row.common_kind||'invalid');if(key===last)continue;last=key;const opt=document.createElement('option');opt.value=row.position;opt.textContent=`Frame ${row.index} · ${frameMode()?(row.path_valid?row.frame_navigation:'기본 안내 · 위치 확인 불가'):(row.common_navigation||'학습 윈도우 무효')}`;$('jump').append(opt);}}
+fillJumps();
+const points=data.route.points;
+const bounds=[Math.min(...points.map(p=>p[0])),Math.max(...points.map(p=>p[0])),Math.min(...points.map(p=>p[1])),Math.max(...points.map(p=>p[1]))];
+function drawMap(row){const c=$('map'),g=c.getContext('2d');g.clearRect(0,0,c.width,c.height);const scale=Math.min((c.width-50)/Math.max(1,bounds[1]-bounds[0]),(c.height-35)/Math.max(1,bounds[3]-bounds[2]));const xy=p=>[c.width/2+(p[0]-(bounds[0]+bounds[1])/2)*scale,c.height/2-(p[1]-(bounds[2]+bounds[3])/2)*scale];
+g.strokeStyle='#607890';g.lineWidth=2;g.beginPath();points.forEach((p,i)=>{const [x,y]=xy(p);i?g.lineTo(x,y):g.moveTo(x,y)});g.stroke();
+if(eventFor(row)){g.strokeStyle='#ffc473';g.lineWidth=4;g.beginPath();let open=false;points.forEach((p,i)=>{const event=eventFor(row);const lap=Math.floor((row.projection?.progress_m||0)/data.route.length_m);let s=data.route.arc_m[i];if(data.route.closed)s+=lap*data.route.length_m;const inside=[s,s-data.route.length_m,s+data.route.length_m].some(v=>v>=event.start_m&&v<=event.end_m);if(inside){const [x,y]=xy(p);open?g.lineTo(x,y):g.moveTo(x,y);open=true}else open=false});g.stroke();}
+if(row.finite_pose){const [x,y]=xy([row.pose.x,row.pose.y]);g.fillStyle=row.path_valid?'#78e5b9':'#ffce7b';g.beginPath();g.arc(x,y,5,0,2*Math.PI);g.fill();g.strokeStyle=g.fillStyle;g.beginPath();g.moveTo(x,y);g.lineTo(x+15*Math.cos(row.pose.yaw_rad),y-15*Math.sin(row.pose.yaw_rad));g.stroke();}}
+function drawTimeline(){const c=$('timeline'),g=c.getContext('2d');g.clearRect(0,0,c.width,c.height);g.strokeStyle='#34465b';g.beginPath();g.moveTo(0,45);g.lineTo(c.width,45);g.stroke();let open=false;g.strokeStyle='#78e5b9';g.beginPath();rows.forEach((r,i)=>{const x=i/(rows.length-1)*c.width;if(!r.valid_window){g.fillStyle='#a2793d';g.fillRect(x,76,Math.max(1,c.width/rows.length),10)}const event=eventFor(r);if(r.projection&&event){const d=event.start_m-r.projection.progress_m,y=45-Math.max(-60,Math.min(60,d))/60*32;open?g.lineTo(x,y):g.moveTo(x,y);open=true}else open=false});g.stroke();g.strokeStyle='#fff';g.beginPath();g.moveTo(index/(rows.length-1)*c.width,0);g.lineTo(index/(rows.length-1)*c.width,95);g.stroke();}
+function show(i){index=Math.max(0,Math.min(rows.length-1,Math.round(i)||0));const r=rows[index],p=r.projection,e=eventFor(r);$('slider').value=$('frameNumber').value=index;$('camera').src=r.preview_image;
+const stamp=r.sensor_source_ns,base=rows[0].sensor_source_ns;
+$('position').textContent=`Frame ${r.index} / ${rows.at(-1).index} · ${stamp!==null&&base!==null?fmt((stamp-base)/1e9,1)+'초 (scene 시간)':'시각 없음'}`;
+$('status').className=r.valid_window?'good':'bad';$('status').textContent=`현재 프레임 ${r.path_valid?'유효':'무효'} / ${data.window_length}프레임 윈도우 ${r.valid_window?'유효':'무효'}`;
+$('window').textContent=frameMode()?(r.path_valid?'현재 위치 기준 경로 안내 · 현재/예정 굽음이며 진입 시점은 거리로 확인':'현재 위치 확인 불가 · 일반 경로 추종 안내만 표시'):(r.window_start_index===null?'초기 학습 이력이 부족합니다.':`학습 윈도우 ${r.window_start_index} → ${r.index} · 문장은 첫 프레임 기준`);
+$('instruction').textContent=frameMode()?r.frame_navigation:(r.common_navigation||'이 윈도우는 학습 입력으로 사용할 수 없습니다.');
+$('numeric').textContent=(frameMode()?r.frame_numeric_preview:r.numeric_preview)||'현재 위치가 확인되지 않아 회전 거리·수치를 계산하지 않습니다.';
+$('reason').textContent=frameMode()?(r.path_valid?'':'기본 안내입니다. 현재 구간의 좌·우 방향이나 거리가 검증된 문장은 아닙니다.'):(r.valid_window?(r.common_semantics_ok===false?'문장 재확인: 첫 프레임에서 고른 문장이 유지되는 동안 현재 lookahead의 회전 구간이 달라졌습니다. 곧바로 오지시를 뜻하지는 않습니다.':''):r.window_invalid_reasons.join(' · '));
+$('trainingInstruction').textContent=r.common_navigation?`학습 공통 문장: ${r.common_navigation}${r.common_semantics_ok===false?' (현재 lookahead와 재확인 필요)':''}`:`학습 윈도우 제외: ${r.window_start_index===null?'과거 프레임 부족':'윈도우 안에 무효 pose·시각 포함'}. 현재 프레임 안내의 존재 여부와는 별개입니다.`;
+const start=p&&e?e.start_m-p.progress_m:null,end=p&&e?e.end_m-p.progress_m:null;
+$('signedDistance').textContent=start===null?'':`원본 부호 있는 거리: 시작 ${fmt(start,1)}m / 끝 ${fmt(end,1)}m. 음수는 해당 지점을 이미 통과했다는 뜻입니다.`;
+const metrics=[[start!==null&&start<0?'회전 시작점 통과 후':'회전 시작까지',start!==null?fmt(Math.abs(start),1)+' m':'—'],[end!==null&&end<0?'회전 끝점 통과 후':'회전 끝까지',end!==null?fmt(Math.abs(end),1)+' m':'—'],['횡방향 오차 · 좌측 +',p?fmt(p.lat_err)+' m':'—'],['방향 오차 · 반시계 +',p?fmt(p.yaw_err*180/Math.PI,1)+'°':'—'],['현재 곡률 · 좌측 +',p?fmt(p.curv_now,4)+' /m':'—'],['회전 구간 곡률',e?fmt(e.curv_event,4)+' /m':'—']];
+$('metrics').replaceChildren();for(const [label,value] of metrics){const box=document.createElement('div');box.className='metric';const title=document.createElement('small');title.textContent=label;const val=document.createElement('b');val.textContent=value;box.append(title,val);$('metrics').append(box);}
+const names=['횡오차 / lateral_scale','sin(방향 오차)','cos(방향 오차)','시작 거리 / distance_scale','끝 거리 / distance_scale','현재 곡률 / curvature_scale','구간 곡률 / curvature_scale','이벤트 존재'];
+$('featureNote').textContent=frameMode()?'현재 프레임 기준 검토용 수치입니다. 실제 학습 윈도우에 전달되는 값은 상단에서 학습 윈도우 입력을 선택해 확인하세요.':'실제 학습 윈도우 기준 수치입니다. 윈도우가 무효하면 제공하지 않습니다.';
+const f=frameMode()?r.frame_features:r.model_features,values=f?[...f.ego_relation,...f.path_context]:Array(8).fill(null);$('features').replaceChildren();names.forEach((name,j)=>{const tr=document.createElement('tr'),a=document.createElement('td'),b=document.createElement('td');a.textContent=name;b.textContent=fmt(values[j],5);tr.append(a,b);$('features').append(tr);});
+const age=stamp!==null&&r.pose_source_ns!==null?(stamp-r.pose_source_ns)/1e6:null;
+$('sync').textContent=`상태: ${r.sync.status} · pose age: ${fmt(age,1)} ms · 최근접 경로: ${fmt(r.nearest_route_distance_m)} m`;
+drawMap(r);drawTimeline();}
+function stop(){playing=false;clearTimeout(timer);timer=null;$('play').textContent='재생';}
+function schedule(){if(!playing||index>=rows.length-1){stop();return;}const a=rows[index].sensor_source_ns,b=rows[index+1].sensor_source_ns;const ms=a!==null&&b!==null?(b-a)/1e6:100;timer=setTimeout(()=>{show(index+1);schedule()},Math.max(10,ms/Number($('speed').value)));}
+$('play').onclick=()=>{if(playing){stop();return}if(index===rows.length-1)show(0);playing=true;$('play').textContent='정지';schedule()};
+function seek(i){stop();show(i)}$('prev').onclick=()=>seek(index-1);$('next').onclick=()=>seek(index+1);$('slider').oninput=()=>seek(+$('slider').value);$('frameNumber').onchange=()=>seek(+$('frameNumber').value);$('jump').onchange=()=>{if($('jump').value!=='')seek(+$('jump').value)};
+$('invalid').onclick=()=>{let found=rows.findIndex((r,i)=>i>index&&!r.valid_window&&(i===0||rows[i-1].valid_window));if(found<0)found=rows.findIndex(r=>!r.valid_window);if(found>=0)seek(found)};
+$('warning').onclick=()=>{let found=rows.findIndex((r,i)=>i>index&&r.common_semantics_ok===false&&(i===0||rows[i-1].common_semantics_ok!==false));if(found<0)found=rows.findIndex(r=>r.common_semantics_ok===false);if(found>=0){$('mode').value='window';fillJumps();seek(found)}};
+$('mode').onchange=()=>{stop();fillJumps();show(index)};
+$('timeline').onclick=event=>{const box=$('timeline').getBoundingClientRect();seek((event.clientX-box.left)/box.width*(rows.length-1))};
+document.addEventListener('keydown',event=>{if(['INPUT','SELECT'].includes(event.target.tagName))return;if(event.key==='ArrowRight'){event.preventDefault();seek(index+1)}if(event.key==='ArrowLeft'){event.preventDefault();seek(index-1)}});
+const requested=new URLSearchParams(location.search).get('frame');show(requested===null?0:Number(requested));
+document.documentElement.dataset.ready='true';
+</script></html>

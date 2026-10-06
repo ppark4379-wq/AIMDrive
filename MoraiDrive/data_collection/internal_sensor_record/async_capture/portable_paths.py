@@ -25,7 +25,21 @@ def recorded_episode_directory(recorded_path, episode, leaf_name, ssd_root):
     except ValueError as outside:
         expected=(episode.parent.name,episode.name,leaf_name)
         if tuple(recorded.parts[-3:]) != expected:
-            raise ValueError('Recorded path identity differs from transferred episode') from outside
+            # Renamed publications retain their sealed acquisition path. Bind
+            # the local raw recording to that exact path through the sealed index.
+            quality = episode / 'quality'
+            index_path = quality / 'INDEX_COMPLETE.json'
+            seal_path = quality / 'QUALITY_COMPLETE.json'
+            if not index_path.is_file() or not seal_path.is_file():
+                raise ValueError('Renamed episode lacks sealed path provenance') from outside
+            index = json.loads(index_path.read_text())
+            seal = json.loads(seal_path.read_text())
+            manifest = episode / leaf_name / 'raw_manifest.json'
+            if (seal.get('files', {}).get(index_path.name) != digest(index_path)
+                    or index.get('raw_path') != str(recorded_path)
+                    or not manifest.is_file()
+                    or index.get('raw_manifest_sha256') != digest(manifest)):
+                raise ValueError('Renamed episode raw provenance mismatch') from outside
         local=episode/leaf_name
         seal_path=local/'RAW_COMPLETE.json';manifest_path=local/'raw_manifest.json'
         if not local.is_dir() or not seal_path.is_file() or not manifest_path.is_file():

@@ -1,0 +1,37 @@
+{
+  "geometry": {
+    "spacing_m": 1.0,
+    "smoothing_m": 5.0,
+    "segmentation": "hysteresis",
+    "turn_curvature": 0.015,
+    "turn_exit_curvature": 0.0075,
+    "merge_gap_m": 5.0,
+    "min_turn_length_m": 5.0,
+    "min_turn_angle_deg": 15.0,
+    "bend_refinements": [
+      {
+        "id": "region5",
+        "route_sha256": "4529717b111422ff32124273e3e3f6fd19627e8442e19e80df86a06df4bc90a7",
+        "start_m": 141.97476645936914,
+        "end_m": 488.9024421562933,
+        "enter_curvature": 0.003,
+        "exit_curvature": 0.0015,
+        "merge_gap_m": 5.0,
+        "min_length_m": 20.0,
+        "min_angle_deg": 15.0
+      }
+    ]
+  },
+  "encoder": {
+    "lookahead_m": 60.0,
+    "distance_scale_m": 60.0,
+    "lateral_scale_m": 5.0,
+    "curvature_scale": 0.1
+  },
+  "instruction": {
+    "scheme": "descriptive",
+    "gentle_curvature": 0.025,
+    "sharp_curvature": 0.06
+  },
+  "max_sensor_gap_ms": 150.0
+}

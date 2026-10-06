@@ -56,6 +56,17 @@ def yaw_difference_deg(a, b):
     return abs((float(a) - float(b) + 180.0) % 360.0 - 180.0)
 
 
+def pedestrian_velocity_parameter(actor):
+    """Native pedestrian velocity parameter (km/h), not differenced world motion."""
+    if actor.get("actor_info", {}).get("object_type") != "OBJECT_TYPE_PEDESTRIAN":
+        return None
+    try:
+        values = [float(actor["velocity"][axis]) for axis in "xyz"]
+        return math.sqrt(sum(v*v for v in values)) if all(math.isfinite(v) for v in values) else None
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
 def summarize_pivot_offsets(observations, policy=DEFAULT_CENTER_POLICY):
     """Require one rigid pivot-to-centre offset across every snapshot."""
     result = {}
@@ -74,6 +85,11 @@ def summarize_pivot_offsets(observations, policy=DEFAULT_CENTER_POLICY):
             "offset_xyz_m": [statistics.median(o[i] for o in offsets) for i in range(3)],
             "offset_range_xyz_m": ranges,
             "max_box_pivot_yaw_difference_deg": yaw,
+            "max_actor_roll_pitch_deg": max((row.get("actor_roll_pitch_deg", 180.0) for row in rows)),
+            "pedestrian_velocity_parameters_kmh": (
+                sorted({round(row["pedestrian_velocity_parameter_kmh"], 5) for row in rows})
+                if all(row.get("pedestrian_velocity_parameter_kmh") is not None for row in rows)
+                else None),
             "valid": reason is None,
             "reason": reason,
         }
@@ -110,7 +126,9 @@ def load_pivot_evidence(episode, active, expected_raw_hash, ssd_root):
                     continue
                 observations.setdefault(key, []).append({
                     "record_id": meta["record_id"], "actor_id": actor_id,
-                    "offset_xyz_m": offset, "box_pivot_yaw_difference_deg": yaw})
+                    "offset_xyz_m": offset, "box_pivot_yaw_difference_deg": yaw,
+                    "pedestrian_velocity_parameter_kmh": pedestrian_velocity_parameter(actor),
+                    "actor_roll_pitch_deg": max(abs((float(actor["transform"]["rotation"][axis]) + 180) % 360 - 180) for axis in "xy")})
     finally:
         reader.close()
     return {

@@ -19,7 +19,11 @@ RECOVERY_NAMES = {3: "ADMISSION_RECOVERY_SCALE_V1.json",
                   4: "ADMISSION_RECOVERY_CENTER_V1.json",
                   5: "ADMISSION_RECOVERY_FUSED_V1.json"}
 # New captures use V5 once a LiDAR registry is installed here.
-DEFAULT_GEOMETRY_REGISTRY = ROOT / "evidence/object_geometry_registry_v1/registry.json"
+STATIC_UNIT_3D_REGISTRY = ROOT / "evidence/object_geometry_registry_unit3d_v1/registry.json"
+DEFAULT_3D_REGISTRY = ROOT / "evidence/object_geometry_registry_default3d_v2/registry.json"
+DEFAULT_GEOMETRY_REGISTRY = next(
+    (path for path in (DEFAULT_3D_REGISTRY, STATIC_UNIT_3D_REGISTRY) if path.is_file()),
+    ROOT / "evidence/object_geometry_registry_v1/registry.json")
 RECOVERY_REASONS = {2: "training_bev_spatial_scope_v2",
                     3: "proportional_measured_catalog_scale_v1",
                     4: "catalog_centre_and_visible_return_geometry_v4",

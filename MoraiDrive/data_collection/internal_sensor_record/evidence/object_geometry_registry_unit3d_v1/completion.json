@@ -1,0 +1,92 @@
+{
+  "status": "completed",
+  "static_unit_models": {
+    "total": 36,
+    "approved": 36,
+    "failed": 0,
+    "pending": 0
+  },
+  "scale_xyz": [
+    1,
+    1,
+    1
+  ],
+  "confirmation_views": 288,
+  "minimum_containment_with_10cm_face_margin": 1.0,
+  "foreground_points": 83238,
+  "minimum_points_per_confirmation_view": 12,
+  "unit_tests_passed": 56,
+  "registry": "/home/dydwns/AIMDrive/MoraiDrive/data_collection/internal_sensor_record/evidence/object_geometry_registry_unit3d_v1/registry.json",
+  "registry_sha256": "949837baa52e4894f0bbab811d53019aadafad06a092622b4d8bad0b9cfed55d",
+  "existing_recording_geometry_audit": {
+    "models": 35,
+    "frames": 9102,
+    "passed_frames": 9102
+  },
+  "publication": {
+    "training_ready": true,
+    "static_models_in_existing_recordings": 35,
+    "models": [
+      "BabyStroller1",
+      "BabyStroller2",
+      "BabyStroller3",
+      "Barbed_Wirefence",
+      "Bicycle_city",
+      "Bicycle_mountain",
+      "Bike1",
+      "Bike2",
+      "Bike3",
+      "Bollard01",
+      "Bollard04",
+      "CargoBox",
+      "Color_Cone",
+      "Concrete_Barricade01",
+      "Concrete_Barricade02",
+      "ElectricScooter1",
+      "ElectricScooter2",
+      "Lane_Separation_Bar",
+      "NCAP_GVT",
+      "PE_Drum",
+      "PE_Firewall_Orange",
+      "PE_Firewall_White",
+      "RedBarrel",
+      "Rockslide",
+      "Rubber_Cone",
+      "Scooter1",
+      "Scooter2",
+      "Scooter_02",
+      "Sportbike_01",
+      "Steel_Barricade",
+      "TrafficBarrel",
+      "WoodBox",
+      "YellowBarrel",
+      "concrete-barrier",
+      "obj_obstacle_dog"
+    ],
+    "counts": {
+      "frames": 8532,
+      "old_valid_positive_frames": 3984,
+      "new_valid_positive_frames": 5896,
+      "bbox_records": 6123,
+      "unchanged_sensor_and_teacher_frames": 8532
+    },
+    "new_manifest_index": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/_campaign/validations/validation_20260924_222635_790766/training_dataset_static_unit3d_20260929/manifest_index.json",
+    "new_manifest_sha256": "81d5a5744ad4cdf828c6201588d8b780a2d0b6784572845ae3245ed341dcb178",
+    "original_manifest_index": "/mnt/d/MoraiDrive/dataset/.collecting/static_obstacle/static_obstacle_lap36_20260924_144713/_campaign/validations/validation_20260924_222635_790766/training_dataset_v4_fused_v5_21f7927b6ea5/manifest_index.json",
+    "original_manifest_sha256": "66722a0942f9291c1b41ff477ed7684a8d926f1055e36ffd88661b51e00c4f1b",
+    "preserved": [
+      "sensor timestamps",
+      "sensor assets and hashes",
+      "ego poses",
+      "waypoints",
+      "navigation",
+      "traffic lights",
+      "run split assignments"
+    ],
+    "missing_original_recording_model": "SportBike; its unit bbox is validated and installed for new captures"
+  },
+  "gallery": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/index.html",
+  "simulator_cleanup": "Ego only, independently queried after capture",
+  "camera_bridge": "left camera-enabled; not restarted",
+  "scope": "Static unit-scale measured visible-surface 3D geometry; not a dynamic/scaled/temporal-atomicity approval."
+}

@@ -14,6 +14,8 @@ class MultimodalSequence:
     position_ids: torch.Tensor
     modality_ids: torch.Tensor
     visual_start_index: int
+    frame_ids: torch.Tensor = None
+    frame_readout_indices: torch.Tensor = None
 
 
 def build_multimodal_sequence(
@@ -53,3 +55,31 @@ def build_multimodal_sequence(
         modality_ids=modality_ids,
         visual_start_index=instruction_embeddings.shape[1],
     )
+
+
+def build_frame_multimodal_sequence(instruction_embeddings, instruction_token_mask,
+                                    visual_embeddings, visual_token_mask):
+    """Pack [navigation_i, visual_i] with explicit frame IDs and readout indices."""
+    from ..connector.visual_token_interface import last_valid_indices
+    if instruction_embeddings.ndim != 4 or visual_embeddings.ndim != 4:
+        raise ValueError('Frame embeddings must have shape [B,T,L/K,D]')
+    b, t, length, d = instruction_embeddings.shape
+    if visual_embeddings.shape[:2] != (b, t) or visual_embeddings.shape[-1] != d:
+        raise ValueError('Navigation and visual frame dimensions differ')
+    retained = visual_embeddings.shape[2]
+    if instruction_token_mask.shape != (b, length) or visual_token_mask.shape != (b, t, retained):
+        raise ValueError('Frame token mask shapes differ')
+    text_mask = instruction_token_mask.bool()[:, None].expand(-1, t, -1)
+    visual_mask = visual_token_mask.bool()
+    if not text_mask.any(-1).all() or not visual_mask.any(-1).all():
+        raise ValueError('Every frame requires navigation and visual tokens')
+    mask = torch.cat((text_mask, visual_mask), -1).reshape(b, -1)
+    modalities = torch.cat((torch.full_like(text_mask, INSTRUCTION, dtype=torch.long),
+                            torch.full_like(visual_mask, VISUAL, dtype=torch.long)), -1).reshape(b, -1)
+    frame_ids = torch.arange(t, device=visual_embeddings.device)[None, :, None].expand(b, t, length + retained).reshape(b, -1)
+    indices = last_valid_indices(visual_mask) + length + torch.arange(t, device=visual_embeddings.device) * (length + retained)
+    return MultimodalSequence(
+        inputs_embeds=torch.cat((instruction_embeddings, visual_embeddings), 2).reshape(b, -1, d),
+        attention_mask=mask.long(), position_ids=mask.long().cumsum(1).sub(1).clamp_min(0),
+        modality_ids=modalities.masked_fill(~mask, PADDING), visual_start_index=length,
+        frame_ids=frame_ids.masked_fill(~mask, -1), frame_readout_indices=indices)

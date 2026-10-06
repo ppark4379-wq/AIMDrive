@@ -133,6 +133,12 @@ def run_vldrive(args):
         raise RuntimeError('Configured CUDA device is unavailable')
     config = VLDriveTrainingConfig(**settings['model'])
     config.validate()
+    path_settings = settings.get('path_instruction', {})
+    path_cache = path_settings.get('feature_cache') if config.path_navigation else None
+    if config.path_navigation and (not path_cache or settings.get('dataset_format') != 'navigation_token_cache_v1'):
+        raise ValueError('Path navigation requires navigation_token_cache_v1 and path_instruction.feature_cache')
+    if path_cache:
+        path_cache = ROOT / path_cache
     root = Path(settings['dataset'])
     print('Validating actual artifacts, teacher labels, independent splits and instruction availability...', flush=True)
     dataset_format = settings.get('dataset_format', 'morai_expert_cache_v1')
@@ -156,6 +162,7 @@ def run_vldrive(args):
             validation_variants=language.get('validation_variants', list(range(8))),
             include_validation_in_train=full_route,
             frame_sampling_interval=settings.get('frame_sampling_interval', 1),
+            path_feature_cache=path_cache,
         ) for split in splits}
     else:
         datasets = {split: MoraiExpertVLDriveDataset(
@@ -181,6 +188,8 @@ def run_vldrive(args):
     provenance = dict(backend=backend, source=source_hashes(ROOT),
                       datasets={k: v.describe() for k, v in datasets.items()})
     token_folder = settings.get('navigation_sampling', {}).get('token_cache')
+    if config.path_navigation and token_folder:
+        raise ValueError('Legacy text token cache does not contain the new direction templates; disable token_cache')
     if token_folder:
         token_meta = Path(token_folder) / 'token_meta.json'
         provenance['instruction_tokens'] = dict(meta_sha256=sha256(token_meta),
@@ -189,6 +198,8 @@ def run_vldrive(args):
     write(output / 'window_indices.json', indices)
     print('Loading cached frozen visual tokens and full trainable pretrained TinyLlama/DDIA...', flush=True)
     model = VLDriveTrainingModel(config, device=device)
+    from training.connector_llm.stages import apply_instruction_stage
+    apply_instruction_stage(model, path_settings.get('stage', 'joint') if config.path_navigation else 'joint')
     if token_folder:
         if dataset_format != 'navigation_token_cache_v1':
             raise ValueError('Navigation token cache requires the navigation dataset')
@@ -215,6 +226,7 @@ def run_vldrive(args):
         print('Loading previous model weights; starting a fresh optimizer and learning-rate schedule...', flush=True)
         transfer = warm_start_model_checkpoint(
             warm_start_path, model, provenance=provenance,
+            new_prefixes=path_settings.get('new_module_prefixes', ()) if config.path_navigation else (),
             transfer_reason=f'Continue from saved weights with batch_size={batch_size}, include_validation_in_train={full_route}; fresh optimizer and additional configured epochs.')
         write(output / 'warm_start.json', transfer)
         report['warm_start'] = dict(source_checkpoint=transfer['source_checkpoint'],

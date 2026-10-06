@@ -136,13 +136,17 @@ def objects_for_entry(gt, geometry):
         center = audit.get("training_center_world_xy") or position[:2]
         # V5 trains on the registry-selected MORAI size (e.g. /Object_topic).
         width, length = audit.get("training_size_wl_m") or size[:2]
+        center_xyz = audit.get("training_center_world_xyz") or [center[0], center[1], position[2]]
+        height = (audit.get("training_size_wlh_m") or size)[2]
+        rotation = audit.get("training_rotation_rpy_deg") or obj.get("rotation_rpy_deg")
         result.append({
             "id": str(obj.get("id")),
             "instance_key": key,
             "model_name": str(obj.get("model_name") or obj.get("name") or ""),
-            "x": float(center[0]), "y": float(center[1]),
-            "heading_deg": float(obj["heading_deg"]),
-            "width": float(width), "length": float(length), "height": float(size[2]),
+            "x": float(center_xyz[0]), "y": float(center_xyz[1]), "z": float(center_xyz[2]),
+            "heading_deg": float(rotation[2] if rotation is not None else obj["heading_deg"]),
+            **({"rotation_rpy_deg": [float(v) for v in rotation]} if rotation is not None else {}),
+            "width": float(width), "length": float(length), "height": float(height),
             "vel_x": float(velocity[0]) / 3.6, "vel_y": float(velocity[1]) / 3.6,
             "geometry_valid": bool(audit.get("api_box_geometry_candidate")),
         })

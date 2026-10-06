@@ -10,6 +10,7 @@ runs deliberately used the alternative ``MVTL1Loss`` formulation that remains
 in that source file but is commented out at loss construction.  Keep the two
 policies explicit so a checkpoint cannot silently change objective semantics.
 """
+import math
 import torch
 import torch.nn.functional as F
 
@@ -58,9 +59,13 @@ def _lmdrive_lav_loss(prediction, target, zero):
 
 
 def multitask_loss(outputs, targets, include_traffic_light=True, include_objects=True,
-                   detection_loss_policy="mvt_l1_v1"):
+                   detection_loss_policy="mvt_l1_v1", geometry_aux_weight=0.0):
     if detection_loss_policy not in DETECTION_LOSS_POLICIES:
         raise ValueError("Unknown detection loss policy: " + str(detection_loss_policy))
+    if not math.isfinite(geometry_aux_weight) or geometry_aux_weight < 0:
+        raise ValueError('Geometry auxiliary weight must be finite and nonnegative')
+    if geometry_aux_weight and detection_loss_policy != 'lmdrive_lav_v1':
+        raise ValueError('Relative bbox auxiliary requires LAV detection semantics')
     det, waypoints, light = outputs[:3]
     valid = targets["object_valid"].bool() & include_objects
     prediction, target = det[valid], targets["detection"][valid]
@@ -78,5 +83,15 @@ def multitask_loss(outputs, targets, include_traffic_light=True, include_objects
     light_loss = (F.cross_entropy(light[valid_light], targets["traffic_light"][valid_light])
                   if include_traffic_light and valid_light.any() else light.sum() * 0)
     total = .5 * det_loss + .5 * wp_loss + .05 * speed_loss + .1 * light_loss
-    return total, {"detection": det_loss, "waypoint_l1": wp_loss,
-                   "object_speed": speed_loss, "traffic_light_ce": light_loss}
+    tasks = {"detection": det_loss, "waypoint_l1": wp_loss,
+             "object_speed": speed_loss, "traffic_light_ce": light_loss}
+    if geometry_aux_weight:
+        from .morai_bbox_auxiliary import relative_bbox_loss
+        if 'object_instance_ids' not in targets:
+            raise ValueError('Relative bbox auxiliary requires object_instance_ids')
+        auxiliary, terms = relative_bbox_loss(
+            det, targets['detection'], targets['object_instance_ids'], valid_mask=valid)
+        total = total + geometry_aux_weight * auxiliary
+        tasks['bbox_auxiliary'] = auxiliary
+        tasks.update(terms)
+    return total, tasks

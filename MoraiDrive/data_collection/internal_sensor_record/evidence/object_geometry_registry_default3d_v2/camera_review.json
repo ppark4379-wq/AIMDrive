@@ -1,0 +1,863 @@
+{
+  "profile_sha256": "a33a9efeb0394740ce9d306ec54a90d8818ae62375245429e2bd41c008b33964",
+  "models": {
+    "Boy1": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/pedestrian_camera_review/Boy1.jpg",
+          "sha256": "4731be01763a0762f917db35ae034c78634d296dbd26e4d85bd531bb0e92d2ce"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB at four headings; head, body, limbs and carried/attached objects checked against the frozen 3D envelope. Numerical acceptance uses the separate 10cm LiDAR criterion; partly occluded surfaces are supported by other viewpoints."
+    },
+    "Deer1": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/pedestrian_camera_review/Deer1.jpg",
+          "sha256": "152ddaacc83fd10c3dcc13daf4d14226ce4e58de68a40d66607401c35f4b8d05"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB at four headings; head, body, limbs and carried/attached objects checked against the frozen 3D envelope. Numerical acceptance uses the separate 10cm LiDAR criterion; partly occluded surfaces are supported by other viewpoints."
+    },
+    "Girl1": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/pedestrian_camera_review/Girl1.jpg",
+          "sha256": "7f5511d95a980a0095bc2373a75430560d66b519b6e64916f51b6fb792cc134d"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB at four headings; head, body, limbs and carried/attached objects checked against the frozen 3D envelope. Numerical acceptance uses the separate 10cm LiDAR criterion; partly occluded surfaces are supported by other viewpoints."
+    },
+    "Girl2": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/pedestrian_camera_review/Girl2.jpg",
+          "sha256": "e0d67bce901f5acc43934622048a0891e1fdfd4917c59db0fed0bb20a053f037"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB at four headings; head, body, limbs and carried/attached objects checked against the frozen 3D envelope. Numerical acceptance uses the separate 10cm LiDAR criterion; partly occluded surfaces are supported by other viewpoints."
+    },
+    "Man1": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/pedestrian_camera_review/Man1.jpg",
+          "sha256": "21981bef1cd463c9822d4e1e9622f16f19f48051ceaa70d147c0f35f7c43a066"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB at four headings; head, body, limbs and carried/attached objects checked against the frozen 3D envelope. Numerical acceptance uses the separate 10cm LiDAR criterion; partly occluded surfaces are supported by other viewpoints."
+    },
+    "Man2": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/pedestrian_camera_review/Man2.jpg",
+          "sha256": "e5c8b18066e36f96cc6e3d5228cae98385b8b9c9430a259c6fc843e500941c27"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB at four headings; head, body, limbs and carried/attached objects checked against the frozen 3D envelope. Numerical acceptance uses the separate 10cm LiDAR criterion; partly occluded surfaces are supported by other viewpoints."
+    },
+    "Man3": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/pedestrian_camera_review/Man3.jpg",
+          "sha256": "9f81ea84406b059f22356809d41faf125e2cc7d5d5f7c2214c9cc79a60ba2138"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB at four headings; head, body, limbs and carried/attached objects checked against the frozen 3D envelope. Numerical acceptance uses the separate 10cm LiDAR criterion; partly occluded surfaces are supported by other viewpoints."
+    },
+    "Man4": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/pedestrian_camera_review/Man4.jpg",
+          "sha256": "1a298bee9dc9be6ab508d454baf83ad849cfa0f27ffed035aeaec2a78bf426a7"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB at four headings; head, body, limbs and carried/attached objects checked against the frozen 3D envelope. Numerical acceptance uses the separate 10cm LiDAR criterion; partly occluded surfaces are supported by other viewpoints."
+    },
+    "Man5": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/pedestrian_camera_review/Man5.jpg",
+          "sha256": "bc973df1bf6269d1f55d500979fbd74ee914922a6fe63064cd004f5e77e0e35c"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB at four headings; head, body, limbs and carried/attached objects checked against the frozen 3D envelope. Numerical acceptance uses the separate 10cm LiDAR criterion; partly occluded surfaces are supported by other viewpoints."
+    },
+    "Man6": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/pedestrian_camera_review/Man6.jpg",
+          "sha256": "168f3a22472207a1cb6be2136902a2a107be195cc47464a63e6050281f14923c"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB at four headings; head, body, limbs and carried/attached objects checked against the frozen 3D envelope. Numerical acceptance uses the separate 10cm LiDAR criterion; partly occluded surfaces are supported by other viewpoints."
+    },
+    "Man7": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/pedestrian_camera_review/Man7.jpg",
+          "sha256": "264cd90aad963691ea222a42b9954f86542f5f976ed0822bffc5b3f3c389f192"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB at four headings; head, body, limbs and carried/attached objects checked against the frozen 3D envelope. Numerical acceptance uses the separate 10cm LiDAR criterion; partly occluded surfaces are supported by other viewpoints."
+    },
+    "Man8": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/pedestrian_camera_review/Man8.jpg",
+          "sha256": "e4e7bab03386805bef1a0b8ecd44cfe48f181fe8032ac4b17c82656bf43d04f0"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB at four headings; head, body, limbs and carried/attached objects checked against the frozen 3D envelope. Numerical acceptance uses the separate 10cm LiDAR criterion; partly occluded surfaces are supported by other viewpoints."
+    },
+    "NCAP_EBT": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/pedestrian_camera_review/NCAP_EBT.jpg",
+          "sha256": "1227c5a4d265b9f572bbfd6b484207d8e4764ba974c15d657074931dd65c8442"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB at four headings; head, body, limbs and carried/attached objects checked against the frozen 3D envelope. Numerical acceptance uses the separate 10cm LiDAR criterion; partly occluded surfaces are supported by other viewpoints."
+    },
+    "NCAP_EPTa": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/pedestrian_camera_review/NCAP_EPTa.jpg",
+          "sha256": "71d653316ccb4983e391c2b135e433b96ec8abc5c5bbae287170cc6fba341a7e"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB at four headings; head, body, limbs and carried/attached objects checked against the frozen 3D envelope. Numerical acceptance uses the separate 10cm LiDAR criterion; partly occluded surfaces are supported by other viewpoints."
+    },
+    "Ped_Pet1": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/pedestrian_camera_review/Ped_Pet1.jpg",
+          "sha256": "cd80e3de752ebd778c3d00e4194fb67182d9167cf24505c3761d203dfac889fa"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB at four headings; head, body, limbs and carried/attached objects checked against the frozen 3D envelope. Numerical acceptance uses the separate 10cm LiDAR criterion; partly occluded surfaces are supported by other viewpoints."
+    },
+    "Woman1": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/pedestrian_camera_review/Woman1.jpg",
+          "sha256": "6360d956578396b37f1bc986201a0bbcadebae9fa4944930567e3b7f6ce03668"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB at four headings; head, body, limbs and carried/attached objects checked against the frozen 3D envelope. Numerical acceptance uses the separate 10cm LiDAR criterion; partly occluded surfaces are supported by other viewpoints."
+    },
+    "Woman2": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/pedestrian_camera_review/Woman2.jpg",
+          "sha256": "fc3c429306a59e8a4da4275b382f63b7f7e061e39a5918e206a8336d890476f3"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB at four headings; head, body, limbs and carried/attached objects checked against the frozen 3D envelope. Numerical acceptance uses the separate 10cm LiDAR criterion; partly occluded surfaces are supported by other viewpoints."
+    },
+    "Woman3": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/pedestrian_camera_review/Woman3.jpg",
+          "sha256": "0c64fc2466fc07bedc17bca6faaa2f34c3f55fc6a02f98d3864b31dcebe82448"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB at four headings; head, body, limbs and carried/attached objects checked against the frozen 3D envelope. Numerical acceptance uses the separate 10cm LiDAR criterion; partly occluded surfaces are supported by other viewpoints."
+    },
+    "Woman4": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/pedestrian_camera_review/Woman4.jpg",
+          "sha256": "930ea158ae72367044f0be6503ace8d09a3a3ac2498649c805665d10bca9cc30"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB at four headings; head, body, limbs and carried/attached objects checked against the frozen 3D envelope. Numerical acceptance uses the separate 10cm LiDAR criterion; partly occluded surfaces are supported by other viewpoints."
+    },
+    "Woman5": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/pedestrian_camera_review/Woman5.jpg",
+          "sha256": "d238578082c0f5f550350353beacd077894574b4a86e3e2bf26c0547111b6d4a"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB at four headings; head, body, limbs and carried/attached objects checked against the frozen 3D envelope. Numerical acceptance uses the separate 10cm LiDAR criterion; partly occluded surfaces are supported by other viewpoints."
+    },
+    "Woman6": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/pedestrian_camera_review/Woman6.jpg",
+          "sha256": "1d8c16495e33d159902ab875fd57a2e231b75cabbb2346b63fd7acbdaa91e417"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB at four headings; head, body, limbs and carried/attached objects checked against the frozen 3D envelope. Numerical acceptance uses the separate 10cm LiDAR criterion; partly occluded surfaces are supported by other viewpoints."
+    },
+    "Woman7": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/pedestrian_camera_review/Woman7.jpg",
+          "sha256": "303e82ecc6ad0858b529170e95c3c5df5591f5097545e51cb30746257f0c9175"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB at four headings; head, body, limbs and carried/attached objects checked against the frozen 3D envelope. Numerical acceptance uses the separate 10cm LiDAR criterion; partly occluded surfaces are supported by other viewpoints."
+    },
+    "Woman8": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/pedestrian_camera_review/Woman8.jpg",
+          "sha256": "9f1456782839278abe5743eea68d152d6912a04e975ee89afa1856361d4a8a6c"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB at four headings; head, body, limbs and carried/attached objects checked against the frozen 3D envelope. Numerical acceptance uses the separate 10cm LiDAR criterion; partly occluded surfaces are supported by other viewpoints."
+    },
+    "police_m_2": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/pedestrian_camera_review/police_m_2.jpg",
+          "sha256": "f7bee7ba4cfd852fc0ea02e002a09f79c83d553f8b99da403cb764ebe17ea884"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB at four headings; head, body, limbs and carried/attached objects checked against the frozen 3D envelope. Numerical acceptance uses the separate 10cm LiDAR criterion; partly occluded surfaces are supported by other viewpoints."
+    },
+    "worker_f_1": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/pedestrian_camera_review/worker_f_1.jpg",
+          "sha256": "87525023c39a6c94a144eb0148f179add633f03861536ae21750ec9050b5146c"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB at four headings; head, body, limbs and carried/attached objects checked against the frozen 3D envelope. Numerical acceptance uses the separate 10cm LiDAR criterion; partly occluded surfaces are supported by other viewpoints."
+    },
+    "worker_m_1": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/pedestrian_camera_review/worker_m_1.jpg",
+          "sha256": "7534309f3b6129d53bbdee48a170e3c176bcd86125ff35e8b0baf72348bccb53"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB at four headings; head, body, limbs and carried/attached objects checked against the frozen 3D envelope. Numerical acceptance uses the separate 10cm LiDAR criterion; partly occluded surfaces are supported by other viewpoints."
+    },
+    "2014_Kia_K7": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2014_Kia_K7.jpg",
+          "sha256": "100a5f8c2aae9ea9a9b78cec4f127c577c8a2a5ef5967becafae74e5a2fcbc54"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2015_Kia_K5": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2015_Kia_K5.jpg",
+          "sha256": "2373164188139bdfa6b9ecea24d035036c48f4250f37ccdb616055b598546e11"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2016_Hyundai_Genesis_DH": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2016_Hyundai_Genesis_DH.jpg",
+          "sha256": "349ee8f225ccb59d767dfdc7e8126812cd1ac235d9a56920ef80fcb0173cbe81"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2016_Hyundai_Ioniq": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2016_Hyundai_Ioniq.jpg",
+          "sha256": "039d53d205ed0a43368f77d0228cecaece40fc86693ecd801b57afd1c6338861"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2016_Hyundai_Santafe": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2016_Hyundai_Santafe.jpg",
+          "sha256": "f40fda888c4136a00c03bd5ceaae1aa23792ef6f6c1ec7f1f3b52b1e54530e8f"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2016_Hyundai_Sonata": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2016_Hyundai_Sonata.jpg",
+          "sha256": "10538b32931172c54688b13fe3ff19777554ce5309b9e311942b7c3613332843"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2016_Kia_Soul(EV)": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2016_Kia_Soul(EV).jpg",
+          "sha256": "7502f7cffa8661829d02d03403b2ee446843d186dc7014394e5b5c6248579813"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2017_Hyundai_Grandeur": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2017_Hyundai_Grandeur.jpg",
+          "sha256": "bd90d25e6b95c3e735d82303b78036b96431f9a9801f33a901a875cb43073355"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2017_Kia_Niro(HEV)": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2017_Kia_Niro(HEV).jpg",
+          "sha256": "93c1a87576c875a87b7d3dccbb005c55d5868592eb522d15894ae72cf34469f3"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2017_Kia_Sorento": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2017_Kia_Sorento.jpg",
+          "sha256": "982b7c648f53da20e1c1cb2e0420f3321336715299d7152ac91566ddee1c2fec"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2017_hyundai_solati_h350": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2017_hyundai_solati_h350.jpg",
+          "sha256": "79a3e872b64d517041c9e78b193e7d9140dcab5f8108730802366e92a7820471"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2019_Hyundai_Kona(EV)": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2019_Hyundai_Kona(EV).jpg",
+          "sha256": "1118130e7c39151c1b09c7b2b2196e567d484c11644953963c431c53009bf4cc"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2019_Hyundai_Nexo": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2019_Hyundai_Nexo.jpg",
+          "sha256": "f06c52127f39447fe6d1c99f323edd877a98eb92e3d07cb8f571893bd9f8e7f4"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2019_Toyota_Prius": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2019_Toyota_Prius.jpg",
+          "sha256": "ee6e660881fc4e2e0e63d1ee379dde3dbb238e5e936d464e1e342a90251ae8ed"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2019_hyundai_genesis_g90": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2019_hyundai_genesis_g90.jpg",
+          "sha256": "8d1b34aaca70da265043ba1a20649388af994e50e5d7ef43e79987245229f469"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2019_hyundai_genesis_g90_4WS": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2019_hyundai_genesis_g90_4WS.jpg",
+          "sha256": "e243a8effc1a591b6a054b4fe1926bbe04ef2eee8c9022fdc1a80b1fdf37aa17"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2019_kia_sedona": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2019_kia_sedona.jpg",
+          "sha256": "ec2f881a611a01caf3edecc89b0891749806a6a0869929d40e82a1e94b799311"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2020_Kia_K5": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2020_Kia_K5.jpg",
+          "sha256": "8435028df37a0ff557839a5fab2cd191145cbcc64517ffa7cd34690f96d1124d"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2020_Kia_Niro(EV)": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2020_Kia_Niro(EV).jpg",
+          "sha256": "2feab41fc3c7c2b18171628424cac10996142ad8c62af1efa4cfab2cce9bf469"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2020_Kia_Soul(EV)": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2020_Kia_Soul(EV).jpg",
+          "sha256": "e61e0ec913343557d61f851a36739661f260ba49a34c7e5b390886aba956dc4a"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2020_Kia_Stinger": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2020_Kia_Stinger.jpg",
+          "sha256": "525ccac5b455107f8b95282b4ffe67b7b62163ab16ffa7c4a1baa06dc407c8aa"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2020_chrysler_pacifica_hybrid": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2020_chrysler_pacifica_hybrid.jpg",
+          "sha256": "8cfa3a43ab28e7f59e184cff69efac6580be6c81dc79a60c368cd7d3f4f644bd"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2020_hyundai_sonata": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2020_hyundai_sonata.jpg",
+          "sha256": "e5e3ad43aba526c934a339d490d38d290b636a132b887f655bda4ebb6535fb7b"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2020_volvo_xc90": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2020_volvo_xc90.jpg",
+          "sha256": "59f9aa8ddaf0f823595eae7eb73edb60d142fe1ab657174cbcd3de79414209ec"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2021_Hyundai_G80": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2021_Hyundai_G80.jpg",
+          "sha256": "a0e8b17cbb1be65456ef9b2096b4d6afce7cbadff7bed5fa7c35020d567f072a"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2021_Hyundai_GV70": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2021_Hyundai_GV70.jpg",
+          "sha256": "4b1e297dd011d80b57789ffdbef887d2fb1974479f99998df3a29cc9b752c5e9"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2021_Hyundai_Genesis_GV80": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2021_Hyundai_Genesis_GV80.jpg",
+          "sha256": "2a9681392ddc910a2dc91ba5ff27df31accd157190c7f5011f73a212cb2ad4dc"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2021_Kia_Carnival": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2021_Kia_Carnival.jpg",
+          "sha256": "e1161cb3c46e05533bae5c6ce0fa7ef09f0e11d1cb11aad29e822afe499e5bbc"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2021_Volkswagen_Golf_GTI": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2021_Volkswagen_Golf_GTI.jpg",
+          "sha256": "7c0d8719ab4f190f978731e8b1e0293454a6d2dee8dbedcecbb7f7d84f53d7a0"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2023_Hyundai_Ioniq5": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2023_Hyundai_Ioniq5.jpg",
+          "sha256": "b52d7952316bb47a72b95fc423796b6502dfe1c819d2f218dcc0432a5c706aa0"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "2023_Kia_EV6": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/2023_Kia_EV6.jpg",
+          "sha256": "8b407003d4c97fed1b8f28ae7c0cd8c07085ac3574e23fa84084c5b7fc120cd1"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "DEFAULT_MPV": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/DEFAULT_MPV.jpg",
+          "sha256": "00dec8c630c929c595a637d3d4332fbdf87e2e2219f4bfad32553506808411b5"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "DEFAULT_SEDAN": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/DEFAULT_SEDAN.jpg",
+          "sha256": "1c5f8f5af48c8efd117c76308d84296cd864badf25407128519cae36ca563f42"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "DEFAULT_SUV": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/DEFAULT_SUV.jpg",
+          "sha256": "338cd47b5e50ea16b3b864212d76439c4ddfddb677d9219fa3c80282ce0af392"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "DEFAULT_WAGON": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/DEFAULT_WAGON.jpg",
+          "sha256": "3ff10369f4cbf3d8fd26abd75eb8f90a279707c295fbb673db1cfa6a7c1ea027"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "DR_KGTorres_EVX_2024": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/vehicle_camera_review/DR_KGTorres_EVX_2024.jpg",
+          "sha256": "6bac5d1412e03ce87f3554bdc375360d4193486f3f207bfc29a8dcae62359c4b"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Actual independent MORAI RGB after observed horizontal motion. Four far viewpoints checked: roof, front/rear, mirrors, wheels and ground contact; no gross center/scale mismatch."
+    },
+    "Dog1": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/small_camera_review/Dog1.jpg",
+          "sha256": "35282cfefa44f655f11a9aba607945a610b90833991e7fabe00a90d27eafbc94"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Independent actual MORAI RGB at 9.5m starting distance, outside Ego hood occlusion; head, feet, tail and torso checked in four headings."
+    },
+    "Dog10": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/small_camera_review/Dog10.jpg",
+          "sha256": "a2453fda19c32a220d8e00612ac54213dfedeb5ecbe7946dad089d34f47a1dfc"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Independent actual MORAI RGB at 9.5m starting distance, outside Ego hood occlusion; head, feet, tail and torso checked in four headings."
+    },
+    "Dog2": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/small_camera_review/Dog2.jpg",
+          "sha256": "993cd18c9c6c059530d12d4e6f5235e89138f1aca37c90aed02b53ec3f3f1259"
+        }
+      ],
+      "reviewed_view_count": 4,
+      "review_note": "Independent actual MORAI RGB at 9.5m starting distance, outside Ego hood occlusion; head, feet, tail and torso checked in four headings."
+    }
+  },
+  "pending_groups": [],
+  "confirmation_sha256": "8f3edcf394d13637ac18ebcf32c71eceacc7e47711169ac1bc4fcd88cbc66c8c",
+  "review_type": "Actual image inspection by assistant, not automatic silhouette approval",
+  "physical_simultaneity_verified": false,
+  "contact_sheets": [
+    {
+      "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/camera_contact_sheets/pedestrian_00.jpg",
+      "sha256": "9db2f0c40cfc54730283639df8e34fc6269313c1732d12c9548f56edb532ab02"
+    },
+    {
+      "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/camera_contact_sheets/pedestrian_01.jpg",
+      "sha256": "09843300c60eee75d3e605c2db5233d9c6ccd26ac274a38925a5dfe3467cc046"
+    },
+    {
+      "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/camera_contact_sheets/pedestrian_02.jpg",
+      "sha256": "a3fb51f82241ee7cc7707498940cf5dc8b2d4e4998a12590b52ba2d96e41847b"
+    },
+    {
+      "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/camera_contact_sheets/pedestrian_03.jpg",
+      "sha256": "9f81c7552b751a6aa2e2f7c38feace8a5c07afe6bf4f32163da5037f77f9a81e"
+    },
+    {
+      "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/camera_contact_sheets/pedestrian_04.jpg",
+      "sha256": "2b6d26512c0019eaf45d49669a58418460255a9bc0c5a146fa5af4f92136afb9"
+    },
+    {
+      "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/camera_contact_sheets/pedestrian_05.jpg",
+      "sha256": "fbfb65d7658a73ad84bb7ff918f29c4f3707ba3f1401ad40b6ec360f1a41628a"
+    },
+    {
+      "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/camera_contact_sheets/pedestrian_06.jpg",
+      "sha256": "e17bab96b7b57abbdc1691ca1cc91bff6a72bed88be8b707a3b4431cd1d18cba"
+    },
+    {
+      "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/camera_contact_sheets/pedestrian_tolerance_detail.jpg",
+      "sha256": "41d3c69ae267c7731c592d455c7e62f63f06b05bfe97d83af4608be895c592c2"
+    },
+    {
+      "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/camera_contact_sheets/small_animals.jpg",
+      "sha256": "a4bab1522dc7dcd5bf5e5e8eef36b888db7e5b70e28c32325cddde124a649a9b"
+    },
+    {
+      "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/camera_contact_sheets/vehicle_00.jpg",
+      "sha256": "d8c93294b0a9d8ee44cad906d9c77862199eb3bad0e870e29036175e6b965f91"
+    },
+    {
+      "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/camera_contact_sheets/vehicle_01.jpg",
+      "sha256": "b95837826c1ab958448cb7996159dcd9d73980e98c550d0d9678f3e021d4fb9e"
+    },
+    {
+      "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/camera_contact_sheets/vehicle_02.jpg",
+      "sha256": "1ae14e2d7e43596ce09c9c3dafc652f325f939220d163e53c7618c9e244ebf8e"
+    },
+    {
+      "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/camera_contact_sheets/vehicle_03.jpg",
+      "sha256": "28caccf180bbc246c7a0148a9765aa96609f5f3946b93aeabdaf856de8a08443"
+    },
+    {
+      "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/camera_contact_sheets/vehicle_04.jpg",
+      "sha256": "7fdef3f576126f23bf484527b7424440f060045ee23c1d4a20e402a43f1fd714"
+    },
+    {
+      "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/camera_contact_sheets/vehicle_05.jpg",
+      "sha256": "ec7328e55634e51a87fde087449c467fe0d42def326b2b39a79390ccc65b4fd0"
+    },
+    {
+      "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/camera_contact_sheets/vehicle_06.jpg",
+      "sha256": "9c201d7170bee9bbaf8e3b5b467207114ef34389bbe68e56b5f07eac7825c640"
+    },
+    {
+      "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/camera_contact_sheets/vehicle_07.jpg",
+      "sha256": "c03e9a4e309011cf4db33721c807ce097fa8a4b7eade284d58818db9feec7108"
+    },
+    {
+      "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/dynamic_unit65_20260929/camera_contact_sheets/vehicle_08.jpg",
+      "sha256": "36f4b47c161e8a3fff39ddf3f427ef7119841260feb2e719b6a3fcb187c6e88d"
+    }
+  ]
+}

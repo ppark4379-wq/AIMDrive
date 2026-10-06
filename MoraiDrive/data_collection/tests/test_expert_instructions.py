@@ -215,7 +215,7 @@ def test_dynamic_expert_mapping_is_excluded_and_roundabout_uses_observed_phase()
                                           "ego_speed_mps":0.0,
                                           "planner_target_speed_mps":0.0}, mapping)[0]["state"] == "YIELD_STOPPED"
     assert canonical_state("roundabout", {"mode":"roundabout_entry",
-                                          "roundabout_phase":"rear_pressure"}, mapping)[0] is None
+                                          "roundabout_phase":"rear_pressure"}, mapping)[0]["state"] == "REAR_PRESSURE"
 
 
 
