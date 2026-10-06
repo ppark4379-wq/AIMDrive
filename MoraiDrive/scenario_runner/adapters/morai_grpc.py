@@ -631,6 +631,25 @@ class MoraiGrpcClient:
         )
         return verified
 
+    def set_ego_control_mode_keyboard(self):
+        """Hand Ego control to MORAI's keyboard input for a manual trial."""
+        from proto.morai.actor.actor_enum_pb2 import VEHICLE_CONTROL_KEYBOARD
+
+        ego = self.get_ego()
+        ok = ego.set_control_mode(VEHICLE_CONTROL_KEYBOARD)
+        print(f"[Ego] set_control_mode KEYBOARD: {ok}")
+        if not ok:
+            return False
+        try:
+            actual_mode = int(ego.get_control_mode())
+        except Exception as error:
+            print(f"[Ego] keyboard control verification unavailable: {error}")
+            return True
+        verified = actual_mode == int(VEHICLE_CONTROL_KEYBOARD)
+        print(f"[Ego] control_mode actual={actual_mode}, "
+              f"expected=KEYBOARD({int(VEHICLE_CONTROL_KEYBOARD)}), verified={verified}")
+        return verified
+
     def control_ego(self, steer, target_speed, brake=0.0, throttle=0.0):
         from proto.morai.actor.actor_enum_pb2 import LONG_CMD_TYPE_SPEED
 

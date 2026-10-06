@@ -197,6 +197,14 @@ def build_parser():
         ),
     )
     parser.add_argument(
+        "--manual-ego",
+        action="store_true",
+        help=(
+            "Drive Ego with MORAI keyboard controls in the tunnel dynamic trial. "
+            "Requires --scenario full_loop_tunnel_dynamic --once."
+        ),
+    )
+    parser.add_argument(
         "--dynamic-review",
         action="append",
         metavar="CROSSING:MODEL:SPEED_MPS",
@@ -268,6 +276,10 @@ def main():
     args = parser.parse_args()
     if args.max_runs is not None and args.max_runs < 1:
         parser.error("--max-runs must be at least 1")
+    if args.manual_ego and (
+        args.scenario != "full_loop_tunnel_dynamic" or not args.once
+    ):
+        parser.error("--manual-ego requires --scenario full_loop_tunnel_dynamic --once")
 
     global_cfg, zone_cfg, base_scenario_cfg = load_configuration()
     if args.static_editor:
@@ -286,6 +298,9 @@ def main():
         ]
     if args.no_sync_runtime:
         base_scenario_cfg.setdefault("sync_runtime", {})["enabled"] = False
+    if args.manual_ego:
+        base_scenario_cfg.setdefault("sync_runtime", {})["enabled"] = False
+        base_scenario_cfg["drive_control_mode"] = "morai_keyboard"
     if args.dynamic_review:
         if args.scenario != "full_loop_dynamic" or not args.once or not args.no_sync_runtime:
             parser.error("--dynamic-review requires full_loop_dynamic --once --no-sync-runtime")

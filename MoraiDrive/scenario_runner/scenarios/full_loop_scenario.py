@@ -263,6 +263,9 @@ class FullLoopScenario(FullLoopDriveBase):
     def run_timeline(self):
         try:
             super().run_timeline()
+            if (self.tunnel_dynamic_handler is not None
+                    and self.tunnel_dynamic_phase != "completed"):
+                raise RuntimeError("Route ended before tunnel pedestrian reached C")
             if getattr(self, "dynamic_obstacle_events", []):
                 if self.dynamic_obstacle_event_index != len(self.dynamic_obstacle_events):
                     raise RuntimeError("Route ended before every dynamic crossing was completed")

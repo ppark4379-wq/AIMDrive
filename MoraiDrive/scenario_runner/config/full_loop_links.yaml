@@ -1097,6 +1097,8 @@ full_loop:
     roundabout:
       ego_entry_checkpoint: 8
       ego_exit_checkpoint: 9
+      # Same measured merge reference as Expert ROUNDABOUT_ENTRY_MERGE_POINT.
+      merge_point_xy: [-93.1035536401546, 327.685278548199]
       internal_loop_links:
         - A2256W000133
         - A2256W000134
@@ -1117,6 +1119,16 @@ full_loop:
       entry_checkpoint: 14
       exit_checkpoint: 15
       route_links: [A2256W000448, A2256W000126]
+      # Official-path-derived candidate only; MORAI surface and motion
+      # still need live review. A follows B along the left side, then C
+      # crosses Ego's route. Kept separate from the legacy tunnel NPC route.
+      dynamic_paths:
+        pedestrian_walk_then_cross:
+          route_path_index: 3920
+          waypoints:
+            - {x: -13.882, y: -515.447, z: 28.449}  # A
+            - {x: -18.296, y: -517.834, z: 28.449}  # B
+            - {x: -20.429, y: -513.871, z: 28.449}  # C
       # Same direction and lane as Ego. A long initial gap prevents a
       # close-range pop-in before the one-time sudden-brake event.
       npc_route_links:

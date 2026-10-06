@@ -114,6 +114,7 @@ class SeparatedPackageTest(unittest.TestCase):
                 "full_loop_roundabout_speed_random",
                 "full_loop_roundabout_brake",
                 "full_loop_highway",
+                "full_loop_tunnel_dynamic",
             },
         )
 

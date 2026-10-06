@@ -475,6 +475,12 @@ scenarios:
     # lifecycle handler have been validated in MORAI.
     tunnel_dynamic:
       enabled: false
+      model: Man1
+      path_id: pedestrian_walk_then_cross
+      speed_mps: 1.5
+      spawn_trigger_before_crossing_m: 60.0
+      arrival_tolerance_m: 0.5
+      max_run_sec: 20.0
 
     tunnel_sudden_brake:
       enabled: true

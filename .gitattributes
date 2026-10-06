@@ -1,3 +1,4 @@
 *.sh text eol=lf
 MoraiDrive/expert/run_isolated_python.sh text eol=lf
 MoraiDrive/diagnostics/debug_expert_python.sh text eol=lf
+MoraiDrive/data_collection/internal_sensor_record/evidence/internal_sensor_record_contract_v1.json text eol=lf

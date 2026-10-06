@@ -165,8 +165,8 @@ class MissionModesTest(unittest.TestCase):
         ), self.assertRaisesRegex(RuntimeError, "disappeared"):
             scenario.verify_static_obstacle(1.0, 0.0)
 
-    def test_nine_primary_modes_plus_legacy_commands(self):
-        self.assertEqual(len(PRIMARY_SCENARIOS), 9)
+    def test_ten_primary_modes_plus_legacy_commands(self):
+        self.assertEqual(len(PRIMARY_SCENARIOS), 10)
         for name in PRIMARY_SCENARIOS:
             self.assertEqual(build_parser().parse_args(["--scenario", name]).scenario, name)
             self.assertTrue(automatic_repeat_enabled(name, self.base_cfg))
@@ -195,7 +195,7 @@ class MissionModesTest(unittest.TestCase):
         for name, mode in MISSION_MODES.items():
             count = sum(asdict(mode.zones).values())
             self.assertEqual(count, 0 if name == "full_loop_normal" else 1)
-            self.assertFalse(mode.zones.tunnel)
+            self.assertEqual(mode.zones.tunnel, name == "full_loop_tunnel_dynamic")
             with self.assertRaises(FrozenInstanceError):
                 mode.name = "changed"
 
@@ -242,6 +242,12 @@ class MissionModesTest(unittest.TestCase):
                  3.4004013012027805, "A2256W000054"),
                 (3638, (70.15920404473096, -419.0559893071876, 28.11111997351344),
                  -96.58181855513165, "A2256W000446"),
+            ),
+            "full_loop_tunnel_dynamic": (
+                (3768, (43.761510782991536, -476.41094469698146, 28.294397987369784),
+                 -137.400207519, "A2256W000448"),
+                (4045, (-74.86074459552765, -544.5780326710083, 28.429146234972457),
+                 -153.528732299, "A2256W000126"),
             ),
         }
         for name, (approved_start, approved_end) in approved.items():
@@ -304,14 +310,22 @@ class MissionModesTest(unittest.TestCase):
         scenario.grpc.start_world.assert_not_called()
         scenario.grpc.spawn_vehicle.assert_not_called()
 
-    def test_tunnel_dynamic_without_validated_handler_fails_before_world_start(self):
-        scenario = self.make_scenario("full_loop_normal")
-        scenario.cfg["tunnel_dynamic"] = {"enabled": True}
+    def test_tunnel_dynamic_bad_path_fails_before_world_start(self):
+        scenario = self.make_scenario("full_loop_tunnel_dynamic")
+        scenario.cfg["tunnel_dynamic"]["path_id"] = "missing_path"
         with redirect_stdout(io.StringIO()), self.assertRaisesRegex(
-            RuntimeError, "Tunnel dynamic obstacle has no validated placement"
+            RuntimeError, "Unknown tunnel_dynamic path_id"
         ):
             scenario.setup()
         scenario.grpc.start_world.assert_not_called()
+        scenario.grpc.spawn_pedestrian.assert_not_called()
+
+    def test_tunnel_dynamic_setting_cannot_bypass_other_segment_gate(self):
+        scenario = self.make_scenario("full_loop_static")
+        scenario.cfg["tunnel_dynamic"]["enabled"] = True
+        self.setup_scenario(scenario)
+        self.assertIsNone(scenario.tunnel_dynamic_handler)
+        self.assertEqual(scenario.tunnel_event_phase, "disabled")
         scenario.grpc.spawn_pedestrian.assert_not_called()
 
     def test_each_setup_spawns_only_selected_zone(self):
@@ -330,6 +344,9 @@ class MissionModesTest(unittest.TestCase):
                 grpc.spawn_pedestrian.assert_not_called()  # Dynamic spawn is approach-triggered.
                 self.assertEqual(scenario.dynamic_obstacle_phase, "waiting" if mode.zones.dynamic else "disabled")
                 self.assertEqual(scenario.tunnel_event_phase, "disabled")
+                if name == "full_loop_tunnel_dynamic":
+                    self.assertEqual(scenario.tunnel_dynamic_phase, "waiting")
+                    self.assertTrue(scenario.cfg["tunnel_dynamic"]["enabled"])
                 self.assertIn(scenario.scenario_hour, [11, 13, 15])
                 scenario.configure_drive_with_retries.assert_called_once()
                 grpc.reset_actors.assert_called_once()

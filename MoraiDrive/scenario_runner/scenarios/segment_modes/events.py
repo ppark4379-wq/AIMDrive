@@ -17,6 +17,8 @@ def prepare_mission(context):
     context.mission_mode = get_mission_mode(context.cfg["mission_mode"])
     context.scenario_name = context.mission_mode.name
     context.mission_route = None
+    if context.scenario_name == "full_loop_tunnel_dynamic":
+        context.cfg.setdefault("tunnel_dynamic", {})["enabled"] = True
     # Each mode alternates its own weather without consuming full_loop history.
     profile_path = Path(context.cfg["profile_state_path"])
     context.cfg["profile_state_path"] = str(
