@@ -372,6 +372,32 @@ class RecordedStaticTests(unittest.TestCase):
         self.assertIsNone(self.planner.goal_y)
         self.assertEqual(self.planner.plan_count, 0)
 
+    def test_failed_worker_keeps_search_evidence_without_adopting_its_state(self):
+        from concurrent.futures import Future
+        from types import SimpleNamespace
+        worker = SimpleNamespace(path=[], search_details={
+            'method': 'corridor_astar', 'status': 'timeout', 'expanded': 7},
+            rejections={'curvature': 2, 'collision': 3, 'envelope': 4},
+            search_progress=6, plan_count=1, route=[Point(999., 999.)])
+        future = Future()
+        future.set_result(worker)
+        self.planner.pending = future
+        result = self.planner.plan(self.ego, self.route, [])
+        self.assertEqual(result.reason, 'static_recorded_no_complete_route')
+        self.assertFalse(result.active)
+        self.assertEqual(result.acc_target_velocity, 0.)
+        details = result.debug_details['static_avoidance']
+        self.assertEqual(details['corridor_search']['status'], 'timeout')
+        self.assertEqual(details['search_rejections']['collision'], 3)
+        self.assertEqual(details['search_progress'], 6)
+        self.assertEqual(details['plan_count'], 1)
+        self.assertEqual(self.planner.path, [])
+        self.assertEqual(self.planner.route, [])
+        self.planner.pending = Future()
+        waiting = self.planner.plan(self.ego, self.route, [])
+        self.assertEqual(waiting.debug_details['static_avoidance']['corridor_search'],
+                         details['corridor_search'])
+
     def test_preplanned_route_is_rechecked_against_latest_gt(self):
         planner = RecordedStaticPlanner(LatticePlanner(), background=True)
         try:

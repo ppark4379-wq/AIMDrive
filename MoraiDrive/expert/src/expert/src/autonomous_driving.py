@@ -9,6 +9,7 @@ from .planning.lattice_planning import parameters as lattice_parameters
 from .planning.highway_lane_planning import parameters as highway_parameters
 from .control.path_controller import PathController
 from .control.control_input import ControlInput
+from .planning.Jamming.motion import stationary as jamming_stationary
 from .config.config import Config
 
 import numpy as np
@@ -413,13 +414,20 @@ class AutonomousDriving(PathController):
         controller, but let the lane planner be the sole vehicle authority.
         """
         static_details = getattr(lattice_result, "debug_details", {}).get("static_avoidance", {})
+        jamming_details = getattr(lattice_result, "debug_details", {})
+        if jamming_details.get('jamming_dynamic', {}).get('speed_authority'):
+            # The moving-object overlay evaluates the actually commanded path
+            # and both target-side/front traffic. Keep people and signals in
+            # legacy ACC; avoid a second vehicle stop on the old path.
+            return [entry for entry in forward_entries if entry['object_info'].type not in (1,2)]
         if (getattr(lattice_result, "mode", "") == "static_obstacle"
                 and getattr(lattice_result, "active", False)
                 and static_details.get("path_validated", False)):
             # Only bypass static vehicle ACC after validating the complete swept
             # path. Moving vehicles, people and traffic signals keep their stops.
             return [entry for entry in forward_entries if not (
-                getattr(entry["object_info"], "is_static", False)
+                (getattr(entry["object_info"], "is_static", False)
+                 or (jamming_details.get('jamming') and jamming_stationary(entry['object_info'])))
                 and getattr(entry["object_info"], "type", -1) in (1, 2)
                 and abs(getattr(entry["object_info"], "velocity", 0.0)) < 0.2
             )]
