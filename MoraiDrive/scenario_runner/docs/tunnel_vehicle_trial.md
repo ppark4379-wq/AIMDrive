@@ -7,14 +7,17 @@ brake event. The general `full_loop` retains its original brake event.
 
 ## Expert policy
 
-Vehicle trials export `planning.jamming.enabled: false` to the Expert runtime
-configuration. Expert follows the official CP14-to-CP15 path with ordinary
-vehicle ACC, including braking for a stopped lead and accelerating after it
-moves away. This prevents a waiting/braking NPC from committing a recorded
-Jamming detour and remaining in `static_recorded_blocked` after it departs.
-The Expert constructor consumes the flag; editing only the exported JSON is
-insufficient with an older Expert checkout. Other missions and standalone
-Expert retain their existing Jamming policy by default.
+Vehicle trials export `planning.jamming.enabled: true` to the Expert runtime
+configuration. Expert uses the same Jamming avoidance planner as a standalone
+launch: pass a slow lead when an adjacent corridor and the return are safe,
+and keep a following gap when a safe pass is unavailable. The planner checks
+moving obstacles during the pass and return; emergency braking is reevaluated
+as traffic changes. Static avoidance retains its existing policy.
+
+The private Expert route includes 35 m of the original downstream path after
+CP15, so planning can validate the Jamming rejoin and steering tail. The
+scenario's CP14-to-CP15 mission boundaries and actor cleanup remain unchanged.
+Other missions retain their existing Jamming configuration.
 
 ## Plans and actor lifetime
 

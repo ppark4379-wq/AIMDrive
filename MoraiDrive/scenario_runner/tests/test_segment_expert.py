@@ -4,6 +4,7 @@ No simulator/ROS connection or expert process control loop is started.
 Temporary runtime exports stay inside scenario_runner/.runtime.
 """
 import copy
+import csv
 import io
 import json
 import os
@@ -168,54 +169,59 @@ class MissionExpertTest(unittest.TestCase):
             config["planning"]["traffic_light_stop"]["stop_margin"], 13.0,
         )
 
-    def test_tunnel_vehicle_acc_releases_after_stopped_npc_moves(self):
+    def test_tunnel_vehicle_enables_avoidance_with_official_rejoin_tail(self):
         scenario = self.make_scenario("full_loop_tunnel_vehicle")
+        mission_points = list(scenario.route_points)
+        mission_goal = (scenario.goal_x, scenario.goal_y, scenario.goal_z)
+        mission_length = scenario.route_length_m
         with redirect_stdout(io.StringIO()):
             scenario.setup_expert_controller()
         controller = scenario.expert_controller
         config = json.loads(Path(controller.runtime_config_path).read_text(encoding="utf-8"))
-        self.assertFalse(config["planning"]["jamming"]["enabled"])
-        # Use the reported stalled pose and the exported real K-city path.
+        self.assertTrue(config["planning"]["jamming"]["enabled"])
+        # The mission/trial still finishes at the same approved END. Only the
+        # Expert's private planning route includes the original downstream path.
+        self.assertEqual(scenario.route_points, mission_points)
+        self.assertEqual((scenario.goal_x, scenario.goal_y, scenario.goal_z), mission_goal)
+        self.assertEqual(scenario.route_length_m, mission_length)
+        with open(controller.runtime_path_csv, newline="", encoding="utf-8") as source:
+            exported = [(float(p["x"]), float(p["y"])) for p in csv.DictReader(source)]
+        self.assertEqual(exported[:len(mission_points)], [tuple(p[:2]) for p in mission_points])
+        self.assertGreater(len(exported), len(mission_points))
+        window = scenario.mission_route
+        self.assertEqual(exported, [tuple(p[:2]) for p in
+                                   window.full_points[window.first_index:window.first_index + len(exported)]])
+        # Use the real external Expert and recorded-section transform. Enabling
+        # Jamming alone is insufficient if the mission crop omits its rejoin.
         script = EXPERT_INITIALIZE + """
 import math
 from expert.src.vehicle_state import VehicleState
-from expert.src.obstacle.object_info import ObjectInfo
-ego = VehicleState(16.09, -495.77, math.radians(-149.47), 0.)
-nearest = min(range(len(driver.path)), key=lambda i: driver.path[i].distance(ego.position))
-def point_ahead(distance):
-    travelled = 0.
-    for i in range(nearest + 1, len(driver.path)):
-        travelled += driver.path[i].distance(driver.path[i-1])
-        if travelled >= distance:
-            return driver.path[i]
-    raise AssertionError('Missing path ahead')
-p = point_ahead(6.)
-npc = ObjectInfo(p.x, p.y, 0., 1, name='lead', unique_id=1)
-# Repeated stationary observations must stop via ACC without committing a detour.
-for _ in range(10):
-    control, path = driver.execute(ego, [npc], None, sync_mode=True, control_dt=1./30.)
-    assert control.accel == 0., control.__dict__
-    assert driver.adaptive_cruise_control.object_type == 1
-    assert not driver.lattice_planning_process.last_result.active
-    assert 'static_avoidance' not in driver.lattice_planning_process.last_result.debug_details
-# The same actor restarts and moves away, then leaves perception entirely.
-p = point_ahead(18.)
-npc.position, npc.velocity = p.copy(), 4.
-for objects in ([npc], []):
-    # The existing command smoother releases -1 braking over several ticks.
-    for _ in range(30):
-        control, path = driver.execute(ego, objects, None, sync_mode=True, control_dt=1./30.)
-        assert driver.previous_target_velocity > 0.
-        assert not driver.lattice_planning_process.last_result.active
-        assert 'static_avoidance' not in driver.lattice_planning_process.last_result.debug_details
-        expected, _ = driver.path_manager.get_local_path(ego)
-        assert path == expected
-    assert control.accel > 0. and control.brake == 0., control.__dict__
-print('TUNNEL_ACC_RELEASE_OK')
+planner = driver.lattice_planning_process.recorded_jamming
+assert planner is not None
+ego = VehicleState(-12.50, -511.28, math.radians(-151.55), 1.22)
+assert planner.contains(ego), 'Reported slow-follow pose must enter Jamming'
+forward_y = [planner.section.to_local(p)[1] for p in driver.path]
+required_end = planner.section.length + planner.section.global_tail_m
+assert max(forward_y) >= required_end, (max(forward_y), required_end)
+planner.close()
+print('TUNNEL_AVOIDANCE_EXPORT_OK')
 """
         result = self.initialize_expert(controller, script)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("TUNNEL_ACC_RELEASE_OK", result.stdout)
+        self.assertIn("TUNNEL_AVOIDANCE_EXPORT_OK", result.stdout)
+
+    def test_tunnel_vehicle_replaces_stale_acc_only_runtime_setting(self):
+        scenario = self.make_scenario("full_loop_tunnel_vehicle")
+        with redirect_stdout(io.StringIO()):
+            scenario.setup_expert_controller()
+        config_path = Path(scenario.expert_controller.runtime_config_path)
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config["planning"]["jamming"]["enabled"] = False
+        config_path.write_text(json.dumps(config), encoding="utf-8")
+        with redirect_stdout(io.StringIO()):
+            mission_expert.prepare_speed_zones(scenario)
+        updated = json.loads(config_path.read_text(encoding="utf-8"))
+        self.assertTrue(updated["planning"]["jamming"]["enabled"])
 
     def test_tunnel_pedestrian_keeps_existing_jamming_policy(self):
         scenario = self.make_scenario("full_loop_tunnel_dynamic")

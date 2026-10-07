@@ -54,7 +54,7 @@ STATIC_PATH_SMOOTHING_MAX_DEVIATION = 0.05 # 평활화 경로가 원래 경로�
 # 곡률·조향·통로 여유에 따른 속도 제한
 # 곡률 기준속도 [m/s] = sqrt(STATIC_LATERAL_ACCEL / abs(곡률)) + 추가속도 / 3.6
 # 추가속도는 곡률 기준에만 적용한다. 최종 속도에는 경로·신호·충돌·추종 제한도 적용한다.
-STATIC_MAX_SPEED_KPH = 60.0          # 정적 장애물 회피 속도 상한; 다른 제한이 낮으면 그 값을 적용 [km/h]
+STATIC_MAX_SPEED_KPH = 55.0          # 정적 장애물 회피 속도 상한; 다른 제한이 낮으면 그 값을 적용 [km/h]
 STATIC_LATERAL_ACCEL = 1.5           # 추가속도를 더하기 전 곡률 기준속도 계산용 횡가속도 [m/s^2]
 STATIC_CURVATURE_SPEED_OFFSET_KPH = 5.0 # 곡률 기준속도에 더하는 값; 다른 제한에는 가산하지 않음 [km/h]
 STATIC_WHEELBASE = 3.0               # 곡률을 조향각으로 변환할 축거; 추종 제어기와 같은 값 [m]

@@ -12,6 +12,19 @@ from expert.src.planning.highway_lane_planning import parameters
 
 
 class LongitudinalControlTest(unittest.TestCase):
+    def test_negative_pedestrian_target_cannot_delay_recorded_path_restart(self):
+        controller = self._controller(0.)
+        controller._static_speed_ramp = True
+        controller.previous_target_velocity = -2.58
+        result = SimpleNamespace(mode='static_obstacle', debug_details={})
+        ego = SimpleNamespace(velocity=0.)
+        # A legacy negative stop request means stop, not reverse speed.
+        self.assertEqual(controller._smooth_static_target_speed(-5., ego, result), 0.)
+        # The reported -1.98, -1.38 ... multi-second ramp must start from 0.
+        speed = controller._smooth_static_target_speed(7.13, ego, result)
+        self.assertGreater(speed, 0.)
+        self.assertLessEqual(speed, 1.2*controller.control_dt)
+
     def test_recorded_handoff_target_accelerates_gradually(self):
         from expert.src.planning.lattice_planning import parameters as static_p
         controller = self._controller(0.)

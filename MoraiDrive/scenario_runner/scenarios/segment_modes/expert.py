@@ -1,6 +1,6 @@
 """Adapt scenario-owned runtime inputs before launching the Expert.
 
-Tunnel vehicle trials request official-path ACC instead of recorded Jamming.
+Tunnel vehicle trials use Jamming avoidance with safe following as fallback.
 Full-loop settings remain intact. Segment modes retain only speed zones wholly
 contained by their exported route, for both link-ID and ENU-coordinate zones.
 """
@@ -97,11 +97,13 @@ def prepare_speed_zones(context):
     if skipped:
         profile["speed_limit_zones"] = kept
     if context.mission_mode.name == "full_loop_tunnel_vehicle":
-        # Lead-vehicle trials use the exported global path and ordinary ACC.
-        # A temporarily stopped NPC must not commit a recorded static detour.
-        config["planning"].setdefault("jamming", {})["enabled"] = False
+        # Keep the same planner as a direct Expert launch: it can pass a slow
+        # lead vehicle and validate the return, falling back to gap keeping
+        # when the adjacent corridor is occupied. The private exported route
+        # already includes the downstream steering/rejoin tail.
+        config["planning"].setdefault("jamming", {})["enabled"] = True
         changed = True
-        print("[Mission] tunnel vehicle Expert: global path + ACC; recorded Jamming disabled")
+        print("[Mission] tunnel vehicle Expert: Jamming avoidance + safe-follow fallback enabled")
     if changed:
         path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
     print(
