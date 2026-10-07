@@ -37,7 +37,8 @@ class VLDriveModel(nn.Module):
                  use_ddia=True, visual_feature_dim=256, use_visual_projection=True,
                  max_instruction_length=64, debug_vldrive=False, precision="fp16",
                  torch_dtype=None, path_navigation=False, path_width=256, path_heads=4,
-                 path_fusion='cross_attention'):
+                 path_fusion='cross_attention', situation_instruction=False, max_situation_tokens=128,
+                 zone_instruction=False):
         super().__init__()
         if path_fusion not in ('cross_attention', 'mlp'):
             raise ValueError('path_fusion must be cross_attention or mlp')
@@ -53,6 +54,19 @@ class VLDriveModel(nn.Module):
         language_dtype = self.tinyllama.get_input_embeddings().weight.dtype
         self.path_navigation = path_navigation
         self.path_fusion = path_fusion
+        self.situation_instruction = situation_instruction
+        self.zone_instruction = zone_instruction
+        self.max_situation_tokens = max_situation_tokens
+        if situation_instruction and not use_ddia:
+            raise ValueError('Frame Situation instructions require frame-aware DDIA')
+        if zone_instruction:
+            if not use_ddia:
+                raise ValueError('Frame Zone instructions require frame-aware DDIA')
+            from .zone_embedding import ZoneEmbedding
+            # A separate LLM module; do not mutate pretrained Situation weights
+            # or shift the initialization of the existing frozen driving heads.
+            with torch.random.fork_rng(devices=[]):
+                self.zone_embedding = ZoneEmbedding(hidden_size).to(dtype=language_dtype)
         if path_navigation:
             if not use_ddia:
                 raise ValueError('Frame path navigation requires frame-aware DDIA')
@@ -85,20 +99,21 @@ class VLDriveModel(nn.Module):
         self.debug_vldrive = debug_vldrive
         self.precision = precision
 
-    def _tokenize(self, instructions: Union[Sequence[str], dict], device):
+    def _tokenize(self, instructions: Union[Sequence[str], dict], device, *, max_length=None):
         if isinstance(instructions, dict):
             return {key: value.to(device) for key, value in instructions.items()}
         if (not isinstance(instructions, (list, tuple)) or not instructions
                 or any(not isinstance(text, str) or not text.strip() for text in instructions)):
             raise ValueError("VLDrive requires nonempty navigation instructions")
         encoded = self.tokenizer(list(instructions), padding=True, truncation=False, return_tensors="pt")
-        if encoded["input_ids"].shape[1] > self.max_instruction_length:
-            raise ValueError("Instruction exceeds max_instruction_length; refusing semantic truncation")
+        limit = self.max_instruction_length if max_length is None else max_length
+        if encoded["input_ids"].shape[1] > limit:
+            raise ValueError("Instruction exceeds token limit; refusing semantic truncation")
         return {key: value.to(device) for key, value in encoded.items()}
 
     def forward(self, instructions, visual_tokens, visual_attention_mask=None,
                 waypoint_token_indices=None, return_debug=False, predict_per_frame=False,
-                path_features=None):
+                path_features=None, situation_instructions=None, zone_ids=None):
         visual_batch = VisualTokenBatch(visual_tokens, visual_attention_mask).flattened()
         device = visual_batch.visual_tokens.device
         encoded = self._tokenize(instructions, device)
@@ -124,12 +139,71 @@ class VLDriveModel(nn.Module):
                     encoded['attention_mask'], path_features['path_valid'])
             else:
                 navigation = self.navigation_mlp(instruction_embeddings, path_features, encoded['attention_mask'])
-            sequence = build_frame_multimodal_sequence(navigation, encoded['attention_mask'],
-                visual_embeddings.reshape(*visual_tokens.shape[:3], -1),
-                visual_batch.visual_attention_mask.reshape(visual_tokens.shape[:3]))
         else:
             if path_features is not None:
                 raise ValueError('Path features supplied while path_navigation is disabled')
+
+        frame_conditioning = self.path_navigation or self.situation_instruction or self.zone_instruction
+        if frame_conditioning:
+            if visual_tokens.ndim != 4:
+                raise ValueError('Frame instructions require visual tokens [B,T,K,D]')
+            b, t = visual_tokens.shape[:2]
+            nav_mask = encoded['attention_mask'][:, None].expand(-1, t, -1)
+            if not self.path_navigation:
+                navigation = instruction_embeddings[:, None].expand(-1, t, -1, -1)
+            frame_instructions, frame_mask = navigation, nav_mask
+
+        if self.zone_instruction:
+            if (not isinstance(zone_ids, torch.Tensor) or zone_ids.shape != (b, t)
+                    or zone_ids.dtype not in (torch.int32, torch.int64)
+                    or zone_ids.device != device or bool(((zone_ids < -1) | (zone_ids > 5)).any())):
+                raise ValueError('Zone IDs must be integer [B,T] on the visual device, with -1 unknown or 0..5')
+            zone_valid = zone_ids >= 0
+            zone = self.zone_embedding(zone_ids.clamp_min(0)).unsqueeze(2)
+            zone = zone.masked_fill(~zone_valid[..., None, None], 0)
+            frame_instructions = torch.cat((frame_instructions, zone), dim=2)
+            frame_mask = torch.cat((frame_mask, zone_valid.unsqueeze(-1)), dim=2)
+        elif zone_ids is not None:
+            raise ValueError('Zone IDs supplied while zone_instruction is disabled')
+
+        if self.situation_instruction:
+            if visual_tokens.ndim != 4:
+                raise ValueError('Situation text requires per-frame visual tokens [B,T,K,D]')
+            b, t = visual_tokens.shape[:2]
+            if (not isinstance(situation_instructions, (list, tuple)) or len(situation_instructions) != b
+                    or any(not isinstance(row, (list, tuple)) or len(row) != t for row in situation_instructions)):
+                raise ValueError('Situation instructions must be batch-major [B][T] strings or None')
+            # Both GT and predicted sentences use the same tokenizer/embedding.
+            # The numeric navigation MLP is applied only to navigation tokens.
+            from instruction.situation.text import prompt_text
+            sentences = [sentence for row in situation_instructions for sentence in row]
+            normalized = [prompt_text(sentence) for sentence in sentences]
+            present = [i for i, text in enumerate(normalized) if text is not None]
+            if present:
+                situation = self._tokenize([normalized[i] for i in present], device,
+                                           max_length=self.max_situation_tokens)
+                embedded = self.tinyllama.get_input_embeddings()(situation['input_ids'])
+                indices = torch.tensor(present, device=device, dtype=torch.long)
+                # Absent frames have no active Situation tokens, including BOS.
+                situation_embeddings = embedded.new_zeros((b*t, *embedded.shape[1:])).index_copy(0, indices, embedded)
+                situation_mask = situation['attention_mask'].new_zeros((b*t, embedded.shape[1])).index_copy(
+                    0, indices, situation['attention_mask'])
+            else:
+                # Avoid tokenization and extra sequence slots for all-empty batches.
+                situation_embeddings = instruction_embeddings.new_zeros((b*t, 0, instruction_embeddings.shape[-1]))
+                situation_mask = encoded['attention_mask'].new_zeros((b*t, 0))
+            situation_embeddings = situation_embeddings.reshape(b, t, -1, instruction_embeddings.shape[-1])
+            frame_instructions = torch.cat((frame_instructions, situation_embeddings), dim=2)
+            frame_mask = torch.cat((frame_mask, situation_mask.reshape(b, t, -1)), dim=2)
+        else:
+            if situation_instructions is not None:
+                raise ValueError('Situation text supplied while situation_instruction is disabled')
+
+        if frame_conditioning:
+            sequence = build_frame_multimodal_sequence(frame_instructions, frame_mask,
+                visual_embeddings.reshape(*visual_tokens.shape[:3], -1),
+                visual_batch.visual_attention_mask.reshape(visual_tokens.shape[:3]))
+        else:
             sequence = build_multimodal_sequence(
                 instruction_embeddings, encoded["attention_mask"], visual_embeddings,
                 visual_batch.visual_attention_mask)
@@ -187,6 +261,8 @@ class VLDriveModel(nn.Module):
                 "hidden_states_shape": tuple(hidden_states.shape),
                 "trainable_percentage": 100.0 * report["trainable"] / report["total"],
                 "path_fusion": self.path_fusion if self.path_navigation else 'disabled',
+                "situation_instruction": self.situation_instruction,
+                "zone_instruction": self.zone_instruction,
             }
         predicted_waypoints = self.waypoints_predictor(waypoint_hidden)
         predicted_end_logits = self.end_predictor(waypoint_hidden)

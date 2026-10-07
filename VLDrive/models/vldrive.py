@@ -2,7 +2,8 @@
 
 Independent Eq. (1)-(13) implementation. Sensor preprocessing, checkpoint,
 Q-Former dimensions and last-valid-token readout are documented choices.
-MORAI teacher labels enter loss() only, never predict().
+Future trajectory labels enter loss() only. Optional per-frame Situation GT
+sentences condition Stage 2 through the same text API as decoded predictions.
 """
 from dataclasses import asdict, dataclass
 import json
@@ -66,8 +67,16 @@ class VLDriveTrainingConfig:
     path_width: int = 256
     path_heads: int = 4
     path_fusion: str = 'cross_attention'
+    situation_instruction: bool = False
+    max_situation_tokens: int = 128
+    zone_instruction: bool = False
 
     def validate(self):
+        if type(self.zone_instruction) is not bool:
+            raise ValueError('zone_instruction must be boolean')
+        if (type(self.situation_instruction) is not bool or type(self.max_situation_tokens) is not int
+                or self.max_situation_tokens < 1):
+            raise ValueError('Invalid Situation instruction settings')
         if (type(self.path_navigation) is not bool or type(self.path_width) is not int
                 or type(self.path_heads) is not int or self.path_width < 1 or self.path_heads < 1
                 or self.path_fusion not in ('cross_attention', 'mlp')
@@ -137,7 +146,9 @@ class VLDriveTrainingModel(nn.Module):
             freeze_tinyllama=False, use_ddia=True, visual_feature_dim=hidden,
             use_visual_projection=False, max_instruction_length=config.max_instruction_tokens,
             precision=config.precision, path_navigation=config.path_navigation,
-            path_width=config.path_width, path_heads=config.path_heads, path_fusion=config.path_fusion)
+            path_width=config.path_width, path_heads=config.path_heads, path_fusion=config.path_fusion,
+            situation_instruction=config.situation_instruction, max_situation_tokens=config.max_situation_tokens,
+            zone_instruction=config.zone_instruction)
         # No vocabulary or instruction-completion supervision exists in Eq. 10.
         # Keep legacy modules for API compatibility, but exclude unused heads.
         self.language_model.tinyllama.lm_head.requires_grad_(False)
@@ -185,8 +196,12 @@ class VLDriveTrainingModel(nn.Module):
         allowed = {feature_key, 'instruction'}
         if self.config.path_navigation:
             allowed.add('path_features')
+        if self.config.situation_instruction:
+            allowed.add('situation_instructions')
+        if self.config.zone_instruction:
+            allowed.add('zone_ids')
         if set(inputs) != allowed:
-            raise ValueError('VLDrive input allowlist permits only visual inputs and instruction')
+            raise ValueError('VLDrive input allowlist must match enabled visual/navigation/Situation/Zone inputs')
         texts = inputs['instruction']
         if (not isinstance(texts, (list, tuple)) or not texts
                 or any(not isinstance(t, str) or not t.strip() for t in texts)):
@@ -199,6 +214,10 @@ class VLDriveTrainingModel(nn.Module):
         connected = self.connector(features.float(), selection_mode=token_selection_mode,
                                    compute_reconstruction=compute_auxiliary)
         path_args = {'path_features': inputs['path_features']} if self.config.path_navigation else {}
+        if self.config.situation_instruction:
+            path_args['situation_instructions'] = inputs['situation_instructions']
+        if self.config.zone_instruction:
+            path_args['zone_ids'] = inputs['zone_ids']
         language = self.language_model(texts, connected['language_tokens'],
             connected['selected_valid_mask'], predict_per_frame=True, **path_args)
         batch, frames = features.shape[:2]
@@ -259,6 +278,8 @@ class VLDriveTrainingModel(nn.Module):
                               navigation_cross_attention='language_model.navigation_cross_attention.')
             else:
                 groups['navigation_mlp'] = 'language_model.navigation_mlp.'
+        if self.config.zone_instruction:
+            groups['zone_embedding'] = 'language_model.zone_embedding.'
         trainable = [n for n, p in self.named_parameters() if p.requires_grad]
         return {group: prefix for group, prefix in groups.items() if any(n.startswith(prefix) for n in trainable)}
 

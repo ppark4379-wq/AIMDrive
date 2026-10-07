@@ -45,6 +45,7 @@ def source_hashes(root):
     paths.update((root / 'instruction').rglob('*.py'))
     paths.update((root / 'instruction').rglob('*.json'))
     paths.update((root / 'data/src/processing').glob('build_path_features.py'))
+    paths.add(root / 'training/situation/labels.py')
     paths.update(root / p for p in ('train.py', 'evaluate.py', 'utils/visualization/vision_encoder_visualization.py'))
     # Only the training-side observer belongs in checkpoint provenance.
     # UI/export/plot changes must not invalidate an otherwise identical resume.

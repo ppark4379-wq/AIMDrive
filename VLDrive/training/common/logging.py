@@ -4,7 +4,7 @@ import torch
 from utils.visualization.training_dashboard.telemetry import TrainingTelemetry
 
 
-def gradient_report(model):
+def gradient_report(model, *, inputs=None):
     values = {}
     for group, prefix in model.gradient_groups().items():
         gradients = [p.grad.detach().float() for n, p in model.named_parameters()
@@ -12,6 +12,11 @@ def gradient_report(model):
         norm = math.sqrt(sum(g.square().sum().item() for g in gradients))
         values[group] = dict(l2=norm, finite=all(bool(torch.isfinite(g).all()) for g in gradients),
                              passed=bool(gradients) and math.isfinite(norm) and norm > 0)
+        if (group == 'zone_embedding' and inputs is not None and 'zone_ids' in inputs
+                and not bool((inputs['zone_ids'] >= 0).any())):
+            # Unknown zones are masked; zero gradients are expected for this sample.
+            values[group].update(passed=values[group]['finite'] and math.isfinite(norm),
+                                 skipped='no_known_zone_in_sample')
     bad_parameters = [n for n, p in model.named_parameters() if p.requires_grad and p.grad is not None
                       and not bool(torch.isfinite(p.grad).all())]
     return dict(groups=values, nonfinite_parameters=bad_parameters,

@@ -10,9 +10,26 @@ class NavigationCacheDataset:
     trajectory_coordinate_convention='lmdrive_left_negative_forward'
     def __init__(self, cache_root, instructions, split, sequence_length=11, seed=42,
                  train_variants=tuple(range(8)), validation_variants=tuple(range(8)),
-                 frame_sampling_interval=1, include_validation_in_train=False, path_feature_cache=None):
+                 frame_sampling_interval=1, include_validation_in_train=False, path_feature_cache=None,
+                 situation_datasets=None, zone_datasets=None):
         self.root=Path(cache_root).resolve()
         self.labels=NavigationLabels(instructions)
+        self.situations = None
+        self.zones = None
+        self.situation_window_counts = dict(fully_labeled=0, partially_labeled=0, without_text=0)
+        if situation_datasets is not None or zone_datasets is not None:
+            # This loader also supports the legacy top-level data/ import path.
+            import sys
+            repo = str(Path(__file__).resolve().parents[4])
+            if repo not in sys.path:
+                sys.path.insert(0, repo)
+            from VLDrive.data.src.loaders.situation_instructions import SituationInstructionIndex
+            shared = situation_datasets is not None and situation_datasets == zone_datasets
+            if situation_datasets is not None:
+                self.situations = SituationInstructionIndex(situation_datasets, include_zone=shared)
+            if zone_datasets is not None:
+                self.zones = (self.situations if shared else SituationInstructionIndex(
+                    zone_datasets, include_situation=False, include_zone=True))
         self.path_features = None
         if path_feature_cache:
             from instruction.global_path.encoder import PathFeatureCache
@@ -68,8 +85,18 @@ class NavigationCacheDataset:
                 # cached frame must not be mistaken for a larger sample interval.
                 eligible = self.path_features.eligible if self.path_features is not None else self.labels.eligible
                 if eligible(identity,[r['sensor_source_ns'] for r in continuous]):
-                    self.windows.append(continuous[::frame_sampling_interval])
-        if not self.windows: raise ValueError('No valid navigation cache windows')
+                    window = continuous[::frame_sampling_interval]
+                    if self.situations is not None:
+                        self.situations.validate_alignment(identity, continuous)
+                        count = sum(text is not None for text in self.situations.sample(identity, window))
+                        category = ('fully_labeled' if count == len(window) else
+                                    'partially_labeled' if count else 'without_text')
+                        self.situation_window_counts[category] += 1
+                    if self.zones is not None and self.zones is not self.situations:
+                        self.zones.validate_alignment(identity, continuous)
+                    self.windows.append(window)
+        if not self.windows:
+            raise ValueError('No valid navigation cache windows')
         self._verified=set()
 
     def set_epoch(self, epoch): self.epoch=int(epoch) if self.split=='train' else 0
@@ -98,6 +125,10 @@ class NavigationCacheDataset:
         import torch
         rows=self.windows[index];identity=rows[0]['episode_id'];times=[r['sensor_source_ns'] for r in rows]
         path_inputs = {}
+        if self.situations is not None:
+            path_inputs['situation_instructions'] = self.situations.sample(identity, rows)
+        if self.zones is not None:
+            path_inputs['zone_ids'] = torch.tensor(self.zones.sample_zone_ids(identity, rows), dtype=torch.long)
         if self.path_features is None:
             instruction=self.labels.sample(identity,times,self.seed,epoch,self.variants,
                                            sampling_interval=self.frame_sampling_interval)
@@ -125,4 +156,9 @@ class NavigationCacheDataset:
         if self.path_features is not None:
             result['path_feature_cache_sha256'] = self.path_features.sha256
             result['instruction_policy'] = 'first-frame-planned-route-v1'
+        if self.situations is not None:
+            result['situation_instruction'] = dict(self.situations.describe(),
+                window_counts=dict(self.situation_window_counts))
+        if self.zones is not None:
+            result['zone_instruction'] = self.zones.describe_zones()
         return result

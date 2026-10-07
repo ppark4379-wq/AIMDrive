@@ -18,7 +18,20 @@ def batch(sample, device):
 
 
 def batch_samples(samples, device):
-    return move(default_collate(samples), device)
+    # default_collate transposes lists of strings to [T][B]. The public model
+    # contract is [B][T], including the ambiguous B == T case.
+    situations = ['situation_instructions' in s.get('model_inputs', {}) for s in samples]
+    if any(situations):
+        if not all(situations):
+            raise ValueError('Mixed Situation-enabled and legacy samples')
+        texts = [s['model_inputs']['situation_instructions'] for s in samples]
+        stripped = [dict(s, model_inputs={k: v for k, v in s['model_inputs'].items()
+                    if k != 'situation_instructions'}) for s in samples]
+        result = default_collate(stripped)
+        result['model_inputs']['situation_instructions'] = texts
+    else:
+        result = default_collate(samples)
+    return move(result, device)
 
 
 def subset_indices(length, count):

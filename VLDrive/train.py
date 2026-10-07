@@ -139,6 +139,16 @@ def run_vldrive(args):
         raise ValueError('Path navigation requires navigation_token_cache_v1 and path_instruction.feature_cache')
     if path_cache:
         path_cache = ROOT / path_cache
+    situation_settings = settings.get('situation_instruction', {})
+    situation_datasets = situation_settings.get('datasets') if config.situation_instruction else None
+    if config.situation_instruction and (not situation_datasets or
+            settings.get('dataset_format') != 'navigation_token_cache_v1'):
+        raise ValueError('Situation instruction training requires labeled datasets and navigation_token_cache_v1')
+    zone_settings = settings.get('zone_instruction', {})
+    zone_datasets = zone_settings.get('datasets') if config.zone_instruction else None
+    if config.zone_instruction and (not zone_datasets or
+            settings.get('dataset_format') != 'navigation_token_cache_v1'):
+        raise ValueError('Zone instruction training requires recorded datasets and navigation_token_cache_v1')
     root = Path(settings['dataset'])
     print('Validating actual artifacts, teacher labels, independent splits and instruction availability...', flush=True)
     dataset_format = settings.get('dataset_format', 'morai_expert_cache_v1')
@@ -163,6 +173,8 @@ def run_vldrive(args):
             include_validation_in_train=full_route,
             frame_sampling_interval=settings.get('frame_sampling_interval', 1),
             path_feature_cache=path_cache,
+            situation_datasets=situation_datasets,
+            zone_datasets=zone_datasets,
         ) for split in splits}
     else:
         datasets = {split: MoraiExpertVLDriveDataset(
@@ -188,8 +200,8 @@ def run_vldrive(args):
     provenance = dict(backend=backend, source=source_hashes(ROOT),
                       datasets={k: v.describe() for k, v in datasets.items()})
     token_folder = settings.get('navigation_sampling', {}).get('token_cache')
-    if config.path_navigation and token_folder:
-        raise ValueError('Legacy text token cache does not contain the new direction templates; disable token_cache')
+    if (config.path_navigation or config.situation_instruction) and token_folder:
+        raise ValueError('Legacy text token cache lacks numeric navigation/Situation text; disable token_cache')
     if token_folder:
         token_meta = Path(token_folder) / 'token_meta.json'
         provenance['instruction_tokens'] = dict(meta_sha256=sha256(token_meta),
@@ -222,11 +234,18 @@ def run_vldrive(args):
         del state
     report = dict(training_path='frozen_encoder_dynamic_ccdp_mefa_tinyllama_ddia_l1',
                   start_update=start_update, semantic_annotations=True, schedule_updates=schedule_updates)
+    if config.situation_instruction:
+        report['situation_conditioning'] = 'ground_truth_text; not predicted-Situation deployment evaluation'
+    if config.zone_instruction:
+        report['zone_conditioning'] = 'recorded_per_frame_zone_ids'
     if warm_start_path and not args.checkpoint and args.mode != 'evaluate':
         print('Loading previous model weights; starting a fresh optimizer and learning-rate schedule...', flush=True)
+        new_prefixes = list(path_settings.get('new_module_prefixes', ())) if config.path_navigation else []
+        if config.zone_instruction:
+            new_prefixes.extend(zone_settings.get('new_module_prefixes', ()))
         transfer = warm_start_model_checkpoint(
             warm_start_path, model, provenance=provenance,
-            new_prefixes=path_settings.get('new_module_prefixes', ()) if config.path_navigation else (),
+            new_prefixes=new_prefixes,
             transfer_reason=f'Continue from saved weights with batch_size={batch_size}, include_validation_in_train={full_route}; fresh optimizer and additional configured epochs.')
         write(output / 'warm_start.json', transfer)
         report['warm_start'] = dict(source_checkpoint=transfer['source_checkpoint'],

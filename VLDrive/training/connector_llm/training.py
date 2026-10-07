@@ -78,6 +78,10 @@ def evaluate(model, dataset, indices, device, *, save_predictions=None, seed=607
     if not losses:
         raise ValueError('No evaluation windows selected')
     report = metrics.compute()
+    if 'situation_instructions' in item['model_inputs']:
+        report['situation_conditioning'] = 'ground_truth_text'
+    if 'zone_ids' in item['model_inputs']:
+        report['zone_conditioning'] = 'recorded_per_frame_zone_ids'
     report.update(waypoint_l1=sum(losses) / len(losses),
         selection_policy='gumbel', evaluation_seed=seed, stochastic_passes=1, windows=len(losses),
         selected_count_mean=float(np.mean(selected_counts)), selected_count_min=int(min(selected_counts)),
@@ -97,7 +101,7 @@ def preflight(model, sample, device):
         # Exercise the actual samples -> loss dictionary, used by training/task.
         loss = model(item)
     loss['loss'].backward()
-    gradients = gradient_report(model)
+    gradients = gradient_report(model, inputs=item['model_inputs'])
     initial = {k: float(v.detach()) for k, v in loss.items()}
     del loss
     model.zero_grad(set_to_none=True)
@@ -118,12 +122,25 @@ def preflight(model, sample, device):
         future = model.predict(perturb(inputs), compute_auxiliary=False)
         delta = (baseline['trajectory'][:, :-1] - future['trajectory'][:, :-1]).abs().max().item()
         path_delta = 0.
+        situation_delta = 0.
+        zone_delta = 0.
         if 'path_features' in inputs:
             changed_path = copy.deepcopy(inputs)
             changed_path['path_features']['ego_relation'][:, -1] += 1.
             changed_path['path_features']['path_context'][:, -1] += 1.
             path_future = model.predict(changed_path, compute_auxiliary=False)
             path_delta = (baseline['trajectory'][:, :-1] - path_future['trajectory'][:, :-1]).abs().max().item()
+        if 'situation_instructions' in inputs:
+            changed_text = copy.deepcopy(inputs)
+            for row in changed_text['situation_instructions']:
+                row[-1] = 'Maintain a stopped state.'
+            situation_future = model.predict(changed_text, compute_auxiliary=False)
+            situation_delta = (baseline['trajectory'][:, :-1] - situation_future['trajectory'][:, :-1]).abs().max().item()
+        if 'zone_ids' in inputs:
+            changed_zone = copy.deepcopy(inputs)
+            changed_zone['zone_ids'][:, -1] = (changed_zone['zone_ids'][:, -1] + 1) % 6
+            zone_future = model.predict(changed_zone, compute_auxiliary=False)
+            zone_delta = (baseline['trajectory'][:, :-1] - zone_future['trajectory'][:, :-1]).abs().max().item()
         history = model.predict(perturb(inputs, history=True), compute_auxiliary=False)
         history_delta = (baseline['trajectory'][:, -1] - history['trajectory'][:, -1]).abs().max().item()
     rejected = {}
@@ -135,11 +152,14 @@ def preflight(model, sample, device):
             rejected[name] = True
         else:
             rejected[name] = False
-    return dict(passed=gradients['passed'] and delta < 1e-5 and path_delta < 1e-5 and history_delta > 0 and all(rejected.values()),
+    return dict(passed=gradients['passed'] and delta < 1e-5 and path_delta < 1e-5 and situation_delta < 1e-5
+                and zone_delta < 1e-5 and history_delta > 0 and all(rejected.values()),
         optimizer_updates=0, gradients=gradients, initial_losses=initial,
         trajectory_shape=list(baseline['trajectory'].shape),
         future_to_past_max_delta=delta, history_dependency_delta=history_delta,
         future_path_to_past_max_delta=path_delta,
+        future_situation_to_past_max_delta=situation_delta,
+        future_zone_to_past_max_delta=zone_delta,
         rejected=rejected, selected_count=baseline['selected_count'].tolist(),
         real_history_frames=min(model.config.memory_size, sample['training_targets']['future_trajectory'].shape[0] - 1))
 

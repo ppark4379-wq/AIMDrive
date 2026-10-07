@@ -59,7 +59,7 @@ def build_multimodal_sequence(
 
 def build_frame_multimodal_sequence(instruction_embeddings, instruction_token_mask,
                                     visual_embeddings, visual_token_mask):
-    """Pack [navigation_i, visual_i] with explicit frame IDs and readout indices."""
+    """Pack [navigation_i, optional Zone_i/Situation_i, visual_i] with frame-local DDIA."""
     from ..connector.visual_token_interface import last_valid_indices
     if instruction_embeddings.ndim != 4 or visual_embeddings.ndim != 4:
         raise ValueError('Frame embeddings must have shape [B,T,L/K,D]')
@@ -67,9 +67,11 @@ def build_frame_multimodal_sequence(instruction_embeddings, instruction_token_ma
     if visual_embeddings.shape[:2] != (b, t) or visual_embeddings.shape[-1] != d:
         raise ValueError('Navigation and visual frame dimensions differ')
     retained = visual_embeddings.shape[2]
-    if instruction_token_mask.shape != (b, length) or visual_token_mask.shape != (b, t, retained):
+    if instruction_token_mask.shape not in ((b, length), (b, t, length)) or visual_token_mask.shape != (b, t, retained):
         raise ValueError('Frame token mask shapes differ')
-    text_mask = instruction_token_mask.bool()[:, None].expand(-1, t, -1)
+    text_mask = instruction_token_mask.bool()
+    if text_mask.ndim == 2:
+        text_mask = text_mask[:, None].expand(-1, t, -1)
     visual_mask = visual_token_mask.bool()
     if not text_mask.any(-1).all() or not visual_mask.any(-1).all():
         raise ValueError('Every frame requires navigation and visual tokens')
