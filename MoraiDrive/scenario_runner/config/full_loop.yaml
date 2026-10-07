@@ -1,4 +1,4 @@
-zone: full_loop
+﻿zone: full_loop
 
 scenarios:
   full_loop:
@@ -470,6 +470,142 @@ scenarios:
           max_desired_velocity_custom_kmh: 50.0
           start_link: {id: A2256W000175, point_idx: 78}
           end_link: {id: A2256W000422, point_idx: 59}
+
+    # Tunnel pedestrian crossing scaffold. Enable after its placement and
+    # lifecycle handler have been validated in MORAI.
+    tunnel_dynamic:
+      enabled: false
+      model: Man1
+      path_id: pedestrian_walk_then_cross
+      speed_mps: 2.5
+      # Inherit speed/ETA/braking timing from dynamic_obstacle above.
+      # Add individual timing keys here to override them only for the tunnel.
+      interaction_trigger: {}
+      arrival_tolerance_m: 0.5
+      max_run_sec: 20.0
+      random_mix:
+        enabled: false
+        events_per_section: 1
+        allow_behavior_repeat: false
+        behaviors:
+          - straight_same_direction
+          - straight_opposite
+          - cross_left_to_right
+          - cross_right_to_left
+          - diagonal_cross
+        # Empty uses the same model pool as dynamic_obstacle_models above.
+        # Only models reported available by the live MORAI world are used.
+        models: []
+
+    tunnel_vehicle_dynamic:
+      enabled: false
+      behavior: vehicle_slow
+      random_behavior: false
+      # Cut-in is available only by explicit selection until its live trial is verified.
+      behaviors: [vehicle_slow, vehicle_sudden_brake, vehicle_oncoming]
+      random_model: true
+      # The surround-vehicle registry also includes drones/aerial models.
+      # Case-insensitive glob patterns apply before random or fixed model selection.
+      excluded_model_patterns:
+        - "AR_DJ*"
+        - "*drone*"
+        - "*quadcopter*"
+        - "*quadrotor*"
+        - "*helicopter*"
+        - "*aircraft*"
+        - "*eVTOL*"
+        - "*UAM*"
+      # Uses available npc_vehicle_models; unavailable configured names fail.
+      # No actor at setup. Activate on actual Ego motion, or progress plus motion.
+      minimum_spawn_ego_speed_mps: 2.0
+      minimum_spawn_progress_m: 3.0
+      minimum_npc_speed_mps: 0.6
+      # Live NPC ActorState.velocity is km/h; command/limit values remain m/s.
+      npc_state_velocity_unit: kmh
+      slow_ego_speed_ratio: 0.6
+      encounter_gap_m: 20.0
+      encounter_exit_margin_m: 15.0
+      spawn_reaction_time_sec: 1.0
+      spawn_deceleration_mps2: 3.5
+      spawn_safety_margin_m: 3.0
+      oncoming_eta_tolerance_sec: 1.5
+      # Additional independent behaviors may coexist with the primary actor.
+      additional_behaviors: []
+      # Seeded shift along each NPC's travel direction; constrained by event space.
+      spawn_forward_offset_range_m: [0.0, 10.0]
+      initial_spawn_gap_m: 40.0
+      minimum_initial_gap_m: 30.0
+      slow_speed_mps: 4.0
+      cruise_speed_mps: 9.0
+      oncoming_speed_mps: 6.0
+      cut_in_speed_mps: 7.0
+      event_sections: [2, 3]
+      minimum_event_run_in_m: 20.0
+      pass_clearance_m: 15.0
+      spawn_position_tolerance_m: 3.0
+      lane_position_tolerance_m: 1.5
+      minimum_observed_travel_m: 5.0
+      max_run_sec: 180.0
+      maximum_step_speed_mps: 40.0
+      step_slack_m: 2.0
+      cut_in_timeout_sec: 10.0
+      cut_in:
+        lookahead_m: 6.0
+        lane_change_length_m: 18.0
+        wheel_base_m: 2.7
+        max_steer_deg: 35.0
+        steer_sign: 1.0
+        minimum_trigger_gap_m: 20.0
+        maximum_trigger_gap_m: 35.0
+        emergency_gap_m: 12.0
+        target_lateral_tolerance_m: 0.6
+        target_heading_tolerance_deg: 8.0
+        target_settle_sec: 0.5
+        minimum_lateral_displacement_m: 1.5
+        minimum_handoff_travel_m: 0.5
+      cleanup_after_boundary_m: 40.0
+      cleanup_ego_clearance_m: 30.0
+      motion_startup_timeout_sec: 2.0
+      motion_startup_minimum_travel_m: 0.5
+      # Legacy gap overrides apply only to cut-in sanity checks.
+      brake_overrides: {}
+      sudden_brake:
+        # Spawn paused; release the same NPC after Ego actually approaches.
+        departure_wait_enabled: true
+        departure_trigger_gap_m: 35.0
+        departure_trigger_ttc_sec: 3.0
+        departure_minimum_approach_m: 5.0
+        departure_max_wait_sec: 45.0
+        departure_stationary_tolerance_m: 0.5
+        departure_stationary_speed_mps: 0.2
+        cruise_speed_mps: 4.0
+        follow_window_sec: 2.0
+        follow_settle_sec: 1.5
+        follow_filter_sec: 1.0
+        follow_filter_minimum_span_sec: 0.5
+        minimum_follow_filter_samples: 3
+        max_follow_gap_spread_m: 1.0
+        max_relative_speed_mps: 0.5
+        max_gap_rate_mps: 0.5
+        minimum_follow_speed_mps: 1.0
+        minimum_follow_gap_m: 8.0
+        emergency_gap_m: 8.0
+        minimum_catchup_relative_speed_mps: 0.5
+        minimum_ego_speed_drop_mps: 0.5
+        follow_gap_tolerance_m: 2.0
+        maximum_sample_interval_sec: 1.0
+        trough_speed_mps: 0.5
+        trough_speed_tolerance_mps: 0.2
+        hold_duration_sec: 8.0
+        deceleration_confirm_timeout_sec: 1.5
+        minimum_brake_speed_drop_mps: 2.0
+        minimum_deceleration_mps2: 2.0
+        # Live recovery takes about 3s to regain cruise; observe it for up to 5s.
+        resume_confirm_timeout_sec: 5.0
+        resume_minimum_travel_m: 0.5
+        resume_speed_tolerance_mps: 0.5
+        minimum_exit_clearance_m: 20.0
+        brake_space_deceleration_mps2: 2.0
 
     tunnel_sudden_brake:
       enabled: true

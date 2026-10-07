@@ -43,18 +43,33 @@ def _spawn_highway_vehicle(
     end_waypoint=None,
     request_id="",
     recover_ambiguous=False,
+    configure_ai=True,
+    on_spawn=None,
+    spawn_velocity=None,
+    command_report=None,
+    unpause=None,
+    spawn_paused=False,
 ):
     actor = self.grpc.spawn_vehicle(
         transform=transform,
         model_name=self.highway_fixed_model,
         label=label,
-        velocity=0.0,
+        velocity=0.0 if spawn_velocity is None else float(spawn_velocity),
         multi_ego=False,
         request_id=request_id,
         recover_ambiguous=recover_ambiguous,
+        **({"pause": True} if spawn_paused else {}),
     )
     if actor is None:
         return None
+    if on_spawn is not None:
+        self.scenario_actors.append(actor)
+        on_spawn(actor)
+    pause_hold_ok = bool(actor.set_pause(True)) if spawn_paused else None
+    if spawn_paused and not pause_hold_ok:
+        if on_spawn is None:
+            actor.destroy()
+        raise RuntimeError("Tunnel vehicle departure pause rejected")
     waypoint_indices = {route[0]: int(waypoint)}
     if end_waypoint is not None:
         waypoint_indices[route[-1]] = int(end_waypoint)
@@ -64,11 +79,29 @@ def _spawn_highway_vehicle(
         route_waypoint_indices=waypoint_indices, label=label,
     )
     if not ok:
+        if on_spawn is not None:
+            raise RuntimeError("Tunnel vehicle route assignment rejected")
         actor.destroy()
         return None
-    actor.set_pause(False)
-    self.grpc.set_vehicle_speed_limit(actor, speed, enabled=True)
-    self.grpc.set_vehicle_ai(actor, True)
-    self.grpc.set_vehicle_velocity(actor, speed)
-    self.scenario_actors.append(actor)
+    pause_ok = None
+    ai_ok = None
+    # Preserve legacy callers; tunnel explicitly unpauses independently of SetAI.
+    if unpause is True or (unpause is None and configure_ai):
+        pause_ok = bool(actor.set_pause(False))
+    limit_ok = self.grpc.set_vehicle_speed_limit(actor, speed, enabled=True)
+    if configure_ai:
+        ai_ok = bool(self.grpc.set_vehicle_ai(actor, True))
+    velocity_ok = self.grpc.set_vehicle_velocity(actor, speed)
+    if command_report is not None:
+        command_report.update({
+            "spawn_velocity": 0.0 if spawn_velocity is None else float(spawn_velocity),
+            "route_accepted": bool(ok), "unpause_accepted": pause_ok,
+            "ai_enable_accepted": ai_ok, "speed_limit_accepted": bool(limit_ok),
+            "velocity_accepted": bool(velocity_ok),
+            "pause_hold_accepted": pause_hold_ok,
+        })
+    if on_spawn is not None and not (limit_ok and velocity_ok):
+        raise RuntimeError("Tunnel vehicle speed limit or velocity rejected")
+    if on_spawn is None:
+        self.scenario_actors.append(actor)
     return actor

@@ -53,6 +53,14 @@ HIGHWAY_END = RouteBoundary(
     3638, (70.15920404473096, -419.0559893071876, 28.11111997351344),
     -96.58181855513165, "A2256W000446",
 )
+TUNNEL_START = RouteBoundary(
+    3768, (43.761510782991536, -476.41094469698146, 28.294397987369784),
+    -137.400207519, "A2256W000448",
+)
+TUNNEL_END = RouteBoundary(
+    4045, (-74.86074459552765, -544.5780326710083, 28.429146234972457),
+    -153.528732299, "A2256W000126",
+)
 
 MISSION_MODES = {
     "full_loop_normal": MissionMode("full_loop_normal", ZoneSelection()),
@@ -81,6 +89,14 @@ MISSION_MODES = {
     "full_loop_highway": MissionMode(
         "full_loop_highway", ZoneSelection(highway=True),
         ROUNDABOUT_END, HIGHWAY_END,
+    ),
+    "full_loop_tunnel_dynamic": MissionMode(
+        "full_loop_tunnel_dynamic", ZoneSelection(tunnel=True),
+        TUNNEL_START, TUNNEL_END,
+    ),
+    "full_loop_tunnel_vehicle": MissionMode(
+        "full_loop_tunnel_vehicle", ZoneSelection(tunnel=True),
+        TUNNEL_START, TUNNEL_END,
     ),
 }
 PRIMARY_SCENARIOS = ("full_loop",) + tuple(MISSION_MODES)

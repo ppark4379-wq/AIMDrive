@@ -1097,6 +1097,8 @@ full_loop:
     roundabout:
       ego_entry_checkpoint: 8
       ego_exit_checkpoint: 9
+      # Same measured merge reference as Expert ROUNDABOUT_ENTRY_MERGE_POINT.
+      merge_point_xy: [-93.1035536401546, 327.685278548199]
       internal_loop_links:
         - A2256W000133
         - A2256W000134
@@ -1117,6 +1119,42 @@ full_loop:
       entry_checkpoint: 14
       exit_checkpoint: 15
       route_links: [A2256W000448, A2256W000126]
+      # Official-path-derived candidate only; MORAI surface and motion
+      # still need live review. A follows B along the left side, then C
+      # crosses Ego's route. Kept separate from the legacy tunnel NPC route.
+      dynamic_paths:
+        pedestrian_walk_then_cross:
+          route_path_index: 3920
+          waypoints:
+            - {x: -13.882, y: -515.447, z: 28.449}  # A
+            - {x: -18.296, y: -517.834, z: 28.449}  # B
+            - {x: -20.429, y: -513.871, z: 28.449}  # C
+      # Divide the tunnel after excluding entry/exit margins; each behavior
+      # is centered on its section midpoint. Positive d is left of the route.
+      # Every path starts
+      # as a candidate and needs a live MORAI review before approval.
+      candidate_catalog:
+        division_count: 4
+        endpoint_margin_m: 10.0
+        side_offset_m: 2.5
+        # Opposite pedestrians alternate lane 1 (sections 1/3) and lane 2
+        # (sections 2/4). +2.5 was observed inside lane 1 in MORAI;
+        # d=0 follows Ego's global path and needs a lane 2 placement check.
+        opposite_lane_1_offset_m: 2.5
+        opposite_lane_2_offset_m: 0.0
+        straight_length_m: 20.0
+        cross_delta_s_m: 5.0
+        diagonal_delta_s_m: 10.0
+        approved_ids: []
+        disabled_ids: []
+      # Opposite lane: 840 -> 843 -> 004 -> 008, validated from MGeo.
+      oncoming_route_links:
+        - A2256W000131
+        - A2256W000129
+        - A2256W000028
+      # No legal same-direction adjacent lane/change edge in this tunnel map.
+      # Explicit cut-in selection fails validation; random mode excludes it.
+      cut_in_route_links: []
       # Same direction and lane as Ego. A long initial gap prevents a
       # close-range pop-in before the one-time sudden-brake event.
       npc_route_links:

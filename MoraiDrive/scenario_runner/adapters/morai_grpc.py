@@ -1,3 +1,4 @@
+import math
 import os
 import socket
 import struct
@@ -631,6 +632,25 @@ class MoraiGrpcClient:
         )
         return verified
 
+    def set_ego_control_mode_keyboard(self):
+        """Hand Ego control to MORAI's keyboard input for a manual trial."""
+        from proto.morai.actor.actor_enum_pb2 import VEHICLE_CONTROL_KEYBOARD
+
+        ego = self.get_ego()
+        ok = ego.set_control_mode(VEHICLE_CONTROL_KEYBOARD)
+        print(f"[Ego] set_control_mode KEYBOARD: {ok}")
+        if not ok:
+            return False
+        try:
+            actual_mode = int(ego.get_control_mode())
+        except Exception as error:
+            print(f"[Ego] keyboard control verification unavailable: {error}")
+            return True
+        verified = actual_mode == int(VEHICLE_CONTROL_KEYBOARD)
+        print(f"[Ego] control_mode actual={actual_mode}, "
+              f"expected=KEYBOARD({int(VEHICLE_CONTROL_KEYBOARD)}), verified={verified}")
+        return verified
+
     def control_ego(self, steer, target_speed, brake=0.0, throttle=0.0):
         from proto.morai.actor.actor_enum_pb2 import LONG_CMD_TYPE_SPEED
 
@@ -721,6 +741,7 @@ class MoraiGrpcClient:
         request_id="",
         recover_ambiguous=False,
         lookup_before_create=True,
+        pause=False,
     ):
         request_id = str(request_id or "").strip()
         if recover_ambiguous and request_id and lookup_before_create:
@@ -736,6 +757,7 @@ class MoraiGrpcClient:
             request_id=request_id,
             velocity=velocity,
             multi_ego=multi_ego,
+            **({"pause": True} if pause else {}),
         )
         if vehicle is None and recover_ambiguous and request_id:
             # Give MORAI time to publish an actor that was created despite an
@@ -1376,6 +1398,73 @@ class MoraiGrpcClient:
         ok = bool(ok_velocity or ok_control)
         print(f"[Vehicle] set_speed {speed}: {ok} (velocity={ok_velocity}, control={ok_control})")
         return ok
+
+    def set_vehicle_direct_control(self, vehicle, enabled, speed_mps=0.0):
+        """Switch a spawned multi-Ego actor between external and native control.
+
+        Ordinary NPCs reject AUTO in live MORAI; direct-control callers must
+        spawn with multi_ego=True. Never bypass the mode/readback checks.
+        """
+        from proto.morai.actor.actor_enum_pb2 import (
+            EGO_CRUISE_TYPE_CONSTANT,
+            GEAR_MODE_D,
+            VEHICLE_CONTROL_AUTO_MODE,
+            VEHICLE_CONTROL_CRUISE_MODE,
+        )
+
+        if vehicle is None or not math.isfinite(speed_mps) or speed_mps < 0:
+            return False
+        mode = VEHICLE_CONTROL_AUTO_MODE if enabled else VEHICLE_CONTROL_CRUISE_MODE
+        try:
+            # Stop the internal driver before external steering takes ownership.
+            cruise_ok = True
+            if enabled:
+                cruise_ok = bool(vehicle.set_cruise_mode(enable=False))
+            accepted = bool(vehicle.set_control_mode(mode)) if cruise_ok else False
+            if accepted and not enabled:
+                cruise_ok = bool(
+                    vehicle.set_cruise_mode(
+                        enable=True,
+                        cruise_type=EGO_CRUISE_TYPE_CONSTANT,
+                        link_speed_ratio=0,
+                        constant_velocity=float(speed_mps) * 3.6,
+                    )
+                )
+            actual = int(vehicle.get_control_mode()) if accepted and cruise_ok else None
+            gear_ok = (
+                bool(vehicle.set_vehicle_gear(GEAR_MODE_D))
+                if enabled and actual == int(mode)
+                else not enabled
+            )
+        except Exception as error:
+            print(f"[Vehicle] direct_control={enabled} failed: {error}")
+            return False
+        verified = accepted and cruise_ok and gear_ok and actual == int(mode)
+        print(
+            f"[Vehicle] direct_control={enabled} accepted={accepted} mode={actual} "
+            f"cruise={cruise_ok} gear_drive={gear_ok} verified={verified}"
+        )
+        return verified
+
+    def control_vehicle_direct(self, vehicle, steer, speed_mps):
+        """Send normalized steering and convert physical m/s to control km/h."""
+        from proto.morai.actor.actor_enum_pb2 import LONG_CMD_TYPE_SPEED
+
+        if vehicle is None or not math.isfinite(steer) or not math.isfinite(speed_mps):
+            return False
+        if not -1.0 <= steer <= 1.0 or speed_mps < 0:
+            return False
+        return bool(
+            vehicle.control(
+                long_cmd_type=LONG_CMD_TYPE_SPEED,
+                throttle=0.0,
+                brake=1.0 if speed_mps == 0 else 0.0,
+                steer=float(steer),
+                velocity=float(speed_mps) * 3.6,
+                acceleration=0.0,
+                frame=0,
+            )
+        )
 
     def set_vehicle_velocity(self, vehicle, velocity):
         if vehicle is None:

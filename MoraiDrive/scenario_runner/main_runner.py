@@ -1,6 +1,9 @@
 import argparse
 import copy
 import os
+import random
+import json
+from types import SimpleNamespace
 import time
 from pathlib import Path
 
@@ -197,6 +200,41 @@ def build_parser():
         ),
     )
     parser.add_argument(
+        "--manual-ego",
+        action="store_true",
+        help=(
+            "Drive Ego with MORAI keyboard controls in the tunnel dynamic trial. "
+            "Requires a tunnel scenario and --once."
+        ),
+    )
+    tunnel_selection = parser.add_mutually_exclusive_group()
+    tunnel_selection.add_argument(
+        "--tunnel-candidate-id",
+        metavar="ID",
+        help=(
+            "Trial one route-relative tunnel pedestrian path by ID. "
+            "Requires full_loop_tunnel_dynamic --once; uses Expert unless --manual-ego."
+        ),
+    )
+    from .scenarios.full_loop_parts.tunnel_vehicle_catalog import BEHAVIORS
+    tunnel_selection.add_argument(
+        "--tunnel-vehicle-behavior", choices=BEHAVIORS,
+        help="One continuous vehicle behavior; requires full_loop_tunnel_vehicle --once.",
+    )
+    tunnel_selection.add_argument(
+        "--tunnel-vehicle-random", action="store_true",
+        help="Select one supported whole-tunnel vehicle behavior using --seed.",
+    )
+    tunnel_selection.add_argument(
+        "--tunnel-random-mix",
+        action="store_true",
+        help="Trial one seeded behavior/model mix with Expert or --manual-ego; requires --once.",
+    )
+    parser.add_argument(
+        "--seed", type=int, default=None,
+        help="Set the scenario random seed to reproduce the selected scene.",
+    )
+    parser.add_argument(
         "--dynamic-review",
         action="append",
         metavar="CROSSING:MODEL:SPEED_MPS",
@@ -261,6 +299,31 @@ def run_offline_check(global_cfg, scenario_cfg, scenario_name):
         scenario_cfg=scenario_cfg,
         scenario_name=scenario_name,
     )
+    if scenario_name == "full_loop_tunnel_vehicle":
+        from .tools.generate_tunnel_dynamic_candidates import load_catalog_inputs
+        from .scenarios.full_loop_parts.tunnel_vehicle_dynamic import prepare_tunnel_vehicle
+        metadata, points, zone = load_catalog_inputs(PACKAGE_ROOT)
+        configured = yaml.safe_load(Path(scenario_cfg["route_definition_path"]).read_text(encoding="utf-8-sig"))
+        definition = configured[scenario_cfg["route_definition_key"]]
+        zone = definition["zones"]["tunnel"]
+        checkpoints = {str(c["id"]): int(c["path_index"]) for c in definition["checkpoints"]}
+        from .utils.transform_utils import polyline_length
+        points = [tuple(map(float, line.split()[:3])) for line in Path(scenario_cfg["global_path"]).read_text().splitlines()
+                  if line.strip() and not line.lstrip().startswith("#")]
+        entry = polyline_length(points[:checkpoints[str(zone["entry_checkpoint"])]+1])
+        exit_s = polyline_length(points[:checkpoints[str(zone["exit_checkpoint"])]+1])
+        seed = scenario_cfg.get("random_seed")
+        seed = int(seed) if seed is not None else 0
+        cfg = copy.deepcopy(scenario_cfg)
+        cfg["tunnel_vehicle_dynamic"]["enabled"] = True
+        context = SimpleNamespace(cfg=cfg, scenario_name=scenario_name, clean_road_mode=bool(cfg.get("clean_road_mode",False)),
+            map_loader=MGeoMapLoader(global_cfg["paths"]["mgeo_root"]), route_points=points,
+            route_definition=definition, tunnel_entry_s=entry, tunnel_exit_s=exit_s,
+            run_seed=seed, random=random.Random(seed))
+        prepare_tunnel_vehicle(context)
+        print("[TunnelVehicle] offline validated (model availability/motion require MORAI):")
+        print(json.dumps({"run_seed":seed,"plan":context.tunnel_vehicle_plan,
+                          "unavailable_behaviors":context.tunnel_vehicle_catalog["unavailable_behaviors"]},indent=2))
 
 
 def main():
@@ -268,8 +331,28 @@ def main():
     args = parser.parse_args()
     if args.max_runs is not None and args.max_runs < 1:
         parser.error("--max-runs must be at least 1")
+    if args.manual_ego and (
+        args.scenario not in ("full_loop_tunnel_dynamic", "full_loop_tunnel_vehicle") or not args.once
+    ):
+        parser.error("--manual-ego requires a tunnel scenario and --once")
+    if args.tunnel_candidate_id and not (
+        args.scenario == "full_loop_tunnel_dynamic" and args.once
+    ):
+        parser.error(
+            "--tunnel-candidate-id requires full_loop_tunnel_dynamic --once"
+        )
+    if args.tunnel_random_mix and not (
+        args.scenario == "full_loop_tunnel_dynamic" and args.once
+    ):
+        parser.error("--tunnel-random-mix requires full_loop_tunnel_dynamic --once")
+    if (args.tunnel_vehicle_behavior or args.tunnel_vehicle_random) and args.scenario != "full_loop_tunnel_vehicle":
+        parser.error("Vehicle behavior options require full_loop_tunnel_vehicle --once")
+    if args.scenario == "full_loop_tunnel_vehicle" and not args.once:
+        parser.error("full_loop_tunnel_vehicle requires --once")
 
     global_cfg, zone_cfg, base_scenario_cfg = load_configuration()
+    if args.seed is not None:
+        base_scenario_cfg["random_seed"] = args.seed
     if args.static_editor:
         if args.scenario != "full_loop_static":
             parser.error("--static-editor requires --scenario full_loop_static")
@@ -286,6 +369,24 @@ def main():
         ]
     if args.no_sync_runtime:
         base_scenario_cfg.setdefault("sync_runtime", {})["enabled"] = False
+    if args.manual_ego:
+        base_scenario_cfg.setdefault("sync_runtime", {})["enabled"] = False
+        base_scenario_cfg["drive_control_mode"] = "morai_keyboard"
+    if args.tunnel_candidate_id:
+        base_scenario_cfg.setdefault("tunnel_dynamic", {})[
+            "trial_candidate_id"] = args.tunnel_candidate_id
+    if args.tunnel_vehicle_behavior:
+        base_scenario_cfg.setdefault("tunnel_vehicle_dynamic", {}).update(
+            behavior=args.tunnel_vehicle_behavior, random_behavior=False)
+    if args.tunnel_vehicle_random:
+        base_scenario_cfg.setdefault("tunnel_vehicle_dynamic", {})["random_behavior"] = True
+    if args.tunnel_random_mix:
+        base_scenario_cfg.setdefault("tunnel_dynamic", {}).setdefault(
+            "random_mix", {})["enabled"] = True
+    if args.tunnel_candidate_id or args.tunnel_random_mix:
+        # These explicit one-run trial options permit candidate paths with
+        # either controller. Their catalogue status remains unchanged.
+        base_scenario_cfg.setdefault("tunnel_dynamic", {})["candidate_policy"] = "trial"
     if args.dynamic_review:
         if args.scenario != "full_loop_dynamic" or not args.once or not args.no_sync_runtime:
             parser.error("--dynamic-review requires full_loop_dynamic --once --no-sync-runtime")

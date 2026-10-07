@@ -128,9 +128,14 @@ def verify_configuration(package_root, global_cfg, scenario_cfg):
         global_cfg["morai"]["map_name"] == EXPECTED_MAP,
         "Separated global config targets the wrong MORAI map",
     )
+    manual_tunnel_trial = (
+        scenario_cfg.get("drive_control_mode") == "morai_keyboard"
+        and scenario_cfg.get("mission_mode") in ("full_loop_tunnel_dynamic", "full_loop_tunnel_vehicle")
+        and not scenario_cfg.get("sync_runtime", {}).get("enabled", True)
+    )
     require(
-        scenario_cfg["drive_control_mode"] == "aimdrive_expert",
-        "Separated runner must use the external AIMDrive expert",
+        scenario_cfg["drive_control_mode"] == "aimdrive_expert" or manual_tunnel_trial,
+        "Separated runner must use the external AIMDrive expert, except for a manual tunnel trial",
     )
 
     internal_paths = [

@@ -143,6 +143,45 @@ class SyncRuntimeTest(unittest.TestCase):
             ['preflight', 'setup', 'timeline', 'cleanup'],
         )
 
+    def test_manual_ego_skips_ros_control_preflight(self):
+        scenario = FullLoopDriveBase(
+            Mock(), None, {}, {
+                "sync_runtime": {"enabled": False},
+                "drive_control_mode": "morai_keyboard",
+            },
+        )
+        calls = Mock()
+        scenario.setup = calls.setup
+        scenario.run_timeline = calls.timeline
+        scenario.cleanup = calls.cleanup
+        scenario.require_async_ros_control_path = calls.preflight
+        scenario.run()
+        calls.preflight.assert_not_called()
+        self.assertEqual(
+            [call[0] for call in calls.mock_calls],
+            ["setup", "timeline", "cleanup"],
+        )
+
+    def test_manual_ego_uses_keyboard_without_starting_expert(self):
+        calls = Mock()
+        scenario = FullLoopDriveBase(calls.grpc, None, {}, {
+            "sync_runtime": {"enabled": False},
+            "drive_control_mode": "morai_keyboard",
+            "reset_ego_motion_on_start": True,
+            "reset_ego_motion_wait_sec": 0,
+        })
+        scenario.runtime_bridge = None
+        scenario.start_tf = object()
+        scenario.setup_expert_controller = calls.setup_expert
+        with patch("time.sleep"):
+            self.assertTrue(scenario.configure_drive_from_start())
+        names = [call[0] for call in calls.mock_calls]
+        self.assertLess(names.index("grpc.reset_ego_motion"),
+                        names.index("grpc.set_ego_control_mode_keyboard"))
+        calls.grpc.set_ego_control_mode_auto.assert_not_called()
+        calls.setup_expert.assert_not_called()
+        self.assertEqual(scenario.route_setup_mode, "morai_keyboard")
+
     def test_cleanup_before_setup_does_not_touch_morai_actors(self):
         scenario = FullLoopScenario(Mock(), None, {}, {})
         scenario.cleanup_spawned_actors()

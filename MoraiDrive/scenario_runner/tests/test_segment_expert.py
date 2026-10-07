@@ -29,10 +29,13 @@ from .test_segment_modes import make_grpc
 EXPERT_INITIALIZE = """
 import numpy as np
 from expert.src.autonomous_driving import AutonomousDriving
+from expert.src.config.config import Config
 driver = AutonomousDriving()
 profile = driver.path_manager.velocity_profile
 assert len(profile) == len(driver.path)
 assert np.isfinite(profile).all()
+expected_jamming = Config()['planning'].get('jamming', {}).get('enabled', True)
+assert (driver.lattice_planning_process.recorded_jamming is not None) == expected_jamming
 print('REAL_EXPERT_INIT_OK points=' + str(len(profile)))
 """
 
@@ -64,7 +67,7 @@ class MissionExpertTest(unittest.TestCase):
             scenario.prepare_full_loop_route()
         return scenario
 
-    def initialize_expert(self, controller):
+    def initialize_expert(self, controller, script=EXPERT_INITIALIZE):
         environment = os.environ.copy()
         environment.update({
             "PYTHONPATH": controller.expert_source + os.pathsep + environment.get("PYTHONPATH", ""),
@@ -75,7 +78,7 @@ class MissionExpertTest(unittest.TestCase):
             "GT_BEV_DIRECT_USE_ENV_CONFIG": "1",
         })
         return subprocess.run(
-            [sys.executable, "-B", "-c", EXPERT_INITIALIZE],
+            [sys.executable, "-B", "-c", script],
             env=environment, cwd=self.tmp.name, capture_output=True,
             text=True, timeout=45,
         )
@@ -164,6 +167,64 @@ class MissionExpertTest(unittest.TestCase):
         self.assertEqual(
             config["planning"]["traffic_light_stop"]["stop_margin"], 13.0,
         )
+
+    def test_tunnel_vehicle_acc_releases_after_stopped_npc_moves(self):
+        scenario = self.make_scenario("full_loop_tunnel_vehicle")
+        with redirect_stdout(io.StringIO()):
+            scenario.setup_expert_controller()
+        controller = scenario.expert_controller
+        config = json.loads(Path(controller.runtime_config_path).read_text(encoding="utf-8"))
+        self.assertFalse(config["planning"]["jamming"]["enabled"])
+        # Use the reported stalled pose and the exported real K-city path.
+        script = EXPERT_INITIALIZE + """
+import math
+from expert.src.vehicle_state import VehicleState
+from expert.src.obstacle.object_info import ObjectInfo
+ego = VehicleState(16.09, -495.77, math.radians(-149.47), 0.)
+nearest = min(range(len(driver.path)), key=lambda i: driver.path[i].distance(ego.position))
+def point_ahead(distance):
+    travelled = 0.
+    for i in range(nearest + 1, len(driver.path)):
+        travelled += driver.path[i].distance(driver.path[i-1])
+        if travelled >= distance:
+            return driver.path[i]
+    raise AssertionError('Missing path ahead')
+p = point_ahead(6.)
+npc = ObjectInfo(p.x, p.y, 0., 1, name='lead', unique_id=1)
+# Repeated stationary observations must stop via ACC without committing a detour.
+for _ in range(10):
+    control, path = driver.execute(ego, [npc], None, sync_mode=True, control_dt=1./30.)
+    assert control.accel == 0., control.__dict__
+    assert driver.adaptive_cruise_control.object_type == 1
+    assert not driver.lattice_planning_process.last_result.active
+    assert 'static_avoidance' not in driver.lattice_planning_process.last_result.debug_details
+# The same actor restarts and moves away, then leaves perception entirely.
+p = point_ahead(18.)
+npc.position, npc.velocity = p.copy(), 4.
+for objects in ([npc], []):
+    # The existing command smoother releases -1 braking over several ticks.
+    for _ in range(30):
+        control, path = driver.execute(ego, objects, None, sync_mode=True, control_dt=1./30.)
+        assert driver.previous_target_velocity > 0.
+        assert not driver.lattice_planning_process.last_result.active
+        assert 'static_avoidance' not in driver.lattice_planning_process.last_result.debug_details
+        expected, _ = driver.path_manager.get_local_path(ego)
+        assert path == expected
+    assert control.accel > 0. and control.brake == 0., control.__dict__
+print('TUNNEL_ACC_RELEASE_OK')
+"""
+        result = self.initialize_expert(controller, script)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("TUNNEL_ACC_RELEASE_OK", result.stdout)
+
+    def test_tunnel_pedestrian_keeps_existing_jamming_policy(self):
+        scenario = self.make_scenario("full_loop_tunnel_dynamic")
+        with redirect_stdout(io.StringIO()):
+            scenario.setup_expert_controller()
+        config = json.loads(Path(scenario.expert_controller.runtime_config_path).read_text(encoding="utf-8"))
+        self.assertTrue(config["planning"].get("jamming", {}).get("enabled", True))
+        result = self.initialize_expert(scenario.expert_controller)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_filter_runs_before_process_start(self):
         scenario = self.make_scenario("full_loop_static")

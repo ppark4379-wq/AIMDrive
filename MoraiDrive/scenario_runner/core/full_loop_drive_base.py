@@ -164,7 +164,8 @@ class FullLoopDriveBase(BaseScenario):
                     "[KCityRunner] asynchronous scenario test mode: "
                     "Sync Runtime and sensor capture are disabled"
                 )
-                self.require_async_ros_control_path()
+                if str(self.cfg.get("drive_control_mode", "aimdrive_expert")).lower() != "morai_keyboard":
+                    self.require_async_ros_control_path()
             self.setup()
             if editor_mode:
                 self.publish_static_editor_event("session_ready", trial=0)
@@ -311,12 +312,23 @@ class FullLoopDriveBase(BaseScenario):
         drive_control_mode = str(
             self.cfg.get("drive_control_mode", "aimdrive_expert")
         ).lower()
-        supported_modes = {"aimdrive_expert"}
+        supported_modes = {"aimdrive_expert", "morai_keyboard"}
         if drive_control_mode not in supported_modes:
             raise RuntimeError(
-                "The separated K-City runner supports only the external "
-                f"AIMDrive expert; got drive_control_mode={drive_control_mode!r}"
+                f"Unsupported drive_control_mode={drive_control_mode!r}"
             )
+
+        if drive_control_mode == "morai_keyboard":
+            if self.cfg.get("sync_runtime", {}).get("enabled", True):
+                raise RuntimeError("MORAI keyboard mode requires asynchronous runtime")
+            if not self.grpc.set_ego_control_mode_keyboard():
+                raise RuntimeError("Failed to switch Ego to MORAI keyboard control")
+            if hasattr(self.grpc, "set_ego_gear_drive"):
+                self.grpc.set_ego_gear_drive()
+            self.route_configured = True
+            self.route_setup_mode = "morai_keyboard"
+            print("[KCityFullLoop] MORAI keyboard controls Ego; no expert process")
+            return True
 
         auto_ok = self.grpc.set_ego_control_mode_auto()
         if hasattr(self.grpc, "set_ego_gear_drive"):
@@ -499,8 +511,9 @@ class FullLoopDriveBase(BaseScenario):
             float(progress_watchdog.get("minimum_progress_m", 2.0)),
         )
 
+        manual_ego = str(self.cfg.get("drive_control_mode", "aimdrive_expert")).lower() == "morai_keyboard"
         print(
-            "[KCityFullLoop] AIMDrive expert running. "
+            f"[KCityFullLoop] {'MORAI keyboard' if manual_ego else 'AIMDrive expert'} running. "
             f"arrival_stop={arrival_stop_distance_m}m, "
             f"timeout={'disabled' if not use_timeout else str(timeout_sec) + 's'}, "
             f"progress_watchdog="
@@ -527,7 +540,7 @@ class FullLoopDriveBase(BaseScenario):
         while True:
             elapsed = self.clock.now() - lap_start_time
             controller = getattr(self, "expert_controller", None)
-            if controller is None or not controller.is_running():
+            if not manual_ego and (controller is None or not controller.is_running()):
                 raise RuntimeError("AIMDrive expert process stopped unexpectedly")
 
             if editor_mode:
@@ -617,7 +630,8 @@ class FullLoopDriveBase(BaseScenario):
             ):
                 self.stop_drive_control()
                 raise RuntimeError(
-                    "AIMDrive expert collision during scenario verification: "
+                    ("Manual Ego collision during tunnel trial: " if manual_ego else
+                     "AIMDrive expert collision during scenario verification: ")
                     + str(collision_objects)
                 )
             distance_to_goal = dist_xy(
