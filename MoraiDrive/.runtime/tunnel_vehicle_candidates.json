@@ -1,0 +1,107 @@
+{
+  "route": "data/R_KR_PR_K-city_2025/2026_molit_comp_global_path.txt",
+  "tunnel_entry_s_m": 1859.6415782400395,
+  "tunnel_exit_s_m": 1996.7307915312338,
+  "candidates": [
+    {
+      "id": "vehicle_slow_01",
+      "behavior": "vehicle_slow",
+      "section_index": 1,
+      "section_s_range_m": {
+        "start": 1869.6415782400395,
+        "end": 1898.913881562838
+      },
+      "anchor_s_m": 1884.2777299014388,
+      "anchor_from_entry_m": 24.636151661399253,
+      "start_s_m": 1874.2777299014388,
+      "end_s_m": 1894.2777299014388,
+      "lane_offset_m": 0.0,
+      "start_xyz": {
+        "x": 32.40083701525923,
+        "y": -485.6215566674745,
+        "z": 28.305047407431843
+      },
+      "end_xyz": {
+        "x": 15.444730305012468,
+        "y": -496.1930565890043,
+        "z": 28.326571826398904
+      },
+      "status": "candidate"
+    },
+    {
+      "id": "vehicle_slow_02",
+      "behavior": "vehicle_slow",
+      "section_index": 2,
+      "section_s_range_m": {
+        "start": 1898.913881562838,
+        "end": 1928.1861848856365
+      },
+      "anchor_s_m": 1913.5500332242373,
+      "anchor_from_entry_m": 53.90845498419776,
+      "start_s_m": 1903.5500332242373,
+      "end_s_m": 1923.5500332242373,
+      "lane_offset_m": 0.0,
+      "start_xyz": {
+        "x": 7.27780446006391,
+        "y": -500.58360119490214,
+        "z": 28.344633090933595
+      },
+      "end_xyz": {
+        "x": -10.31416178343482,
+        "y": -510.09773717089513,
+        "z": 28.438940070922957
+      },
+      "status": "candidate"
+    },
+    {
+      "id": "vehicle_slow_03",
+      "behavior": "vehicle_slow",
+      "section_index": 3,
+      "section_s_range_m": {
+        "start": 1928.1861848856365,
+        "end": 1957.4584882084353
+      },
+      "anchor_s_m": 1942.8223365470358,
+      "anchor_from_entry_m": 83.18075830699627,
+      "start_s_m": 1932.8223365470358,
+      "end_s_m": 1952.8223365470358,
+      "lane_offset_m": 0.0,
+      "start_xyz": {
+        "x": -18.465044885908064,
+        "y": -514.5179534285598,
+        "z": 28.448425724788247
+      },
+      "end_xyz": {
+        "x": -36.098881673293526,
+        "y": -523.9538135311703,
+        "z": 28.431769293256192
+      },
+      "status": "candidate"
+    },
+    {
+      "id": "vehicle_slow_04",
+      "behavior": "vehicle_slow",
+      "section_index": 4,
+      "section_s_range_m": {
+        "start": 1957.4584882084353,
+        "end": 1986.7307915312338
+      },
+      "anchor_s_m": 1972.0946398698345,
+      "anchor_from_entry_m": 112.453061629795,
+      "start_s_m": 1962.0946398698345,
+      "end_s_m": 1982.0946398698345,
+      "lane_offset_m": 0.0,
+      "start_xyz": {
+        "x": -44.25801571598758,
+        "y": -528.3586229502885,
+        "z": 28.418868623348942
+      },
+      "end_xyz": {
+        "x": -61.9097410568366,
+        "y": -537.7611693066565,
+        "z": 28.436046859720097
+      },
+      "status": "candidate"
+    }
+  ]
+}

@@ -18,6 +18,7 @@ from .full_loop_parts import (
     traffic_light_override,
     tunnel,
     tunnel_dynamic,
+    tunnel_vehicle_dynamic,
     vehicle_common,
 )
 
@@ -99,6 +100,7 @@ class FullLoopScenario(FullLoopDriveBase):
         self.route_definition = self.load_route_definition()
         self.prepare_full_loop_route()
         tunnel_dynamic.prepare_tunnel_dynamic(self)
+        tunnel_vehicle_dynamic.prepare_tunnel_vehicle(self)
         traffic_light_override.prepare(self)
         self.profile_index, self.profile, self.previous_profile_state = self.select_profile()
         self.scenario_hour = self.select_scenario_hour()
@@ -125,7 +127,9 @@ class FullLoopScenario(FullLoopDriveBase):
                 self.spawn_dynamic_obstacle()
                 self.spawn_roundabout_npcs()
                 self.spawn_highway_npcs()
-                if self.tunnel_dynamic_handler is None:
+                if self.tunnel_vehicle_handler is not None:
+                    self.tunnel_vehicle_handler.arm(self)
+                elif self.tunnel_dynamic_handler is None:
                     self.arm_tunnel_sudden_brake()
                 else:
                     tunnel_dynamic.arm_tunnel_dynamic(self)
@@ -255,7 +259,9 @@ class FullLoopScenario(FullLoopDriveBase):
             and current_s >= self.highway_exit_s
         ):
             self.deactivate_highway_npcs(current_s)
-        if self.tunnel_dynamic_handler is None:
+        if getattr(self, "tunnel_vehicle_handler", None) is not None:
+            self.tunnel_vehicle_handler.update(self, elapsed, ego_state, current_s)
+        elif self.tunnel_dynamic_handler is None:
             self.update_tunnel_sudden_brake(elapsed, ego_state, current_s)
         else:
             tunnel_dynamic.update_tunnel_dynamic(self, elapsed, ego_state, current_s)
@@ -263,9 +269,12 @@ class FullLoopScenario(FullLoopDriveBase):
     def run_timeline(self):
         try:
             super().run_timeline()
+            if (getattr(self, "tunnel_vehicle_handler", None) is not None
+                    and self.tunnel_vehicle_phase != "completed"):
+                raise RuntimeError("Route ended before tunnel slow vehicle trial completed")
             if (self.tunnel_dynamic_handler is not None
                     and self.tunnel_dynamic_phase != "completed"):
-                raise RuntimeError("Route ended before tunnel pedestrian reached C")
+                raise RuntimeError("Route ended before every tunnel pedestrian event completed")
             if getattr(self, "dynamic_obstacle_events", []):
                 if self.dynamic_obstacle_event_index != len(self.dynamic_obstacle_events):
                     raise RuntimeError("Route ended before every dynamic crossing was completed")
@@ -274,6 +283,12 @@ class FullLoopScenario(FullLoopDriveBase):
                 self.dynamic_validation["goal_reached"] = True
                 dynamic_obstacle._persist_progress(self)
         except BaseException as error:
+            vehicle_handler = getattr(self, "tunnel_vehicle_handler", None)
+            if vehicle_handler is not None:
+                vehicle_handler.record_interruption(self, error)
+            handler = getattr(self, "tunnel_dynamic_handler", None)
+            if handler is not None and callable(getattr(handler, "record_interruption", None)):
+                handler.record_interruption(self, error)
             if getattr(self, "dynamic_obstacle_events", []):
                 self.dynamic_validation["safety_validation_passed"] = False
                 self.dynamic_validation["failure_reason"] = str(error) or type(error).__name__

@@ -1129,16 +1129,28 @@ full_loop:
             - {x: -13.882, y: -515.447, z: 28.449}  # A
             - {x: -18.296, y: -517.834, z: 28.449}  # B
             - {x: -20.429, y: -513.871, z: 28.449}  # C
-      # Offline straight-path candidates. s is measured from checkpoint 14;
-      # positive d is left of the official route heading. Every path starts
+      # Divide the tunnel after excluding entry/exit margins; each behavior
+      # is centered on its section midpoint. Positive d is left of the route.
+      # Every path starts
       # as a candidate and needs a live MORAI review before approval.
       candidate_catalog:
-        positions_from_entry_m: [25.0, 40.0, 55.0]
+        division_count: 4
         endpoint_margin_m: 10.0
         side_offset_m: 2.5
-        straight_length_m: 15.0
-        cross_delta_s_m: 3.0
-        diagonal_delta_s_m: 8.0
+        # Opposite pedestrians alternate lane 1 (sections 1/3) and lane 2
+        # (sections 2/4). +2.5 was observed inside lane 1 in MORAI;
+        # d=0 follows Ego's global path and needs a lane 2 placement check.
+        opposite_lane_1_offset_m: 2.5
+        opposite_lane_2_offset_m: 0.0
+        straight_length_m: 20.0
+        cross_delta_s_m: 5.0
+        diagonal_delta_s_m: 10.0
+        approved_ids: []
+        disabled_ids: []
+      vehicle_candidate_catalog:
+        # Shares candidate_catalog's four sections and entry/exit margins.
+        # Same-direction, Ego-lane trial paths; no opposing route is assumed.
+        slow_length_m: 20.0
         approved_ids: []
         disabled_ids: []
       # Same direction and lane as Ego. A long initial gap prevents a

@@ -13,7 +13,7 @@ from ..utils.transform_utils import polyline_length
 SCENARIO_RUNNER_ROOT = Path(__file__).resolve().parents[1]
 
 
-def build_catalog(scenario_runner_root=SCENARIO_RUNNER_ROOT):
+def load_catalog_inputs(scenario_runner_root=SCENARIO_RUNNER_ROOT):
     config = yaml.safe_load((scenario_runner_root / "config/full_loop.yaml")
                             .read_text(encoding="utf-8-sig"))["scenarios"]["full_loop"]
     route = yaml.safe_load((scenario_runner_root / config["route_definition_path"])
@@ -33,12 +33,21 @@ def build_catalog(scenario_runner_root=SCENARIO_RUNNER_ROOT):
         raise ValueError("Tunnel checkpoint indices are invalid")
     entry_s = polyline_length(points[:entry_index + 1])
     exit_s = polyline_length(points[:exit_index + 1])
-    return {
+    metadata = {
         "route": str(config["global_path"]),
         "tunnel_entry_s_m": entry_s,
         "tunnel_exit_s_m": exit_s,
+    }
+    return metadata, points, zone
+
+
+def build_catalog(scenario_runner_root=SCENARIO_RUNNER_ROOT):
+    metadata, points, zone = load_catalog_inputs(scenario_runner_root)
+    return {
+        **metadata,
         "candidates": generate_tunnel_candidates(
-            points, entry_s, exit_s, zone["candidate_catalog"]),
+            points, metadata["tunnel_entry_s_m"], metadata["tunnel_exit_s_m"],
+            zone["candidate_catalog"]),
     }
 
 

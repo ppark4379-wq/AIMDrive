@@ -13,6 +13,7 @@ FILTERED_MISSIONS = frozenset((
     "full_loop_roundabout_brake",
     "full_loop_highway",
     "full_loop_tunnel_dynamic",
+    "full_loop_tunnel_vehicle",
 ))
 
 
@@ -85,11 +86,26 @@ def prepare_speed_zones(context):
     path = Path(context.expert_controller.runtime_config_path)
     config = json.loads(path.read_text(encoding="utf-8"))
     profile = config["planning"]["velocity_profile"]
+    zones = profile.get("speed_limit_zones") or []
+    boundary_skipped = []
+    if context.mission_mode.name == "full_loop_tunnel_vehicle":
+        # The highway speed zone ends exactly at CP13, this trial's START.
+        # It has no forward span in the trial and must not be projected onto
+        # the shortened path as a partially overlapping highway restriction.
+        forward_zones = []
+        for zone in zones:
+            _, end = zone_endpoints(zone, context.map_loader)
+            if nearest_index(context.mission_route.full_points, end) == context.mission_route.first_index:
+                boundary_skipped.append(zone.get("name", "unnamed"))
+            else:
+                forward_zones.append(zone)
+        zones = forward_zones
     kept, skipped = select_speed_zones(
-        profile.get("speed_limit_zones") or [],
+        zones,
         context.mission_route,
         context.map_loader,
     )
+    skipped = boundary_skipped + skipped
     if skipped:
         profile["speed_limit_zones"] = kept
         path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")

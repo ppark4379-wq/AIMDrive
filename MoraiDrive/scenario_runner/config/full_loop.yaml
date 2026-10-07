@@ -477,10 +477,36 @@ scenarios:
       enabled: false
       model: Man1
       path_id: pedestrian_walk_then_cross
-      speed_mps: 1.5
-      spawn_trigger_before_crossing_m: 60.0
-      trial_trigger_before_start_m: 10.0
+      speed_mps: 2.5
+      # Inherit speed/ETA/braking timing from dynamic_obstacle above.
+      # Add individual timing keys here to override them only for the tunnel.
+      interaction_trigger: {}
       arrival_tolerance_m: 0.5
+      max_run_sec: 20.0
+      random_mix:
+        enabled: false
+        events_per_section: 1
+        allow_behavior_repeat: false
+        behaviors:
+          - straight_same_direction
+          - straight_opposite
+          - cross_left_to_right
+          - cross_right_to_left
+          - diagonal_cross
+        # Empty uses the same model pool as dynamic_obstacle_models above.
+        # Only models reported available by the live MORAI world are used.
+        models: []
+
+    tunnel_vehicle_dynamic:
+      enabled: false
+      trial_candidate_id: vehicle_slow_01
+      # Fixed model inherited from highway_npc.model for the first trial.
+      slow_speed_mps: 4.0
+      spawn_trigger_gap_m: 40.0
+      minimum_spawn_gap_m: 30.0
+      spawn_position_tolerance_m: 3.0
+      arrival_tolerance_m: 1.0
+      minimum_observed_travel_m: 5.0
       max_run_sec: 20.0
 
     tunnel_sudden_brake:

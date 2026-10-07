@@ -1,0 +1,310 @@
+{
+  "schema": "morai_static_obstacle_suite_v1",
+  "name": "static_auto_3_20261007_200603",
+  "seed": 16040301520004648916,
+  "requested_attempts": 3,
+  "accepted_count": 0,
+  "attempted_model_counts": {
+    "WoodBox": 0,
+    "RedBarrel": 0,
+    "YellowBarrel": 0,
+    "TrafficBarrel": 1,
+    "PE_Firewall_Orange": 0,
+    "PE_Firewall_White": 0,
+    "Steel_Barricade": 0,
+    "Concrete_Barricade01": 0,
+    "Bollard01": 0,
+    "Bollard04": 0,
+    "Bicycle_city": 0,
+    "Bicycle_mountain": 1,
+    "Scooter_02": 0,
+    "Sportbike_01": 1,
+    "BabyStroller1": 1,
+    "BabyStroller2": 0,
+    "Bike1": 1,
+    "Bike2": 0,
+    "ElectricScooter1": 0,
+    "ElectricScooter2": 0,
+    "NCAP_GVT": 0,
+    "concrete-barrier": 0,
+    "Scooter1": 0,
+    "Scooter2": 0,
+    "Rockslide": 0
+  },
+  "accepted_model_counts": {
+    "WoodBox": 0,
+    "RedBarrel": 0,
+    "YellowBarrel": 0,
+    "TrafficBarrel": 0,
+    "PE_Firewall_Orange": 0,
+    "PE_Firewall_White": 0,
+    "Steel_Barricade": 0,
+    "Concrete_Barricade01": 0,
+    "Bollard01": 0,
+    "Bollard04": 0,
+    "Bicycle_city": 0,
+    "Bicycle_mountain": 0,
+    "Scooter_02": 0,
+    "Sportbike_01": 0,
+    "BabyStroller1": 0,
+    "BabyStroller2": 0,
+    "Bike1": 0,
+    "Bike2": 0,
+    "ElectricScooter1": 0,
+    "ElectricScooter2": 0,
+    "NCAP_GVT": 0,
+    "concrete-barrier": 0,
+    "Scooter1": 0,
+    "Scooter2": 0,
+    "Rockslide": 0
+  },
+  "accepted_model_minimum": 0,
+  "accepted_route_counts": {
+    "short": 0,
+    "alternate": 0,
+    "wide": 0
+  },
+  "rejected_count": 1,
+  "interrupted": true,
+  "created_at_unix": 1791371165.718604,
+  "generation_policy": {
+    "min_obstacles": 1,
+    "max_obstacles": 3,
+    "lateral_margin_m": 0.6,
+    "yaw_margin_deg": 0.0,
+    "scale_jitter": 0.0,
+    "scale_policy": "morai_native_model_scale_v1",
+    "trial_timeout_sec": 240.0,
+    "invalid_plan_timeout_sec": 15.0,
+    "signal_stop_timeout_sec": 30.0,
+    "max_cross_track_error_m": 4.0,
+    "models": [
+      "WoodBox",
+      "RedBarrel",
+      "YellowBarrel",
+      "TrafficBarrel",
+      "PE_Firewall_Orange",
+      "PE_Firewall_White",
+      "Steel_Barricade",
+      "Concrete_Barricade01",
+      "Bollard01",
+      "Bollard04",
+      "Bicycle_city",
+      "Bicycle_mountain",
+      "Scooter_02",
+      "Sportbike_01",
+      "BabyStroller1",
+      "BabyStroller2",
+      "Bike1",
+      "Bike2",
+      "ElectricScooter1",
+      "ElectricScooter2",
+      "NCAP_GVT",
+      "concrete-barrier",
+      "Scooter1",
+      "Scooter2",
+      "Rockslide"
+    ],
+    "accepted_route_targets": null,
+    "placement": "lane_aware_right_edge_strata_v1",
+    "models_without_footprint": [
+      "CargoBox",
+      "Lane_Separation_Bar",
+      "PE_Drum",
+      "Concrete_Barricade02",
+      "BabyStroller3",
+      "SportBike",
+      "obj_obstacle_dog",
+      "Color_Cone",
+      "Rubber_Cone",
+      "Bike3",
+      "Barbed_Wirefence"
+    ],
+    "footprint_catalog": {
+      "path": "scenario_runner/config/static_obstacle_footprints_v1.json",
+      "sha256": "bbd2797508cde53f25f6fd2ddd3c83db1901037b345ed6ce37770a7c35abd9ec",
+      "registry_sha256": "21f7927b6ea57c9299f3bf87546aba003cc1734c82589d5617a65682ea221b9e"
+    },
+    "lane_width_m": 3.34,
+    "lane_edge_margin_m": 0.1,
+    "lateral_strata": [
+      "right",
+      "centre",
+      "left"
+    ],
+    "route_clearance_m": {
+      "small_vs_right_02": 0.8,
+      "blocking_max_vs_right_02": 0.55,
+      "every_box_vs_right_03": 0.75
+    },
+    "expert_routes": {
+      "right_01.csv": {
+        "path": "expert/src/expert/src/planning/정적장애물/후보전역경로/right_01.csv",
+        "sha256": "ddc93a9b4e27c011346254125dae04e3e23c29f3fc38b72d1f16b31215faa71e"
+      },
+      "right_02.csv": {
+        "path": "expert/src/expert/src/planning/정적장애물/후보전역경로/right_02.csv",
+        "sha256": "a50ebd8d54c4143d36901b97bc652cbe8b787d5527ea01e8065d600466c72e27"
+      },
+      "right_03.csv": {
+        "path": "expert/src/expert/src/planning/정적장애물/후보전역경로/right_03.csv",
+        "sha256": "7c0cfcb61c65ae4121c74f59575c128707571ebfae52665e81a79556632c3b90"
+      },
+      "right_04.csv": {
+        "path": "expert/src/expert/src/planning/정적장애물/후보전역경로/right_04.csv",
+        "sha256": "c65d5476de9876e106e191e2ca0fa05c7954a4ae0608ce1cd5f94926fa753389"
+      },
+      "right_05.csv": {
+        "path": "expert/src/expert/src/planning/정적장애물/후보전역경로/right_05.csv",
+        "sha256": "9bfe6397462b4f2baa546a4642d028783758555b324a9412fcbaaff75463c811"
+      },
+      "right_06_retry.csv": {
+        "path": "expert/src/expert/src/planning/정적장애물/후보전역경로/right_06_retry.csv",
+        "sha256": "85e037eb822ca886f1ca2d968af88b9665c7687b23a8d9010cbf9c062f2f94a5"
+      }
+    },
+    "avoidance_weights": {
+      "straight": 20.0,
+      "small": 20.0,
+      "medium": 40.0,
+      "late": 20.0
+    },
+    "lane_gate": {
+      "min_marking_clearance_m": 0.0,
+      "max_right_deviation_m": 4.0,
+      "max_sample_gap_m": 3.0,
+      "densify_step_m": 0.2
+    },
+    "lane_markings": {
+      "path": "scenario_runner/config/static_segment_lane_markings.json",
+      "sha256": "31558b043ef0c98e32c17dd77297578915fe2f90c3758362e85acc334b5466e0"
+    },
+    "ego_body": {
+      "length_m": 4.635,
+      "width_m": 1.89,
+      "center_forward_m": 1.53,
+      "center_left_m": 0.0
+    }
+  },
+  "attempted_cell_counts": {
+    "2:straight": 1,
+    "3:small": 1
+  },
+  "accepted_cell_counts": {},
+  "attempted_lateral_strata": {
+    "straight:right_far": 1,
+    "straight:right_near": 1,
+    "small:right_far": 1,
+    "small:right_near": 1,
+    "small:left": 1
+  },
+  "accepted_avoidance_counts": {
+    "straight": 0,
+    "small": 0,
+    "medium": 0,
+    "late": 0,
+    "large": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "accepted": false,
+      "obstacle_count": 2,
+      "models": [
+        "TrafficBarrel",
+        "Sportbike_01"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_auto_3_20261007_200603/candidates/static_auto_3_20261007_200603_attempt_001.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_auto_3_20261007_200603/logs/static_auto_3_20261007_200603_attempt_001.log",
+      "closed_loop_evidence": {
+        "goal_reached": false,
+        "valid_plan_samples": 0,
+        "cross_track_samples": 47,
+        "max_cross_track_error_m": 0.04,
+        "selected_routes": []
+      },
+      "lane_compliance": {
+        "passed": false,
+        "reasons": [
+          "ego_trace_incomplete",
+          "ego_trace_gap",
+          "solid_lane_marking_touched",
+          "lateral_deviation_limit_exceeded"
+        ],
+        "raw_samples": 947,
+        "max_sample_gap_m": 277.265,
+        "route_index_span": [
+          484.0,
+          498.0
+        ],
+        "min_marking_clearance_m": -0.075,
+        "closest_marking": "B2256W000445:505:solid",
+        "touched_markings": [
+          {
+            "marking": "B2256W000250:535:solid",
+            "first_body_centre_xy": [
+              -76.641,
+              -228.28
+            ]
+          },
+          {
+            "marking": "B2256W000445:505:solid",
+            "first_body_centre_xy": [
+              -77.409,
+              -226.678
+            ]
+          }
+        ],
+        "max_right_deviation_m": 226.772,
+        "max_left_deviation_m": 0.035,
+        "avoidance_class": "large",
+        "trajectory_class": "large",
+        "swing_onset_route_index": 492.7,
+        "peak_route_index": 484.0,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "avoidance_target": "straight",
+      "rejection_reasons": [
+        "runner_return_code",
+        "goal_not_proven",
+        "no_valid_expert_plan_sample",
+        "selected_route_evidence_missing",
+        "ego_trace_incomplete",
+        "ego_trace_gap",
+        "solid_lane_marking_touched",
+        "lateral_deviation_limit_exceeded"
+      ],
+      "return_code": 1,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 59.813,
+      "failure_tail": [
+        "    exec(code, run_globals)",
+        "  File \"/mnt/c/Users/alswo/Desktop/AIMDrive/MoraiDrive/scenario_runner/main_runner.py\", line 449, in <module>",
+        "    main()",
+        "  File \"/mnt/c/Users/alswo/Desktop/AIMDrive/MoraiDrive/scenario_runner/main_runner.py\", line 426, in main",
+        "    scenario.run()",
+        "  File \"/mnt/c/Users/alswo/Desktop/AIMDrive/MoraiDrive/scenario_runner/core/full_loop_drive_base.py\", line 174, in run",
+        "    self.run_timeline()",
+        "  File \"/mnt/c/Users/alswo/Desktop/AIMDrive/MoraiDrive/scenario_runner/scenarios/full_loop_scenario.py\", line 265, in run_timeline",
+        "    super().run_timeline()",
+        "  File \"/mnt/c/Users/alswo/Desktop/AIMDrive/MoraiDrive/scenario_runner/core/full_loop_drive_base.py\", line 470, in run_timeline",
+        "    self.run_expert_timeline()",
+        "  File \"/mnt/c/Users/alswo/Desktop/AIMDrive/MoraiDrive/scenario_runner/core/full_loop_drive_base.py\", line 668, in run_expert_timeline",
+        "    tick_hook(",
+        "  File \"/mnt/c/Users/alswo/Desktop/AIMDrive/MoraiDrive/scenario_runner/scenarios/full_loop_scenario.py\", line 248, in on_expert_timeline_tick",
+        "    self.verify_static_obstacle(elapsed, current_s)",
+        "  File \"/mnt/c/Users/alswo/Desktop/AIMDrive/MoraiDrive/scenario_runner/scenarios/full_loop_parts/static_obstacle.py\", line 610, in verify_static_obstacle",
+        "    raise RuntimeError(",
+        "RuntimeError: Static obstacle disappeared before its route zone: actor_id=1, observations=[{'attempt': 1, 'inventory_size': 0, 'exact_matches': 0}, {'attempt': 2, 'inventory_size': 0, 'exact_matches': 0}, {'attempt': 3, 'inventory_size': 0, 'exact_matches': 0}, {'attempt': 4, 'inventory_size': 0, 'exact_matches': 0}, {'attempt': 5, 'inventory_size': 0, 'exact_matches': 0}, {'attempt': 6, 'inventory_size': 0, 'exact_matches': 0}]"
+      ]
+    }
+  ],
+  "accepted_presets": [],
+  "completed_attempts": 1,
+  "accepted_model_minimum_met": true,
+  "finished_at_unix": 1791371233.8465216,
+  "accepted_route_targets_met": null
+}

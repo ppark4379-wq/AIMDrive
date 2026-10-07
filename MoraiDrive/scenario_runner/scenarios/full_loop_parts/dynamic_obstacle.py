@@ -16,6 +16,7 @@ import time
 
 from ...utils import safe_print as print
 from . import traffic_light_override
+from .pedestrian_timing import interaction_timing
 
 
 def _dynamic_cfg(self):
@@ -1654,38 +1655,11 @@ def _red_route_signal_ahead(self, current_s):
 
 
 def _timing_snapshot(self, event, ego_state, current_s):
-    cfg = _dynamic_cfg(self)
-    speed = _ego_speed_mps(ego_state)
-    remaining = float(event["route_s"]) - float(current_s)
-    npc_eta = float(event["start_to_conflict_m"]) / float(event["speed_mps"])
-    interaction_lead = float(cfg.get("interaction_lead_sec", 1.5))
-    minimum_trigger = max(
-        float(cfg.get("minimum_trigger_distance_m", 12.0)),
-        float(event.get("trigger_distance_m", 0.0)),
+    return interaction_timing(
+        _dynamic_cfg(self), event["route_s"], event["start_to_conflict_m"],
+        event["speed_mps"], ego_state, current_s,
+        minimum_event_distance_m=event.get("trigger_distance_m", 0.0),
     )
-    maximum_trigger = float(cfg.get("maximum_trigger_distance_m", 60.0))
-    reaction = float(cfg.get("reaction_time_sec", 1.0))
-    deceleration = max(
-        0.1, float(cfg.get("comfortable_deceleration_mps2", 3.5))
-    )
-    safety_margin = float(cfg.get("stopping_safety_margin_m", 3.0))
-    stop_distance = speed * reaction + speed * speed / (2.0 * deceleration)
-    stop_distance += safety_margin
-    trigger_distance = speed * (npc_eta + interaction_lead)
-    trigger_distance = max(
-        minimum_trigger, trigger_distance, stop_distance + 1.0
-    )
-    trigger_distance = min(maximum_trigger, trigger_distance)
-    ego_eta = remaining / max(speed, 0.1)
-    return {
-        "remaining_m": remaining,
-        "ego_speed_mps": speed,
-        "ego_eta_sec": ego_eta,
-        "npc_eta_sec": npc_eta,
-        "eta_delta_sec": ego_eta - npc_eta,
-        "trigger_distance_m": trigger_distance,
-        "safe_stop_distance_m": stop_distance,
-    }
 
 
 def _observe_ego_response(self, event, ego_state, current_s):

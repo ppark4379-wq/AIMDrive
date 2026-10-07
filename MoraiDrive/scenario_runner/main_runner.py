@@ -204,13 +204,27 @@ def build_parser():
             "Requires --scenario full_loop_tunnel_dynamic --once."
         ),
     )
-    parser.add_argument(
+    tunnel_selection = parser.add_mutually_exclusive_group()
+    tunnel_selection.add_argument(
         "--tunnel-candidate-id",
         metavar="ID",
         help=(
             "Trial one route-relative tunnel pedestrian path by ID. "
-            "Requires full_loop_tunnel_dynamic --once --manual-ego."
+            "Requires full_loop_tunnel_dynamic --once; uses Expert unless --manual-ego."
         ),
+    )
+    tunnel_selection.add_argument(
+        "--tunnel-vehicle-candidate-id", metavar="ID",
+        help="Trial vehicle_slow_01..04; requires full_loop_tunnel_vehicle --once.",
+    )
+    tunnel_selection.add_argument(
+        "--tunnel-random-mix",
+        action="store_true",
+        help="Trial one seeded behavior/model mix with Expert or --manual-ego; requires --once.",
+    )
+    parser.add_argument(
+        "--seed", type=int, default=None,
+        help="Set the scenario random seed to reproduce the selected scene.",
     )
     parser.add_argument(
         "--dynamic-review",
@@ -289,13 +303,23 @@ def main():
     ):
         parser.error("--manual-ego requires --scenario full_loop_tunnel_dynamic --once")
     if args.tunnel_candidate_id and not (
-        args.scenario == "full_loop_tunnel_dynamic" and args.once and args.manual_ego
+        args.scenario == "full_loop_tunnel_dynamic" and args.once
     ):
         parser.error(
-            "--tunnel-candidate-id requires full_loop_tunnel_dynamic --once --manual-ego"
+            "--tunnel-candidate-id requires full_loop_tunnel_dynamic --once"
         )
+    if args.tunnel_random_mix and not (
+        args.scenario == "full_loop_tunnel_dynamic" and args.once
+    ):
+        parser.error("--tunnel-random-mix requires full_loop_tunnel_dynamic --once")
+    if args.tunnel_vehicle_candidate_id and not (
+        args.scenario == "full_loop_tunnel_vehicle" and args.once
+    ):
+        parser.error("--tunnel-vehicle-candidate-id requires full_loop_tunnel_vehicle --once")
 
     global_cfg, zone_cfg, base_scenario_cfg = load_configuration()
+    if args.seed is not None:
+        base_scenario_cfg["random_seed"] = args.seed
     if args.static_editor:
         if args.scenario != "full_loop_static":
             parser.error("--static-editor requires --scenario full_loop_static")
@@ -318,6 +342,16 @@ def main():
     if args.tunnel_candidate_id:
         base_scenario_cfg.setdefault("tunnel_dynamic", {})[
             "trial_candidate_id"] = args.tunnel_candidate_id
+    if args.tunnel_vehicle_candidate_id:
+        base_scenario_cfg.setdefault("tunnel_vehicle_dynamic", {})[
+            "trial_candidate_id"] = args.tunnel_vehicle_candidate_id
+    if args.tunnel_random_mix:
+        base_scenario_cfg.setdefault("tunnel_dynamic", {}).setdefault(
+            "random_mix", {})["enabled"] = True
+    if args.tunnel_candidate_id or args.tunnel_random_mix:
+        # These explicit one-run trial options permit candidate paths with
+        # either controller. Their catalogue status remains unchanged.
+        base_scenario_cfg.setdefault("tunnel_dynamic", {})["candidate_policy"] = "trial"
     if args.dynamic_review:
         if args.scenario != "full_loop_dynamic" or not args.once or not args.no_sync_runtime:
             parser.error("--dynamic-review requires full_loop_dynamic --once --no-sync-runtime")
