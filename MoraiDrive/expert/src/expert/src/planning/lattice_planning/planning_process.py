@@ -65,6 +65,7 @@ class LatticePlanningProcess:
         highway_planner=None,
         map_data_dir=None,
         highway_lane_planner=None,
+        jamming_enabled=True,
     ):
         # zone_* 인자는 기존 정적장애물 구간 테스트/설정을 위해 유지합니다.
         self.zone_bounds = zone_bounds
@@ -79,7 +80,8 @@ class LatticePlanningProcess:
                                 else None)
         from ..Jamming.recorded_planner import JammingPlanner
         self.recorded_jamming = (JammingPlanner(background=True)
-                                 if zone_bounds is None and zone_start == STATIC_OBSTACLE_ZONE_START
+                                 if jamming_enabled and zone_bounds is None
+                                 and zone_start == STATIC_OBSTACLE_ZONE_START
                                  else None)
         self.centerline_lattice = CenterlineLattice(map_data_dir)
 

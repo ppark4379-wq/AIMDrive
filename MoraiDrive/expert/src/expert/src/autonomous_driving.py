@@ -50,7 +50,8 @@ class AutonomousDriving(PathController):
         )
         # Uses the measured static-obstacle and highway section centerlines.
         self.lattice_planning_process = LatticePlanningProcess(
-            map_data_dir=config["map"]["data_dir"]
+            map_data_dir=config["map"]["data_dir"],
+            jamming_enabled=config["planning"].get("jamming", {}).get("enabled", True),
         )
         self._init_control(config)
         self._merge_curvature_floor_zone = None

@@ -48,6 +48,7 @@ def _spawn_highway_vehicle(
     spawn_velocity=None,
     command_report=None,
     unpause=None,
+    spawn_paused=False,
 ):
     actor = self.grpc.spawn_vehicle(
         transform=transform,
@@ -57,12 +58,18 @@ def _spawn_highway_vehicle(
         multi_ego=False,
         request_id=request_id,
         recover_ambiguous=recover_ambiguous,
+        **({"pause": True} if spawn_paused else {}),
     )
     if actor is None:
         return None
     if on_spawn is not None:
         self.scenario_actors.append(actor)
         on_spawn(actor)
+    pause_hold_ok = bool(actor.set_pause(True)) if spawn_paused else None
+    if spawn_paused and not pause_hold_ok:
+        if on_spawn is None:
+            actor.destroy()
+        raise RuntimeError("Tunnel vehicle departure pause rejected")
     waypoint_indices = {route[0]: int(waypoint)}
     if end_waypoint is not None:
         waypoint_indices[route[-1]] = int(end_waypoint)
@@ -91,6 +98,7 @@ def _spawn_highway_vehicle(
             "route_accepted": bool(ok), "unpause_accepted": pause_ok,
             "ai_enable_accepted": ai_ok, "speed_limit_accepted": bool(limit_ok),
             "velocity_accepted": bool(velocity_ok),
+            "pause_hold_accepted": pause_hold_ok,
         })
     if on_spawn is not None and not (limit_ok and velocity_ok):
         raise RuntimeError("Tunnel vehicle speed limit or velocity rejected")

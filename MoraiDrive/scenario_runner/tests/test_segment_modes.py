@@ -403,7 +403,7 @@ class MissionModesTest(unittest.TestCase):
         scenario.grpc.start_world.assert_not_called()
 
     def test_supported_vehicle_behaviors_match_official_mgeo_at_setup(self):
-        for behavior in ("vehicle_slow", "vehicle_sudden_brake", "vehicle_stopped", "vehicle_oncoming"):
+        for behavior in ("vehicle_slow", "vehicle_sudden_brake", "vehicle_oncoming"):
             with self.subTest(behavior=behavior):
                 scenario = self.make_scenario("full_loop_tunnel_vehicle")
                 scenario.cfg["tunnel_vehicle_dynamic"]["behavior"] = behavior

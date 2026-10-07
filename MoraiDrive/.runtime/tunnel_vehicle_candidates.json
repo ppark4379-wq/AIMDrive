@@ -137,139 +137,57 @@
       },
       "cleanup_policy": "outside_tunnel_and_ego_clearance",
       "behavior": "vehicle_sudden_brake",
-      "event_section": 3,
-      "safe_event_sections": [
-        3
-      ],
-      "event_region": {
-        "section_index": 3,
-        "start_s_m": 1928.1861848856365,
-        "end_s_m": 1957.4584882084353,
-        "anchor_s_m": 1942.8223365470358,
-        "anchor_from_entry_m": 83.18075830699627
-      },
-      "sections": [
-        {
-          "section_index": 1,
-          "start_s_m": 1869.6415782400395,
-          "end_s_m": 1898.913881562838,
-          "anchor_s_m": 1884.2777299014388,
-          "anchor_from_entry_m": 24.636151661399253
-        },
-        {
-          "section_index": 2,
-          "start_s_m": 1898.913881562838,
-          "end_s_m": 1928.1861848856365,
-          "anchor_s_m": 1913.5500332242373,
-          "anchor_from_entry_m": 53.90845498419776
-        },
-        {
-          "section_index": 3,
-          "start_s_m": 1928.1861848856365,
-          "end_s_m": 1957.4584882084353,
-          "anchor_s_m": 1942.8223365470358,
-          "anchor_from_entry_m": 83.18075830699627
-        },
-        {
-          "section_index": 4,
-          "start_s_m": 1957.4584882084353,
-          "end_s_m": 1986.7307915312338,
-          "anchor_s_m": 1972.0946398698345,
-          "anchor_from_entry_m": 112.453061629795
-        }
-      ],
-      "entry_s_m": 1859.6415782400395,
-      "exit_s_m": 1996.7307915312338,
-      "spawn_policy": "runtime_ego_gap_or_oncoming_eta",
-      "spawn_preview_only": true,
-      "spawn_s_m": 1899.7447548337589,
-      "spawn_target": {
-        "x": 10.628848951057018,
-        "y": -498.7806476059085,
-        "z": 28.336647874561972,
-        "yaw_deg": -151.68727521488606,
-        "link": "A2256W000126",
-        "waypoint": 44,
-        "route_index": 1
-      },
-      "route_links": [
-        "A2256W000448",
-        "A2256W000126",
-        "A2256W000128",
-        "A2256W000333",
-        "A2256W000154",
-        "A2256W000332",
-        "A2256W000751"
-      ],
-      "target_route_links": [
-        "A2256W000448",
-        "A2256W000126",
-        "A2256W000128",
-        "A2256W000333",
-        "A2256W000154",
-        "A2256W000332",
-        "A2256W000751"
-      ],
-      "speed_mps": 9.0,
-      "direction_evidence": [
-        {
-          "link": "A2256W000448",
-          "s_m": 1869.1415534024638,
-          "tangent_dot": 0.9999999999999999,
-          "lateral_m": 1.9270310003070055e-14
-        },
-        {
-          "link": "A2256W000448",
-          "s_m": 1877.7447989655957,
-          "tangent_dot": 0.9999999999999999,
-          "lateral_m": 1.6312954487147503e-14
-        },
-        {
-          "link": "A2256W000126",
-          "s_m": 1877.7447989655957,
-          "tangent_dot": 0.9996330271743158,
-          "lateral_m": 1.6312954487147503e-14
-        },
-        {
-          "link": "A2256W000126",
-          "s_m": 1937.244497675989,
-          "tangent_dot": 0.9999882638934092,
-          "lateral_m": 2.702177740232499e-14
-        }
-      ],
-      "lifecycle": "each_actor_through_continuation_or_teardown"
-    },
-    "vehicle_stopped": {
-      "cleanup_route_links": [
-        "A2256W000448",
-        "A2256W000126",
-        "A2256W000128",
-        "A2256W000333",
-        "A2256W000154",
-        "A2256W000332",
-        "A2256W000751"
-      ],
-      "cleanup_boundary_route_s_m": 137.08921329118368,
-      "cleanup_route_s_m": 177.08921329118368,
-      "cleanup_xyz": {
-        "x": -113.80436876593885,
-        "y": -548.6031591167082,
-        "z": 28.422653918832907
-      },
-      "cleanup_policy": "scenario_teardown",
-      "behavior": "vehicle_stopped",
-      "event_section": 2,
+      "event_section": null,
       "safe_event_sections": [
         2,
         3
       ],
-      "event_region": {
-        "section_index": 2,
-        "start_s_m": 1898.913881562838,
-        "end_s_m": 1928.1861848856365,
-        "anchor_s_m": 1913.5500332242373,
-        "anchor_from_entry_m": 53.90845498419776
+      "event_region": null,
+      "sudden_brake_settings": {
+        "cruise_speed_mps": 4.0,
+        "follow_window_sec": 2.0,
+        "follow_settle_sec": 1.5,
+        "follow_filter_sec": 1.0,
+        "follow_filter_minimum_span_sec": 0.5,
+        "minimum_follow_filter_samples": 3,
+        "max_follow_gap_spread_m": 1.0,
+        "max_relative_speed_mps": 0.5,
+        "max_gap_rate_mps": 0.5,
+        "minimum_follow_speed_mps": 1.0,
+        "minimum_follow_gap_m": 8.0,
+        "emergency_gap_m": 8.0,
+        "minimum_catchup_relative_speed_mps": 0.5,
+        "minimum_ego_speed_drop_mps": 0.5,
+        "follow_gap_tolerance_m": 2.0,
+        "maximum_sample_interval_sec": 1.0,
+        "trough_speed_mps": 0.5,
+        "trough_speed_tolerance_mps": 0.2,
+        "hold_duration_sec": 8.0,
+        "deceleration_confirm_timeout_sec": 1.5,
+        "minimum_brake_speed_drop_mps": 2.0,
+        "minimum_deceleration_mps2": 2.0,
+        "resume_confirm_timeout_sec": 5.0,
+        "resume_minimum_travel_m": 0.5,
+        "resume_speed_tolerance_mps": 0.5,
+        "minimum_exit_clearance_m": 20.0,
+        "brake_space_deceleration_mps2": 2.0
       },
+      "brake_regions": [
+        {
+          "section_index": 2,
+          "start_s_m": 1898.913881562838,
+          "end_s_m": 1928.1861848856365,
+          "anchor_s_m": 1913.5500332242373,
+          "anchor_from_entry_m": 53.90845498419776
+        },
+        {
+          "section_index": 3,
+          "start_s_m": 1928.1861848856365,
+          "end_s_m": 1957.4584882084353,
+          "anchor_s_m": 1942.8223365470358,
+          "anchor_from_entry_m": 83.18075830699627
+        }
+      ],
       "sections": [
         {
           "section_index": 1,
@@ -332,7 +250,7 @@
         "A2256W000332",
         "A2256W000751"
       ],
-      "speed_mps": 9.0,
+      "speed_mps": 4.0,
       "direction_evidence": [
         {
           "link": "A2256W000448",
@@ -467,11 +385,129 @@
         }
       ],
       "lifecycle": "each_actor_through_continuation_or_teardown"
+    },
+    "vehicle_cut_in": {
+      "cleanup_route_links": [
+        "A2256W000448",
+        "A2256W000126",
+        "A2256W000128",
+        "A2256W000333",
+        "A2256W000154",
+        "A2256W000332",
+        "A2256W000751"
+      ],
+      "cleanup_boundary_route_s_m": 137.08921329118368,
+      "cleanup_route_s_m": 177.08921329118368,
+      "cleanup_xyz": {
+        "x": -113.80436876593885,
+        "y": -548.6031591167082,
+        "z": 28.422653918832907
+      },
+      "cleanup_policy": "outside_tunnel_and_ego_clearance",
+      "behavior": "vehicle_cut_in",
+      "event_section": 3,
+      "safe_event_sections": [
+        3
+      ],
+      "event_region": {
+        "section_index": 3,
+        "start_s_m": 1928.1861848856365,
+        "end_s_m": 1957.4584882084353,
+        "anchor_s_m": 1942.8223365470358,
+        "anchor_from_entry_m": 83.18075830699627
+      },
+      "sections": [
+        {
+          "section_index": 1,
+          "start_s_m": 1869.6415782400395,
+          "end_s_m": 1898.913881562838,
+          "anchor_s_m": 1884.2777299014388,
+          "anchor_from_entry_m": 24.636151661399253
+        },
+        {
+          "section_index": 2,
+          "start_s_m": 1898.913881562838,
+          "end_s_m": 1928.1861848856365,
+          "anchor_s_m": 1913.5500332242373,
+          "anchor_from_entry_m": 53.90845498419776
+        },
+        {
+          "section_index": 3,
+          "start_s_m": 1928.1861848856365,
+          "end_s_m": 1957.4584882084353,
+          "anchor_s_m": 1942.8223365470358,
+          "anchor_from_entry_m": 83.18075830699627
+        },
+        {
+          "section_index": 4,
+          "start_s_m": 1957.4584882084353,
+          "end_s_m": 1986.7307915312338,
+          "anchor_s_m": 1972.0946398698345,
+          "anchor_from_entry_m": 112.453061629795
+        }
+      ],
+      "entry_s_m": 1859.6415782400395,
+      "exit_s_m": 1996.7307915312338,
+      "spawn_policy": "runtime_ego_gap_or_oncoming_eta",
+      "spawn_preview_only": true,
+      "spawn_s_m": 1899.3930147231765,
+      "spawn_target": {
+        "x": 12.608824947408312,
+        "y": -501.7142826365421,
+        "z": 28.454564806230835,
+        "yaw_deg": -151.68727521488606,
+        "link": "A2256W000131",
+        "waypoint": 195,
+        "route_index": 0
+      },
+      "route_links": [],
+      "source_corridor_links": [
+        "A2256W000131",
+        "A2256W000129",
+        "A2256W000028"
+      ],
+      "source_geometry_only": true,
+      "control_strategy": "direct_steering_then_forward_route",
+      "target_route_links": [
+        "A2256W000448",
+        "A2256W000126",
+        "A2256W000128",
+        "A2256W000333",
+        "A2256W000154",
+        "A2256W000332",
+        "A2256W000751"
+      ],
+      "speed_mps": 7.0,
+      "direction_evidence": [
+        {
+          "link": "A2256W000131",
+          "s_m": 1936.8851372953766,
+          "tangent_dot": -0.9999917004505632,
+          "lateral_m": 3.4906021951222534
+        },
+        {
+          "link": "A2256W000131",
+          "s_m": 1877.7551076293291,
+          "tangent_dot": -0.9998942675829797,
+          "lateral_m": 3.4448852051084002
+        },
+        {
+          "link": "A2256W000129",
+          "s_m": 1877.7551076293291,
+          "tangent_dot": -0.9998556985474765,
+          "lateral_m": 3.4448852051084002
+        },
+        {
+          "link": "A2256W000129",
+          "s_m": 1868.537094540159,
+          "tangent_dot": -0.99931276808364,
+          "lateral_m": 3.5972187402215243
+        }
+      ],
+      "lifecycle": "each_actor_through_continuation_or_teardown"
     }
   },
-  "unavailable_behaviors": {
-    "vehicle_cut_in": "vehicle_cut_in unavailable: no permitted adjacent same-direction MGeo lane-change edge; current adapter has no targeted native lane-change command"
-  },
+  "unavailable_behaviors": {},
   "sections": [
     {
       "section_index": 1,

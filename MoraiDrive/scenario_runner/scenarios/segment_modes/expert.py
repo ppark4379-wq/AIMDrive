@@ -1,5 +1,6 @@
-"""Adapt scenario-owned runtime inputs without modifying the external Expert.
+"""Adapt scenario-owned runtime inputs before launching the Expert.
 
+Tunnel vehicle trials request official-path ACC instead of recorded Jamming.
 Full-loop settings remain intact. Segment modes retain only speed zones wholly
 contained by their exported route, for both link-ID and ENU-coordinate zones.
 """
@@ -92,8 +93,16 @@ def prepare_speed_zones(context):
         context.mission_route,
         context.map_loader,
     )
+    changed = bool(skipped)
     if skipped:
         profile["speed_limit_zones"] = kept
+    if context.mission_mode.name == "full_loop_tunnel_vehicle":
+        # Lead-vehicle trials use the exported global path and ordinary ACC.
+        # A temporarily stopped NPC must not commit a recorded static detour.
+        config["planning"].setdefault("jamming", {})["enabled"] = False
+        changed = True
+        print("[Mission] tunnel vehicle Expert: global path + ACC; recorded Jamming disabled")
+    if changed:
         path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
     print(
         f"[Mission] speed zones mode={context.mission_mode.name} "

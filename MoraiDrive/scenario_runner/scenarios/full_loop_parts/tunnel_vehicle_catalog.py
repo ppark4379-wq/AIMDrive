@@ -3,6 +3,7 @@
 import math
 from types import SimpleNamespace
 from .highway import _route_geometry
+from .tunnel_vehicle_brake import validate_sudden_brake
 from .tunnel_dynamic_catalog import _finite, tunnel_section_bounds
 from ...utils.transform_utils import (
     interpolate_on_polyline,
@@ -12,7 +13,6 @@ from ...utils.transform_utils import (
 BEHAVIORS = (
     "vehicle_slow",
     "vehicle_sudden_brake",
-    "vehicle_stopped",
     "vehicle_oncoming",
     "vehicle_cut_in",
 )
@@ -122,29 +122,15 @@ def require_direction(evidence, opposite=False, separated=False):
         raise ValueError("Vehicle route direction/lane separation validation failed")
 
 
-def cut_in_route(loader, forward, configured):
-    routes = (
-        [list(configured)]
-        if configured
-        else [
-            [source] + forward[forward.index(target) :]
-            for source in sorted(loader.link_set)
-            for target in forward
-            if source not in forward and lane_change_edge(loader, source, target)
-        ]
-    )
-    for route in routes:
-        if (
-            len(route) >= 2
-            and route[0] not in forward
-            and route[1] in forward
-            and lane_change_edge(loader, route[0], route[1])
-        ):
-            validate_vehicle_route(loader, route, allow_lane_change=True)
-            return route
-    raise UnsupportedVehicleTopology(
-        "vehicle_cut_in unavailable: no permitted adjacent same-direction MGeo lane-change edge; current adapter has no targeted native lane-change command"
-    )
+def cut_in_source_links(loader, zone):
+    # Oncoming links supply drivable geometry only; they are never NPC routes.
+    links = list(zone.get("oncoming_route_links") or [])
+    if not links:
+        raise UnsupportedVehicleTopology(
+            "vehicle_cut_in unavailable: opposite source corridor missing"
+        )
+    validate_vehicle_route(loader, links)
+    return links
 
 
 def build_vehicle_plan(
@@ -173,17 +159,14 @@ def build_vehicle_plan(
     )
     if not 0 < minimum <= gap < exit_s - entry_s - cfg["pass_clearance_m"]:
         raise ValueError("Unsafe vehicle initial spawn gap / tunnel length")
-    event = behavior in ("vehicle_sudden_brake", "vehicle_stopped", "vehicle_cut_in")
+    event = behavior == "vehicle_cut_in"
     safe = [
         s["section_index"]
         for s in sections
         if s["section_index"] in cfg["event_sections"]
         and s["anchor_s_m"] - entry_s >= minimum
         and exit_s - s["anchor_s_m"] >= cfg["pass_clearance_m"]
-        and (
-            s["anchor_s_m"] - entry_s - gap
-            >= (5.0 if behavior == "vehicle_stopped" else cfg["minimum_event_run_in_m"])
-        )
+        and (s["anchor_s_m"] - entry_s - gap >= cfg["minimum_event_run_in_m"])
     ]
     if event and (
         not safe or (event_section is not None and event_section not in safe)
@@ -199,11 +182,19 @@ def build_vehicle_plan(
     speeds = {
         "vehicle_slow": "slow_speed_mps",
         "vehicle_sudden_brake": "cruise_speed_mps",
-        "vehicle_stopped": "cruise_speed_mps",
         "vehicle_oncoming": "oncoming_speed_mps",
         "vehicle_cut_in": "cut_in_speed_mps",
     }
-    speed = _finite(cfg[speeds[behavior]], speeds[behavior])
+    sudden = (
+        validate_sudden_brake(cfg["sudden_brake"])
+        if behavior == "vehicle_sudden_brake"
+        else None
+    )
+    speed = (
+        sudden["cruise_speed_mps"]
+        if sudden
+        else _finite(cfg[speeds[behavior]], speeds[behavior])
+    )
     if speed <= 0:
         raise ValueError("Vehicle moving speed must be positive")
     if behavior == "vehicle_oncoming":
@@ -215,23 +206,23 @@ def build_vehicle_plan(
         validate_vehicle_route(loader, links)
         spawn_s = exit_s - zone["candidate_catalog"]["endpoint_margin_m"]
     elif behavior == "vehicle_cut_in":
-        links = cut_in_route(loader, forward, zone.get("cut_in_route_links"))
+        links = cut_in_source_links(loader, zone)
     evidence = direction_evidence(
         loader,
-        [links[0]] if behavior == "vehicle_cut_in" else links,
+        links,
         points,
         entry_s,
         exit_s,
     )
     require_direction(
         evidence,
-        opposite=behavior == "vehicle_oncoming",
+        opposite=behavior in ("vehicle_oncoming", "vehicle_cut_in"),
         separated=behavior in ("vehicle_oncoming", "vehicle_cut_in"),
     )
     x, y, _, _ = interpolate_on_polyline(points, spawn_s)
-    _, pose = nearest_route_pose(
-        loader, [links[0]] if behavior == "vehicle_cut_in" else links, x, y
-    )
+    _, pose = nearest_route_pose(loader, links, x, y)
+    if behavior == "vehicle_cut_in":
+        _, _, _, pose["yaw_deg"] = interpolate_on_polyline(points, spawn_s)
     actual_s = project_distance_on_polyline(points, pose["x"], pose["y"])
     if (
         actual_s - entry_s < minimum
@@ -257,15 +248,21 @@ def build_vehicle_plan(
         "cleanup_boundary_route_s_m": boundary_route_s,
         "cleanup_route_s_m": cleanup_route_s,
         "cleanup_xyz": {"x": cx, "y": cy, "z": cz},
-        "cleanup_policy": (
-            "scenario_teardown"
-            if behavior == "vehicle_stopped"
-            else "outside_tunnel_and_ego_clearance"
-        ),
+        "cleanup_policy": "outside_tunnel_and_ego_clearance",
         "behavior": behavior,
         "event_section": chosen,
-        "safe_event_sections": safe,
+        "safe_event_sections": list(cfg["event_sections"]) if sudden else safe,
         "event_region": region,
+        **(
+            {
+                "sudden_brake_settings": sudden,
+                "brake_regions": [
+                    s for s in sections if s["section_index"] in cfg["event_sections"]
+                ],
+            }
+            if sudden
+            else {}
+        ),
         "sections": sections,
         "entry_s_m": entry_s,
         "exit_s_m": exit_s,
@@ -273,7 +270,16 @@ def build_vehicle_plan(
         "spawn_preview_only": True,
         "spawn_s_m": actual_s,
         "spawn_target": pose,
-        "route_links": links,
+        "route_links": [] if behavior == "vehicle_cut_in" else links,
+        **(
+            {
+                "source_corridor_links": links,
+                "source_geometry_only": True,
+                "control_strategy": "direct_steering_then_forward_route",
+            }
+            if behavior == "vehicle_cut_in"
+            else {}
+        ),
         "target_route_links": forward,
         "speed_mps": speed,
         "direction_evidence": evidence,
