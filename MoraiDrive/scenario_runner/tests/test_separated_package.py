@@ -50,7 +50,7 @@ class SeparatedPackageTest(unittest.TestCase):
         import signal
         controller = ExpertController.__new__(ExpertController)
         controller.process = unittest.mock.Mock(pid=12345)
-        with patch("os.getpgid", side_effect=OSError("missing group")), patch(
+        with patch("os.getpgid", side_effect=OSError("missing group"), create=True), patch(
             "builtins.print", side_effect=BrokenPipeError("closed terminal")
         ):
             controller._terminate_process_group(signal.SIGTERM)
@@ -115,6 +115,7 @@ class SeparatedPackageTest(unittest.TestCase):
                 "full_loop_roundabout_brake",
                 "full_loop_highway",
                 "full_loop_tunnel_dynamic",
+                "full_loop_tunnel_vehicle",
             },
         )
 

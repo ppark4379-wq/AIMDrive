@@ -1,19 +1,34 @@
-"""Export four slow-vehicle trial candidates without connecting to MORAI."""
+"""Export whole-tunnel vehicle behavior plans without connecting to MORAI."""
+
 import argparse
 import json
+import yaml
 from pathlib import Path
 
-from .generate_tunnel_dynamic_candidates import SCENARIO_RUNNER_ROOT, load_catalog_inputs
-from ..scenarios.full_loop_parts.tunnel_vehicle_catalog import generate_tunnel_vehicle_candidates
+from .generate_tunnel_dynamic_candidates import (
+    SCENARIO_RUNNER_ROOT,
+    load_catalog_inputs,
+)
+from ..scenarios.full_loop_parts.tunnel_vehicle_catalog import build_behavior_catalog
+from ..utils.map_loader import MGeoMapLoader
 
 
 def build_catalog(scenario_runner_root=SCENARIO_RUNNER_ROOT):
     metadata, points, zone = load_catalog_inputs(scenario_runner_root)
+    cfg = yaml.safe_load(
+        (scenario_runner_root / "config/full_loop.yaml").read_text(encoding="utf-8-sig")
+    )["scenarios"]["full_loop"]
+    loader = MGeoMapLoader(str(scenario_runner_root / "data/R_KR_PR_K-city_2025"))
     return {
         **metadata,
-        "candidates": generate_tunnel_vehicle_candidates(
-            points, metadata["tunnel_entry_s_m"], metadata["tunnel_exit_s_m"],
-            zone["candidate_catalog"], zone["vehicle_candidate_catalog"]),
+        **build_behavior_catalog(
+            loader,
+            points,
+            metadata["tunnel_entry_s_m"],
+            metadata["tunnel_exit_s_m"],
+            zone,
+            cfg["tunnel_vehicle_dynamic"],
+        ),
     }
 
 

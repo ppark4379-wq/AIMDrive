@@ -43,6 +43,8 @@ def _spawn_highway_vehicle(
     end_waypoint=None,
     request_id="",
     recover_ambiguous=False,
+    configure_ai=True,
+    on_spawn=None,
 ):
     actor = self.grpc.spawn_vehicle(
         transform=transform,
@@ -55,6 +57,9 @@ def _spawn_highway_vehicle(
     )
     if actor is None:
         return None
+    if on_spawn is not None:
+        self.scenario_actors.append(actor)
+        on_spawn(actor)
     waypoint_indices = {route[0]: int(waypoint)}
     if end_waypoint is not None:
         waypoint_indices[route[-1]] = int(end_waypoint)
@@ -64,11 +69,18 @@ def _spawn_highway_vehicle(
         route_waypoint_indices=waypoint_indices, label=label,
     )
     if not ok:
+        if on_spawn is not None:
+            raise RuntimeError("Tunnel vehicle route assignment rejected")
         actor.destroy()
         return None
-    actor.set_pause(False)
-    self.grpc.set_vehicle_speed_limit(actor, speed, enabled=True)
-    self.grpc.set_vehicle_ai(actor, True)
-    self.grpc.set_vehicle_velocity(actor, speed)
-    self.scenario_actors.append(actor)
+    if configure_ai:
+        actor.set_pause(False)
+    limit_ok = self.grpc.set_vehicle_speed_limit(actor, speed, enabled=True)
+    if configure_ai:
+        self.grpc.set_vehicle_ai(actor, True)
+    velocity_ok = self.grpc.set_vehicle_velocity(actor, speed)
+    if on_spawn is not None and not (limit_ok and velocity_ok):
+        raise RuntimeError("Tunnel vehicle speed limit or velocity rejected")
+    if on_spawn is None:
+        self.scenario_actors.append(actor)
     return actor

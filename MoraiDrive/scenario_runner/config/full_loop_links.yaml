@@ -1147,12 +1147,14 @@ full_loop:
         diagonal_delta_s_m: 10.0
         approved_ids: []
         disabled_ids: []
-      vehicle_candidate_catalog:
-        # Shares candidate_catalog's four sections and entry/exit margins.
-        # Same-direction, Ego-lane trial paths; no opposing route is assumed.
-        slow_length_m: 20.0
-        approved_ids: []
-        disabled_ids: []
+      # Opposite lane: 840 -> 843 -> 004 -> 008, validated from MGeo.
+      oncoming_route_links:
+        - A2256W000131
+        - A2256W000129
+        - A2256W000028
+      # No legal same-direction adjacent lane/change edge in this tunnel map.
+      # Explicit cut-in selection fails validation; random mode excludes it.
+      cut_in_route_links: []
       # Same direction and lane as Ego. A long initial gap prevents a
       # close-range pop-in before the one-time sudden-brake event.
       npc_route_links:

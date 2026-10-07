@@ -61,10 +61,6 @@ TUNNEL_END = RouteBoundary(
     4045, (-74.86074459552765, -544.5780326710083, 28.429146234972457),
     -153.528732299, "A2256W000126",
 )
-TUNNEL_VEHICLE_START = RouteBoundary(
-    3529, (70.21414883446414, -365.74847655789927, 28.301585314776467),
-    -90.049835205, "A2256W000451",
-)
 
 MISSION_MODES = {
     "full_loop_normal": MissionMode("full_loop_normal", ZoneSelection()),
@@ -100,7 +96,7 @@ MISSION_MODES = {
     ),
     "full_loop_tunnel_vehicle": MissionMode(
         "full_loop_tunnel_vehicle", ZoneSelection(tunnel=True),
-        TUNNEL_VEHICLE_START, TUNNEL_END,
+        TUNNEL_START, TUNNEL_END,
     ),
 }
 PRIMARY_SCENARIOS = ("full_loop",) + tuple(MISSION_MODES)

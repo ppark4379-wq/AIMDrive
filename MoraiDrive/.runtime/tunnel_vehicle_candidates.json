@@ -2,106 +2,432 @@
   "route": "data/R_KR_PR_K-city_2025/2026_molit_comp_global_path.txt",
   "tunnel_entry_s_m": 1859.6415782400395,
   "tunnel_exit_s_m": 1996.7307915312338,
-  "candidates": [
-    {
-      "id": "vehicle_slow_01",
+  "behaviors": {
+    "vehicle_slow": {
       "behavior": "vehicle_slow",
+      "event_section": null,
+      "safe_event_sections": [
+        3
+      ],
+      "event_region": null,
+      "sections": [
+        {
+          "section_index": 1,
+          "start_s_m": 1869.6415782400395,
+          "end_s_m": 1898.913881562838,
+          "anchor_s_m": 1884.2777299014388,
+          "anchor_from_entry_m": 24.636151661399253
+        },
+        {
+          "section_index": 2,
+          "start_s_m": 1898.913881562838,
+          "end_s_m": 1928.1861848856365,
+          "anchor_s_m": 1913.5500332242373,
+          "anchor_from_entry_m": 53.90845498419776
+        },
+        {
+          "section_index": 3,
+          "start_s_m": 1928.1861848856365,
+          "end_s_m": 1957.4584882084353,
+          "anchor_s_m": 1942.8223365470358,
+          "anchor_from_entry_m": 83.18075830699627
+        },
+        {
+          "section_index": 4,
+          "start_s_m": 1957.4584882084353,
+          "end_s_m": 1986.7307915312338,
+          "anchor_s_m": 1972.0946398698345,
+          "anchor_from_entry_m": 112.453061629795
+        }
+      ],
+      "entry_s_m": 1859.6415782400395,
+      "exit_s_m": 1996.7307915312338,
+      "spawn_s_m": 1899.7447548337589,
+      "spawn_target": {
+        "x": 10.628848951057018,
+        "y": -498.7806476059085,
+        "z": 28.336647874561972,
+        "yaw_deg": -151.68727521488606,
+        "link": "A2256W000126",
+        "waypoint": 44,
+        "route_index": 1
+      },
+      "route_links": [
+        "A2256W000448",
+        "A2256W000126",
+        "A2256W000128",
+        "A2256W000333",
+        "A2256W000154",
+        "A2256W000332",
+        "A2256W000751"
+      ],
+      "target_route_links": [
+        "A2256W000448",
+        "A2256W000126",
+        "A2256W000128",
+        "A2256W000333",
+        "A2256W000154",
+        "A2256W000332",
+        "A2256W000751"
+      ],
+      "speed_mps": 4.0,
+      "direction_evidence": [
+        {
+          "link": "A2256W000448",
+          "s_m": 1869.1415534024638,
+          "tangent_dot": 0.9999999999999999,
+          "lateral_m": 1.9270310003070055e-14
+        },
+        {
+          "link": "A2256W000448",
+          "s_m": 1877.7447989655957,
+          "tangent_dot": 0.9999999999999999,
+          "lateral_m": 1.6312954487147503e-14
+        },
+        {
+          "link": "A2256W000126",
+          "s_m": 1877.7447989655957,
+          "tangent_dot": 0.9996330271743158,
+          "lateral_m": 1.6312954487147503e-14
+        },
+        {
+          "link": "A2256W000126",
+          "s_m": 1937.244497675989,
+          "tangent_dot": 0.9999882638934092,
+          "lateral_m": 2.702177740232499e-14
+        }
+      ],
+      "lifecycle": "one_actor_until_interaction_complete"
+    },
+    "vehicle_sudden_brake": {
+      "behavior": "vehicle_sudden_brake",
+      "event_section": 3,
+      "safe_event_sections": [
+        3
+      ],
+      "event_region": {
+        "section_index": 3,
+        "start_s_m": 1928.1861848856365,
+        "end_s_m": 1957.4584882084353,
+        "anchor_s_m": 1942.8223365470358,
+        "anchor_from_entry_m": 83.18075830699627
+      },
+      "sections": [
+        {
+          "section_index": 1,
+          "start_s_m": 1869.6415782400395,
+          "end_s_m": 1898.913881562838,
+          "anchor_s_m": 1884.2777299014388,
+          "anchor_from_entry_m": 24.636151661399253
+        },
+        {
+          "section_index": 2,
+          "start_s_m": 1898.913881562838,
+          "end_s_m": 1928.1861848856365,
+          "anchor_s_m": 1913.5500332242373,
+          "anchor_from_entry_m": 53.90845498419776
+        },
+        {
+          "section_index": 3,
+          "start_s_m": 1928.1861848856365,
+          "end_s_m": 1957.4584882084353,
+          "anchor_s_m": 1942.8223365470358,
+          "anchor_from_entry_m": 83.18075830699627
+        },
+        {
+          "section_index": 4,
+          "start_s_m": 1957.4584882084353,
+          "end_s_m": 1986.7307915312338,
+          "anchor_s_m": 1972.0946398698345,
+          "anchor_from_entry_m": 112.453061629795
+        }
+      ],
+      "entry_s_m": 1859.6415782400395,
+      "exit_s_m": 1996.7307915312338,
+      "spawn_s_m": 1899.7447548337589,
+      "spawn_target": {
+        "x": 10.628848951057018,
+        "y": -498.7806476059085,
+        "z": 28.336647874561972,
+        "yaw_deg": -151.68727521488606,
+        "link": "A2256W000126",
+        "waypoint": 44,
+        "route_index": 1
+      },
+      "route_links": [
+        "A2256W000448",
+        "A2256W000126",
+        "A2256W000128",
+        "A2256W000333",
+        "A2256W000154",
+        "A2256W000332",
+        "A2256W000751"
+      ],
+      "target_route_links": [
+        "A2256W000448",
+        "A2256W000126",
+        "A2256W000128",
+        "A2256W000333",
+        "A2256W000154",
+        "A2256W000332",
+        "A2256W000751"
+      ],
+      "speed_mps": 9.0,
+      "direction_evidence": [
+        {
+          "link": "A2256W000448",
+          "s_m": 1869.1415534024638,
+          "tangent_dot": 0.9999999999999999,
+          "lateral_m": 1.9270310003070055e-14
+        },
+        {
+          "link": "A2256W000448",
+          "s_m": 1877.7447989655957,
+          "tangent_dot": 0.9999999999999999,
+          "lateral_m": 1.6312954487147503e-14
+        },
+        {
+          "link": "A2256W000126",
+          "s_m": 1877.7447989655957,
+          "tangent_dot": 0.9996330271743158,
+          "lateral_m": 1.6312954487147503e-14
+        },
+        {
+          "link": "A2256W000126",
+          "s_m": 1937.244497675989,
+          "tangent_dot": 0.9999882638934092,
+          "lateral_m": 2.702177740232499e-14
+        }
+      ],
+      "lifecycle": "one_actor_until_interaction_complete"
+    },
+    "vehicle_stopped": {
+      "behavior": "vehicle_stopped",
+      "event_section": 2,
+      "safe_event_sections": [
+        2,
+        3
+      ],
+      "event_region": {
+        "section_index": 2,
+        "start_s_m": 1898.913881562838,
+        "end_s_m": 1928.1861848856365,
+        "anchor_s_m": 1913.5500332242373,
+        "anchor_from_entry_m": 53.90845498419776
+      },
+      "sections": [
+        {
+          "section_index": 1,
+          "start_s_m": 1869.6415782400395,
+          "end_s_m": 1898.913881562838,
+          "anchor_s_m": 1884.2777299014388,
+          "anchor_from_entry_m": 24.636151661399253
+        },
+        {
+          "section_index": 2,
+          "start_s_m": 1898.913881562838,
+          "end_s_m": 1928.1861848856365,
+          "anchor_s_m": 1913.5500332242373,
+          "anchor_from_entry_m": 53.90845498419776
+        },
+        {
+          "section_index": 3,
+          "start_s_m": 1928.1861848856365,
+          "end_s_m": 1957.4584882084353,
+          "anchor_s_m": 1942.8223365470358,
+          "anchor_from_entry_m": 83.18075830699627
+        },
+        {
+          "section_index": 4,
+          "start_s_m": 1957.4584882084353,
+          "end_s_m": 1986.7307915312338,
+          "anchor_s_m": 1972.0946398698345,
+          "anchor_from_entry_m": 112.453061629795
+        }
+      ],
+      "entry_s_m": 1859.6415782400395,
+      "exit_s_m": 1996.7307915312338,
+      "spawn_s_m": 1913.7446234240397,
+      "spawn_target": {
+        "x": -1.6929194208295106,
+        "y": -505.42654675214345,
+        "z": 28.393378222181717,
+        "yaw_deg": -151.33935277757197,
+        "link": "A2256W000126",
+        "waypoint": 72,
+        "route_index": 1
+      },
+      "route_links": [
+        "A2256W000448",
+        "A2256W000126",
+        "A2256W000128",
+        "A2256W000333",
+        "A2256W000154",
+        "A2256W000332",
+        "A2256W000751"
+      ],
+      "target_route_links": [
+        "A2256W000448",
+        "A2256W000126",
+        "A2256W000128",
+        "A2256W000333",
+        "A2256W000154",
+        "A2256W000332",
+        "A2256W000751"
+      ],
+      "speed_mps": 0.0,
+      "direction_evidence": [
+        {
+          "link": "A2256W000448",
+          "s_m": 1869.1415534024638,
+          "tangent_dot": 0.9999999999999999,
+          "lateral_m": 1.9270310003070055e-14
+        },
+        {
+          "link": "A2256W000448",
+          "s_m": 1877.7447989655957,
+          "tangent_dot": 0.9999999999999999,
+          "lateral_m": 1.6312954487147503e-14
+        },
+        {
+          "link": "A2256W000126",
+          "s_m": 1877.7447989655957,
+          "tangent_dot": 0.9996330271743158,
+          "lateral_m": 1.6312954487147503e-14
+        },
+        {
+          "link": "A2256W000126",
+          "s_m": 1937.244497675989,
+          "tangent_dot": 0.9999882638934092,
+          "lateral_m": 2.702177740232499e-14
+        }
+      ],
+      "lifecycle": "one_actor_until_interaction_complete"
+    },
+    "vehicle_oncoming": {
+      "behavior": "vehicle_oncoming",
+      "event_section": null,
+      "safe_event_sections": [
+        3
+      ],
+      "event_region": null,
+      "sections": [
+        {
+          "section_index": 1,
+          "start_s_m": 1869.6415782400395,
+          "end_s_m": 1898.913881562838,
+          "anchor_s_m": 1884.2777299014388,
+          "anchor_from_entry_m": 24.636151661399253
+        },
+        {
+          "section_index": 2,
+          "start_s_m": 1898.913881562838,
+          "end_s_m": 1928.1861848856365,
+          "anchor_s_m": 1913.5500332242373,
+          "anchor_from_entry_m": 53.90845498419776
+        },
+        {
+          "section_index": 3,
+          "start_s_m": 1928.1861848856365,
+          "end_s_m": 1957.4584882084353,
+          "anchor_s_m": 1942.8223365470358,
+          "anchor_from_entry_m": 83.18075830699627
+        },
+        {
+          "section_index": 4,
+          "start_s_m": 1957.4584882084353,
+          "end_s_m": 1986.7307915312338,
+          "anchor_s_m": 1972.0946398698345,
+          "anchor_from_entry_m": 112.453061629795
+        }
+      ],
+      "entry_s_m": 1859.6415782400395,
+      "exit_s_m": 1996.7307915312338,
+      "spawn_s_m": 1986.875170496506,
+      "spawn_target": {
+        "x": -64.46652788479956,
+        "y": -543.1321421774985,
+        "z": 28.426260933424672,
+        "yaw_deg": 27.994874223058126,
+        "link": "A2256W000131",
+        "waypoint": 20,
+        "route_index": 0
+      },
+      "route_links": [
+        "A2256W000131",
+        "A2256W000129",
+        "A2256W000028"
+      ],
+      "target_route_links": [
+        "A2256W000448",
+        "A2256W000126",
+        "A2256W000128",
+        "A2256W000333",
+        "A2256W000154",
+        "A2256W000332",
+        "A2256W000751"
+      ],
+      "speed_mps": 6.0,
+      "direction_evidence": [
+        {
+          "link": "A2256W000131",
+          "s_m": 1936.8851372953766,
+          "tangent_dot": -0.9999917004505632,
+          "lateral_m": 3.4906021951222534
+        },
+        {
+          "link": "A2256W000131",
+          "s_m": 1877.7551076293291,
+          "tangent_dot": -0.9998942675829797,
+          "lateral_m": 3.4448852051084002
+        },
+        {
+          "link": "A2256W000129",
+          "s_m": 1877.7551076293291,
+          "tangent_dot": -0.9998556985474765,
+          "lateral_m": 3.4448852051084002
+        },
+        {
+          "link": "A2256W000129",
+          "s_m": 1868.537094540159,
+          "tangent_dot": -0.99931276808364,
+          "lateral_m": 3.5972187402215243
+        }
+      ],
+      "lifecycle": "one_actor_until_interaction_complete"
+    }
+  },
+  "unavailable_behaviors": {
+    "vehicle_cut_in": "vehicle_cut_in unavailable: no permitted adjacent same-direction MGeo lane-change edge; current adapter has no targeted native lane-change command"
+  },
+  "sections": [
+    {
       "section_index": 1,
-      "section_s_range_m": {
-        "start": 1869.6415782400395,
-        "end": 1898.913881562838
-      },
+      "start_s_m": 1869.6415782400395,
+      "end_s_m": 1898.913881562838,
       "anchor_s_m": 1884.2777299014388,
-      "anchor_from_entry_m": 24.636151661399253,
-      "start_s_m": 1874.2777299014388,
-      "end_s_m": 1894.2777299014388,
-      "lane_offset_m": 0.0,
-      "start_xyz": {
-        "x": 32.40083701525923,
-        "y": -485.6215566674745,
-        "z": 28.305047407431843
-      },
-      "end_xyz": {
-        "x": 15.444730305012468,
-        "y": -496.1930565890043,
-        "z": 28.326571826398904
-      },
-      "status": "candidate"
+      "anchor_from_entry_m": 24.636151661399253
     },
     {
-      "id": "vehicle_slow_02",
-      "behavior": "vehicle_slow",
       "section_index": 2,
-      "section_s_range_m": {
-        "start": 1898.913881562838,
-        "end": 1928.1861848856365
-      },
+      "start_s_m": 1898.913881562838,
+      "end_s_m": 1928.1861848856365,
       "anchor_s_m": 1913.5500332242373,
-      "anchor_from_entry_m": 53.90845498419776,
-      "start_s_m": 1903.5500332242373,
-      "end_s_m": 1923.5500332242373,
-      "lane_offset_m": 0.0,
-      "start_xyz": {
-        "x": 7.27780446006391,
-        "y": -500.58360119490214,
-        "z": 28.344633090933595
-      },
-      "end_xyz": {
-        "x": -10.31416178343482,
-        "y": -510.09773717089513,
-        "z": 28.438940070922957
-      },
-      "status": "candidate"
+      "anchor_from_entry_m": 53.90845498419776
     },
     {
-      "id": "vehicle_slow_03",
-      "behavior": "vehicle_slow",
       "section_index": 3,
-      "section_s_range_m": {
-        "start": 1928.1861848856365,
-        "end": 1957.4584882084353
-      },
+      "start_s_m": 1928.1861848856365,
+      "end_s_m": 1957.4584882084353,
       "anchor_s_m": 1942.8223365470358,
-      "anchor_from_entry_m": 83.18075830699627,
-      "start_s_m": 1932.8223365470358,
-      "end_s_m": 1952.8223365470358,
-      "lane_offset_m": 0.0,
-      "start_xyz": {
-        "x": -18.465044885908064,
-        "y": -514.5179534285598,
-        "z": 28.448425724788247
-      },
-      "end_xyz": {
-        "x": -36.098881673293526,
-        "y": -523.9538135311703,
-        "z": 28.431769293256192
-      },
-      "status": "candidate"
+      "anchor_from_entry_m": 83.18075830699627
     },
     {
-      "id": "vehicle_slow_04",
-      "behavior": "vehicle_slow",
       "section_index": 4,
-      "section_s_range_m": {
-        "start": 1957.4584882084353,
-        "end": 1986.7307915312338
-      },
+      "start_s_m": 1957.4584882084353,
+      "end_s_m": 1986.7307915312338,
       "anchor_s_m": 1972.0946398698345,
-      "anchor_from_entry_m": 112.453061629795,
-      "start_s_m": 1962.0946398698345,
-      "end_s_m": 1982.0946398698345,
-      "lane_offset_m": 0.0,
-      "start_xyz": {
-        "x": -44.25801571598758,
-        "y": -528.3586229502885,
-        "z": 28.418868623348942
-      },
-      "end_xyz": {
-        "x": -61.9097410568366,
-        "y": -537.7611693066565,
-        "z": 28.436046859720097
-      },
-      "status": "candidate"
+      "anchor_from_entry_m": 112.453061629795
     }
   ]
 }

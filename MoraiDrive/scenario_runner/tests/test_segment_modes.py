@@ -141,6 +141,19 @@ class MissionModesTest(unittest.TestCase):
         scenario = MissionScenario(
             make_grpc(cfg), self.map_loader, global_cfg, cfg,
         )
+        if name == "full_loop_tunnel_vehicle":
+            def spawn_vehicle(**kwargs):
+                actor = vehicle(**kwargs)
+                pose = scenario.tunnel_vehicle_plan["spawn_target"]
+                actor.destroy.return_value = True
+                actor.get_actor_state.return_value = SimpleNamespace(
+                    actor_info=SimpleNamespace(id=SimpleNamespace(value=actor.get_id())),
+                    transform=kwargs["transform"], velocity=SimpleNamespace(x=0.,y=0.,z=0.),
+                    vehicle_state=SimpleNamespace(current_link_info=SimpleNamespace(id=SimpleNamespace(value=pose["link"]))))
+                return actor
+            scenario.grpc.spawn_vehicle.side_effect = spawn_vehicle
+            boundary=MISSION_MODES[name].start
+            scenario.grpc.get_ego_motion_state.return_value={"x":boundary.xyz[0],"y":boundary.xyz[1],"speed":0.}
         scenario.configure_drive_with_retries = Mock()
         return scenario
 
@@ -352,14 +365,14 @@ class MissionModesTest(unittest.TestCase):
         exported = json.loads(Path(scenario.expert_controller.runtime_config_path).read_text(encoding="utf-8"))
         self.assertFalse(exported["map"]["is_closed_path"])
 
-    def test_tunnel_vehicle_uses_approach_route_and_launches_expert(self):
+    def test_tunnel_vehicle_uses_cp14_and_launches_expert(self):
         scenario = self.make_scenario("full_loop_tunnel_vehicle")
         scenario.cfg["sync_runtime"]["enabled"] = False
         self.setup_scenario(scenario)
-        self.assertEqual(scenario.mission_mode.start.index, 3529)
+        self.assertEqual(scenario.mission_mode.start.index, 3768)
         self.assertEqual(scenario.mission_mode.end.index, 4045)
-        self.assertGreater(scenario.tunnel_vehicle_plan["trigger_s_m"], 0.0)
-        self.assertEqual(scenario.tunnel_vehicle_plan["id"], "vehicle_slow_01")
+        self.assertEqual(scenario.grpc.spawn_vehicle.call_count, 1)
+        self.assertEqual(scenario.tunnel_vehicle_plan["behavior"], "vehicle_slow")
         self.assertIsNone(scenario.tunnel_dynamic_handler)
         self.assertEqual(scenario.tunnel_event_phase, "disabled")
         with patch("scenario_runner.adapters.expert_controller.ExpertController.start_process") as start, patch(
@@ -369,26 +382,25 @@ class MissionModesTest(unittest.TestCase):
         scenario.grpc.set_ego_control_mode_auto.assert_called_once()
         self.assertEqual(scenario.expert_controller.route_points[:len(scenario.route_points)], scenario.route_points)
 
-    def test_tunnel_vehicle_unknown_candidate_fails_before_world_start(self):
+    def test_tunnel_vehicle_unknown_behavior_fails_before_world_start(self):
         scenario = self.make_scenario("full_loop_tunnel_vehicle")
-        scenario.cfg["tunnel_vehicle_dynamic"]["trial_candidate_id"] = "vehicle_stopped_01"
-        with redirect_stdout(io.StringIO()), self.assertRaisesRegex(ValueError, "Unknown or disabled"):
+        scenario.cfg["tunnel_vehicle_dynamic"]["behavior"] = "unknown"
+        with redirect_stdout(io.StringIO()), self.assertRaisesRegex(ValueError, "Unknown"):
             scenario.setup()
         scenario.grpc.start_world.assert_not_called()
 
-    def test_all_vehicle_candidates_match_official_mgeo_route(self):
-        for index in range(1, 5):
-            with self.subTest(section=index):
+    def test_supported_vehicle_behaviors_match_official_mgeo_at_setup(self):
+        for behavior in ("vehicle_slow", "vehicle_sudden_brake", "vehicle_stopped", "vehicle_oncoming"):
+            with self.subTest(behavior=behavior):
                 scenario = self.make_scenario("full_loop_tunnel_vehicle")
-                scenario.cfg["tunnel_vehicle_dynamic"]["trial_candidate_id"] = f"vehicle_slow_{index:02d}"
+                scenario.cfg["tunnel_vehicle_dynamic"]["behavior"] = behavior
                 self.setup_scenario(scenario)
                 plan = scenario.tunnel_vehicle_plan
-                self.assertEqual(plan["section_index"], index)
-                self.assertGreater(plan["trigger_s_m"], 0.0)
-                start = plan["start_xyz"]
-                linked = scenario.map_loader.get_link_points(plan["route_links"][0])[plan["start_waypoint"]]
-                self.assertLess(math.hypot(linked[0]-start["x"], linked[1]-start["y"]), 1.0)
-                scenario.grpc.spawn_vehicle.assert_not_called()
+                pose = plan["spawn_target"]
+                linked = scenario.map_loader.get_link_points(pose["link"])[pose["waypoint"]]
+                self.assertEqual((pose["x"], pose["y"], pose["z"]), tuple(linked[:3]))
+                self.assertEqual(scenario.grpc.spawn_vehicle.call_count, 1)
+                self.assertFalse(scenario.cfg["tunnel_sudden_brake"]["enabled"])
 
     def test_each_setup_spawns_only_selected_zone(self):
         for name, mode in MISSION_MODES.items():
@@ -397,7 +409,7 @@ class MissionModesTest(unittest.TestCase):
                 self.setup_scenario(scenario)
                 grpc = scenario.grpc
                 self.assertEqual(grpc.spawn_obstacle.call_count, int(mode.zones.static))
-                grpc.spawn_vehicle.assert_not_called()
+                self.assertEqual(grpc.spawn_vehicle.call_count, 1 if name == "full_loop_tunnel_vehicle" else 0)
                 self.assertEqual(
                     scenario.roundabout_lifecycle_state,
                     "armed" if mode.zones.roundabout else "disabled",
@@ -410,7 +422,7 @@ class MissionModesTest(unittest.TestCase):
                     self.assertEqual(scenario.tunnel_dynamic_phase, "waiting")
                     self.assertTrue(scenario.cfg["tunnel_dynamic"]["enabled"])
                 if name == "full_loop_tunnel_vehicle":
-                    self.assertEqual(scenario.tunnel_vehicle_phase, "waiting")
+                    self.assertEqual(scenario.tunnel_vehicle_phase, "moving")
                     self.assertIsNone(scenario.tunnel_dynamic_handler)
                 self.assertIn(scenario.scenario_hour, [11, 13, 15])
                 scenario.configure_drive_with_retries.assert_called_once()
@@ -3701,6 +3713,7 @@ class MissionModesTest(unittest.TestCase):
             controller.is_running.return_value = True
             scenario.expert_controller = controller
             first, end = scenario.route_points[0], scenario.route_points[-1]
+            scenario.grpc.get_ego_motion_state.reset_mock()
             base = dict(yaw_deg=0.0, speed=1.0, current_link=scenario.end_link)
             scenario.grpc.get_ego_motion_state.side_effect = [
                 dict(base, x=first[0], y=first[1]), dict(base, x=end[0], y=end[1]),
@@ -3826,6 +3839,8 @@ class MissionModesTest(unittest.TestCase):
 
     def test_main_recreates_and_repeats_each_mode_three_times(self):
         for name in MISSION_MODES:
+            if name == "full_loop_tunnel_vehicle":
+                continue  # Whole-tunnel vehicle trials require --once.
             factory = Mock()
             client = Mock()
             with patch.dict(main_runner.SUPPORTED_SCENARIOS, {name: factory}), patch.object(

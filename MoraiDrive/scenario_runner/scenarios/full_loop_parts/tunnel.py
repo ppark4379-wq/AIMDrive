@@ -493,9 +493,13 @@ def update_tunnel_sudden_brake(self, elapsed, ego_state, current_s):
             )
         return
 
-    if phase != "braking":
-        return
+    if phase == "braking":
+        observe_tunnel_braking(self, elapsed, ego_state, npc_s, route_gap, x, y, link_id, speed)
 
+
+def observe_tunnel_braking(self, elapsed, ego_state, npc_s, route_gap, x, y, link_id, speed):
+    """Shared stop confirmation, fallback, Ego reaction, hold and resume."""
+    cfg = self.cfg["tunnel_sudden_brake"]
     ego_speed = float(ego_state.get("speed", 0.0))
     peak_speed = max(
         float(

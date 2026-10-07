@@ -130,7 +130,7 @@ def verify_configuration(package_root, global_cfg, scenario_cfg):
     )
     manual_tunnel_trial = (
         scenario_cfg.get("drive_control_mode") == "morai_keyboard"
-        and scenario_cfg.get("mission_mode") == "full_loop_tunnel_dynamic"
+        and scenario_cfg.get("mission_mode") in ("full_loop_tunnel_dynamic", "full_loop_tunnel_vehicle")
         and not scenario_cfg.get("sync_runtime", {}).get("enabled", True)
     )
     require(

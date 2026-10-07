@@ -135,7 +135,9 @@ class FullLoopScenario(FullLoopDriveBase):
                     tunnel_dynamic.arm_tunnel_dynamic(self)
             self.configure_drive_with_retries()
             self.persist_profile_state()
-        except Exception:
+        except BaseException as error:
+            if self.tunnel_vehicle_handler is not None and hasattr(self, "tunnel_vehicle_result"):
+                self.tunnel_vehicle_handler.record_interruption(self, error)
             self.cleanup_spawned_actors()
             raise
 
@@ -269,9 +271,8 @@ class FullLoopScenario(FullLoopDriveBase):
     def run_timeline(self):
         try:
             super().run_timeline()
-            if (getattr(self, "tunnel_vehicle_handler", None) is not None
-                    and self.tunnel_vehicle_phase != "completed"):
-                raise RuntimeError("Route ended before tunnel slow vehicle trial completed")
+            if getattr(self, "tunnel_vehicle_handler", None) is not None:
+                self.tunnel_vehicle_handler.finish_at_ego_goal(self)
             if (self.tunnel_dynamic_handler is not None
                     and self.tunnel_dynamic_phase != "completed"):
                 raise RuntimeError("Route ended before every tunnel pedestrian event completed")
@@ -388,6 +389,11 @@ class FullLoopScenario(FullLoopDriveBase):
             self.verify_dynamic_obstacles_removed()
 
     def cleanup(self):
+        vehicle_handler = getattr(self, "tunnel_vehicle_handler", None)
+        if (vehicle_handler is not None and hasattr(self, "tunnel_vehicle_result")
+                and self.tunnel_vehicle_phase not in ("completed", "failed")):
+            vehicle_handler.record_interruption(
+                self, RuntimeError("Scenario teardown before vehicle interaction completed"))
         base_cleanup_ok = False
         try:
             super().cleanup()
