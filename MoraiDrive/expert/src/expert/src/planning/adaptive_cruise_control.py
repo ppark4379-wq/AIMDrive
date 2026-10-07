@@ -76,7 +76,8 @@ class AdaptiveCruiseControl:
                 min_dist = dist
         return min_dist
 
-    def check_object(self, local_path, object_info_dic_list, current_traffic_light):
+    def check_object(self, local_path, object_info_dic_list, current_traffic_light,
+                     *, pedestrian_conflict_check=None):
         was_pedestrian = self.object_type == 0
         self.object_type = None
         self.object_time_gap = self.time_gap
@@ -88,6 +89,12 @@ class AdaptiveCruiseControl:
 
             object_type = object_info.type
             if object_type == 0:
+                # A caller with a validated tunnel path may use matched-time
+                # body predictions instead of the legacy wide approach
+                # gate. Missing/uncertain checks retain the existing policy.
+                if (pedestrian_conflict_check is not None
+                        and pedestrian_conflict_check(object_info) is False):
+                    continue
                 distance_threshold = self.pedestrian_lateral_threshold
                 if local_position.x > self.pedestrian_longitudinal_max:
                     continue

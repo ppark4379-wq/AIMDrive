@@ -25,6 +25,9 @@ MAX_MANEUVER_HORIZON = 20.
 SEARCH_BUDGET = .08
 TRIGGER_DISTANCE = 50.
 CRUISE_LIMIT = 30./3.6
+OVERTAKE_LEAD_LIMIT = 15./3.6
+RETURN_GAP = 5.
+PREDICT_ACCEL = 1.2
 
 
 class DynamicObstaclePlanner:
@@ -42,6 +45,11 @@ class DynamicObstaclePlanner:
         self.search_index = 0
         self.last_state = None
         self.recovery_initial = None
+        self.passing_id = None
+        self.return_start_y = None
+        self.maneuver_speed = None
+        self.dynamic_seen = False
+        self.last_return_replan = -float('inf')
 
     def _repair(self, owner, ego, reference, statics, result):
         """A failed held path must be retried, never retained as a zero latch."""
@@ -157,6 +165,19 @@ class DynamicObstaclePlanner:
                     return dict(time=float(t), object_id=key(obj), kind='moving_obb')
         return None
 
+    @staticmethod
+    def _travel_time(distance, speed, target):
+        if LaneChangeSafety.travel(max(0.,speed),target,MAX_MANEUVER_HORIZON,PREDICT_ACCEL)<distance:
+            return None
+        low,high=0.,MAX_MANEUVER_HORIZON
+        for _ in range(25):
+            middle=.5*(low+high)
+            if LaneChangeSafety.travel(max(0.,speed),target,middle,PREDICT_ACCEL)<distance:
+                low=middle
+            else:
+                high=middle
+        return high
+
     def _candidate(self, owner, ego, baseline, statics, lead, offset, transition, cruise):
         xy=np.asarray(baseline)
         if len(xy)<3 or np.any(np.diff(xy[:,1])<=0.):
@@ -164,10 +185,36 @@ class DynamicObstaclePlanner:
         curve=CubicSpline(xy[:,1],xy[:,0])
         start=float(ego.position.y)
         join=start+transition
-        relative=max(.5,cruise-max(0.,lead['speed']))
-        passing_time=(lead['gap']+hp.VEHICLE_LENGTH+max(1.,lead['object'].size_x))/relative
-        plateau=max(join+6.,lead['object'].position.y+max(0.,lead['speed'])*passing_time
-                    +hp.VEHICLE_LENGTH+max(1.,lead['object'].size_x))
+        # The return is timed against the speed this curved maneuver can
+        # actually command, including acceleration from a slow following state.
+        # The old cruise-only estimate returned beside the moving lead and
+        # consequently rejected otherwise usable passing corridors.
+        lead_speed=max(0.,lead['speed'])
+        plateau=max(join+6.,lead['object'].position.y+.5*max(1.,lead['object'].size_x)+RETURN_GAP)
+        for _ in range(12):
+            candidate=self._candidate_geometry(owner,ego,xy,curve,statics,offset,transition,plateau,cruise)
+            if candidate is None:
+                return None
+            tracker,finish,target,positions,station=candidate
+            if target<=lead_speed+.2:
+                return None
+            return_distance=float(np.interp(plateau,positions[:,1],station))
+            passing_time=self._travel_time(return_distance,ego.velocity,target)
+            if passing_time is None:
+                return None
+            needed=lead['object'].position.y+lead_speed*passing_time+.5*max(1.,lead['object'].size_x)+RETURN_GAP
+            if plateau>=needed-.05:
+                horizon=self._travel_time(float(np.interp(finish,positions[:,1],station)),ego.velocity,target)
+                if horizon is None:
+                    return None
+                tracker.dynamic_return_start_y=plateau
+                return tracker,finish,target,max(HORIZON,horizon+hp.LANE_CHANGE_SETTLE_TIME)
+            plateau=max(plateau+.5,needed+.1)
+        return None
+
+    def _candidate_geometry(self, owner, ego, xy, curve, statics, offset, transition, plateau, cruise):
+        start=float(ego.position.y)
+        join=start+transition
         finish=plateau+transition
         if finish>=xy[-1,1]-1.:
             return None
@@ -196,18 +243,12 @@ class DynamicObstaclePlanner:
         tracker.recovery_until_y=None
         tracker._speed_profile_path=tracker._cached_speed_profile=None
         tracker.selected_names=['dynamic_offset_{:+.1f}m'.format(offset)]
-        target=min(cruise,tracker._curve_speed_limit(points)[0])
-        # Cover the whole lateral maneuver and one second after rejoining.
         positions=np.asarray(points)
         station=np.r_[0.,np.cumsum(np.linalg.norm(np.diff(positions,axis=0),axis=1))]
-        return_distance=float(np.interp(finish,positions[:,1],station))
-        horizon=0.
-        while horizon<MAX_MANEUVER_HORIZON and LaneChangeSafety.travel(
-                max(0.,ego.velocity),target,horizon)<return_distance:
-            horizon+=.2
-        if horizon>=MAX_MANEUVER_HORIZON:
-            return None
-        return tracker,finish,target,max(HORIZON,horizon+hp.LANE_CHANGE_SETTLE_TIME)
+        _,_,profiles=tracker._speed_profile(points)
+        maneuver=positions[1:-1,1]<=finish
+        target=min(cruise,*(float(np.min(values[maneuver])) for values in profiles.values()))
+        return tracker,finish,target,positions,station
 
     def _search(self, owner, ego, baseline, statics, movers, lead, cruise):
         offsets=(2.5,-2.5,3.5,-3.5,1.5,-1.5,4.5,-4.5)
@@ -221,20 +262,94 @@ class DynamicObstaclePlanner:
             if candidate is not None:
                 tracker,finish,target,horizon=candidate
                 if all(self.conflict(tracker.path,ego,movers,target,horizon,accel) is None
-                       for accel in (hp.LANE_CHANGE_PREDICT_ACCEL,hp.LANE_CHANGE_PREDICT_ACCEL_MAX)):
+                       for accel in (PREDICT_ACCEL,hp.LANE_CHANGE_PREDICT_ACCEL,hp.LANE_CHANGE_PREDICT_ACCEL_MAX)):
                     self.tracker,self.return_y=tracker,finish
+                    self.passing_id=key(lead['object'])
+                    self.return_start_y=tracker.dynamic_return_start_y
+                    self.maneuver_speed=target
                     return True
             if time.monotonic()-begin>=SEARCH_BUDGET:
                 break
         return False
 
+    def _handoff_clear(self, owner, ego, movers, path, speed):
+        """Hand back only after a physically aligned, separated return.
+
+        A lead that accelerates may finish ahead instead; a safe return behind
+        it is preferable to requiring an overtake forever. In either ordering
+        there must be a real body-to-body gap, not merely a reached Y value.
+        """
+        if self.passing_id is None:
+            return True
+        _,lateral,tangent=self._project(owner.path,ego)
+        heading=abs(math.atan2(math.sin(ego.yaw-tangent),math.cos(ego.yaw-tangent)))
+        if lateral>.35 or heading>math.radians(10.):
+            return False
+        lead=next((o for o in movers if key(o)==self.passing_id),None)
+        if lead is not None:
+            ego_s=self._project(owner.path,ego)[0]
+            lead_s=self._project(owner.path,lead)[0]
+            angle=math.radians(lead.heading_deg)-tangent
+            half=.5*(max(1.,lead.size_x)*abs(math.cos(angle))+max(1.,lead.size_y)*abs(math.sin(angle)))
+            passed_gap=ego_s-lead_s-half
+            following_gap=lead_s-half-ego_s-hp.VEHICLE_LENGTH
+            if max(passed_gap,following_gap)<RETURN_GAP:
+                return False
+        return self.conflict(path,ego,movers,speed) is None
+
+    def _defer_return(self, owner, ego, statics, movers, cruise):
+        """Keep the passing corridor when a changed actor blocks the old exit.
+
+        Braking on a curve that already points into an accelerating rear car
+        does not resolve that conflict. Reconnect from the measured pose to a
+        parallel continuation first, then validate a later return end to end.
+        """
+        if time.monotonic()-self.last_return_replan<.25 or not owner.path:
+            return False
+        xy=np.asarray(owner.path)
+        if len(xy)<3 or np.any(np.diff(xy[:,1])<=0.):
+            return False
+        curve=CubicSpline(xy[:,1],xy[:,0])
+        offset=float(ego.position.x-curve(ego.position.y))
+        if abs(offset)<.8:
+            return False
+        self.last_return_replan=time.monotonic()
+        for transition in (6.,8.,12.):
+            plateau=ego.position.y+transition+8.
+            candidate=self._candidate_geometry(owner,ego,xy,curve,statics,offset,transition,plateau,cruise)
+            if candidate is None:
+                continue
+            tracker,finish,target,positions,station=candidate
+            horizon=self._travel_time(float(np.interp(finish,positions[:,1],station)),ego.velocity,target)
+            if horizon is None:
+                continue
+            horizon=max(HORIZON,horizon+hp.LANE_CHANGE_SETTLE_TIME)
+            if all(self.conflict(tracker.path,ego,movers,target,horizon,accel) is None
+                   for accel in (PREDICT_ACCEL,hp.LANE_CHANGE_PREDICT_ACCEL_MAX)):
+                self.tracker,self.return_y=tracker,finish
+                self.return_start_y=plateau
+                self.maneuver_speed=target
+                return True
+        return False
+
     def run(self, owner, ego, reference, statics, movers, base, desired_speed):
-        if not movers and not self.active:
+        self.dynamic_seen=self.dynamic_seen or bool(movers)
+        if not movers and not self.active and not self.dynamic_seen:
             return base
         if base.reason == 'static_recorded_rejoined':
             self.reset()
             return base
         result=base
+        base_failure=base.debug_details.get('static_avoidance',{}).get('error')
+        if (not self.active and owner.active and self.dynamic_seen
+                and base_failure in ('tracking_error','remaining_path_collision',
+                                     'alignment_recovery_unavailable','recorded_envelope')):
+            # A moving-traffic episode can disturb the base path before an
+            # overtake is adopted. Give that path the same fresh-pose repair
+            # policy as a held detour, even if the actor has since left GT.
+            self.tracker=copy.copy(owner)
+            self.tracker.executor=self.tracker.pending=None
+            self.return_y=owner.rejoin_y
         if self.active:
             result=self.tracker.plan(ego,reference,statics)
             failure=result.debug_details.get('static_avoidance',{}).get('error')
@@ -250,18 +365,32 @@ class DynamicObstaclePlanner:
                     result=self.tracker._result(result.path,False,'blocked','boundary_recovery_invalid')
             elif failure in ('tracking_error','remaining_path_collision','alignment_recovery_unavailable'):
                 result=self._repair(owner,ego,reference,statics,result)
-            if ego.position.y>=self.return_y and result.debug_details['static_avoidance']['path_validated']:
+            if (ego.position.y>=self.return_y
+                    and result.debug_details['static_avoidance']['path_validated']
+                    and self._handoff_clear(owner,ego,movers,result.path,
+                        min(CRUISE_LIMIT,max(0.,desired_speed),result.acc_target_velocity))):
                 self.reset()
                 # Keep this last continuous path for this tick; static tracking
                 # resumes on its original path next tick.
         cruise=min(CRUISE_LIMIT,max(0.,desired_speed),result.acc_target_velocity)
+        if self.active and self.maneuver_speed is not None:
+            cruise=min(cruise,self.maneuver_speed)
+        if (self.active and self.passing_id is not None and self.recovery_initial is None
+                and ego.position.y<self.return_y
+                and self.conflict(result.path,ego,movers,cruise) is not None
+                and self._defer_return(owner,ego,statics,movers,cruise)):
+            result=self.tracker.plan(ego,reference,statics)
+            cruise=min(CRUISE_LIMIT,max(0.,desired_speed),result.acc_target_velocity,self.maneuver_speed)
         lead=self.front(result.path,ego,movers)
         if (not self.active and owner.active and lead is not None
                 and lead['gap']<TRIGGER_DISTANCE and lead['speed']<cruise-.2
+                and (lead['object'].type not in (1,2) or lead['speed']<=OVERTAKE_LEAD_LIMIT)
                 and result.debug_details.get('static_avoidance',{}).get('path_validated')):
             if self._search(owner,ego,owner.path,statics,movers,lead,cruise):
                 result=self.tracker.plan(ego,reference,statics)
                 cruise=min(CRUISE_LIMIT,max(0.,desired_speed),result.acc_target_velocity)
+                if self.maneuver_speed is not None:
+                    cruise=min(cruise,self.maneuver_speed)
                 lead=self.front(result.path,ego,movers)
         # A validated detour owns the commanded path. Recompute its actual
         # lead, including vehicles on the target side, on every frame.
@@ -302,6 +431,11 @@ class DynamicObstaclePlanner:
             collision=collision, emergency=state=='EMERGENCY', speed_limit_mps=limit)
         output.debug_details['jamming_dynamic']['tracking_error']=tracking_error
         output.debug_details['jamming_dynamic']['replanning']=self.repair_pending is not None
+        output.debug_details['jamming_dynamic']['overtake_lead_limit_kph']=OVERTAKE_LEAD_LIMIT*3.6
+        output.debug_details['jamming_dynamic']['passing_id']=self.passing_id
+        output.debug_details['jamming_dynamic']['return_start_y']=self.return_start_y
+        output.debug_details['jamming_dynamic']['return_y']=self.return_y
+        output.debug_details['jamming_dynamic']['maneuver_speed_mps']=self.maneuver_speed
         output.debug_details.setdefault('static_avoidance',{})['dynamic_speed_limit_mps']=limit
         output.predicted_object_paths=[[
             Point(o.position.x+o.velocity*t*math.cos(math.radians(o.heading_deg)),

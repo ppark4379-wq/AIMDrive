@@ -160,14 +160,20 @@ class LatticeRvizVisualizer:
         elif result.debug_details.get('jamming_dynamic'):
             details=result.debug_details['jamming_dynamic']
             conflict=details.get('collision') or {}
+            person=result.debug_details.get('jamming_pedestrian',{})
+            control=result.debug_details.get('static_avoidance',{})
+            target=control.get('final_target_velocity',result.acc_target_velocity)
             marker.text='JAMMING: DYNAMIC {}\n{:.1f}km/h gap={}m collision={}s'.format(
-                details['state'],result.acc_target_velocity*3.6,
+                details['state'],target*3.6,
                 details.get('lead_gap_m'),conflict.get('time','none'))
+            if person.get('checked'):
+                marker.text+='\nperson_collision={}s source={}'.format(
+                    (person.get('collision') or {}).get('time','none'),control.get('speed_source','planner'))
             if details.get('tracking_error'):
                 marker.text+='\nstop='+str(details['tracking_error'])
             if details.get('replanning'):
                 marker.text+=' (replanning)'
-            self._set_color(marker,1.0,.2,.1,1.) if details['emergency'] else self._set_color(marker,.1,.8,1.,1.)
+            self._set_color(marker,1.0,.2,.1,1.) if (details['emergency'] or person.get('emergency')) else self._set_color(marker,.1,.8,1.,1.)
         elif result.debug_details.get("merge_safety"):
             safety = result.debug_details["merge_safety"]
             conflict = safety.get("conflict") or {}

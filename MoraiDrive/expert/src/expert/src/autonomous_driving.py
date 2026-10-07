@@ -10,6 +10,7 @@ from .planning.highway_lane_planning import parameters as highway_parameters
 from .control.path_controller import PathController
 from .control.control_input import ControlInput
 from .planning.Jamming.motion import stationary as jamming_stationary
+from .planning.Jamming.pedestrian_safety import pedestrian_conflict
 from .config.config import Config
 
 import numpy as np
@@ -151,9 +152,36 @@ class AutonomousDriving(PathController):
         legacy_acc_entries = self._legacy_acc_entries(
             vehicle_state, lattice_result, forward_object_info_dic_list
         )
-        self.adaptive_cruise_control.check_object(
-            planning_path, legacy_acc_entries, current_traffic_light
-        )
+        person_check = None
+        pedestrian_target_velocity = float('inf')
+        if static_valid and lattice_result.debug_details.get('jamming'):
+            # Replace the broad legacy person gate only on a validated tunnel
+            # path. Include stationary people and actors outside the front gate.
+            # Predict a restart, not the previous ACC stop command.
+            person_conflicts = {
+                id(entry['object_info']): pedestrian_conflict(
+                    planning_path, vehicle_state, entry['object_info'],
+                    min(max(0., planned_velocity), 30./3.6))
+                for entry in planning_object_info_dic_list
+                if entry['object_info'].type == 0
+            }
+            person_check = lambda person: person_conflicts.get(id(person), True) is not None
+            conflicts = [c for c in person_conflicts.values() if c is not None]
+            collision = min(conflicts, key=lambda c: c['time']) if conflicts else None
+            emergency = (collision is not None and collision['time']
+                         <= highway_parameters.MERGE_EMERGENCY_COLLISION_TIME)
+            if emergency:
+                pedestrian_target_velocity = 0.
+            lattice_result.debug_details['jamming_pedestrian'] = dict(
+                checked=len(person_conflicts), conflicts=len(conflicts),
+                collision=collision, emergency=emergency)
+        if person_check is None:
+            self.adaptive_cruise_control.check_object(
+                planning_path, legacy_acc_entries, current_traffic_light)
+        else:
+            self.adaptive_cruise_control.check_object(
+                planning_path, legacy_acc_entries, current_traffic_light,
+                pedestrian_conflict_check=person_check)
         target_velocity = self.adaptive_cruise_control.get_target_velocity(vehicle_state.velocity, planned_velocity)
         signal_target_velocity = self.traffic_light_stop_controller.get_target_velocity(
             current_traffic_light=current_traffic_light,
@@ -167,12 +195,13 @@ class AutonomousDriving(PathController):
             else planned_velocity
         )
         legacy_target_velocity = target_velocity
-        target_velocity = min(
+        target_velocity = max(0., min(
             target_velocity,
             signal_target_velocity,
             lattice_target_velocity,
             getattr(lattice_result, "acc_target_velocity", float("inf")),
-        )
+            pedestrian_target_velocity,
+        ))
         unconstrained_static_acceleration = target_velocity
         target_velocity = self._smooth_static_target_speed(target_velocity, vehicle_state, lattice_result)
         if lattice_result.mode in ("roundabout_entry", "static_obstacle"):
@@ -184,6 +213,8 @@ class AutonomousDriving(PathController):
             }
             if target_velocity < unconstrained_static_acceleration:
                 limits['static_acceleration'] = target_velocity
+            if pedestrian_target_velocity != float('inf'):
+                limits['pedestrian_obb'] = pedestrian_target_velocity
             key = "roundabout_entry" if lattice_result.mode == "roundabout_entry" else "static_avoidance"
             details = lattice_result.debug_details.setdefault(key, {})
             details.setdefault("phase", lattice_result.reason)
@@ -238,6 +269,8 @@ class AutonomousDriving(PathController):
                 print("[PLAN] lane_change_conflict={}".format(details["lane_change_conflict"]))
             if "static_avoidance" in details:
                 print("[STATIC] {}".format(details["static_avoidance"]))
+            if details.get('jamming_pedestrian', {}).get('checked'):
+                print('[JAMMING_PERSON] {}'.format(details['jamming_pedestrian']))
             if details:
                 def debug_value(value, suffix=""):
                     return "inf" if np.isinf(value) else f"{value:.2f}{suffix}"
@@ -293,6 +326,7 @@ class AutonomousDriving(PathController):
 
     def _smooth_static_target_speed(self, target_velocity, vehicle_state, lattice_result):
         """Carry a rise-only speed ramp through the recorded-to-global handoff."""
+        target_velocity = max(0., target_velocity)
         details = getattr(lattice_result, 'debug_details', {}).get('static_avoidance', {})
         recorded = details.get('planner') == 'recorded_route_graph'
         if recorded and details.get('path_validated', False):
@@ -305,6 +339,7 @@ class AutonomousDriving(PathController):
         previous = getattr(self, 'previous_target_velocity', None)
         if previous is None:
             previous = max(0., vehicle_state.velocity)
+        previous = max(0., previous)
         # Brake requests are never delayed or lifted by acceleration smoothing.
         if target_velocity <= previous:
             return target_velocity

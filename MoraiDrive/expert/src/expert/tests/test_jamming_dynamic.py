@@ -53,6 +53,17 @@ class JammingDynamicTests(unittest.TestCase):
         self.assertTrue(moving(obj))
         self.assertEqual(self.planner._obstacles([{'object_info':obj}]),[])
 
+    def test_empty_tunnel_starts_on_official_lane(self):
+        planner=self.planner
+        result=planner.local.plan(planner._ego(self.ego),planner._path(self.reference),
+                                  [],planner._path(self.route))
+        self.assertTrue(result.debug_details['static_avoidance']['path_validated'])
+        self.assertEqual(planner.local.selected_names,['jamming_global_reference'])
+        lane=np.asarray(planner._path(self.route))
+        path=np.asarray(result.path)
+        nearest=np.min(np.linalg.norm(path[:,None,:]-lane[None,:,:],axis=2),axis=1)
+        self.assertLess(float(np.max(nearest)),.3)
+
     def test_front_mover_prefers_validated_avoidance_over_following(self):
         lead=self.obj(-1.,25.)
         for _ in range(12):

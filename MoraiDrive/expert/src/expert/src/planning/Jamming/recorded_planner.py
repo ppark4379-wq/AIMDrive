@@ -15,7 +15,7 @@ from ..lattice_planning.lattice_planner import LatticePlanner
 from ..lattice_planning import parameters
 from ..lattice_planning.structures import CandidatePath
 from ..정적장애물.recorded_planner import (
-    RecordedStaticPlanner, RecordedRouteGeometry, load_routes,
+    RecordedStaticPlanner, RecordedRouteGeometry, load_routes, connector,
 )
 from .section import JammingSection, ROOT, ROUTE_DIRECTORY
 from .prepare_routes import PREPARED_DIRECTORY, clip_rows
@@ -39,6 +39,26 @@ class _LocalPlanner(RecordedStaticPlanner):
         # Nine routes over 130 m need more scheduling headroom than the
         # shorter static section, especially beside the ROS control thread.
         self.recording_search_timeout = 8.
+
+    def _search(self, ego, obstacles):
+        if not obstacles:
+            # For moving traffic, start with the official lane. Selecting an
+            # arbitrary recording here creates an extra lateral maneuver before
+            # the moving-object planner has checked the overtake.
+            start=float(ego.position.y)
+            for distance in (6.,8.,12.,18.):
+                join=min(start+distance,self.goal_y-.5)
+                if join<=start:
+                    continue
+                entry=connector((start,ego.position.x,
+                    math.cos(ego.yaw)/max(.5,math.sin(ego.yaw)),0.),
+                    self._state(self.global_curve,join))
+                first=self._edge(entry,start,join,obstacles)
+                rest=self._edge(self.global_curve,join,self.goal_y,obstacles)
+                if first is not None and rest is not None:
+                    self.selected_names=['jamming_global_reference']
+                    return np.vstack((first,rest[1:]))
+        return super()._search(ego,obstacles)
 
     def approach_result(self, ego, reference_path):
         result = super().approach_result(ego, reference_path)
