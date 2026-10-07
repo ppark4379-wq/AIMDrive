@@ -4,13 +4,16 @@
   "device": "cuda",
   "cpu_threads": 4,
   "dataset_format": "navigation_token_cache_v1",
+  "instructions": "data/processed/joint_v001/instructions",
+  "feature_cache": "data/processed/joint_v001/vision_tokens",
+  "split_file": "data/processed/joint_v001/vision_tokens/split.json",
   "sequence_length": 11,
   "frame_sampling_interval": 2,
   "train_window_stride": 5,
   "val_window_stride": 5,
   "epochs": 500,
   "batch_size": 4,
-  "warm_start_checkpoint": "outputs/logs/vldrive_20260925_035426_669348/model-last.pt",
+  "warm_start_checkpoint": null,
   "validation_enabled": false,
   "initial_evaluation": false,
   "include_validation_in_train": true,
@@ -28,13 +31,16 @@
     "cpu_fused": true
   },
   "model": {
+    "zone_instruction": true,
+    "situation_instruction": true,
+    "max_situation_tokens": 128,
     "path_navigation": true,
     "path_fusion": "mlp",
     "path_width": 256,
     "path_heads": 4,
     "input_mode": "cached",
     "visual_checkpoint": "outputs/checkpoints/vision_encoder/checkpoint-best-object.pth.tar",
-    "visual_sha256": "3b792386602413aa1fc3bb3a7bd0ff1fbe97a2aa9fe6653d5e4f2fc4b0a895bc",
+    "visual_sha256": "6824d3998ec4be85bf40f96de37a195d12ff00aa8181d6739ed75125a7bb5e5b",
     "language_checkpoint": "data/external/tinyllama-1.1b-3T",
     "precision": "bf16",
     "max_instruction_tokens": 128,
@@ -57,9 +63,26 @@
     "inference_selection_mode": "argmax"
   },
   "path_instruction": {
-    "feature_cache": "outputs/caches/path_features_mlp.json",
+    "feature_cache": "data/processed/joint_v001/navigation_tokens/path_features.json",
     "stage": "joint",
     "new_module_prefixes": ["language_model.navigation_mlp."]
+  },
+  "situation_instruction": {
+    "datasets": [
+      {"root": "data/raw/static_obstacle", "namespace": "static_obstacle"},
+      {"root": "data/raw/dynamic_obstacle", "namespace": "dynamic_obstacle"},
+      {"root": "data/raw/roundabout", "namespace": "roundabout"},
+      {"root": "data/raw/highway", "namespace": "highway"}
+    ]
+  },
+  "zone_instruction": {
+    "datasets": [
+      {"root": "data/raw/static_obstacle", "namespace": "static_obstacle"},
+      {"root": "data/raw/dynamic_obstacle", "namespace": "dynamic_obstacle"},
+      {"root": "data/raw/roundabout", "namespace": "roundabout"},
+      {"root": "data/raw/highway", "namespace": "highway"}
+    ],
+    "new_module_prefixes": ["language_model.zone_embedding."]
   },
   "navigation_sampling": {
     "train_variants": [0, 1, 2, 3, 4, 5, 6, 7],
@@ -68,11 +91,12 @@
   "checkpoint_slots": 2,
   "dataset": "data/raw",
   "preprocessing": {
+    "mode": "ego_joint",
     "datasets": [
       {
-        "root": "data/raw/basic_drive",
+        "root": "data/raw/static_obstacle",
         "format": "sensor_record",
-        "namespace": "basic_drive",
+        "namespace": "static_obstacle",
         "map_root": null,
         "route_definition": "navigation/routes.yaml"
       },
@@ -81,14 +105,17 @@
         "format": "sensor_record",
         "namespace": "dynamic_obstacle",
         "map_root": null,
-        "route_definition": "../MoraiDrive/scenario_runner/config/full_loop_links.yaml",
-        "exclude_episodes": [
-          "dynamic_obstacle_lap100_20260922_231513/dynamic_obstacle_lap100_20260922_231513_lap_013/episode_000",
-          "dynamic_obstacle_lap100_20260922_231513/dynamic_obstacle_lap100_20260922_231513_lap_046/episode_000",
-          "dynamic_obstacle_lap100_20260922_231513/dynamic_obstacle_lap100_20260922_231513_lap_072/episode_000",
-          "dynamic_obstacle_lap100_20260922_231513/dynamic_obstacle_lap100_20260922_231513_lap_076/episode_000",
-          "dynamic_obstacle_lap100_20260922_231513/dynamic_obstacle_lap100_20260922_231513_lap_079/episode_000"
-        ]
+        "route_definition": "../MoraiDrive/scenario_runner/config/full_loop_links.yaml"
+      },
+      {
+        "root": "data/raw/roundabout",
+        "namespace": "roundabout",
+        "format": "sensor_record"
+      },
+      {
+        "root": "data/raw/highway",
+        "namespace": "highway",
+        "format": "sensor_record"
       }
     ],
     "navigation": {
@@ -122,7 +149,7 @@
       "device": "cuda",
       "cpu_threads": 2,
       "batch_size": 2,
-      "workers": 2,
+      "workers": 0,
       "train_fraction": 1.0,
       "max_sensor_gap_ms": 150,
       "log_interval": 200
@@ -236,5 +263,5 @@
       ]
     }
   },
-  "data_version": "data/processed/stage2_v001/manifest.json"
+  "data_version": null
 }

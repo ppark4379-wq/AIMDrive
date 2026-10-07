@@ -63,7 +63,15 @@ def load_config(path, role='training'):
         original = bundle['config']
         for key in ('feature_cache', 'instructions', 'split_file'):
             value[key] = original[key]
-        if not value.get('model', {}).get('path_navigation', False):
+        if value.get('model', {}).get('path_navigation') and original.get('path_instruction', {}).get('feature_cache'):
+            value['path_instruction']['feature_cache'] = original['path_instruction']['feature_cache']
+        # A completed version pins episode membership, including after more raw
+        # episodes are downloaded. They enter training only through a new version.
+        for key in ('situation_instruction', 'zone_instruction'):
+            if value.get('model', {}).get(key) and original.get(key, {}).get('datasets'):
+                value[key]['datasets'] = original[key]['datasets']
+        if not (value.get('model', {}).get('path_navigation', False) or
+                value.get('model', {}).get('situation_instruction', False)):
             value['navigation_sampling']['token_cache'] = original['navigation_sampling']['token_cache']
     if 'preprocessing' not in value:
         return value  # Existing standalone configs and saved run snapshots.

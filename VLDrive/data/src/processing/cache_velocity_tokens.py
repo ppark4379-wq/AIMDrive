@@ -102,7 +102,49 @@ def discover(cfg):
     return episodes
 
 
-def cache_situation(cfg, *, audit_only=False, max_frames_per_episode=None):
+def reuse_situation_records(output, source, previous):
+    """Copy verified records into a NEW cache; never alter a published version."""
+    import os
+    import shutil
+    from data.src.loaders.situation_dataset import child
+    previous = Path(previous).resolve()
+    old = json.loads((previous / 'source.json').read_text())
+    for name in ('schema', 'checkpoint_sha256', 'encoder_contract', 'implementations',
+                 'inference_precision', 'storage_precision', 'diagnostic_frame_limit'):
+        if old.get(name) != source.get(name):
+            raise ValueError('Cannot reuse a different VE recipe: ' + name)
+    matching = {name for name, evidence in source['episodes'].items()
+                if old['episodes'].get(name) == evidence}
+    count = 0
+    for path in sorted((previous / 'records').glob('*.json')):
+        row = json.loads(path.read_text())
+        if row['episode_id'] not in matching:
+            continue
+        destination = output / 'records' / path.name
+        if destination.exists():
+            continue  # Normal cache validation below handles interrupted runs.
+        record = valid_record(path, previous)
+        if record is None:
+            continue  # Recompute corrupt/missing features; never reuse them.
+        ref = record['visual_feature']
+        original, target = child(previous, ref['path']), child(output, ref['path'])
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.exists():
+            if sha256(target) != ref['sha256']:
+                raise ValueError('Existing reuse target differs: ' + str(target))
+        else:
+            try:
+                os.link(original, target)
+            except OSError:
+                shutil.copyfile(original, target)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        write_json(destination, record)
+        count += 1
+    print(json.dumps(dict(reused_from=str(previous), imported_records=count)), flush=True)
+    return count
+
+
+def cache_situation(cfg, *, audit_only=False, max_frames_per_episode=None, reuse_cache=None):
     """VE-only export from existing Situation labels; no navigation/trajectory GT."""
     import numpy as np
     import torch
@@ -164,6 +206,8 @@ def cache_situation(cfg, *, audit_only=False, max_frames_per_episode=None):
         if (output / 'source.json').exists() and json.loads((output / 'source.json').read_text()) != source:
             raise ValueError('Existing cache uses different weights, labels, sources or export settings')
         write_json(output / 'source.json', source)
+        if reuse_cache is not None:
+            reuse_situation_records(output, source, reuse_cache)
     model, strict = None, None
     if not audit_only:
         model = create_vision_encoder({'name': blob['feature_model_name']}, pretrained_backbone=False)

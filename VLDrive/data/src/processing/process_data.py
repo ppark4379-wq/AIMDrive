@@ -104,8 +104,26 @@ def main():
     parser.add_argument('--config', type=Path, default=ROOT / 'training/vldrive_train.json')
     parser.add_argument('--id', help='Optional unique version ID; defaults to a timestamp')
     parser.add_argument('--no-activate', action='store_true', help='Do not select the result for training')
+    parser.add_argument('--prepare-only', action='store_true', help='Prepare joint GP/targets without running the VE')
+    parser.add_argument('--resume', action='store_true', help='Continue the unfinished joint version selected by --id')
+    parser.add_argument('--reuse-version', help='Reuse compatible prepared episodes/VE records from a completed joint version')
     args = parser.parse_args()
-    print(process(args.config, args.id, not args.no_activate))
+    source = read(args.config)
+    if source.get('preprocessing', {}).get('mode') == 'ego_joint':
+        if str(ROOT.parent) not in sys.path:
+            sys.path.insert(0, str(ROOT.parent))
+        if args.resume and not args.id:
+            parser.error('--resume requires --id')
+        if sys.platform.startswith('linux'):
+            sys.path.append(str(ROOT / '.runtime/stage2_wsl_deps'))
+            sys.path.append(str(ROOT / '.runtime/offline_viz_wsl_deps'))
+        from data.src.processing.joint_preprocessing import process as joint_process
+        print(joint_process(args.config, args.id, prepare_only=args.prepare_only, resume=args.resume,
+                            reuse_version=args.reuse_version, activate=not args.no_activate))
+    else:
+        if args.prepare_only or args.resume or args.reuse_version:
+            parser.error('Incremental/resume flags require preprocessing.mode=ego_joint')
+        print(process(args.config, args.id, not args.no_activate))
 
 
 if __name__ == '__main__':

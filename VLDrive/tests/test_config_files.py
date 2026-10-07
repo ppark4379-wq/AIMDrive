@@ -16,8 +16,8 @@ class ConfigFilesTest(unittest.TestCase):
         self.assertEqual(train['feature_cache'], vision['output'])
         self.assertEqual([s['root'] for s in nav['datasets']],
                          [s['root'] for s in vision['datasets']])
-        self.assertEqual(nav['datasets'][1]['exclude_episodes'],
-                         vision['datasets'][1]['exclude_episodes'])
+        self.assertEqual(nav['datasets'][1].get('exclude_episodes', []),
+                         vision['datasets'][1].get('exclude_episodes', []))
 
     def test_training_snapshot_excludes_preprocessing(self):
         value = load_config(ROOT/'training/vldrive_train.json')

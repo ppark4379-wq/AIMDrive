@@ -58,7 +58,16 @@ def labeled_episodes(specs):
     episodes, seen = [], set()
     for spec in specs:
         root = project_path(spec['root'])
-        paths = sorted(root.glob('**/situation_labels/labeled_frames.jsonl'))
+        selected = spec.get('include_episodes')
+        if selected is None:
+            paths = sorted(root.glob('**/situation_labels/labeled_frames.jsonl'))
+        else:
+            if (not isinstance(selected, list) or not selected or
+                    len(selected) != len(set(selected))):
+                raise ValueError('include_episodes must be a nonempty unique episode list')
+            paths = [child(root, name) / 'situation_labels/labeled_frames.jsonl' for name in selected]
+            if any(not path.is_file() for path in paths):
+                raise ValueError('A snapshotted Situation episode is missing')
         if not paths:
             raise ValueError('No situation labels under ' + str(root))
         for path in paths:
