@@ -1,1 +1,1 @@
-"""Reserved for zone instruction handling; no runtime implementation yet."""
+"""Recorded Zone IDs for the learnable Stage 2 LLM Zone token."""

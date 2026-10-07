@@ -1,1 +1,1 @@
-"""Reserved for situation instruction handling; no runtime implementation yet."""
+"""Shared Situation text formatting for Stage 2 GT and prediction review."""

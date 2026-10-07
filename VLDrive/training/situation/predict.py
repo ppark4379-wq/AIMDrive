@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from MoraiDrive.data_collection.situation_labeling.renderer import load_catalog, render_template
+from ...instruction.situation.text import load_catalog, render_situation, text_contract
 from ...data.src.loaders.situation_dataset import (
     ROOT, CACHE_SCHEMA, child, jsonl, labeled_episodes, load_config, project_path, sha256,
 )
@@ -38,13 +38,8 @@ def decode_prediction(logits, vocab, catalog):
         index = int(scores.argmax())
         predictions[name] = dict(value=vocab[name][index], confidence=float(scores[index]))
     identifier = predictions['instruction']['value']
-    zone, instruction_id = identifier.split(':', 1) if identifier and ':' in identifier else ('', '')
-    template = catalog.get(zone, {}).get(instruction_id)
-    if template is None:
-        return dict(fields=predictions, text=None, required=[], reason='예측 상황에 대응하는 문장 템플릿 없음')
-    text, _, missing = render_template(template, {k: v['value'] for k, v in predictions.items()})
-    return dict(fields=predictions, text=text, required=template['required_variables'],
-                reason='예측 불가 항목: ' + ', '.join(missing) if missing else None)
+    rendered = render_situation(identifier, {k: v['value'] for k, v in predictions.items()}, catalog)
+    return dict(fields=predictions, **rendered)
 
 
 class CachedSituationReview:
@@ -88,7 +83,8 @@ class CachedSituationReview:
         self.model.requires_grad_(False).to(self.device).eval()
         self.info = dict(checkpoint=str(self.checkpoint_path), checkpoint_sha256=checkpoint_sha,
                          epoch=blob['epoch'], selection=blob.get('selection_metric'), device=str(self.device),
-                         cache=str(self.root), sequence_length=self.cfg['sequence_length'])
+                         cache=str(self.root), sequence_length=self.cfg['sequence_length'],
+                         situation_text_contract=text_contract())
         self.training_labels = source.get('labels_sha256', {})
         del blob
         self.cached = {}

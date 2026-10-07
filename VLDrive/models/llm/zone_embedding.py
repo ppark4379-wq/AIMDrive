@@ -2,15 +2,11 @@ import torch
 from torch import nn
 
 
-ZONE_NAMES = (
-    'normal',
-    'static_obstacle',
-    'dynamic_obstacle',
-    'roundabout',
-    'highway',
-    'tunnel',
-)
-ZONE_SCHEMA = 'zone_v2_no_traffic_light'
+# Stage 2 uses top-level models/; the standalone Situation trainer uses VLDrive/.
+if __package__.startswith('VLDrive.'):
+    from ...instruction.zone.encoding import ZONE_NAMES, ZONE_ID_SCHEMA as ZONE_SCHEMA
+else:
+    from instruction.zone.encoding import ZONE_NAMES, ZONE_ID_SCHEMA as ZONE_SCHEMA
 
 class ZoneEmbedding(nn.Module):
     def __init__(self, output_dim=256, embedding_dim=32):
