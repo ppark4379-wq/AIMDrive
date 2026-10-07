@@ -1,4 +1,6 @@
 static_obstacle:
+  # Obstacle-handling instructions only: these do not override traffic signals
+  # or prescribe longitudinal speed. Maintain/continue can coexist with a stop.
   approach:
     label: approach
     instruction: "There is {object} {position} the ego vehicle. Maintain the current driving behavior."
@@ -37,7 +39,7 @@ static_obstacle:
     - position
   follow_between:
     label: follow
-    instruction: "There are obstacles {position} the ego vehicle. Perform an avoidance maneuver between the two obstacles."
+    instruction: "There are two obstacles {position} the ego vehicle. Pass between the two obstacles."
     required_variables:
     - position
   recover_alignment:
@@ -88,7 +90,7 @@ static_obstacle:
     required_variables: [position]
   static_pass_between:
     label: null
-    instruction: "There is an obstacle {position} the ego vehicle. Pass between the obstacles along the verified path."
+    instruction: "There are two obstacles {position} the ego vehicle. Pass between the two obstacles."
     required_variables: [position]
   static_return_to_path:
     label: null

@@ -1,4 +1,5 @@
 __pycache__/
+/.runtime/
 *.pyc
 *.pyo
 .vscode/
@@ -33,7 +34,14 @@ VLDrive/.runtime/
 # Generated inference recordings and analysis remain local, not source commits.
 VLDrive/outputs/inference/
 VLDrive/outputs/analysis/
+VLDrive/outputs/label_revisions/
 VLDrive/data/processed/instructions/
+
+# Local test caches and dated analysis outputs; keep artifact scripts versionable.
+.pytest_cache/
+/artifacts/*_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]/
+/artifacts/*_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_*/
+/artifacts/*.log
 
 # Per-frame capture logs from data collection. Older runs are already tracked;
 # new runs stay local because a single manifest can exceed 70 MB.

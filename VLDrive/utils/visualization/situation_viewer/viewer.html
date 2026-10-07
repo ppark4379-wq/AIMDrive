@@ -98,14 +98,16 @@ function show(i){if(!ROWS.length)return;k=Math.max(0,Math.min(ROWS.length-1,i));
  $('zone').textContent='zone: '+fmt(r.zone)+' · ID '+fmt(r.zone_instruction);
  $('gt').textContent=r.text||'(유효 문장 없음)';$('gt').className=r.text?'sentence':'sentence none';
  $('facts').replaceChildren();addFact($('facts'),'GT 상황 ID',r.state);addFact($('facts'),'GT 일관성',r.consistency);addFact($('facts'),'GT label',r.label);
- addFact($('facts'),'오른쪽 이동',r.right===null?null:r.right.toFixed(2)+' m');addFact($('facts'),'속도',r.speed===null?null:r.speed.toFixed(2)+' m/s');
+ addFact($('facts'),'오른쪽 이동',r.right===null?null:r.right.toFixed(2)+' m');addFact($('facts'),'자차 속도',r.speed===null?null:r.speed.toFixed(3)+' m/s');
  if(r.reason){renderPrediction({available:false,reason:r.reason});}else{renderPrediction(PRED[k]);if(!PRED[k]){wanted={episode,index:k,version};pump();}}
  draw();
 }
 async function loadEpisode(){stop();version++;wanted=null;error(null);const mine=version;episode=Number($('episode').value);const page=await api('/api/episode?episode='+episode);if(mine!==version)return;
  ROWS=page.rows;PRED=page.predictions||{};$('slider').max=Math.max(0,ROWS.length-1);
- $('runmeta').textContent=page.name+' · '+ROWS.length+' 프레임 · '+(page.training_data?'학습에 사용된 데이터 — 일반화 평가 아님':'별도 데이터 — 학습 데이터와의 독립성 확인 필요')+' · checkpoint epoch '+session.epoch;
- enable();show(Math.max(0,ROWS.findIndex(r=>r.available)));
+ $('runmeta').textContent=page.name+' · '+ROWS.length+' 프레임 · '+(page.labels_revised?'학습에 사용된 주행 · 수정된 GT · 모델 재학습 전':page.training_data?'학습에 사용된 데이터 — 일반화 평가 아님':'별도 데이터 — 학습 데이터와의 독립성 확인 필요')+' · checkpoint epoch '+session.epoch;
+ const params=new URLSearchParams(location.search);
+ const requested=params.get('episode')===page.name&&params.has('frame')?ROWS.findIndex(r=>r.i===Number(params.get('frame'))):-1;
+ enable();show(requested>=0?requested:Math.max(0,ROWS.findIndex(r=>r.available)));
 }
 async function play(){if(playing){stop();return;}playing=true;$('play').textContent='⏸ 정지';const mine=version,ticket=++playVersion;
  while(playing&&mine===version&&ticket===playVersion&&k<ROWS.length-1){if(ROWS[k].available&&!PRED[k]){await new Promise(r=>setTimeout(r,100));continue;}
@@ -136,7 +138,7 @@ let polling=false;
 async function poll(){if(polling)return;polling=true;try{const status=await api('/api/status');busy=status.busy;enable();
  $('status').textContent=busy?(status.task==='load'?'모델·캐시 인덱스 확인 중…':'회차 추론 '+status.done+' / '+status.total):(status.loaded?'모델 로딩 완료 · '+(session?.device||''):'모델과 캐시를 불러오세요.');
  if(status.error)error(status.error);
- if(status.loaded&&status.generation!==generation){generation=status.generation;session=await api('/api/session');$('episode').replaceChildren();for(const e of session.episodes){const o=document.createElement('option');o.value=e.id;o.textContent=e.name;$('episode').append(o);}await loadEpisode();}
+ if(status.loaded&&status.generation!==generation){generation=status.generation;session=await api('/api/session');$('episode').replaceChildren();for(const e of session.episodes){const o=document.createElement('option');o.value=e.id;o.textContent=e.name;$('episode').append(o);}const requested=session.episodes.find(e=>e.name===new URLSearchParams(location.search).get('episode'));if(requested)$('episode').value=requested.id;await loadEpisode();}
  else if(status.loaded&&status.task==='infer_episode'&&ROWS.length){const mine=version,p=await api('/api/episode?episode='+episode);if(mine===version){PRED=p.predictions;renderPrediction(PRED[k]);draw();}}
  if(ROWS.length&&!PRED[k]&&ROWS[k].available&&!busy){wanted={episode,index:k,version};pump();}
  }catch(e){error(e);}finally{polling=false;}}

@@ -13,6 +13,12 @@ POSITIONS = {"front": "in front of", "center": "in front of",
              "left": "to the left of", "right": "to the right of", "rear": "behind",
              "전방": "in front of", "좌측": "to the left of",
              "우측": "to the right of", "후방": "behind"}
+POSITIONS.update(left_right="to the left and right of",
+                 front_left="in front of and to the left of",
+                 front_right="in front of and to the right of",
+                 front_rear="in front of and behind",
+                 left_rear="to the left of and behind",
+                 right_rear="to the right of and behind")
 OBJECTS = {"obstacle": "an obstacle", "static_obstacle": "an obstacle",
            "vehicle": "a vehicle", "npc": "a vehicle", "pedestrian": "a pedestrian",
            "장애물": "an obstacle", "차량": "a vehicle", "보행자": "a pedestrian"}

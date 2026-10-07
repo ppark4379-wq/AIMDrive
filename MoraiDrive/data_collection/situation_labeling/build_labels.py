@@ -18,6 +18,7 @@ from .expert_instructions import (apply_expert_instructions,
 from .expert_static_phase import attach_static_phase
 from .expert_roundabout_phase import build_roundabout_observations
 from .mapper import attach_rule_instructions
+from .ego_position import update_static_positions
 from .consistency import (HIGHWAY_KEEP_FOLLOW_IDS, HIGHWAY_MAX_ISLAND_FRAMES,
                           align_highway_lane_changes, align_static_avoidance,
                           drop_contradicted_instructions,
@@ -365,7 +366,13 @@ def main(argv=None):
         + smooth_short_instruction_islands(rules, HIGHWAY_MAX_ISLAND_FRAMES, "highway",
                                            HIGHWAY_KEEP_FOLLOW_IDS))
     report["roundabout_stopped_sentences"] = use_stopped_roundabout_sentences(frames, rules)
+    from .side_view_hold import camera_views
+    report["static_ego_position"] = update_static_positions(rules, objects, cameras=camera_views(args.episode))
     report["instruction_consistency"] = drop_contradicted_instructions(frames, rules)
+    from .reviewed_overrides import apply_reviewed_overrides
+    report['reviewed_override_frames'] = apply_reviewed_overrides(rules, args.episode)
+    if report['reviewed_override_frames']:
+        report['instruction_consistency'] = dict(Counter(r.get('instruction_consistency', 'null') for r in rules))
     report["rules"] = summarize_rules(rules)
     report["rules"]["instruction_templates_applied"] = (
         any(row.get("instruction") is not None for row in rules))

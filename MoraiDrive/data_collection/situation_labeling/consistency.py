@@ -414,13 +414,16 @@ def use_stopped_roundabout_sentences(frames, rules, catalog=None):
     return changed
 
 
-def _contradiction(text, ds, dd, v_now, v_future):
+def _contradiction(text, ds, dd, v_now, v_future, *, obstacle_only=False):
     maneuver = any(word in text for word in MANEUVER_WORDS)
     side = MANEUVER_SIDE.search(text)
     if side and side.group(1) == "right" and dd >= SIDE_MOTION_M:
         return "direction"
     if side and side.group(1) == "left" and dd <= -SIDE_MOTION_M:
         return "direction"
+    # Static obstacle instructions do not override longitudinal constraints.
+    if obstacle_only:
+        return None
     if maneuver and ds < STATIONARY_PROGRESS_M:
         return "stationary"
     keep = any(word in text for word in KEEP_WORDS)
@@ -452,7 +455,8 @@ def drop_contradicted_instructions(frames, rules):
         q = bisect_left(track.t, track.t[j] - SPEED_BACK_S)
         v_future = (track.s[j] - track.s[q]) / max(track.t[j] - track.t[q], 1e-3)
         kind = _contradiction(text, max(0.0, track.s[j] - track.s[n]), track.d[j] - track.d[n],
-                              track.speed(n), v_future)
+                              track.speed(n), v_future,
+                              obstacle_only=rule.get("zone_id") == "static_obstacle")
         rule["instruction_consistency"] = "consistent"
         if kind:
             found[k] = kind

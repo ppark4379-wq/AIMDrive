@@ -100,7 +100,9 @@ class CachedSituationReview:
 
     def summary(self):
         return dict(self.info, episodes=[dict(id=i, name=e['identity'], frames=len(e['rows']),
-                    training_data=self.training_labels.get(e['identity']) == e['label_sha256'])
+                    training_data=e['identity'] in self.training_labels,
+                    labels_revised=(e['identity'] in self.training_labels and
+                                    self.training_labels[e['identity']] != e['label_sha256']))
                     for i, e in enumerate(self.episodes)])
 
     def _episode(self, episode_id):
@@ -214,7 +216,9 @@ class CachedSituationReview:
                 label=gt.get('label'), right=right.get(row['frame_id']), speed=record.get('velocity_mps'),
                 reason=reason, available=reason is None, variables=gt.get('instruction_variables', {})))
         page = dict(rows=result, name=episode['identity'],
-                    training_data=self.training_labels.get(episode['identity']) == episode['label_sha256'])
+                    training_data=episode['identity'] in self.training_labels,
+                    labels_revised=(episode['identity'] in self.training_labels and
+                                    self.training_labels[episode['identity']] != episode['label_sha256']))
         self.episode_pages[episode_id] = page
         return page
 

@@ -76,6 +76,25 @@ class ConsistencyTests(unittest.TestCase):
         self.assertEqual([r["instruction_consistency"] for r in rules], ["consistent", "no_future"])
         self.assertEqual(counts, {"consistent": 1, "no_future": 1})
 
+    def test_static_instructions_survive_external_speed_constraints(self):
+        for speed in (lambda t: 0.0, lambda t: max(0.0, 6.0 - 3.0 * max(0.0, t - 1.0))):
+            for text in ('Continue driving.', 'Maintain the current driving behavior.',
+                         'Continue the avoidance maneuver to the right.'):
+                with self.subTest(text=text, speed=speed):
+                    rules = [dict(index=i, zone_id='static_obstacle', instruction=text)
+                             for i in range(10, 15)]
+                    drop_contradicted_instructions(track(speed), rules)
+                    self.assertTrue(all(r['instruction'] == text for r in rules))
+                    self.assertTrue(all(r['instruction_consistency'] == 'consistent' for r in rules))
+
+    def test_static_opposite_direction_is_still_dropped(self):
+        rules = [dict(index=i, zone_id='static_obstacle',
+                      instruction='Perform an avoidance maneuver to the right.')
+                 for i in range(10, 15)]
+        drop_contradicted_instructions(track(lambda t: 5.0, lateral_rate=0.5), rules)
+        self.assertTrue(all(r['instruction_consistency'] == 'dropped_direction' for r in rules))
+
+
 
 class MotionAlignmentTests(unittest.TestCase):
     def test_static_span_follows_the_swing(self):
