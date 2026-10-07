@@ -1,4 +1,4 @@
-"""One actor per whole-tunnel behavior; no section spawn/despawn cycles."""
+"""Runtime tunnel traffic; each behavior keeps its actor through continuation."""
 
 import json
 import math
@@ -6,7 +6,8 @@ import random
 import time
 from pathlib import Path
 from types import SimpleNamespace
-from . import tunnel
+from . import tunnel, vehicle_common
+from .highway import _route_geometry
 from .tunnel_dynamic_catalog import _finite
 from .tunnel_vehicle_catalog import (
     BEHAVIORS,
@@ -25,6 +26,15 @@ class TunnelVehicleHandler:
     def validate(self, context):
         cfg = context.cfg["tunnel_vehicle_dynamic"]
         for key in (
+            "minimum_spawn_ego_speed_mps",
+            "minimum_spawn_progress_m",
+            "minimum_npc_speed_mps",
+            "encounter_gap_m",
+            "encounter_exit_margin_m",
+            "spawn_reaction_time_sec",
+            "spawn_deceleration_mps2",
+            "spawn_safety_margin_m",
+            "oncoming_eta_tolerance_sec",
             "initial_spawn_gap_m",
             "minimum_initial_gap_m",
             "slow_speed_mps",
@@ -40,9 +50,15 @@ class TunnelVehicleHandler:
             "maximum_step_speed_mps",
             "step_slack_m",
             "cut_in_timeout_sec",
+            "cleanup_after_boundary_m",
+            "cleanup_ego_clearance_m",
+            "motion_startup_timeout_sec",
+            "motion_startup_minimum_travel_m",
         ):
             if _finite(cfg[key], key) <= 0:
                 raise ValueError(f"{key} must be positive")
+        if not 0 < _finite(cfg["slow_ego_speed_ratio"], "slow_ego_speed_ratio") < 1:
+            raise ValueError("slow_ego_speed_ratio must be between zero and one")
         if not cfg.get("event_sections") or any(
             type(i) is not int or i not in (2, 3) for i in cfg["event_sections"]
         ):
@@ -116,6 +132,9 @@ class TunnelVehicleHandler:
         )
         plan = build_vehicle_plan(*args, behavior, event_section=section)
         plan["brake_settings"] = brake
+        context.tunnel_vehicle_cleanup_points, _, _ = _route_geometry(
+            context, plan["cleanup_route_links"]
+        )
         if cfg["max_run_sec"] <= (
             (plan["exit_s_m"] - plan["spawn_s_m"]) / max(plan["speed_mps"], 1.0)
             if behavior != "vehicle_oncoming"
@@ -146,6 +165,8 @@ class TunnelVehicleHandler:
             "spawn_verified": False,
             "observed_moving": False,
             "completed": False,
+            "interaction_complete": False,
+            "actor_active": False,
             "destroyed": False,
             "actor_id": None,
             "same_actor_continuity": True,
@@ -154,9 +175,12 @@ class TunnelVehicleHandler:
             "unavailable_behaviors": context.tunnel_vehicle_catalog[
                 "unavailable_behaviors"
             ],
-            "default_ai_unchanged": True,
+            "motion_commands": {},
+            "startup_motion_verified": False,
             "travelled_m": 0.0,
             "brake": {},
+            "encounter_verified": False,
+            "spawn_policy": "ego_motion_and_runtime_geometry",
         }
         context.tunnel_vehicle_report_path = (
             Path(context.cfg["profile_state_path"]).parent
@@ -167,6 +191,8 @@ class TunnelVehicleHandler:
         context.tunnel_vehicle_last_sample = None
         context.tunnel_vehicle_last_log_sec = -1
         context.tunnel_vehicle_elapsed = 0.0
+        context.tunnel_vehicle_spawned_at = None
+        context.tunnel_vehicle_wait_log_at = None
         context.tunnel_event_phase = "disabled"
         context.tunnel_event_result = {"disabled_reason": "tunnel_vehicle_dynamic"}
         try:
@@ -201,7 +227,7 @@ class TunnelVehicleHandler:
                 "unavailable_behaviors"
             ].items():
                 print(f"[TunnelVehicle] excluded {behavior}: {reason}")
-            self._spawn(context)
+            self._phase(context, "waiting_for_ego", "runtime_spawn_pending")
         except BaseException as error:
             self.record_interruption(context, error)
             raise
@@ -250,11 +276,15 @@ class TunnelVehicleHandler:
         actor = context.tunnel_vehicle_actor
         if actor is None:
             return
-        if not actor.destroy():
+        # SDK Actor.destroy() discards the RPC result and returns None.
+        # The existing adapter returns the actual DestroyActor acknowledgement.
+        if not context.grpc.destroy_vehicle_by_id(str(actor.get_id())):
             raise RuntimeError("Tunnel vehicle removal rejected")
+        context.tunnel_vehicle_result["cleanup_method"] = "destroy_vehicle_by_id"
         if actor in context.scenario_actors:
             context.scenario_actors.remove(actor)
         context.tunnel_vehicle_actor = None
+        context.tunnel_vehicle_result["actor_active"] = False
         context.tunnel_vehicle_result["destroyed"] = True
         context.tunnel_vehicle_result["cleanup_verified"] = True
 
@@ -335,6 +365,9 @@ class TunnelVehicleHandler:
         }
         full_s = project_distance_on_polyline(context.tunnel_vehicle_route_points, x, y)
         sample["npc_s_m"] = full_s - context.tunnel_vehicle_route_prefix_s
+        sample["npc_route_s_m"] = project_distance_on_polyline(
+            context.tunnel_vehicle_cleanup_points, x, y
+        )
         rx, ry, _, ego_yaw = interpolate_on_polyline(
             context.tunnel_vehicle_route_points, full_s
         )
@@ -376,24 +409,15 @@ class TunnelVehicleHandler:
                 self._fail(context, "Oncoming vehicle entered Ego lane")
         return sample
 
-    def _spawn(self, context):
+    def _spawn(self, context, ego):
         plan = context.tunnel_vehicle_plan
         p = plan["spawn_target"]
-        ego = context.grpc.get_ego_motion_state()
-        if not isinstance(ego, dict) or not all(
-            k in ego and math.isfinite(float(ego[k])) for k in ("x", "y")
-        ):
-            self._fail(context, "Ego state unavailable at vehicle setup")
-        start_x, start_y, _, _ = interpolate_on_polyline(
-            context.tunnel_vehicle_route_points, plan["entry_s_m"]
-        )
-        if (
-            math.hypot(ego["x"] - start_x, ego["y"] - start_y)
-            > context.cfg["tunnel_vehicle_dynamic"]["spawn_position_tolerance_m"]
-        ):
-            self._fail(context, "Ego is outside the common CP14 start at vehicle setup")
         ego_s = project_distance_on_polyline(
             context.tunnel_vehicle_route_points, ego["x"], ego["y"]
+        )
+        context.tunnel_vehicle_last_ego = dict(ego)
+        context.tunnel_vehicle_last_ego_s = (
+            ego_s - context.tunnel_vehicle_route_prefix_s
         )
         initial_gap = plan["spawn_s_m"] - ego_s
         context.tunnel_vehicle_result["spawn_ego"] = {
@@ -408,9 +432,10 @@ class TunnelVehicleHandler:
         def track(actor):
             context.tunnel_vehicle_actor = actor
             context.tunnel_vehicle_result["spawned"] = True
+            context.tunnel_vehicle_result["actor_active"] = True
 
-        # Same route/waypoint/speed operations as highway. Do not toggle SetAI:
-        # live MORAI rejects that call even when default NPC AI is moving.
+        # SetAI is unsupported in the live world. Unpause is independent and
+        # movement is verified from subsequent runtime states, without blocking ticks.
         actor = context._spawn_highway_vehicle(
             context.grpc.make_transform(p["x"], p["y"], p["z"], p["yaw_deg"]),
             (
@@ -422,10 +447,16 @@ class TunnelVehicleHandler:
             plan["behavior"],
             plan["speed_mps"],
             configure_ai=False,
+            unpause=True,
             on_spawn=track,
+            spawn_velocity=plan["speed_mps"],
+            command_report=context.tunnel_vehicle_result["motion_commands"],
         )
         if actor is None:
             self._fail(context, "Failed to spawn tunnel vehicle or assign route")
+        context.tunnel_vehicle_spawned_at = self._now(context)
+        context.tunnel_vehicle_startup_wall_at = time.monotonic()
+        context.tunnel_vehicle_command_speed = plan["speed_mps"]
         sample = self._read_state(context)
         error = math.dist(
             (sample["x"], sample["y"], sample["z"]), (p["x"], p["y"], p["z"])
@@ -438,6 +469,9 @@ class TunnelVehicleHandler:
                 "actual_spawn": dict(sample),
                 "spawn_error_m": error,
                 "initial_route_gap_m": gap,
+                "spawn_elapsed_sec": self._now(context)
+                - context.tunnel_vehicle_started_at,
+                "runtime_timeout_sec": context.tunnel_vehicle_runtime_timeout,
             }
         )
         if (
@@ -454,21 +488,17 @@ class TunnelVehicleHandler:
         phases = {
             "vehicle_slow": "moving",
             "vehicle_sudden_brake": "cruising",
-            "vehicle_stopped": "stopped",
+            "vehicle_stopped": "cruising_to_stop",
             "vehicle_oncoming": "approaching",
             "vehicle_cut_in": "adjacent_cruise",
         }
-        self._phase(context, phases[plan["behavior"]], "spawn_verified")
-        if plan["behavior"] == "vehicle_stopped":
-            if not context.grpc.stop_vehicle(actor):
-                self._fail(context, "Stopped vehicle stop command rejected")
-            sample = self._read_state(context)
-            if (
-                sample["speed_mps"]
-                > plan["brake_settings"]["stopped_speed_threshold_mps"]
-            ):
-                self._fail(context, "Stopped vehicle is moving at spawn")
-            result["stopped_verified"] = True
+        context.tunnel_vehicle_motion_phase = phases[plan["behavior"]]
+        context.tunnel_vehicle_motion_monitor_started = self._now(context)
+        self._phase(
+            context,
+            "starting" if plan["speed_mps"] > 0.0 else "stopped",
+            "spawn_verified",
+        )
         if plan["behavior"] == "vehicle_sudden_brake":
             proxy = SimpleNamespace(
                 cfg={"tunnel_sudden_brake": plan["brake_settings"]},
@@ -488,12 +518,282 @@ class TunnelVehicleHandler:
             context.tunnel_vehicle_brake_context = proxy
         self._save(context)
 
+    def _complete_interaction(self, context, reason):
+        result = context.tunnel_vehicle_result
+        if not result["interaction_complete"]:
+            result.update(interaction_complete=True, interaction_reason=reason)
+            self._save(context)
+
     def _complete(self, context, reason):
-        self._remove(context)
-        context.tunnel_vehicle_result.update(
-            {"completed": True, "cleanup_reason": reason}
-        )
+        # Interaction completion never implies actor removal.
+        self._complete_interaction(context, reason)
+        context.tunnel_vehicle_result["completed"] = True
         self._phase(context, "completed", reason)
+
+    def teardown(self, context):
+        if context.tunnel_vehicle_actor is not None:
+            try:
+                self._remove(context)
+                context.tunnel_vehicle_result["cleanup_reason"] = "scenario_teardown"
+            except Exception as error:
+                context.tunnel_vehicle_result["cleanup_error"] = str(error)
+                context.tunnel_vehicle_result["cleanup_verified"] = False
+                self._save(context)
+                raise
+            self._save(context)
+
+    def _waiting(self, context, observation, reason):
+        result = context.tunnel_vehicle_result
+        result["spawn_wait_reason"] = reason
+        result["spawn_timing"] = observation
+        now = self._now(context)
+        last = context.tunnel_vehicle_wait_log_at
+        if last is None or now - last >= 1.0:
+            context.tunnel_vehicle_wait_log_at = now
+            self._save(context)
+            print(
+                f"[TunnelVehicle] waiting reason={reason} ego_speed={observation['ego_speed_mps']:.2f}m/s progress={observation['progress_m']:.1f}m"
+            )
+        return False
+
+    def _runtime_spawn(self, context, ego, current_s):
+        plan, cfg = context.tunnel_vehicle_plan, context.cfg["tunnel_vehicle_dynamic"]
+        values = [ego.get(k) for k in ("x", "y", "speed")]
+        if not all(isinstance(v, (int, float)) and math.isfinite(v) for v in values):
+            self._fail(context, "Runtime Ego state is malformed")
+        full_s = current_s + context.tunnel_vehicle_route_prefix_s
+        projected_s = project_distance_on_polyline(
+            context.tunnel_vehicle_route_points, ego["x"], ego["y"]
+        )
+        rx, ry, _, _ = interpolate_on_polyline(
+            context.tunnel_vehicle_route_points, full_s
+        )
+        if (
+            abs(projected_s - full_s) > cfg["spawn_position_tolerance_m"]
+            or math.hypot(rx - ego["x"], ry - ego["y"])
+            > cfg["spawn_position_tolerance_m"]
+        ):
+            self._fail(
+                context, "Runtime Ego position/progress is outside the tunnel route"
+            )
+        v = max(
+            0.0, ego["speed"] / 3.6
+        )  # Runner Ego speed is km/h; NPC commands are m/s.
+        progress = full_s - plan["entry_s_m"]
+        observation = {"ego_speed_mps": v, "progress_m": progress, "ego_s_m": full_s}
+        if full_s >= plan["exit_s_m"] - cfg["encounter_exit_margin_m"]:
+            self._fail(context, "Ego passed the available runtime vehicle spawn window")
+        # Progress alone is insufficient while stopped: the new actor must be moving.
+        if v <= cfg["minimum_npc_speed_mps"] or not (
+            v >= cfg["minimum_spawn_ego_speed_mps"]
+            or progress >= cfg["minimum_spawn_progress_m"]
+        ):
+            return self._waiting(context, observation, "ego_not_ready")
+        behavior = plan["behavior"]
+        if behavior == "vehicle_oncoming":
+            pose = plan["spawn_target"]
+            spawn_route_s = project_distance_on_polyline(
+                context.tunnel_vehicle_cleanup_points, pose["x"], pose["y"]
+            )
+            options = []
+            for section in plan["sections"]:
+                if section["section_index"] not in cfg["event_sections"]:
+                    continue
+                anchor = section["anchor_s_m"]
+                if anchor <= full_s:
+                    continue
+                ax, ay, _, _ = interpolate_on_polyline(
+                    context.tunnel_vehicle_route_points, anchor
+                )
+                _, opposite = nearest_route_pose(
+                    context.map_loader, plan["route_links"], ax, ay
+                )
+                conflict_s = project_distance_on_polyline(
+                    context.tunnel_vehicle_cleanup_points, opposite["x"], opposite["y"]
+                )
+                npc_eta = (conflict_s - spawn_route_s) / cfg["oncoming_speed_mps"]
+                ego_eta = (anchor - full_s) / v
+                if npc_eta > 0:
+                    options.append((abs(ego_eta - npc_eta), anchor, ego_eta, npc_eta))
+            if not options:
+                self._fail(context, "Oncoming ETA encounter window was missed")
+            delta, anchor, ego_eta, npc_eta = min(options)
+            observation.update(
+                interaction_s_m=anchor,
+                ego_eta_sec=ego_eta,
+                npc_eta_sec=npc_eta,
+                eta_delta_sec=ego_eta - npc_eta,
+            )
+            if delta > cfg["oncoming_eta_tolerance_sec"]:
+                return self._waiting(context, observation, "oncoming_eta_not_aligned")
+            plan["interaction_s_m"] = anchor
+            gap = plan["spawn_s_m"] - full_s
+            speed = cfg["oncoming_speed_mps"]
+        else:
+            stopping = (
+                v * cfg["spawn_reaction_time_sec"]
+                + v * v / (2 * cfg["spawn_deceleration_mps2"])
+                + cfg["spawn_safety_margin_m"]
+            )
+            gap = max(
+                cfg["initial_spawn_gap_m"], cfg["minimum_initial_gap_m"], stopping
+            )
+            target_s = full_s + gap
+            if target_s >= plan["exit_s_m"] - cfg["encounter_exit_margin_m"]:
+                self._fail(
+                    context, "Insufficient tunnel distance for runtime safe spawn gap"
+                )
+            x, y, _, _ = interpolate_on_polyline(
+                context.tunnel_vehicle_route_points, target_s
+            )
+            links = (
+                [plan["route_links"][0]]
+                if behavior == "vehicle_cut_in"
+                else plan["route_links"]
+            )
+            _, pose = nearest_route_pose(context.map_loader, links, x, y)
+            actual_s = project_distance_on_polyline(
+                context.tunnel_vehicle_route_points, pose["x"], pose["y"]
+            )
+            if abs(actual_s - target_s) > cfg["spawn_position_tolerance_m"]:
+                self._fail(context, "No MGeo waypoint at runtime spawn position")
+            gap = actual_s - full_s
+            if behavior == "vehicle_slow":
+                available = plan["exit_s_m"] - cfg["encounter_exit_margin_m"] - full_s
+                speed = min(
+                    cfg["slow_speed_mps"],
+                    v * cfg["slow_ego_speed_ratio"],
+                    v * (1 - gap / available) * 0.85,
+                )
+            else:
+                speed = min(
+                    (
+                        cfg["cut_in_speed_mps"]
+                        if behavior == "vehicle_cut_in"
+                        else cfg["cruise_speed_mps"]
+                    ),
+                    v,
+                )
+            if speed < cfg["minimum_npc_speed_mps"]:
+                return self._waiting(context, observation, "ego_too_slow_for_encounter")
+            region = plan["event_region"]
+            if region:
+                run_in = (
+                    5.0
+                    if behavior == "vehicle_stopped"
+                    else cfg["minimum_event_run_in_m"]
+                )
+                event_start = max(region["start_s_m"], actual_s + run_in)
+                if event_start >= region["end_s_m"]:
+                    self._fail(
+                        context, "Runtime spawn missed safe vehicle event run-in"
+                    )
+                plan["event_region"] = {
+                    **region,
+                    "start_s_m": event_start,
+                    "anchor_s_m": max(region["anchor_s_m"], event_start),
+                }
+            plan.update(spawn_target=pose, spawn_s_m=actual_s)
+        if gap < cfg["minimum_initial_gap_m"]:
+            return self._waiting(context, observation, "insufficient_initial_gap")
+        # Independently scheduled traffic must not spawn on an existing actor.
+        for other in context.scenario_actors:
+            other_state = other.get_actor_state()
+            if other_state is not None:
+                loc = other_state.transform.location
+                if (
+                    math.hypot(pose["x"] - loc.x, pose["y"] - loc.y)
+                    < cfg["minimum_initial_gap_m"]
+                ):
+                    return self._waiting(
+                        context, observation, "existing_traffic_at_spawn"
+                    )
+        plan["spawn_preview_only"] = False
+        plan["speed_mps"] = speed
+        observation.update(
+            spawn_s_m=plan["spawn_s_m"], initial_gap_m=gap, npc_speed_mps=speed
+        )
+        context.tunnel_vehicle_result["spawn_timing"] = observation
+        context.tunnel_vehicle_runtime_timeout = max(
+            cfg["max_run_sec"],
+            (
+                plan["cleanup_route_s_m"]
+                - project_distance_on_polyline(
+                    context.tunnel_vehicle_cleanup_points, pose["x"], pose["y"]
+                )
+            )
+            / speed
+            + 30.0,
+        )
+        self._spawn(context, ego)
+        return True
+
+    def _approach_speed(self, context, sample, ego, gap):
+        plan, result, cfg = (
+            context.tunnel_vehicle_plan,
+            context.tunnel_vehicle_result,
+            context.cfg["tunnel_vehicle_dynamic"],
+        )
+        behavior = plan["behavior"]
+        if behavior == "vehicle_slow":
+            if (
+                0 <= gap <= cfg["encounter_gap_m"]
+                and math.hypot(sample["x"] - ego["x"], sample["y"] - ego["y"])
+                <= cfg["encounter_gap_m"] + cfg["lane_position_tolerance_m"]
+            ):
+                result["encounter_verified"] = True
+                result.setdefault("encounter_observation", dict(sample))
+            target = (
+                plan["speed_mps"]
+                if result["encounter_verified"]
+                else min(
+                    plan["speed_mps"],
+                    max(0.0, ego["speed"] / 3.6) * cfg["slow_ego_speed_ratio"],
+                )
+            )
+        elif behavior == "vehicle_sudden_brake" and context.tunnel_vehicle_phase in (
+            "cruising",
+            "closing_gap",
+        ):
+            cap = (
+                cfg["cruise_speed_mps"]
+                if context.tunnel_vehicle_phase == "cruising"
+                else plan["brake_settings"]["approach_speed_mps"]
+            )
+            ratio = 1.0 if context.tunnel_vehicle_phase == "cruising" else 0.75
+            target = min(cap, max(0.0, ego["speed"] / 3.6) * ratio)
+        else:
+            return
+        if abs(target - context.tunnel_vehicle_command_speed) < 0.2:
+            return
+        a = context.grpc.set_vehicle_speed_limit(
+            context.tunnel_vehicle_actor, target, enabled=True
+        )
+        b = context.grpc.set_vehicle_velocity(context.tunnel_vehicle_actor, target)
+        if not (a and b):
+            self._fail(context, "Runtime approach speed command rejected")
+        context.tunnel_vehicle_command_speed = target
+        result["approach_speed_mps"] = target
+
+    def _cleanup_if_ready(self, context, sample, ego_state):
+        plan, cfg, result = (
+            context.tunnel_vehicle_plan,
+            context.cfg["tunnel_vehicle_dynamic"],
+            context.tunnel_vehicle_result,
+        )
+        if plan["behavior"] == "vehicle_stopped" or not result["interaction_complete"]:
+            return False
+        if (
+            sample["npc_route_s_m"] >= plan["cleanup_route_s_m"]
+            and math.hypot(sample["x"] - ego_state["x"], sample["y"] - ego_state["y"])
+            >= cfg["cleanup_ego_clearance_m"]
+        ):
+            result["cleanup_observation"] = dict(sample)
+            self._remove(context)
+            result["cleanup_reason"] = "outside_tunnel_continuation_and_ego_clearance"
+            self._complete(context, result["cleanup_reason"])
+            return True
+        return False
 
     def update(self, context, elapsed, ego_state, current_s):
         if context.tunnel_vehicle_phase in ("completed", "failed"):
@@ -511,11 +811,14 @@ class TunnelVehicleHandler:
             context.cfg["tunnel_vehicle_dynamic"],
             context.tunnel_vehicle_result,
         )
-        age = self._now(context) - context.tunnel_vehicle_started_at
-        if age > cfg["max_run_sec"]:
-            self._fail(context, "Tunnel vehicle timed out")
         context.tunnel_vehicle_last_ego = dict(ego_state)
         context.tunnel_vehicle_last_ego_s = current_s
+        if context.tunnel_vehicle_actor is None:
+            if not self._runtime_spawn(context, ego_state, current_s):
+                return
+        age = self._now(context) - context.tunnel_vehicle_spawned_at
+        if age > context.tunnel_vehicle_runtime_timeout:
+            self._fail(context, "Tunnel vehicle timed out")
         sample = self._read_state(context)
         x, y, npc_s, speed, link = (
             sample[k] for k in ("x", "y", "npc_s_m", "speed_mps", "link")
@@ -538,24 +841,11 @@ class TunnelVehicleHandler:
                 f"[TunnelVehicle] {context.tunnel_vehicle_phase} actor={sample['actor_id']} speed={speed:.1f}m/s gap={gap:.1f}m travel={result['travelled_m']:.1f}m"
             )
         behavior = plan["behavior"]
+        if not self._check_startup_motion(context, sample):
+            return
+        self._approach_speed(context, sample, ego_state, gap)
         if behavior == "vehicle_stopped":
-            if (
-                speed > plan["brake_settings"]["stopped_speed_threshold_mps"]
-                or math.hypot(
-                    x - context.tunnel_vehicle_spawn_xy[0],
-                    y - context.tunnel_vehicle_spawn_xy[1],
-                )
-                > 1.0
-            ):
-                self._fail(context, "Stopped vehicle moved before Ego passed")
-            if (
-                -gap >= cfg["pass_clearance_m"]
-                and math.hypot(x - ego_state["x"], y - ego_state["y"])
-                >= cfg["pass_clearance_m"]
-            ):
-                result["ego_passed"] = True
-                self._phase(context, "ego_passed", "pass_clearance_verified")
-                self._complete(context, "ego_passed_stopped_vehicle")
+            self._stopped(context, sample, ego_state, gap)
         elif behavior == "vehicle_oncoming":
             if (
                 result["travelled_m"] >= cfg["minimum_observed_travel_m"]
@@ -564,12 +854,126 @@ class TunnelVehicleHandler:
                 >= cfg["pass_clearance_m"]
             ):
                 result["passed"] = True
-                self._phase(context, "passed", "oncoming_pass_clearance_verified")
-                self._complete(context, "oncoming_passed")
+                self._complete_interaction(context, "oncoming_pass_clearance_verified")
+                self._phase(context, "passed", "continuing_to_entrance_side_cleanup")
         elif behavior == "vehicle_sudden_brake":
             self._brake(context, elapsed, ego_state, npc_s, gap, x, y, link, speed)
+            if self._brake_verified(result):
+                self._complete_interaction(context, "brake_stop_hold_resume_verified")
         elif behavior == "vehicle_cut_in":
             self._cut_in(context, sample, gap)
+            if result.get("lane_change_verified"):
+                self._complete_interaction(context, "lane_change_verified")
+        elif (
+            result["travelled_m"] >= cfg["minimum_observed_travel_m"]
+            and sample["npc_route_s_m"] >= plan["cleanup_boundary_route_s_m"]
+        ):
+            if not result["encounter_verified"]:
+                self._fail(context, "Slow vehicle reached exit before Ego encounter")
+            self._complete_interaction(
+                context, "continuous_travel_and_ego_encounter_verified"
+            )
+        self._cleanup_if_ready(context, sample, ego_state)
+
+    def _stopped(self, context, sample, ego_state, gap):
+        plan, result = context.tunnel_vehicle_plan, context.tunnel_vehicle_result
+        settings = plan["brake_settings"]
+        now = self._now(context)
+        if context.tunnel_vehicle_phase == "cruising_to_stop":
+            full_s = sample["npc_s_m"] + context.tunnel_vehicle_route_prefix_s
+            region = plan["event_region"]
+            if full_s > region["end_s_m"]:
+                self._fail(context, "Vehicle missed stationary event region")
+            if full_s < region["anchor_s_m"]:
+                return
+            if not context.grpc.stop_vehicle(context.tunnel_vehicle_actor):
+                self._fail(context, "Stopped vehicle stop command rejected")
+            context.tunnel_vehicle_stop_requested_at = now
+            self._phase(context, "stopping", "selected_event_anchor_reached")
+            return
+        if context.tunnel_vehicle_phase == "stopping":
+            if sample["speed_mps"] <= settings["stopped_speed_threshold_mps"]:
+                full_s = sample["npc_s_m"] + context.tunnel_vehicle_route_prefix_s
+                region = plan["event_region"]
+                if not region["start_s_m"] <= full_s <= region["end_s_m"]:
+                    self._fail(context, "Vehicle stopped outside selected event region")
+                result["stopped_verified"] = True
+                result["stationary_position"] = {k: sample[k] for k in ("x", "y", "z")}
+                self._phase(context, "stopped", "actual_stationary_state_verified")
+            elif (
+                now - context.tunnel_vehicle_stop_requested_at
+                >= settings["stop_confirm_timeout_sec"]
+            ):
+                self._fail(context, "Stopped vehicle failed to stop at event anchor")
+            else:
+                return
+        position = result["stationary_position"]
+        if (
+            sample["speed_mps"] > settings["stopped_speed_threshold_mps"]
+            or math.hypot(sample["x"] - position["x"], sample["y"] - position["y"])
+            > 1.0
+        ):
+            self._fail(context, "Stopped vehicle moved after stationary verification")
+        clearance = context.cfg["tunnel_vehicle_dynamic"]["pass_clearance_m"]
+        if (
+            -gap >= clearance
+            and math.hypot(sample["x"] - ego_state["x"], sample["y"] - ego_state["y"])
+            >= clearance
+        ):
+            result["ego_passed"] = True
+            self._complete_interaction(context, "ego_passed_stopped_vehicle")
+            self._phase(context, "parked_after_pass", "actor_retained_until_teardown")
+
+    @staticmethod
+    def _brake_verified(result):
+        return all(
+            result["brake"].get(k)
+            for k in (
+                "brake_commanded",
+                "stop_confirmed",
+                "ego_reaction_detected",
+                "resumed_after_event",
+                "resume_motion_verified",
+            )
+        )
+
+    def _check_startup_motion(self, context, sample):
+        result = context.tunnel_vehicle_result
+        if result["startup_motion_verified"]:
+            return True
+        cfg = context.cfg["tunnel_vehicle_dynamic"]
+        now = self._now(context)
+        if context.tunnel_vehicle_motion_monitor_started is None:
+            context.tunnel_vehicle_motion_monitor_started = now
+        spawn = result["actual_spawn"]
+        displacement = math.hypot(sample["x"] - spawn["x"], sample["y"] - spawn["y"])
+        result["startup_displacement_m"] = displacement
+        if (
+            displacement >= cfg["motion_startup_minimum_travel_m"]
+            or sample["speed_mps"] > 0.5
+        ):
+            result["startup_motion_verified"] = True
+            result["observed_moving"] = True
+            result["startup_observation"] = dict(sample)
+            self._phase(
+                context,
+                context.tunnel_vehicle_motion_phase,
+                "actual_startup_motion_verified",
+            )
+            return True
+        if (
+            now - context.tunnel_vehicle_motion_monitor_started
+            >= cfg["motion_startup_timeout_sec"]
+            or time.monotonic() - context.tunnel_vehicle_startup_wall_at
+            >= cfg["motion_startup_timeout_sec"]
+        ):
+            self._fail(
+                context,
+                "Tunnel vehicle startup motion not observed: "
+                f"speed={sample['speed_mps']:.2f}m/s displacement={displacement:.2f}m "
+                f"commands={result['motion_commands']}",
+            )
+        return False
 
     def _brake(self, context, elapsed, ego_state, npc_s, gap, x, y, link, speed):
         plan = context.tunnel_vehicle_plan
@@ -599,10 +1003,19 @@ class TunnelVehicleHandler:
                     self._phase(context, "braking", "safe_event_region_and_gap")
                 elif proxy.tunnel_event_phase == "cruising":
                     a = context.grpc.set_vehicle_speed_limit(
-                        proxy.tunnel_npc, cfg["approach_speed_mps"], enabled=True
+                        proxy.tunnel_npc,
+                        min(
+                            cfg["approach_speed_mps"],
+                            max(0.0, ego_state["speed"] / 3.6) * 0.75,
+                        ),
+                        enabled=True,
                     )
                     b = context.grpc.set_vehicle_velocity(
-                        proxy.tunnel_npc, cfg["approach_speed_mps"]
+                        proxy.tunnel_npc,
+                        min(
+                            cfg["approach_speed_mps"],
+                            max(0.0, ego_state["speed"] / 3.6) * 0.75,
+                        ),
                     )
                     if not (a or b):
                         self._fail(context, "Tunnel closing-gap commands rejected")
@@ -613,13 +1026,32 @@ class TunnelVehicleHandler:
                 proxy, elapsed, ego_state, npc_s, gap, x, y, link, speed
             )
             if proxy.tunnel_event_phase == "departing":
+                context.tunnel_vehicle_resume_xy = (x, y)
+                context.tunnel_vehicle_resume_at = self._now(context)
                 self._phase(
                     context, "departing", proxy.tunnel_event_result["resume_reason"]
                 )
             elif proxy.tunnel_event_result.get("stop_confirmed"):
                 self._phase(context, "stopped", "stop_confirmed")
-        elif proxy.tunnel_event_phase == "departing" and speed > 0.5:
-            proxy.tunnel_event_result["resume_motion_verified"] = True
+        elif proxy.tunnel_event_phase == "departing":
+            if not proxy.tunnel_event_result.get("resume_motion_verified"):
+                displacement = math.dist((x, y), context.tunnel_vehicle_resume_xy)
+                proxy.tunnel_event_result["resume_displacement_m"] = displacement
+                if (
+                    speed > 0.5
+                    or displacement
+                    >= context.cfg["tunnel_vehicle_dynamic"][
+                        "motion_startup_minimum_travel_m"
+                    ]
+                ):
+                    proxy.tunnel_event_result["resume_motion_verified"] = True
+                elif (
+                    self._now(context) - context.tunnel_vehicle_resume_at
+                    >= context.cfg["tunnel_vehicle_dynamic"][
+                        "motion_startup_timeout_sec"
+                    ]
+                ):
+                    self._fail(context, "Tunnel vehicle resumed movement not observed")
         self._save(context)
 
     def _cut_in(self, context, sample, gap):
@@ -685,79 +1117,70 @@ class TunnelVehicleHandler:
                 self._fail(context, "Cut-in lateral motion/link transition timed out")
 
     def finish_at_ego_goal(self, context):
-        """Ego is stopped by the runner; let this same NPC finish its route."""
+        """Keep the same moving NPC alive through its outside-tunnel continuation."""
         if context.tunnel_vehicle_phase == "completed":
             return
         result, plan = context.tunnel_vehicle_result, context.tunnel_vehicle_plan
         result["ego_goal_reached"] = True
-        if plan["behavior"] in ("vehicle_stopped", "vehicle_oncoming"):
-            return self.finish(context)
-        if not result["observed_moving"]:
-            return self.finish(context)
-        if plan["behavior"] == "vehicle_sudden_brake" and not all(
-            result["brake"].get(k)
-            for k in (
-                "brake_commanded",
-                "stop_confirmed",
-                "ego_reaction_detected",
-                "resumed_after_event",
-                "resume_motion_verified",
+        if not result["spawned"]:
+            self._fail(
+                context, "Ego goal reached before runtime traffic spawn/interaction"
             )
+        if plan["behavior"] == "vehicle_stopped":
+            return self.finish(context)
+        if (
+            plan["behavior"] == "vehicle_sudden_brake"
+            and not self._brake_verified(result)
+        ) or (
+            plan["behavior"] == "vehicle_cut_in"
+            and not result.get("lane_change_verified")
         ):
             return self.finish(context)
-        if plan["behavior"] == "vehicle_cut_in" and not result.get(
-            "lane_change_verified"
-        ):
-            return self.finish(context)
-        self._save(context)
-        deadline = (
-            time.monotonic() + context.cfg["tunnel_vehicle_dynamic"]["max_run_sec"]
-        )
+        deadline = time.monotonic() + context.tunnel_vehicle_runtime_timeout
         while context.tunnel_vehicle_phase not in ("completed", "failed"):
-            sample = self._read_state(context)
-            if (
-                sample["npc_s_m"] + context.tunnel_vehicle_route_prefix_s
-                >= plan["exit_s_m"] - 2.0
-            ):
-                return self.finish(context)
             if time.monotonic() > deadline:
-                self._fail(context, "Tunnel vehicle exit timed out after Ego goal")
+                self._fail(
+                    context,
+                    "Tunnel vehicle continuation cleanup timed out after Ego goal",
+                )
             self.update(
                 context,
                 self._now(context) - context.tunnel_vehicle_started_at,
                 context.tunnel_vehicle_last_ego,
                 context.tunnel_vehicle_last_ego_s,
             )
-            time.sleep(float(context.cfg.get("check_period_sec", 0.05)))
+            if context.tunnel_vehicle_phase != "completed":
+                time.sleep(float(context.cfg.get("check_period_sec", 0.05)))
 
     def finish(self, context):
         if context.tunnel_vehicle_phase == "completed":
             return
         try:
-            # Take a fresh observation; never infer arrival from a command ACK.
             result, plan = context.tunnel_vehicle_result, context.tunnel_vehicle_plan
             sample = self._read_state(context)
-            cfg = context.cfg["tunnel_vehicle_dynamic"]
-            if plan["behavior"] in ("vehicle_stopped", "vehicle_oncoming"):
-                self._fail(context, "Route ended before vehicle pass was verified")
-            if (
-                not result["observed_moving"]
-                or result["travelled_m"] < cfg["minimum_observed_travel_m"]
-                or sample["npc_s_m"] + context.tunnel_vehicle_route_prefix_s
-                < plan["exit_s_m"] - 2.0
-            ):
-                self._fail(
-                    context, "Route ended before vehicle exit/travel was verified"
-                )
-            if plan["behavior"] == "vehicle_sudden_brake" and not all(
-                result["brake"].get(k)
-                for k in (
-                    "brake_commanded",
-                    "stop_confirmed",
-                    "ego_reaction_detected",
-                    "resumed_after_event",
-                    "resume_motion_verified",
-                )
+            if plan["behavior"] == "vehicle_stopped":
+                if (
+                    not result.get("stopped_verified")
+                    or not result["interaction_complete"]
+                ):
+                    self._fail(
+                        context,
+                        "Route ended before stationary vehicle/pass was verified",
+                    )
+                position = result["stationary_position"]
+                if (
+                    sample["speed_mps"]
+                    > plan["brake_settings"]["stopped_speed_threshold_mps"]
+                    or math.hypot(
+                        sample["x"] - position["x"], sample["y"] - position["y"]
+                    )
+                    > 1.0
+                ):
+                    self._fail(context, "Stopped vehicle moved before teardown")
+                self._complete(context, "stationary_vehicle_retained_until_teardown")
+                return
+            if plan["behavior"] == "vehicle_sudden_brake" and not self._brake_verified(
+                result
             ):
                 self._fail(
                     context, "Route ended before complete brake/stop/resume interaction"
@@ -766,11 +1189,123 @@ class TunnelVehicleHandler:
                 "lane_change_verified"
             ):
                 self._fail(context, "Route ended before actual lane change")
-            self._complete(context, "ego_goal_and_npc_exit_verified")
+            if not self._cleanup_if_ready(
+                context, sample, context.tunnel_vehicle_last_ego
+            ):
+                self._fail(
+                    context,
+                    "Route ended before vehicle exit/travel and outside-tunnel cleanup were verified",
+                )
         except BaseException as error:
             if context.tunnel_vehicle_phase != "failed":
                 self.record_interruption(context, error)
             raise
+
+
+class _TrafficContext:
+    """Isolate each actor's lifecycle while sharing the world, clock and ownership."""
+
+    def __init__(self, parent, behavior, index):
+        self._parent = parent
+        vehicle_cfg = {
+            **parent.cfg["tunnel_vehicle_dynamic"],
+            "behavior": behavior,
+            "random_behavior": False,
+            "additional_behaviors": [],
+        }
+        self.cfg = {**parent.cfg, "tunnel_vehicle_dynamic": vehicle_cfg}
+        self.run_instance_id = f"{parent.run_instance_id}_traffic_{index}"
+        self._spawn_highway_vehicle = (
+            lambda *args, **kw: vehicle_common._spawn_highway_vehicle(self, *args, **kw)
+        )
+
+    def __getattr__(self, name):
+        return getattr(self._parent, name)
+
+
+class TunnelVehicleTraffic:
+    """Independent actors may coexist; no actor is replaced at section boundaries."""
+
+    def __init__(self, entries):
+        self.entries = entries
+
+    def _call(self, name, *args):
+        try:
+            for handler, context in self.entries:
+                getattr(handler, name)(context, *args)
+        except BaseException as error:
+            self.record_interruption(None, error)
+            raise
+
+    def arm(self, context):
+        self._call("arm")
+
+    def update(self, context, elapsed, ego, current_s):
+        self._call("update", elapsed, ego, current_s)
+
+    def finish_at_ego_goal(self, context):
+        # Continue observing all live traffic while any one actor finishes.
+        # Serial per-actor waits would miss another actor's stop/resume event.
+        try:
+            for handler, owner in self.entries:
+                result, plan = owner.tunnel_vehicle_result, owner.tunnel_vehicle_plan
+                result["ego_goal_reached"] = True
+                if owner.tunnel_vehicle_phase == "completed":
+                    continue
+                if not result["spawned"]:
+                    handler._fail(
+                        owner,
+                        "Ego goal reached before runtime traffic spawn/interaction",
+                    )
+                if (
+                    plan["behavior"] == "vehicle_stopped"
+                    or (
+                        plan["behavior"] == "vehicle_sudden_brake"
+                        and not handler._brake_verified(result)
+                    )
+                    or (
+                        plan["behavior"] == "vehicle_cut_in"
+                        and not result.get("lane_change_verified")
+                    )
+                ):
+                    handler.finish(owner)
+            deadline = time.monotonic() + max(
+                owner.tunnel_vehicle_runtime_timeout for _, owner in self.entries
+            )
+            while any(
+                owner.tunnel_vehicle_phase != "completed" for _, owner in self.entries
+            ):
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("Tunnel traffic continuation cleanup timed out")
+                for handler, owner in self.entries:
+                    handler.update(
+                        owner,
+                        handler._now(owner) - owner.tunnel_vehicle_started_at,
+                        owner.tunnel_vehicle_last_ego,
+                        owner.tunnel_vehicle_last_ego_s,
+                    )
+                if any(
+                    owner.tunnel_vehicle_phase != "completed"
+                    for _, owner in self.entries
+                ):
+                    time.sleep(float(context.cfg.get("check_period_sec", 0.05)))
+        except BaseException as error:
+            self.record_interruption(context, error)
+            raise
+
+    def record_interruption(self, context, error):
+        for handler, owner in self.entries:
+            handler.record_interruption(owner, error)
+
+    def teardown(self, context):
+        first_error = None
+        for handler, owner in self.entries:
+            try:
+                handler.teardown(owner)
+            except Exception as error:
+                first_error = first_error or error
+        if first_error is not None:
+            raise first_error
 
 
 def prepare_tunnel_vehicle(context):
@@ -787,5 +1322,16 @@ def prepare_tunnel_vehicle(context):
         raise ValueError("tunnel_vehicle_dynamic cannot run with clean_road_mode")
     handler = TunnelVehicleHandler()
     handler.validate(context)
-    context.tunnel_vehicle_handler = handler
+    extra = context.cfg["tunnel_vehicle_dynamic"].get("additional_behaviors", [])
+    if not isinstance(extra, list) or any(b not in BEHAVIORS for b in extra):
+        raise ValueError(
+            "additional_behaviors must be a list of supported behavior names"
+        )
+    entries = [(handler, context)]
+    for index, behavior in enumerate(extra, 1):
+        owner = _TrafficContext(context, behavior, index)
+        additional = TunnelVehicleHandler()
+        additional.validate(owner)
+        entries.append((additional, owner))
+    context.tunnel_vehicle_handler = TunnelVehicleTraffic(entries) if extra else handler
     return True

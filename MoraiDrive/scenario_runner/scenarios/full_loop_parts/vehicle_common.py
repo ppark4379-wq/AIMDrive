@@ -45,12 +45,15 @@ def _spawn_highway_vehicle(
     recover_ambiguous=False,
     configure_ai=True,
     on_spawn=None,
+    spawn_velocity=None,
+    command_report=None,
+    unpause=None,
 ):
     actor = self.grpc.spawn_vehicle(
         transform=transform,
         model_name=self.highway_fixed_model,
         label=label,
-        velocity=0.0,
+        velocity=0.0 if spawn_velocity is None else float(spawn_velocity),
         multi_ego=False,
         request_id=request_id,
         recover_ambiguous=recover_ambiguous,
@@ -73,12 +76,22 @@ def _spawn_highway_vehicle(
             raise RuntimeError("Tunnel vehicle route assignment rejected")
         actor.destroy()
         return None
-    if configure_ai:
-        actor.set_pause(False)
+    pause_ok = None
+    ai_ok = None
+    # Preserve legacy callers; tunnel explicitly unpauses independently of SetAI.
+    if unpause is True or (unpause is None and configure_ai):
+        pause_ok = bool(actor.set_pause(False))
     limit_ok = self.grpc.set_vehicle_speed_limit(actor, speed, enabled=True)
     if configure_ai:
-        self.grpc.set_vehicle_ai(actor, True)
+        ai_ok = bool(self.grpc.set_vehicle_ai(actor, True))
     velocity_ok = self.grpc.set_vehicle_velocity(actor, speed)
+    if command_report is not None:
+        command_report.update({
+            "spawn_velocity": 0.0 if spawn_velocity is None else float(spawn_velocity),
+            "route_accepted": bool(ok), "unpause_accepted": pause_ok,
+            "ai_enable_accepted": ai_ok, "speed_limit_accepted": bool(limit_ok),
+            "velocity_accepted": bool(velocity_ok),
+        })
     if on_spawn is not None and not (limit_ok and velocity_ok):
         raise RuntimeError("Tunnel vehicle speed limit or velocity rejected")
     if on_spawn is None:

@@ -1,4 +1,4 @@
-zone: full_loop
+﻿zone: full_loop
 
 scenarios:
   full_loop:
@@ -504,6 +504,19 @@ scenarios:
       behaviors: [vehicle_slow, vehicle_sudden_brake, vehicle_stopped, vehicle_oncoming, vehicle_cut_in]
       random_model: true
       # Uses available npc_vehicle_models; unavailable configured names fail.
+      # No actor at setup. Activate on actual Ego motion, or progress plus motion.
+      minimum_spawn_ego_speed_mps: 2.0
+      minimum_spawn_progress_m: 3.0
+      minimum_npc_speed_mps: 0.6
+      slow_ego_speed_ratio: 0.6
+      encounter_gap_m: 20.0
+      encounter_exit_margin_m: 15.0
+      spawn_reaction_time_sec: 1.0
+      spawn_deceleration_mps2: 3.5
+      spawn_safety_margin_m: 3.0
+      oncoming_eta_tolerance_sec: 1.5
+      # Additional independent behaviors may coexist with the primary actor.
+      additional_behaviors: []
       initial_spawn_gap_m: 40.0
       minimum_initial_gap_m: 30.0
       slow_speed_mps: 4.0
@@ -520,6 +533,10 @@ scenarios:
       maximum_step_speed_mps: 40.0
       step_slack_m: 2.0
       cut_in_timeout_sec: 10.0
+      cleanup_after_boundary_m: 40.0
+      cleanup_ego_clearance_m: 30.0
+      motion_startup_timeout_sec: 2.0
+      motion_startup_minimum_travel_m: 0.5
       # Inherits the legacy stop/reaction/hold/resume settings below.
       brake_overrides: {}
 

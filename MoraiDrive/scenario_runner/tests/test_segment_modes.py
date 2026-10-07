@@ -148,7 +148,7 @@ class MissionModesTest(unittest.TestCase):
                 actor.destroy.return_value = True
                 actor.get_actor_state.return_value = SimpleNamespace(
                     actor_info=SimpleNamespace(id=SimpleNamespace(value=actor.get_id())),
-                    transform=kwargs["transform"], velocity=SimpleNamespace(x=0.,y=0.,z=0.),
+                    transform=kwargs["transform"], velocity=SimpleNamespace(x=float(kwargs["velocity"]),y=0.,z=0.),
                     vehicle_state=SimpleNamespace(current_link_info=SimpleNamespace(id=SimpleNamespace(value=pose["link"]))))
                 return actor
             scenario.grpc.spawn_vehicle.side_effect = spawn_vehicle
@@ -371,7 +371,8 @@ class MissionModesTest(unittest.TestCase):
         self.setup_scenario(scenario)
         self.assertEqual(scenario.mission_mode.start.index, 3768)
         self.assertEqual(scenario.mission_mode.end.index, 4045)
-        self.assertEqual(scenario.grpc.spawn_vehicle.call_count, 1)
+        scenario.grpc.spawn_vehicle.assert_not_called()
+        self.assertEqual(scenario.tunnel_vehicle_phase, "waiting_for_ego")
         self.assertEqual(scenario.tunnel_vehicle_plan["behavior"], "vehicle_slow")
         self.assertIsNone(scenario.tunnel_dynamic_handler)
         self.assertEqual(scenario.tunnel_event_phase, "disabled")
@@ -381,6 +382,18 @@ class MissionModesTest(unittest.TestCase):
         start.assert_called_once()
         scenario.grpc.set_ego_control_mode_auto.assert_called_once()
         self.assertEqual(scenario.expert_controller.route_points[:len(scenario.route_points)], scenario.route_points)
+
+    def test_tunnel_vehicle_waits_while_expert_starts_and_ego_is_stationary(self):
+        scenario = self.make_scenario("full_loop_tunnel_vehicle")
+        scenario.cfg["sync_runtime"]["enabled"] = False
+        self.setup_scenario(scenario)
+        scenario.configure_drive_with_retries.assert_called_once()
+        for elapsed in (0, 60, 300):
+            boundary = scenario.mission_mode.start
+            scenario.tunnel_vehicle_handler.update(scenario, elapsed,
+                {"x": boundary.xyz[0], "y": boundary.xyz[1], "speed": 0.0}, 0.0)
+        scenario.grpc.spawn_vehicle.assert_not_called()
+        self.assertEqual(scenario.tunnel_vehicle_phase, "waiting_for_ego")
 
     def test_tunnel_vehicle_unknown_behavior_fails_before_world_start(self):
         scenario = self.make_scenario("full_loop_tunnel_vehicle")
@@ -399,7 +412,7 @@ class MissionModesTest(unittest.TestCase):
                 pose = plan["spawn_target"]
                 linked = scenario.map_loader.get_link_points(pose["link"])[pose["waypoint"]]
                 self.assertEqual((pose["x"], pose["y"], pose["z"]), tuple(linked[:3]))
-                self.assertEqual(scenario.grpc.spawn_vehicle.call_count, 1)
+                scenario.grpc.spawn_vehicle.assert_not_called()
                 self.assertFalse(scenario.cfg["tunnel_sudden_brake"]["enabled"])
 
     def test_each_setup_spawns_only_selected_zone(self):
@@ -409,7 +422,7 @@ class MissionModesTest(unittest.TestCase):
                 self.setup_scenario(scenario)
                 grpc = scenario.grpc
                 self.assertEqual(grpc.spawn_obstacle.call_count, int(mode.zones.static))
-                self.assertEqual(grpc.spawn_vehicle.call_count, 1 if name == "full_loop_tunnel_vehicle" else 0)
+                self.assertEqual(grpc.spawn_vehicle.call_count, 0)
                 self.assertEqual(
                     scenario.roundabout_lifecycle_state,
                     "armed" if mode.zones.roundabout else "disabled",
@@ -422,7 +435,7 @@ class MissionModesTest(unittest.TestCase):
                     self.assertEqual(scenario.tunnel_dynamic_phase, "waiting")
                     self.assertTrue(scenario.cfg["tunnel_dynamic"]["enabled"])
                 if name == "full_loop_tunnel_vehicle":
-                    self.assertEqual(scenario.tunnel_vehicle_phase, "moving")
+                    self.assertEqual(scenario.tunnel_vehicle_phase, "waiting_for_ego")
                     self.assertIsNone(scenario.tunnel_dynamic_handler)
                 self.assertIn(scenario.scenario_hour, [11, 13, 15])
                 scenario.configure_drive_with_retries.assert_called_once()

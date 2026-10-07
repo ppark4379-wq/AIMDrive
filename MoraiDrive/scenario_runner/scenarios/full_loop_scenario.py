@@ -400,7 +400,11 @@ class FullLoopScenario(FullLoopDriveBase):
             base_cleanup_ok = True
         finally:
             try:
-                self.cleanup_spawned_actors()
+                try:
+                    if vehicle_handler is not None and hasattr(self, "tunnel_vehicle_result"):
+                        vehicle_handler.teardown(self)
+                finally:
+                    self.cleanup_spawned_actors()
             except BaseException as error:
                 if getattr(self, "dynamic_obstacle_events", []):
                     self.dynamic_validation["cleanup_verified"] = False

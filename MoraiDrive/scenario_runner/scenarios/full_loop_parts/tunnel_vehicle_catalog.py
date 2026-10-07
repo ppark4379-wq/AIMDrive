@@ -1,6 +1,8 @@
 """Whole-tunnel vehicle plans constrained by actual MGeo topology."""
 
 import math
+from types import SimpleNamespace
+from .highway import _route_geometry
 from .tunnel_dynamic_catalog import _finite, tunnel_section_bounds
 from ...utils.transform_utils import (
     interpolate_on_polyline,
@@ -179,8 +181,8 @@ def build_vehicle_plan(
         and s["anchor_s_m"] - entry_s >= minimum
         and exit_s - s["anchor_s_m"] >= cfg["pass_clearance_m"]
         and (
-            behavior == "vehicle_stopped"
-            or s["anchor_s_m"] - entry_s - gap >= cfg["minimum_event_run_in_m"]
+            s["anchor_s_m"] - entry_s - gap
+            >= (5.0 if behavior == "vehicle_stopped" else cfg["minimum_event_run_in_m"])
         )
     ]
     if event and (
@@ -197,19 +199,14 @@ def build_vehicle_plan(
     speeds = {
         "vehicle_slow": "slow_speed_mps",
         "vehicle_sudden_brake": "cruise_speed_mps",
+        "vehicle_stopped": "cruise_speed_mps",
         "vehicle_oncoming": "oncoming_speed_mps",
         "vehicle_cut_in": "cut_in_speed_mps",
     }
-    speed = (
-        0.0
-        if behavior == "vehicle_stopped"
-        else _finite(cfg[speeds[behavior]], speeds[behavior])
-    )
-    if behavior != "vehicle_stopped" and speed <= 0:
+    speed = _finite(cfg[speeds[behavior]], speeds[behavior])
+    if speed <= 0:
         raise ValueError("Vehicle moving speed must be positive")
-    if behavior == "vehicle_stopped":
-        spawn_s = region["anchor_s_m"]
-    elif behavior == "vehicle_oncoming":
+    if behavior == "vehicle_oncoming":
         links = list(zone.get("oncoming_route_links") or [])
         if not links:
             raise UnsupportedVehicleTopology(
@@ -241,7 +238,30 @@ def build_vehicle_plan(
         or abs(actual_s - spawn_s) > cfg["spawn_position_tolerance_m"]
     ):
         raise ValueError("MGeo vehicle spawn cannot provide the planned initial gap")
+    # Follow the NPC's own connected route beyond the Ego segment boundary.
+    cleanup_links = forward if behavior == "vehicle_cut_in" else links
+    route_points, _, route_length = _route_geometry(
+        SimpleNamespace(map_loader=loader), cleanup_links
+    )
+    boundary_s = entry_s if behavior == "vehicle_oncoming" else exit_s
+    bx, by, _, _ = interpolate_on_polyline(points, boundary_s)
+    boundary_route_s = project_distance_on_polyline(route_points, bx, by)
+    cleanup_route_s = boundary_route_s + _finite(
+        cfg["cleanup_after_boundary_m"], "cleanup_after_boundary_m"
+    )
+    if cleanup_route_s >= route_length:
+        raise ValueError("Vehicle route has insufficient continuation for cleanup")
+    cx, cy, cz, _ = interpolate_on_polyline(route_points, cleanup_route_s)
     return {
+        "cleanup_route_links": cleanup_links,
+        "cleanup_boundary_route_s_m": boundary_route_s,
+        "cleanup_route_s_m": cleanup_route_s,
+        "cleanup_xyz": {"x": cx, "y": cy, "z": cz},
+        "cleanup_policy": (
+            "scenario_teardown"
+            if behavior == "vehicle_stopped"
+            else "outside_tunnel_and_ego_clearance"
+        ),
         "behavior": behavior,
         "event_section": chosen,
         "safe_event_sections": safe,
@@ -249,13 +269,15 @@ def build_vehicle_plan(
         "sections": sections,
         "entry_s_m": entry_s,
         "exit_s_m": exit_s,
+        "spawn_policy": "runtime_ego_gap_or_oncoming_eta",
+        "spawn_preview_only": True,
         "spawn_s_m": actual_s,
         "spawn_target": pose,
         "route_links": links,
         "target_route_links": forward,
         "speed_mps": speed,
         "direction_evidence": evidence,
-        "lifecycle": "one_actor_until_interaction_complete",
+        "lifecycle": "each_actor_through_continuation_or_teardown",
     }
 
 
