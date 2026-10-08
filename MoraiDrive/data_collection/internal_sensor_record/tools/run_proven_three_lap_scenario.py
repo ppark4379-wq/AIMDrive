@@ -25,6 +25,8 @@ from async_capture.journal import write_json, digest
 from async_capture.sim_mode import require_free_running_mode
 from process_guard import process_lock
 from python_environment import build_analysis_environment, probe_analysis_environment
+from scenario_collection import (configure_collection_scenario,
+    tunnel_collection_evidence, collection_tunnel_phase)
 from ssd_storage import SSD_ROOT, require_ssd
 from scenario_runner.main_runner import (
     PACKAGE_ROOT as SCENARIO_PACKAGE_ROOT,
@@ -88,6 +90,7 @@ def require_prepared_output_root(output):
 def software_inventory(expert_root):
     files = [
         Path(__file__).resolve(),
+        ROOT / 'scenario_collection.py',
         ROOT / 'tools/collect_async_raw_proven.py',
         ROOT / 'async_capture/rosbag_recording.py',
         ROOT / 'tools/exec_owned_rosbag.py',
@@ -396,6 +399,7 @@ class RawScenario(FullLoopScenario):
                          )
                          if self.cfg.get('static_obstacle_preset') else None
                      ),
+                     tunnel_mission=tunnel_collection_evidence(self),
                      training_visible=False, object_geometry_verified=False)
         write_json(self.output / 'episode.json', setup)
         self.capture_log = (self.output / 'capture.log').open('x')
@@ -475,7 +479,7 @@ class RawScenario(FullLoopScenario):
             _, cte = self.project_on_route_near_progress(ego_state['x'], ego_state['y'], current_s)
             self.event('progress', elapsed_seconds=elapsed, ego=ego_state, route_s=current_s,
                        remaining_s=remaining_s, cross_track_error_m=cte,
-                       dynamic_phase=self.dynamic_obstacle_phase, tunnel_phase=self.tunnel_event_phase,
+                       dynamic_phase=self.dynamic_obstacle_phase, tunnel_phase=collection_tunnel_phase(self),
                        highway_active=self.highway_spawn_points_active,
                        roundabout_phase=getattr(self, 'nearby_roundabout_state', 'unmanaged'),
                        traffic_wait_light=(self.traffic_wait_state['stop_key'][0]
@@ -584,6 +588,9 @@ class RawScenario(FullLoopScenario):
             self.outcome['cleanup_warnings']=warnings
         if errors:
             self.outcome.update(status='failed', cleanup_errors=errors)
+        tunnel_evidence = tunnel_collection_evidence(self)
+        if tunnel_evidence is not None:
+            self.outcome['tunnel_mission'] = tunnel_evidence
         self.event('episode_finished', **self.outcome)
         write_json(self.output / 'outcome.json', self.outcome)
 
@@ -722,6 +729,7 @@ def main():
         cfg['forced_time_hour'] = a.scenario_hour
     if a.scenario in MISSION_MODES:
         cfg['mission_mode'] = a.scenario
+    configure_collection_scenario(cfg, a.scenario)
     if a.static_preset:
         cfg['static_obstacle_preset'] = a.static_preset
     scenario_type = collection_scenario_class(a.scenario)

@@ -284,3 +284,26 @@ NAS 전송 없이 로컬 통합 dataset까지만 만들려면 03 명령에 --no-
 `route_source_resolution`? ?????. ??? ?? ?? ???? ???? ????.
 ??? ?? ???? ?? ?? ??? ???? ??? ????,
 `--rebuild-route-review`? ?? ?? ???? ??? ? ?? ?????.
+
+## 터널 동적 장애물 수집
+
+기존 01번 preflight 후 같은 02번 스크립트에서 터널 모드를 선택한다.
+각 회차는 CP14에서 시작해 CP15까지 Expert로 주행하고 새 seed로 실행한다.
+
+```bash
+cd ~/AIMDrive/MoraiDrive
+# 차량: 느린 차량 / 급정지 / 대향 차량 중 하나와 차량 모델 랜덤 선택
+./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_01 --scenario full_loop_tunnel_vehicle
+# 보행자: 4구간의 행동 조합과 보행자 모델 랜덤 선택
+./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_pedestrian --scenario full_loop_tunnel_dynamic
+```
+
+`--scenario` 생략 시 기존 `full_loop`를 실행한다. 차량 끼어들기는 기본 랜덤
+풀에서 제외된다. 보행자 조합은 기존 `--tunnel-random-mix`와 같은 trial 정책으로
+실행하며 후보의 승인 상태를 바꾸지 않는다. 각 episode의 `episode.json`과
+`outcome.json`에 `tunnel_mission` 계획·모델·seed·실행 결과를 기록한다.
+NPC lifecycle까지 완료되지 않은 회차는 후속 검증에서 성공으로 인정하지 않는다.
+
+수집 중 저장 경로는 `<storage_root>/dataset/.collecting/tunnel_vehicle/campaign_01`
+(보행자는 `tunnel_dynamic`)이다. 기존 03번 검증 후 최종 `dataset/<터널_모드>/<campaign>`
+폴더로 이동하며 04번 NAS 업로드도 같은 터널 폴더 이름을 사용한다.

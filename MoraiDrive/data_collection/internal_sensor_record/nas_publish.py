@@ -25,6 +25,8 @@ SCENARIO_FOLDERS = {
     "full_loop_roundabout_speed_random": "roundabout_speed_random",
     "full_loop_roundabout_brake": "roundabout_brake",
     "full_loop_highway": "highway",
+    "full_loop_tunnel_dynamic": "tunnel_dynamic",
+    "full_loop_tunnel_vehicle": "tunnel_vehicle",
     # Reserved for the dedicated mode when the Scenario Runner adds it.
     "full_loop_traffic_light": "traffic_light",
 }

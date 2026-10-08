@@ -212,3 +212,26 @@ manifest와 검증 경로만 상대경로로 바꿀 수 있다. 이 작업은 �
 [default3d v2](evidence/object_geometry_registry_default3d_v2/README.md)가 현재 V5 recovery 기본값이다. 보행자·동물·자전거 계열 29종과 NPC 차량 36종을 실제 MORAI 다방향/이동 후 자세 촬영으로 검증하고, 정적 unit 36종을 보존했다. 원본 GT를 유지하며 중심 XYZ·크기와 full actor RPY를 보정 결과에 전달한다. 시간 보간도 actor pivot/RPY를 보존한다.
 
 이 승인은 기본 스케일의 모델 형상 범위이며 병진 이동 중 센서 시간 정합 승인은 별도다. 보행자 속도 파라미터 2.5/3.0m/s를 검증했다. 기존 sealed timeline/manifest는 자동으로 바뀌지 않는다. full pose가 없는 과거 timeline의 기울어진 동적 객체는 새 timeline 버전으로 다시 생성·검증해야 한다. [최종 결과](evidence/object_geometry_registry_default3d_v2/completion.json), [모델별 목록](evidence/object_geometry_registry_default3d_v2/dynamic65.csv).
+
+## 터널 동적 장애물 수집
+
+기존 01번 preflight 후 같은 02번 스크립트에서 터널 모드를 선택한다.
+각 회차는 CP14에서 시작해 CP15까지 Expert로 주행하고 새 seed로 실행한다.
+
+```bash
+cd ~/AIMDrive/MoraiDrive
+# 차량: 느린 차량 / 급정지 / 대향 차량 중 하나와 차량 모델 랜덤 선택
+./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_01 --scenario full_loop_tunnel_vehicle
+# 보행자: 4구간의 행동 조합과 보행자 모델 랜덤 선택
+./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_pedestrian --scenario full_loop_tunnel_dynamic
+```
+
+`--scenario` 생략 시 기존 `full_loop`를 실행한다. 차량 끼어들기는 기본 랜덤
+풀에서 제외된다. 보행자 조합은 기존 `--tunnel-random-mix`와 같은 trial 정책으로
+실행하며 후보의 승인 상태를 바꾸지 않는다. 각 episode의 `episode.json`과
+`outcome.json`에 `tunnel_mission` 계획·모델·seed·실행 결과를 기록한다.
+NPC lifecycle까지 완료되지 않은 회차는 후속 검증에서 성공으로 인정하지 않는다.
+
+수집 중 저장 경로는 `<storage_root>/dataset/.collecting/tunnel_vehicle/campaign_01`
+(보행자는 `tunnel_dynamic`)이다. 기존 03번 검증 후 최종 `dataset/<터널_모드>/<campaign>`
+폴더로 이동하며 04번 NAS 업로드도 같은 터널 폴더 이름을 사용한다.

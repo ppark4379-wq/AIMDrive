@@ -192,7 +192,9 @@ def zone_observation_checks(
         )
 
     highway_observed = highway_samples > 0 if zones["highway"] else highway_samples == 0
-    if zones["tunnel"]:
+    if scenario_name in ("full_loop_tunnel_dynamic", "full_loop_tunnel_vehicle"):
+        tunnel_observed = "completed" in tunnel_set
+    elif zones["tunnel"]:
         tunnel_observed = bool(tunnel_set - {"disabled"})
     else:
         tunnel_observed = bool(tunnel_set) and tunnel_set <= {"disabled"}
@@ -280,6 +282,13 @@ def main():
         if scenario_known
         else {name: False for name in ("static", "dynamic", "roundabout", "highway", "tunnel")}
     )
+    tunnel_mission = outcome.get("tunnel_mission") or {}
+    if (scenario_name in ("full_loop_tunnel_dynamic", "full_loop_tunnel_vehicle")
+            and tunnel_mission.get("scenario_name") == scenario_name
+            and tunnel_mission.get("completed") is True
+            and tunnel_mission.get("phase") == "completed"):
+        # Completion may occur during the same actor's continuation after Ego goal.
+        tunnel_phases = sorted(set(tunnel_phases) | {"completed"})
     zone_checks = zone_observation_checks(
         scenario_name,
         zones,
@@ -292,6 +301,12 @@ def main():
         highway_samples=highway_samples,
         tunnel_phases=tunnel_phases,
     )
+    if scenario_name in ("full_loop_tunnel_dynamic", "full_loop_tunnel_vehicle"):
+        zone_checks["tunnel_completion_verified"] = (
+            tunnel_mission.get("scenario_name") == scenario_name
+            and tunnel_mission.get("completed") is True
+            and tunnel_mission.get("phase") == "completed"
+        )
     expected_mission_mode = None if scenario_name == "full_loop" else scenario_name
 
     checks = {

@@ -43,7 +43,8 @@ usage() {
     echo "시나리오: full_loop, full_loop_normal, full_loop_static, full_loop_dynamic,"
     echo "          full_loop_roundabout, full_loop_roundabout_nonuniform,"
     echo "          full_loop_roundabout_speed_random, full_loop_roundabout_brake,"
-    echo "          full_loop_highway"
+    echo "          full_loop_highway, full_loop_tunnel_dynamic, full_loop_tunnel_vehicle"
+    echo "터널: 보행자는 랜덤 4구간 조합, 차량은 회차별 랜덤 미션·모델로 실행합니다."
     echo "선택 환경변수: MORAI_STORAGE_ROOT, MORAI_BASE_SEED, MORAI_LAP_WALL_SECONDS, MORAI_SIMULATOR_PID"
     echo "                MORAI_SCENARIO_RUNTIME=current (기본 current)"
 }
@@ -114,7 +115,7 @@ while (( $# > 0 )); do
     esac
 done
 case "$SCENARIO" in
-    full_loop|full_loop_normal|full_loop_static|full_loop_dynamic|full_loop_roundabout|full_loop_roundabout_nonuniform|full_loop_roundabout_speed_random|full_loop_roundabout_brake|full_loop_highway)
+    full_loop|full_loop_normal|full_loop_static|full_loop_dynamic|full_loop_roundabout|full_loop_roundabout_nonuniform|full_loop_roundabout_speed_random|full_loop_roundabout_brake|full_loop_highway|full_loop_tunnel_dynamic|full_loop_tunnel_vehicle)
         ;;
     *)
         echo "[FAIL] 지원하지 않는 시나리오입니다: $SCENARIO" >&2
@@ -144,6 +145,8 @@ case "$SCENARIO" in
     full_loop_roundabout_speed_random) SCENARIO_FOLDER="roundabout_speed_random" ;;
     full_loop_roundabout_brake) SCENARIO_FOLDER="roundabout_brake" ;;
     full_loop_highway) SCENARIO_FOLDER="highway" ;;
+    full_loop_tunnel_dynamic) SCENARIO_FOLDER="tunnel_dynamic" ;;
+    full_loop_tunnel_vehicle) SCENARIO_FOLDER="tunnel_vehicle" ;;
 esac
 BASE_SEED="${MORAI_BASE_SEED:-26091200}"
 LAP_WALL_SECONDS="${MORAI_LAP_WALL_SECONDS:-3000}"
@@ -325,6 +328,11 @@ payload = {
     "static_collection_plan_sha256": (
         hashlib.sha256(pathlib.Path(static_plan_active).read_bytes()).hexdigest()
         if static_plan_active else None
+    ),
+    "tunnel_selection_policy": (
+        "random_behavior_and_model" if scenario_name == "full_loop_tunnel_vehicle"
+        else "random_section_mix_and_model" if scenario_name == "full_loop_tunnel_dynamic"
+        else None
     ),
     "requested_laps": int(laps),
     "base_seed": int(seed),
