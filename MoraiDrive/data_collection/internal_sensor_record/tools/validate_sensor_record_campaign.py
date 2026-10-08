@@ -26,7 +26,7 @@ from async_capture.route_sources import resolve_route_sources, verify_route_repo
 from async_capture.route_review_rebuild import archive_route_review
 from cleanup_failed_sensor_record_attempt import cleanup_failed_attempt
 from ssd_storage import SSD_ROOT, require_ssd, windows_path
-from scenario_runner.scenarios.segment_modes.modes import PRIMARY_SCENARIOS
+from async_capture.scenario_catalog import COLLECTION_SCENARIOS, TUNNEL_STATIC_SCENARIO, validate_tunnel_static_collection
 from scenario_runner.tools import static_lane_compliance
 from python_environment import (
     build_analysis_environment,
@@ -179,10 +179,12 @@ def complete_offline_review(run, *, analysis_python, env, log):
 
 def complete_bev_geometry_recovery(run, *, analysis_python, env, log):
     """Add V2 BEV-scoped geometry evidence without rewriting V1 seals."""
-    recovery = run / "ADMISSION_RECOVERY.json"
+    from recover_sensor_record_bev_geometry import recovery_selection, validate_recovery
+    selection = recovery_selection(run)
+    recovery = selection["path"]
     if recovery.is_file():
         existing = load(recovery)
-        if existing.get("corrected_object_geometry") is None:
+        if selection["tunnel_revision"] is None and existing.get("corrected_object_geometry") is None:
             print("[SKIP] existing legacy admission recovery keeps V1 geometry", flush=True)
             return
     print("[REVIEW] checking BEV-aware object geometry recovery", flush=True)
@@ -204,6 +206,8 @@ def complete_bev_geometry_recovery(run, *, analysis_python, env, log):
         raise RuntimeError("BEV geometry recovery failed; see " + log.name)
     if not recovery.is_file():
         raise RuntimeError("BEV geometry recovery did not produce a record")
+    if selection["tunnel_revision"] is not None:
+        validate_recovery(run,recovery,selection=selection)
     print("[PASS] BEV geometry recovery: %.1fs" %
           (time.monotonic() - started), flush=True)
 
@@ -216,11 +220,19 @@ def effective_admission(run, episode, errors, seals):
     """Use an additive, sealed recalculation without changing admission_v1."""
     original_path = episode / "admission_v1" / "report.json"
     original = load(original_path)
-    recovery_path = run / "ADMISSION_RECOVERY.json"
+    from recover_sensor_record_bev_geometry import recovery_selection, validate_recovery
+    try:
+        selection = recovery_selection(run)
+    except Exception as exc:
+        errors.append("admission_recovery:" + str(exc))
+        return original
+    recovery_path = selection["path"]
     if not recovery_path.is_file():
         return original
     try:
         recovery = load(recovery_path)
+        if selection["tunnel_revision"] is not None:
+            validate_recovery(run,recovery_path,selection=selection)
         if not (
             recovery.get("schema") == "morai_sensor_record_admission_recovery_v1"
             and recovery.get("status") == "completed"
@@ -251,6 +263,23 @@ def effective_admission(run, episode, errors, seals):
     except Exception as exc:
         errors.append("admission_recovery:" + str(exc))
         return original
+
+
+def admission_recovery_build_arguments(runs):
+    """Pass one verified tunnel revision to the existing downstream reader."""
+    from recover_sensor_record_bev_geometry import recovery_selection, validate_recovery
+    selections = [(Path(run),recovery_selection(run)) for run in runs]
+    if not any(selection["tunnel_revision"] is not None for _,selection in selections):
+        return []
+    names = {selection["path"].name for _,selection in selections}
+    revisions = [selection["tunnel_revision"] for _,selection in selections]
+    if len(names) != 1 or any(revision is None or revision != revisions[0] for revision in revisions):
+        raise ValueError("Validated tunnel runs do not share one current scale recovery revision")
+    for run,selection in selections:
+        if not selection["path"].is_file():
+            raise ValueError("Current tunnel scale recovery is missing before dataset build")
+        validate_recovery(run,selection["path"],selection=selection)
+    return ["--admission-recovery-name",next(iter(names))]
 
 
 def resolve_campaign(value):
@@ -442,7 +471,7 @@ def validate_lap(
     checks = {
         "supervisor_completed": result.get("error") is None,
         "scenario_name": (
-            expected_scenario in PRIMARY_SCENARIOS
+            expected_scenario in COLLECTION_SCENARIOS
             and observed_scenario == expected_scenario
             and intervention_scenario == expected_scenario
         ),
@@ -510,6 +539,9 @@ def validate_lap(
         checks["all_seals_readable"] = False
     else:
         checks["all_seals_readable"] = True
+    tunnel_guard = validate_tunnel_static_collection(episode, expected_scenario, map_root=sources["map_root"] if sources else None) if expected_scenario == TUNNEL_STATIC_SCENARIO else None
+    if tunnel_guard is not None:
+        checks["tunnel_static_guarded_collection"] = tunnel_guard["valid"]
     return {
         "lap": int(row["lap"]),
         "seed": int(row["seed"]),
@@ -529,6 +561,7 @@ def validate_lap(
         "observed_rtf": native.get("observed_rtf"),
         "collision": collision,
         "static_lane_compliance": lane_markings,
+        "tunnel_static_guarded_collection": tunnel_guard,
         "checks": checks,
         "errors": errors,
         "input_seals": seals,
@@ -619,7 +652,7 @@ def _main():
         if sorted(static_plan_rows)[:requested] != list(range(1, requested + 1)):
             raise ValueError("static collection plan does not cover every requested lap")
     scenario_name = plan.get("scenario_name", "full_loop")
-    scenario_supported = scenario_name in PRIMARY_SCENARIOS
+    scenario_supported = scenario_name in COLLECTION_SCENARIOS
     laps = []
     all_attempts_terminal = True
     cleanup_evidence_ok = True
@@ -961,6 +994,8 @@ def _main():
             "--validation-report", str(output / "report.json"),
             "--output", str(training_output),
         ]
+        build_command.extend(admission_recovery_build_arguments([
+            campaign_run(campaign,lap["run_name"]) for lap in valid_laps]))
         if args.val_lap:
             for lap_number in args.val_lap:
                 build_command.extend(["--val-lap", str(lap_number)])

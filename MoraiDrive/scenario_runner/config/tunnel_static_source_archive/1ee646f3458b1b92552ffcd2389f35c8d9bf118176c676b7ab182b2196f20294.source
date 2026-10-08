@@ -1,0 +1,41 @@
+schema: aimdrive_tunnel_static_config_v1
+map: R_KR_PR_K-city_2025
+
+# This prepares candidates and parked previews; it never approves Expert driving.
+layout:
+  station_min_m: 20.0
+  station_max_m: 75.0
+  min_pair_gap_m: 18.0
+  lateral_limit_m: 0.25
+  max_width_m: 2.8
+
+models:
+  static_catalog: config/static_obstacle_footprints_v1.json
+  vehicle_registry: ../data_collection/internal_sensor_record/evidence/object_geometry_registry_default3d_v2/registry.json
+  # Default to the actual vehicles already used by the highway stopped-car test.
+  vehicle_models:
+    - DEFAULT_SEDAN
+    - 2014_Kia_K7
+    - 2015_Kia_K5
+    - 2015_Toyota_Prius(HEV)
+    - 2016_Hyundai_Genesis_DH
+    - 2016_Hyundai_Ioniq
+    - 2016_Hyundai_Sonata
+    - 2017_Hyundai_Grandeur
+    - 2019_Toyota_Prius
+    - 2020_Kia_K5
+    - 2020_Kia_Stinger
+    - 2020_hyundai_sonata
+    - 2021_Hyundai_G80
+
+screening:
+  # Disposable worker includes imports, production Jamming search and full-body recheck.
+  planner: production_JammingPlanner
+  recorded_routes: 9
+  time_budget_sec: 15.0
+  road_boundary_approach_m: 120.0
+  road_boundary_departure_m: 70.0
+  central_line_crossing_allowed: true
+
+preview:
+  hold_seconds: 10.0

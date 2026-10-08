@@ -42,7 +42,8 @@ from scenario_runner.utils.map_loader import MGeoMapLoader
 from scenario_runner.tools.verify_separation import verify_package
 from async_capture.scenario_simulation import (SimulationObservationClock, RosClockGuard,
     cleanup_unreachable_expert_publishers, publish_final_brake,
-    start_simulation_time_world, wait_for_control_release)
+    start_simulation_time_world, wait_for_control_release, wait_for_native_capture_armed)
+from async_capture.scenario_catalog import COLLECTION_SCENARIOS, TUNNEL_STATIC_SCENARIO
 from async_capture.rosbag_recording import ScenarioRosbag
 from async_capture.route_signal_contract import build_route_signal_contract
 from native_capture.ground_truth import default_grpc_target
@@ -375,8 +376,9 @@ class RawScenario(FullLoopScenario):
         super().setup_expert_controller()
         runtime_path = Path(self.expert_controller.runtime_config_path)
         runtime = json.loads(runtime_path.read_text())
+        maximum = float(runtime['planning']['velocity_profile']['max_velocity'])
         for zone in runtime['planning']['velocity_profile'].get('speed_limit_zones', []):
-            zone['max_velocity'] = min(float(zone['max_velocity']), float(self.cfg['expert_max_velocity_kmh']))
+            zone['max_velocity'] = min(float(zone['max_velocity']), maximum)
         runtime_path.write_text(json.dumps(runtime, indent=2) + '\n')
         expert = dict(self.global_cfg.get('expert_provenance', {}))
         setup = dict(scenario_name=self.scenario_name,
@@ -401,10 +403,25 @@ class RawScenario(FullLoopScenario):
                      ),
                      tunnel_mission=tunnel_collection_evidence(self),
                      training_visible=False, object_geometry_verified=False)
+        if self.cfg.get('_tunnel_static_collection'):
+            trial = getattr(self,'tunnel_static_trial_context',None)
+            if trial is None:
+                raise RuntimeError('Tunnel collection requires its measured trial before raw capture')
+            setup['tunnel_static_trial'] = dict(
+                directory=str(trial.output_dir),
+                drive_report_path=str(trial.output_dir/'drive_trial.json'),
+                preview_report_path=str(trial.output_dir/'preview.json'),
+                planner_diagnostics_path=str(trial.output_dir/'planner_diagnostics.json'),
+                selected_candidate_sha256=self.cfg.get('_tunnel_static_candidate_sha256'),
+                runtime_source_sha256=dict(trial.runtime_sources),
+                road_boundary_policy_sha256=trial.boundary.policy_sha256,
+                finalized=False,
+            )
         write_json(self.output / 'episode.json', setup)
         self.capture_log = (self.output / 'capture.log').open('x')
         command = ['/usr/bin/python3', '-u', str(ROOT / 'tools/collect_async_raw_proven.py'),
-                   '--output', str(self.output / 'raw'), '--seconds', str(self.seconds + 60),
+                   '--output', str(self.output / 'raw'),
+                   '--seconds', str(self.seconds + (120 if self.cfg.get('_tunnel_static_collection') else 60)),
                    '--max-gib', '15', '--sensor-contract', str(self.contract_path),
                    '--ready-file', str(self.output / 'ready.json'),
                    '--stop-file', str(self.output / 'stop.json'),
@@ -426,6 +443,10 @@ class RawScenario(FullLoopScenario):
         if hasattr(self, 'clock_guard'):
             self.event('ros_clock_ready_before_expert', **self.clock_guard.arm())
         self.event('raw_ready_before_expert')
+        if self.cfg.get('_tunnel_static_collection') and self.sensor_record_coordination is not None:
+            self.event('waiting_for_native_recording_before_expert')
+            armed = wait_for_native_capture_armed(self.sensor_record_coordination,self.collector,timeout=65.)
+            self.event('native_recording_ready_before_expert',**armed)
         if self.record_rosbag:
             self.rosbag = ScenarioRosbag(self.output/'rosbag', self.event)
             self.rosbag.start(timeout=600)
@@ -612,7 +633,7 @@ def collection_scenario_class(name):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--check', action='store_true')
-    p.add_argument('--scenario', choices=PRIMARY_SCENARIOS, default='full_loop',
+    p.add_argument('--scenario', choices=COLLECTION_SCENARIOS, default='full_loop',
                    help='Main Scenario Runner mode to execute (default: full_loop)')
     p.add_argument('--static-preset',
                    help='Static editor preset name or YAML path; full_loop_static only')
@@ -644,7 +665,8 @@ def main():
     p.add_argument('--episodes', type=int, default=1)
     p.add_argument('--seconds', type=float, default=90, help='Maximum driving wall seconds; stop earlier at route completion')
     p.add_argument('--full-lap', action='store_true', help='Require selected-scenario route completion; permit a bounded wall budget up to 3540 seconds')
-    p.add_argument('--max-speed-kmh', type=float, default=20)
+    p.add_argument('--max-speed-kmh', type=float, default=None,
+                   help='Optional cap; omitted uses 20 km/h normally and original Expert speed for tunnel static')
     p.add_argument('--seed', type=int, default=260910)
     p.add_argument('--profile-state',type=Path,
                    help='Optional D-local state shared by separate one-lap processes')
@@ -665,6 +687,8 @@ def main():
                    default='required',
                    help='required: write ROS cameras; unrecorded: omit raw writes; bridge_dropped: discard at bridge ingress; absent: diagnostic only')
     a = p.parse_args()
+    if a.max_speed_kmh is None and a.scenario != TUNNEL_STATIC_SCENARIO:
+        a.max_speed_kmh = 20.
     expert_root = require_expert_root(a.expert_runtime)
     os.environ['MORAI_EXPERT_ROOT'] = str(expert_root)
     os.environ['MORAI_EXPERT_MODE'] = a.expert_runtime
@@ -699,7 +723,8 @@ def main():
         if a.profile_state.is_dir():p.error('--profile-state must name a file')
     expert_clock = 'ros_clock' if ros_clock_expert else 'host_wall_ros_rate'
     max_seconds = 3540 if a.full_lap else 900
-    if not 1 <= a.episodes <= 5 or not 20 <= a.seconds <= max_seconds or not 5 <= a.max_speed_kmh <= 60:
+    if (not 1 <= a.episodes <= 5 or not 20 <= a.seconds <= max_seconds
+            or (a.max_speed_kmh is not None and not 5 <= a.max_speed_kmh <= 60)):
         p.error('Require bounded episodes=1..5, seconds=20..%d, speed=5..60' % max_seconds)
     global_cfg, _, cfg = load_configuration()
     if not a.grpc_target:
@@ -838,18 +863,30 @@ def main():
                 scenario = None
                 try:
                     client.connect()
-                    scenario = scenario_type(client, MGeoMapLoader(gc['paths']['mgeo_root']), gc, sc,
-                        output=episode, contract_path=contract_path, seconds=a.seconds,
+                    loader = MGeoMapLoader(gc['paths']['mgeo_root'])
+                    options = dict(output=episode, contract_path=contract_path, seconds=a.seconds,
                         collision_policy=a.collision_policy,time_mode=a.time_mode,expert_clock=expert_clock,full_lap=a.full_lap,
                         record_rosbag=a.rosbag,sensor_record_coordination=a.sensor_record_coordination,
                         clock=SimulationObservationClock(observer) if a.time_mode=='simulation_free_run' else None)
-                    if clock_guard is not None:
-                        clock_guard.armed=False
-                        clock_guard.reset_seen=False
-                        scenario.clock_guard=clock_guard
-                    scenario.mode_check = mode_check
-                    scenario.final_brake = lambda: publish_final_brake(a.control_topic,observer)
-                    result = scenario.run()
+                    def configure_capture(scenario_instance):
+                        if clock_guard is not None:
+                            clock_guard.armed=False
+                            clock_guard.reset_seen=False
+                            scenario_instance.clock_guard=clock_guard
+                        scenario_instance.mode_check = mode_check
+                        scenario_instance.final_brake = lambda: publish_final_brake(a.control_topic,observer)
+                    if a.scenario == TUNNEL_STATIC_SCENARIO:
+                        from scenario_runner.scenarios.full_loop_parts.tunnel_static import run_collection_episode
+                        result = run_collection_episode(client,loader,gc,sc,
+                            scenario_factory=scenario_type,scenario_kwargs=options,
+                            configure_scenario=configure_capture,
+                            output_dir=output/'tunnel_static_trials'/episode.name,
+                            seed=a.seed,history_path=(a.profile_state.parent if a.profile_state else output)
+                            /'tunnel_static_selection_history.json')
+                    else:
+                        scenario = scenario_type(client,loader,gc,sc,**options)
+                        configure_capture(scenario)
+                        result = scenario.run()
                 finally:
                     client.stop()
                 raw = episode / 'raw'

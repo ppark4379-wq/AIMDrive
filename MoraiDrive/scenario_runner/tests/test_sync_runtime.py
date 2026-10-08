@@ -276,6 +276,77 @@ class SyncRuntimeTest(unittest.TestCase):
             scenario.get_ego_motion_state()
         self.assertIs(caught.exception, expected)
 
+    def test_shared_activation_keeps_control_and_expert_order(self):
+        calls = Mock()
+        scenario = FullLoopDriveBase(calls.grpc, None, {}, {})
+        calls.grpc.set_ego_control_mode_auto.return_value = True
+
+        def setup():
+            calls.setup()
+            scenario.expert_controller = Mock(start_process=calls.start_new)
+
+        scenario.setup_expert_controller = setup
+        result = scenario.activate_expert_drive()
+        self.assertTrue(result)
+        self.assertTrue(scenario.route_configured)
+        self.assertEqual(scenario.route_setup_mode, 'aimdrive_expert')
+        self.assertEqual(
+            [call[0] for call in calls.mock_calls],
+            ['grpc.set_ego_control_mode_auto', 'grpc.set_ego_gear_drive',
+             'setup', 'start_new'],
+        )
+        calls.grpc.set_ego_transform.assert_not_called()
+        calls.grpc.reset_ego_motion.assert_not_called()
+
+    def test_shared_activation_holds_before_setup_and_checks_before_release(self):
+        calls = Mock()
+        scenario = FullLoopDriveBase(calls.grpc, None, {}, {})
+        calls.grpc.set_ego_control_mode_auto.return_value = True
+        scenario.route_configured = False
+        scenario.route_setup_mode = None
+
+        def setup():
+            calls.setup()
+            scenario.expert_controller = Mock(start_process=calls.start_new)
+
+        def check():
+            self.assertFalse(scenario.route_configured)
+            self.assertIsNone(scenario.route_setup_mode)
+            calls.ready()
+
+        scenario.setup_expert_controller = setup
+        self.assertTrue(scenario.activate_expert_drive(
+            before_expert_start=calls.hold,
+            after_expert_setup=calls.verify_pose,
+            after_expert_start=check,
+        ))
+        self.assertEqual(
+            [call[0] for call in calls.mock_calls],
+            ['grpc.set_ego_control_mode_auto', 'grpc.set_ego_gear_drive',
+             'hold', 'setup', 'verify_pose', 'start_new', 'ready'],
+        )
+        calls.grpc.set_ego_transform.assert_not_called()
+        calls.grpc.reset_ego_motion.assert_not_called()
+
+    def test_shared_activation_failed_ready_gate_does_not_mark_route_configured(self):
+        calls = Mock()
+        scenario = FullLoopDriveBase(calls.grpc, None, {}, {})
+        scenario.route_configured = False
+        scenario.route_setup_mode = None
+
+        def setup():
+            scenario.expert_controller = Mock(start_process=calls.start_new)
+
+        scenario.setup_expert_controller = setup
+        rejected = RuntimeError('fresh Expert readiness rejected')
+        ready = Mock(side_effect=rejected)
+        with self.assertRaises(RuntimeError) as caught:
+            scenario.activate_expert_drive(after_expert_start=ready)
+        self.assertIs(caught.exception, rejected)
+        self.assertFalse(scenario.route_configured)
+        self.assertIsNone(scenario.route_setup_mode)
+        calls.start_new.assert_called_once_with()
+
     def test_default_driving_timeout_is_disabled(self):
         from ..main_runner import load_configuration
         _, _, cfg = load_configuration()

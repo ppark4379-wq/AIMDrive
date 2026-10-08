@@ -19,10 +19,8 @@ from async_capture.journal import digest, write_json
 from ssd_storage import require_ssd
 from morai_pretraining.sensor_record_manifest import build_episode_manifest, coverage_failed_splits
 from async_capture.sensor_record_admission import verify_sealed_directory
-from scenario_runner.scenarios.segment_modes.modes import (
-    PRIMARY_SCENARIOS,
-    get_scenario_zones,
-)
+from async_capture.scenario_catalog import COLLECTION_SCENARIOS
+from scenario_runner.scenarios.segment_modes.modes import get_scenario_zones
 from dataset_layout import relative_path
 
 
@@ -38,7 +36,7 @@ def add_counts(target, source):
 
 def required_training_coverage(scenario_name):
     """Return coverage required by the selected main scenario."""
-    if scenario_name not in PRIMARY_SCENARIOS:
+    if scenario_name not in COLLECTION_SCENARIOS:
         raise ValueError("Unsupported scenario: " + str(scenario_name))
     zones = get_scenario_zones(scenario_name)
     required = ["waypoint_frames"]
@@ -48,6 +46,7 @@ def required_training_coverage(scenario_name):
         zones.roundabout,
         zones.highway,
         zones.tunnel,
+        zones.tunnel_static,
     )):
         required.append("object_positive_frames")
     if scenario_name in ("full_loop", "full_loop_normal"):

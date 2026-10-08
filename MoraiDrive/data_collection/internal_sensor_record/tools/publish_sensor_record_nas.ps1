@@ -264,7 +264,7 @@ function Copy-FileWithHash([string]$source,[string]$target) {
 
 function Assert-Source($row) {
     Assert-PlainPath $row.source
-    $item = Invoke-NasIo 'source_stat' $row.source { Get-Item -LiteralPath $row.source }
+    $item = Invoke-NasIo 'source_stat' $row.source { Get-Item -LiteralPath $row.source -Force }
     if ($item.Length -ne $row.size) { throw "Source size changed: $($row.relative)" }
     # Python stat nanoseconds / 100 matches Windows FILETIME ticks (100 ns).
     $actualTicks = $item.LastWriteTimeUtc.Ticks - 621355968000000000L
@@ -411,7 +411,7 @@ function Invoke-NasJob($job) {
                     # Do not trust size/timestamp alone on restart.
                     $old=Read-Json $receipt
                     if ((Get-FileContentHash $row.source) -eq $old.sha256 -and
-                        (Invoke-NasIo 'target_stat' $target { Get-Item -LiteralPath $target }).Length -eq $row.size) {
+                        (Invoke-NasIo 'target_stat' $target { Get-Item -LiteralPath $target -Force }).Length -eq $row.size) {
                         $script:processedFiles++; $script:resumedFiles++; Set-NasProgress; continue
                     }
                 }
@@ -455,7 +455,7 @@ function Invoke-NasJob($job) {
                 Assert-Source $row
                 $receipt=Join-Path $receiptRoot ((Get-RowKey $row.relative)+'.json')
                 $expected=Read-Json $receipt
-                if ((Invoke-NasIo 'target_stat' $target { Get-Item -LiteralPath $target }).Length -ne $row.size -or
+                if ((Invoke-NasIo 'target_stat' $target { Get-Item -LiteralPath $target -Force }).Length -ne $row.size -or
                     (Get-FileContentHash $target) -ne $expected.sha256) {
                     if (!$alreadyFinal) { [IO.File]::Delete($receipt) }
                     throw "Destination readback mismatch: $($row.relative)"

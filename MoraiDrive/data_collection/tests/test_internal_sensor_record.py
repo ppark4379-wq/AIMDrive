@@ -223,10 +223,23 @@ class InternalSensorRecordTest(unittest.TestCase):
         self.assertNotIn("super().__init__(*args, **kwargs)", constructor)
 
     def test_sensor_record_supervisor_surfaces_child_startup_failure(self):
+        import ast
+        from types import SimpleNamespace
         source = (INTERNAL / "tools/run_sensor_record_scenario.py").read_text()
         self.assertIn("Scenario ROS capture exited before readiness", source)
         self.assertIn("Supervisor tail:", source)
-        self.assertIn("did not become ready within 65 seconds", source)
+        self.assertIn("did not become ready within ", source)
+        tree = ast.parse(source)
+        budget = next(node.value for node in ast.walk(tree)
+                      if isinstance(node,ast.Assign) and any(
+                          isinstance(target,ast.Name) and target.id == "ready_timeout"
+                          for target in node.targets))
+        for scenario,expected in (("full_loop_static",65),("full_loop_dynamic",65),
+                                  ("full_loop_tunnel_static",240)):
+            with self.subTest(scenario=scenario):
+                self.assertEqual(eval(compile(ast.Expression(budget),"<capture readiness budget>","eval"),
+                                      {"a":SimpleNamespace(scenario=scenario),
+                                       "TUNNEL_STATIC_SCENARIO":"full_loop_tunnel_static"}),expected)
 
     def test_storage_root_maps_any_windows_drive_without_d_pinning(self):
         environment = dict(os.environ)

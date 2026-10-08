@@ -136,7 +136,8 @@ class DynamicObstaclePlanner:
         return nearest
 
     @staticmethod
-    def conflict(path, ego, movers, target_speed, horizon=HORIZON, acceleration=None):
+    def conflict(path, ego, movers, target_speed, horizon=HORIZON, acceleration=None,
+                 road_boundary=None):
         """Check matched-time OBBs, including crossing and target-side traffic."""
         if not movers or len(path)<2:
             return None
@@ -161,7 +162,14 @@ class DynamicObstaclePlanner:
                                obj.position.y+obj.velocity*t*math.sin(angle))
                 if point.distance(center) > hp.VEHICLE_LENGTH+math.hypot(obj.size_x,obj.size_y)+2.:
                     continue
-                if HighwayLanePlanner._obb_collision(point,yaw,center,angle,obj):
+                if road_boundary is None:
+                    collided = HighwayLanePlanner._obb_collision(point,yaw,center,angle,obj)
+                else:
+                    predicted = copy.copy(obj)
+                    predicted.position = center
+                    collided = not bool(road_boundary.collision_mask_world(
+                        [point], [yaw], [predicted], margin=hp.COLLISION_MARGIN)[0])
+                if collided:
                     return dict(time=float(t), object_id=key(obj), kind='moving_obb')
         return None
 
@@ -261,7 +269,8 @@ class DynamicObstaclePlanner:
             candidate=self._candidate(owner,ego,baseline,statics,lead,offset,distance,cruise)
             if candidate is not None:
                 tracker,finish,target,horizon=candidate
-                if all(self.conflict(tracker.path,ego,movers,target,horizon,accel) is None
+                if all(self.conflict(tracker.path,ego,movers,target,horizon,accel,
+                                     road_boundary=getattr(owner,'road_boundary',None)) is None
                        for accel in (PREDICT_ACCEL,hp.LANE_CHANGE_PREDICT_ACCEL,hp.LANE_CHANGE_PREDICT_ACCEL_MAX)):
                     self.tracker,self.return_y=tracker,finish
                     self.passing_id=key(lead['object'])
@@ -295,7 +304,8 @@ class DynamicObstaclePlanner:
             following_gap=lead_s-half-ego_s-hp.VEHICLE_LENGTH
             if max(passed_gap,following_gap)<RETURN_GAP:
                 return False
-        return self.conflict(path,ego,movers,speed) is None
+        return self.conflict(path,ego,movers,speed,
+                             road_boundary=getattr(owner,'road_boundary',None)) is None
 
     def _defer_return(self, owner, ego, statics, movers, cruise):
         """Keep the passing corridor when a changed actor blocks the old exit.
@@ -324,7 +334,8 @@ class DynamicObstaclePlanner:
             if horizon is None:
                 continue
             horizon=max(HORIZON,horizon+hp.LANE_CHANGE_SETTLE_TIME)
-            if all(self.conflict(tracker.path,ego,movers,target,horizon,accel) is None
+            if all(self.conflict(tracker.path,ego,movers,target,horizon,accel,
+                                 road_boundary=getattr(owner,'road_boundary',None)) is None
                    for accel in (PREDICT_ACCEL,hp.LANE_CHANGE_PREDICT_ACCEL_MAX)):
                 self.tracker,self.return_y=tracker,finish
                 self.return_start_y=plateau
@@ -377,7 +388,8 @@ class DynamicObstaclePlanner:
             cruise=min(cruise,self.maneuver_speed)
         if (self.active and self.passing_id is not None and self.recovery_initial is None
                 and ego.position.y<self.return_y
-                and self.conflict(result.path,ego,movers,cruise) is not None
+                and self.conflict(result.path,ego,movers,cruise,
+                                  road_boundary=getattr(owner,'road_boundary',None)) is not None
                 and self._defer_return(owner,ego,statics,movers,cruise)):
             result=self.tracker.plan(ego,reference,statics)
             cruise=min(CRUISE_LIMIT,max(0.,desired_speed),result.acc_target_velocity,self.maneuver_speed)
@@ -402,13 +414,15 @@ class DynamicObstaclePlanner:
             limit=min(limit,HighwayLanePlanner._acc_speed_limit(
                 max(0.,ego.velocity),lead['gap'],lead['ttc'],max(0.,lead['speed'])))
             state='FOLLOW' if not self.active else 'AVOID_FOLLOW'
-        collision=self.conflict(result.path,ego,movers,limit)
+        collision=self.conflict(result.path,ego,movers,limit,
+                                road_boundary=getattr(owner,'road_boundary',None))
         if collision is not None:
             if collision['time']<=hp.MERGE_EMERGENCY_COLLISION_TIME:
                 limit,state=0.,'EMERGENCY'
             else:
                 for speed in (limit*.75,limit*.5,limit*.25,0.):
-                    if self.conflict(result.path,ego,movers,speed) is None:
+                    if self.conflict(result.path,ego,movers,speed,
+                                     road_boundary=getattr(owner,'road_boundary',None)) is None:
                         limit=speed
                         break
                 else:

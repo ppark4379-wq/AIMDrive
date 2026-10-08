@@ -65,6 +65,7 @@ class LatticePlanningProcess:
         highway_planner=None,
         map_data_dir=None,
         highway_lane_planner=None,
+        jamming_road_boundary=None,
         jamming_enabled=True,
     ):
         # zone_* 인자는 기존 정적장애물 구간 테스트/설정을 위해 유지합니다.
@@ -79,7 +80,11 @@ class LatticePlanningProcess:
                                 if zone_bounds is None and zone_start == STATIC_OBSTACLE_ZONE_START
                                 else None)
         from ..Jamming.recorded_planner import JammingPlanner
-        self.recorded_jamming = (JammingPlanner(background=True)
+        from ..Jamming.road_boundary import RoadBoundary
+        if (jamming_enabled and jamming_road_boundary is None and map_data_dir is not None
+                and zone_bounds is None and zone_start == STATIC_OBSTACLE_ZONE_START):
+            jamming_road_boundary = RoadBoundary.from_map_dir(map_data_dir)
+        self.recorded_jamming = (JammingPlanner(background=True, road_boundary=jamming_road_boundary)
                                  if jamming_enabled and zone_bounds is None
                                  and zone_start == STATIC_OBSTACLE_ZONE_START
                                  else None)

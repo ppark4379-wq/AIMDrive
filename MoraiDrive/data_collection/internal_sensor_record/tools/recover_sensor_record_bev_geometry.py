@@ -28,6 +28,8 @@ RECOVERY_REASONS = {2: "training_bev_spatial_scope_v2",
                     3: "proportional_measured_catalog_scale_v1",
                     4: "catalog_centre_and_visible_return_geometry_v4",
                     5: "lidar_registry_box_source_geometry_v5"}
+SCALE_RESOLVER_SOURCE = ROOT / "morai_pretraining/scaled_object_geometry.py"
+TUNNEL_SCENARIO = "full_loop_tunnel_static"
 
 
 def registry_tag(path):
@@ -37,6 +39,42 @@ def registry_tag(path):
 
 def load(path):
     return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def sealed_tunnel_capture(run):
+    """Only the immutable raw session selects the tunnel cache contract."""
+    raw = Path(run) / "episode_000/raw"
+    try:
+        recorded = load(raw / "session.json")
+    except (OSError,ValueError):
+        return False
+    if (recorded.get("episode") or {}).get("scenario_name") != TUNNEL_SCENARIO:
+        return False
+    _, session = verify_run(raw, payloads=False)
+    return (session.get("episode") or {}).get("scenario_name") == TUNNEL_SCENARIO
+
+
+def recovery_selection(run, *, geometry_version=None, geometry_registry=None):
+    """Keep legacy explicit choices; default tunnel recovery is revision-local."""
+    run = Path(run)
+    tunnel = geometry_version is None and sealed_tunnel_capture(run)
+    registry = Path(geometry_registry).expanduser().resolve() if geometry_registry is not None else (
+        DEFAULT_GEOMETRY_REGISTRY if DEFAULT_GEOMETRY_REGISTRY.is_file() else None)
+    if tunnel:
+        version = 5 if registry is not None else 4
+        revision = {"schema":"morai_tunnel_scale_recovery_revision_v1",
+                    "scale_resolver_sha256":digest(SCALE_RESOLVER_SOURCE),
+                    "geometry_registry_sha256":digest(registry) if registry is not None else None,
+                    "geometry_version":version}
+        tag = revision["scale_resolver_sha256"][:12] + "_" + (
+            revision["geometry_registry_sha256"][:12] if registry is not None else "no_registry")
+        return {"path":run/("ADMISSION_RECOVERY_TUNNEL_SCALE_%s.json" % tag),
+                "version":version,"registry":registry,"suffix":"_tunnel_scale_"+tag,
+                "tunnel_revision":revision}
+    name = RECOVERY_NAMES.get(geometry_version,"ADMISSION_RECOVERY.json")
+    if geometry_version == 5:
+        name = "ADMISSION_RECOVERY_FUSED_%s.json" % registry_tag(geometry_registry)
+    return {"path":run/name,"version":geometry_version,"registry":registry,"tunnel_revision":None}
 
 
 def run_stage(tool, output, arguments):
@@ -50,9 +88,13 @@ def run_stage(tool, output, arguments):
     subprocess.check_call([sys.executable, str(ROOT / "tools" / tool)] + arguments)
 
 
-def validate_recovery(run, recovery_path):
+def validate_recovery(run, recovery_path, *, selection=None):
     episode = run / "episode_000"
     recovery = load(recovery_path)
+    if selection is not None and selection.get("tunnel_revision") is not None:
+        if (Path(recovery_path) != selection["path"]
+                or recovery.get("tunnel_scale_revision") != selection["tunnel_revision"]):
+            raise ValueError("Tunnel scale recovery revision differs from current reviewed resolver/registry")
     original = episode / "admission_v1/report.json"
     corrected = run / recovery.get("corrected_admission", {}).get("path", "")
     geometry = run / recovery.get("corrected_object_geometry", {}).get("path", "")
@@ -87,6 +129,24 @@ def validate_recovery(run, recovery_path):
             == digest(geometry.parent / "COMPLETE.json")
     ):
         raise ValueError("Changed BEV admission recovery evidence")
+    if selection is not None and selection.get("tunnel_revision") is not None:
+        suffix,version = selection["suffix"],selection["version"]
+        review = run/recovery.get("corrected_review",{}).get("path","")
+        if (corrected != episode/("admission_v%d%s" % (version,suffix))/"report.json"
+                or geometry != episode/("object_geometry_audit_v%d%s" % (version,suffix))/"report.json"
+                or review != episode/("review_closeout_v%d%s" % (version,suffix))/"report.json"):
+            raise ValueError("Tunnel recovery output is not bound to its current revision")
+        verify_sealed_directory(original.parent)
+        verify_sealed_directory(review.parent)
+        original_report=load(original)
+        if (recovery["original_admission"].get("seal_sha256") != digest(original.parent/"COMPLETE.json")
+                or recovery["corrected_review"].get("sha256") != digest(review)
+                or recovery["corrected_review"].get("seal_sha256") != digest(review.parent/"COMPLETE.json")
+                or geometry_report.get("raw_manifest_sha256") != original_report.get("raw_manifest_sha256")
+                or admission_report.get("raw_manifest_sha256") != original_report.get("raw_manifest_sha256")
+                or version==5 and geometry_report.get("geometry_registry",{}).get("sha256")
+                    != selection["tunnel_revision"]["geometry_registry_sha256"]):
+            raise ValueError("Changed tunnel revision recovery linkage")
     return recovery
 
 
@@ -107,15 +167,14 @@ def main():
     run = args.run.expanduser().resolve()
     require_ssd(run, reserve_bytes=0)
     episode = run / "episode_000"
-    recovery_name = RECOVERY_NAMES.get(args.geometry_version, "ADMISSION_RECOVERY.json")
-    if args.geometry_version == 5:
-        recovery_name = "ADMISSION_RECOVERY_FUSED_%s.json" % registry_tag(args.geometry_registry)
-    recovery_path = run / recovery_name
+    selection = recovery_selection(run,geometry_version=args.geometry_version,
+                                   geometry_registry=args.geometry_registry)
+    recovery_path = selection["path"]
     if recovery_path.is_file():
-        print(json.dumps(validate_recovery(run, recovery_path)), flush=True)
+        print(json.dumps(validate_recovery(run, recovery_path,selection=selection)), flush=True)
         return
 
-    version = args.geometry_version
+    version = selection["version"]
     if version is None:
         # The raw session pins the setup used at collection time. Do not select
         # scaling from a mutable scenario file, and never replace old pointers.
@@ -127,7 +186,7 @@ def main():
 
     original_dir = episode / "admission_v1"
     verify_sealed_directory(original_dir)
-    suffix = "_" + registry_tag(args.geometry_registry) if version == 5 else ""
+    suffix = selection.get("suffix", "_" + registry_tag(args.geometry_registry) if version == 5 else "")
     geometry_dir = episode / ("object_geometry_audit_v%d%s" % (version, suffix))
     review_dir = episode / ("review_closeout_v%d%s" % (version, suffix))
     admission_dir = episode / ("admission_v%d%s" % (version, suffix))
@@ -202,8 +261,13 @@ def main():
         "training_visible": False,
         "script_sha256": digest(Path(__file__)),
     }
+    if selection["tunnel_revision"] is not None:
+        current = recovery_selection(run,geometry_registry=args.geometry_registry)
+        if current["tunnel_revision"] != selection["tunnel_revision"]:
+            raise ValueError("Tunnel scale resolver/registry changed during recovery")
+        payload["tunnel_scale_revision"] = selection["tunnel_revision"]
     write_json(recovery_path, payload)
-    print(json.dumps(validate_recovery(run, recovery_path)), flush=True)
+    print(json.dumps(validate_recovery(run, recovery_path,selection=selection)), flush=True)
 
 
 if __name__ == "__main__":

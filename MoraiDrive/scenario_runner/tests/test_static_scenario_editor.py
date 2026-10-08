@@ -1,8 +1,9 @@
 import tempfile
+import json
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import yaml
 
@@ -318,3 +319,76 @@ class StaticScenarioEditorTest(unittest.TestCase):
         actor_info = SimpleNamespace(id=SimpleNamespace(value="41"))
         self.assertEqual(reader._option_name(actor_info), "WoodBox")
         self.assertEqual(reader._option_name(actor_info), "Bicycle_mountain")
+
+    def test_view_only_ros_session_has_no_publishers_or_control_relay(self):
+        state = LiveState(self.tmp.name, view_only=True)
+        ros = Mock()
+        message_types = {name: object for name in ("Path", "MarkerArray", "EgoVehicleStatus", "CtrlCmd", "Bool", "String")}
+        with patch.object(editor_module, "ExpertCommandRelay") as relay:
+            self.assertIsNone(editor_module.configure_ros(state, ros, message_types))
+        ros.Publisher.assert_not_called()
+        relay.assert_not_called()
+        topics = [call.args[0] for call in ros.Subscriber.call_args_list]
+        self.assertIn("/Ego_topic", topics)
+        self.assertNotIn("/static_scenario_editor/ctrl_cmd", topics)
+        self.assertNotIn("/ctrl_cmd", topics)
+
+    def test_view_only_denies_all_mutation_endpoints_and_direct_actions(self):
+        state = LiveState(self.tmp.name, view_only=True)
+        with self.assertRaisesRegex(ValueError, "Read-only"):
+            state.set_drive(False)
+        with self.assertRaisesRegex(ValueError, "Read-only"):
+            state.save({"name": "forbidden"})
+        handler_type = editor_module.make_handler(state)
+        for path in ("/api/drive", "/api/save", "/api/stop", "/api/edit"):
+            handler = handler_type.__new__(handler_type)
+            handler.path = path
+            handler.send_json = Mock()
+            handler.do_POST()
+            self.assertEqual(handler.send_json.call_args.args[1], 403)
+        self.assertEqual(list(Path(self.tmp.name).glob("*.yaml")), [])
+
+    def test_view_only_uses_actual_body_policy_and_scopes_live_actor_identity(self):
+        state = LiveState(self.tmp.name, view_only=True)
+        report = {"status": "running", "road_boundary_policy": {"body": {
+            "rear_m": .86, "front_m": 3.914, "width_m": 2.366}},
+            "road_boundary_geometry": {"type": "Polygon", "coordinates": [[[0., 0.], [1., 0.], [1., 7.], [0., 0.]]]},
+            "owned_actor_geometry": [{"raw_actor_id": "1", "model": "WoodBox",
+                "position_xyz": [8.2, .4, 2.], "rotation_xyz_deg": [0., 0., 15.],
+                "center_xyz": [8.4, .6, 2.5], "heading_deg": 16.347, "length_m": 1.5, "width_m": 1.2}],
+            "trajectory": [{"position_xyz": [0., 0., 2.]}]}
+        state.update_trial_report(report, "current_trial")
+        owned = dict(self.state.obstacles[0], actor_id="1", model="WoodBox")
+        foreign = dict(owned, actor_id="3", x=10000., y=10000.)
+        state.update_obstacles([owned, foreign])
+        snapshot = state.snapshot()
+        self.assertEqual([row["actor_id"] for row in snapshot["obstacles"]], ["1"])
+        self.assertEqual(snapshot["obstacles"][0]["conservative_box"]["center_xyz"], [8.4, .6, 2.5])
+        self.assertEqual(snapshot["vehicle_footprint"]["width_m"], 2.366)
+        self.assertAlmostEqual(snapshot["vehicle_footprint"]["length_m"], 4.774)
+        self.assertEqual(snapshot["vehicle_footprint"]["margin_m"], .72)
+        self.assertEqual(snapshot["road_geometry"], report["road_boundary_geometry"])
+        state.update_obstacles([dict(owned, model="wrong"), dict(foreign, actor_id="1")])
+        self.assertEqual(state.snapshot()["obstacles"], [])
+
+    def test_trial_report_watcher_reads_without_writing_and_refuses_batch_escape(self):
+        state = LiveState(self.tmp.name, view_only=True)
+        root = Path(self.tmp.name)/"trial"
+        root.mkdir()
+        document = {"schema": "aimdrive_tunnel_static_drive_trial_v1", "status": "running"}
+        path = root/"drive_trial.json"
+        path.write_text(json.dumps(document))
+        before = path.read_bytes()
+        watcher = editor_module.TrialReportWatcher(state, root)
+        watcher.read_once()
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(state.snapshot()["trial_report"]["status"], "running")
+        batch = Path(self.tmp.name)/"batch"
+        batch.mkdir()
+        (batch/"progress.json").write_text(json.dumps({"inflight": {"trial_dir": str(root)}}))
+        with self.assertRaisesRegex(ValueError, "escapes"):
+            editor_module.TrialReportWatcher(state, batch).read_once()
+
+    def test_view_only_parser_preserves_default_editor_mode(self):
+        self.assertFalse(editor_module.build_parser().parse_args([]).view_only)
+        self.assertTrue(editor_module.build_parser().parse_args(["--view-only"]).view_only)

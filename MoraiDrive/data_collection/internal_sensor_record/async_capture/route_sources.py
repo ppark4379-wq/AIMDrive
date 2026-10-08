@@ -22,6 +22,13 @@ def _paths(root, definition=None):
                 global_path=root/"2026_molit_comp_global_path.txt")
 
 
+def _archived_route_definition(path, expected):
+    """Use only a registered exact captured YAML blob, never a map substitute."""
+    from scenario_runner.scenarios.full_loop_parts.tunnel_static_parts.source_compatibility import archived_source_path
+    archived = archived_source_path(path, expected)
+    return archived if archived is not None and digest(archived) == expected else None
+
+
 def resolve_route_sources(episode, contract, *, map_root=None, route_definition=None,
                           route_key=None, scenario_root=None):
     episode = Path(episode)
@@ -42,12 +49,23 @@ def resolve_route_sources(episode, contract, *, map_root=None, route_definition=
     expected = dict(traffic.get("source_sha256", {}))
     expected["global_path"] = metadata.get("global_path_sha256")
     original = _paths(root)
+    archived_definition = None
     # Check ALL available originals before consulting any replacement.
     for name, path in original.items():
         if not expected.get(name):
             raise ValueError("Missing capture hash: " + name)
         if path.exists() and (not path.is_file() or expected[name] not in _representations(path)):
-            raise ValueError("Route input differs from capture: " + name)
+            archived = (_archived_route_definition(path, expected[name])
+                        if name == "route_definition" else None)
+            if archived is None:
+                raise ValueError("Route input differs from capture: " + name)
+            original[name] = archived
+            archived_definition = archived
+        elif not path.exists() and name == "route_definition":
+            archived = _archived_route_definition(path, expected[name])
+            if archived is not None:
+                original[name] = archived
+                archived_definition = archived
     selected_root = root
     selected = dict(original)
     if route_definition is not None:
@@ -58,7 +76,7 @@ def resolve_route_sources(episode, contract, *, map_root=None, route_definition=
                     Path(__file__).resolve().parents[3]/"scenario_runner")
         selected_root = scenario/"data"/root.name
         selected = _paths(selected_root,
-                          Path(route_definition).resolve() if route_definition is not None else None)
+                          Path(route_definition).resolve() if route_definition is not None else archived_definition)
     hashes = {}
     equivalence = {}
     for name, path in selected.items():
@@ -71,6 +89,8 @@ def resolve_route_sources(episode, contract, *, map_root=None, route_definition=
     resolution = ("verified_relocated_copy" if relocated else "recorded_path")
     if any(equivalence.values()):
         resolution += "_lf_crlf_equivalent"
+    if archived_definition is not None and selected["route_definition"] == archived_definition:
+        resolution += "_exact_captured_route_archive"
     provenance = dict(recorded_map_root=str(root), selected_map_root=str(selected_root),
                       selected_paths={k:str(v) for k,v in selected.items()},
                       recorded_sha256=expected, selected_sha256=hashes,

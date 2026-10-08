@@ -17,6 +17,25 @@ def prepare_mission(context):
     context.mission_mode = get_mission_mode(context.cfg["mission_mode"])
     context.scenario_name = context.mission_mode.name
     context.mission_route = None
+
+    if context.scenario_name in ("full_loop_tunnel_normal", "full_loop_tunnel_static"):
+        # Keep the owned-actor reset path while every mission event is OFF.
+        context.cfg["clean_road_mode"] = False
+        context.cfg["auto_repeat"] = False
+        context.cfg["max_laps"] = 1
+        context.cfg["timeout_sec"] = 180.0
+        context.cfg["minimum_completion_progress_ratio"] = 0.95
+        context.cfg["expert_max_cross_track_error_m"] = 1.5
+        context.cfg["off_route_timeout_sec"] = 3.0
+        context.cfg["off_route_grace_sec"] = 2.0
+        context.cfg["progress_watchdog"] = {
+            "enabled": True, "timeout_sec": 45.0,
+            "startup_grace_sec": 30.0, "minimum_progress_m": 2.0,
+        }
+    if context.scenario_name == "full_loop_tunnel_static":
+        context.cfg["expert_max_cross_track_error_m"] = 5.0
+        context.cfg.setdefault("expert_max_velocity_kmh", None)
+        context.cfg["route_setup_attempts"] = 1
     if context.scenario_name == "full_loop_tunnel_dynamic":
         context.cfg.setdefault("tunnel_dynamic", {})["enabled"] = True
     if context.scenario_name == "full_loop_tunnel_vehicle":

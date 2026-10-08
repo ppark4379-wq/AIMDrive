@@ -1,0 +1,90 @@
+"""Exact reviewed runtime migration retains candidates for new-policy trials.
+
+The original eight-file trial evidence remains sealed. A known transition makes
+its layout eligible for revalidation, never a physical approval of new settings.
+Any unreviewed source, path or key change remains ineligible.
+"""
+
+from pathlib import Path
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
+_LEGACY_RELATIVE_SHA256 = {
+    "scenario_runner/scenarios/segment_modes/tunnel_static_trial.py": "6ac31b2de45ff0e5b908ccd82ef79c67ff2a15b04e0fbf578f5172eefdfbce5d",
+    "scenario_runner/adapters/expert_process.py": "321b52342920703d7727bbf24d6525aaa5e03cb427ac327430971ffc397b2f7f",
+    "scenario_runner/adapters/expert_controller.py": "e42ceea2df366655d08ed0eb1f54682e096629d8a1abb293973423d669cfeb00",
+    "scenario_runner/core/full_loop_drive_base.py": "a9afab06df71a1b7a418470bf3ceb4f0816e4ffc46c3035d20ffaabfe70d8242",
+    "scenario_runner/scenarios/segment_modes/scenario.py": "a6ef7bdfe70d1436741708dde8bb4ff8567722c792d03d18b487c2e4287282ea",
+    "scenario_runner/scenarios/segment_modes/expert.py": "1d2551e4e393cf09b216e333d336e016c3e7af54d64c07294050becf193e8150",
+    "scenario_runner/scenarios/segment_modes/tunnel_static_startup.py": "969c65d1e2fa44f33972ce5bf3bec4311e16e7b7343907afc51d69d0831b64e1",
+    "expert/src/expert/src/network/ros_manager.py": "5ef13e89f37247cc7292227cbbbf0380b42fe9c1f60642e9061fd1b07407f6fc",
+}
+LEGACY_RUNTIME_SOURCE_SHA256 = {str((PROJECT_ROOT/path).resolve()): sha
+                               for path,sha in _LEGACY_RELATIVE_SHA256.items()}
+# Exact reviewed scenario-only runtime migration. New-policy physical approval
+# is separate; these hashes never rewrite or upgrade historical drive evidence.
+_PRE_GOAL_STOP_RELATIVE_SHA256 = {
+    'scenario_runner/scenarios/segment_modes/tunnel_static_trial.py': 'a46d36c9292e0198647dc5ebd638c7a711c73c882206678b3d8a5f141c052b67',
+    'scenario_runner/adapters/expert_process.py': '321b52342920703d7727bbf24d6525aaa5e03cb427ac327430971ffc397b2f7f',
+    'scenario_runner/adapters/expert_controller.py': '51ebed01b8dcec0df200ca6f619091d8c439de46cc3d1fd8ad6b7f5077ac9da1',
+    'scenario_runner/core/full_loop_drive_base.py': '6527a692b3fb4fae0efa3a2551ff6fee16bd27dd5e1ae2a75e07d6151e84a844',
+    'scenario_runner/scenarios/segment_modes/scenario.py': 'a6ef7bdfe70d1436741708dde8bb4ff8567722c792d03d18b487c2e4287282ea',
+    'scenario_runner/scenarios/segment_modes/expert.py': '1d2551e4e393cf09b216e333d336e016c3e7af54d64c07294050becf193e8150',
+    'scenario_runner/scenarios/segment_modes/tunnel_static_startup.py': 'c24a06208938267bb7ff42ae211c39489f5866498740728a3479a71b3a32d8df',
+    'expert/src/expert/src/network/ros_manager.py': '5ef13e89f37247cc7292227cbbbf0380b42fe9c1f60642e9061fd1b07407f6fc',
+}
+PRE_GOAL_STOP_RUNTIME_SOURCE_SHA256 = {str((PROJECT_ROOT/path).resolve()): sha
+                                     for path,sha in _PRE_GOAL_STOP_RELATIVE_SHA256.items()}
+_REVIEWED_RELATIVE_SHA256 = dict(_PRE_GOAL_STOP_RELATIVE_SHA256, **{
+    'scenario_runner/core/full_loop_drive_base.py': '92ae161f0af1f08a7cd9f790fd83efa17051a1fd1a82ddab950c7031ba6646c0',
+    'scenario_runner/scenarios/segment_modes/scenario.py': '8211e56982ad79ded84f7119215398ae144696ce82603af29429c8e7039be62d',
+    'scenario_runner/scenarios/segment_modes/tunnel_static_trial.py': '3bd59473559ff0a9ccf0e0db21b22fc26e9645daea04b142a35bdea3a1333824',
+})
+REVIEWED_RUNTIME_SOURCE_SHA256 = {str((PROJECT_ROOT/path).resolve()): sha
+                                 for path,sha in _REVIEWED_RELATIVE_SHA256.items()}
+
+
+def reviewed_goal_stop_runtime_transition(saved, current):
+    """Recognise one reviewed stop fix; this never admits capture or labels."""
+    if (saved != current and saved == PRE_GOAL_STOP_RUNTIME_SOURCE_SHA256
+            and current == REVIEWED_RUNTIME_SOURCE_SHA256):
+        changed = {path for path in saved if saved[path] != current[path]}
+        allowed = {str((PROJECT_ROOT/path).resolve()) for path in (
+            "scenario_runner/core/full_loop_drive_base.py",
+            "scenario_runner/scenarios/segment_modes/scenario.py",
+            "scenario_runner/scenarios/segment_modes/tunnel_static_trial.py",
+        )}
+        if changed != allowed:
+            return None
+        return {"scope": "normal_goal_stop_without_instantaneous_velocity_reset",
+                "original_sha256": dict(saved), "current_sha256": dict(current),
+                "physical_approval_transferred": False,
+                "historical_runtime_sources_rewritten": False}
+    return None
+
+
+def runtime_source_compatibility(saved, current):
+    """Return historical candidate provenance without upgrading approval."""
+    if not isinstance(saved, dict) or not isinstance(current, dict) or not current:
+        raise ValueError("Runtime source identity/hash changed; no replay approval")
+    if saved == current:
+        return {"historical_runtime_provenance": False,
+                "requires_new_policy_revalidation": False,
+                "historical_runtime_sources_rewritten": False,
+                "reviewed_runtime_transition": None}
+    if (REVIEWED_RUNTIME_SOURCE_SHA256 and saved == LEGACY_RUNTIME_SOURCE_SHA256
+            and current == REVIEWED_RUNTIME_SOURCE_SHA256):
+        expert_path = str((PROJECT_ROOT/"expert/src/expert/src/network/ros_manager.py").resolve())
+        if current.get(expert_path) != LEGACY_RUNTIME_SOURCE_SHA256[expert_path]:
+            raise ValueError("Expert runtime source changed; scenario-only migration cannot approve it")
+        return {"historical_runtime_provenance": True,
+                "requires_new_policy_revalidation": True,
+                "historical_runtime_sources_rewritten": False,
+                "reviewed_runtime_transition": {
+                    "scope": "scenario_only_runtime_refactor_speed_inheritance_seed_profile_log_and_common_auto_d_startup",
+                    "source_file_count": 8,
+                    "original_sha256": dict(saved), "current_sha256": dict(current),
+                    "expert_source_changed": False,
+                    "physical_approval_transferred": False,
+                }}
+    raise ValueError("Runtime source identity/hash changed; no replay approval")

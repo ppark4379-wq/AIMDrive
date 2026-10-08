@@ -30,6 +30,7 @@ from ..scenarios.full_loop_parts import (
 )
 from ..scenarios.segment_modes import events as mission_events
 from ..scenarios.segment_modes import route as mission_route
+from ..scenarios.segment_modes import tunnel_baseline as mission_tunnel_baseline
 from ..utils.map_loader import MGeoMapLoader
 from ..utils.transform_utils import interpolate_on_polyline, polyline_length
 
@@ -163,6 +164,15 @@ class MissionModesTest(unittest.TestCase):
             actor_info=SimpleNamespace(id=SimpleNamespace(value="static-actor")),
             transform=transform(position["x"], position["y"], position["z"], 0.0),
         )
+        if scenario.cfg["mission_mode"] == "full_loop_tunnel_normal":
+            # The baseline inventory checks the known Ego across all clients.
+            # Model an empty scene with only Ego at the immutable START.
+            start = MISSION_MODES["full_loop_tunnel_normal"].start
+            scenario.grpc.get_ego.return_value.get_id.return_value = "ego-test"
+            state = SimpleNamespace(
+                actor_info=SimpleNamespace(id=SimpleNamespace(value="ego-test")),
+                transform=transform(*start.xyz, start.yaw_deg),
+            )
         scenario.grpc.world._sim_adapter._actor_stub.GetAllActorsState.return_value = (
             SimpleNamespace(states=[state])
         )
@@ -180,10 +190,13 @@ class MissionModesTest(unittest.TestCase):
             scenario.verify_static_obstacle(1.0, 0.0)
 
     def test_primary_modes_plus_legacy_commands(self):
-        self.assertEqual(len(PRIMARY_SCENARIOS), 11)
+        self.assertEqual(len(PRIMARY_SCENARIOS), 12)
         for name in PRIMARY_SCENARIOS:
             self.assertEqual(build_parser().parse_args(["--scenario", name]).scenario, name)
-            self.assertTrue(automatic_repeat_enabled(name, self.base_cfg))
+            self.assertEqual(
+                automatic_repeat_enabled(name, self.base_cfg),
+                name != "full_loop_tunnel_normal",
+            )
             self.assertFalse(automatic_repeat_enabled(name, self.base_cfg, once=True))
         self.assertFalse(automatic_repeat_enabled("full_loop_highway_tunnel_test", self.base_cfg))
         self.assertTrue(automatic_repeat_enabled(
@@ -200,6 +213,7 @@ class MissionModesTest(unittest.TestCase):
                 "roundabout": True,
                 "highway": True,
                 "tunnel": True,
+                "tunnel_static": False,
             },
         )
         for name, mode in MISSION_MODES.items():
@@ -208,7 +222,9 @@ class MissionModesTest(unittest.TestCase):
     def test_mode_descriptions_are_immutable_and_single_zone(self):
         for name, mode in MISSION_MODES.items():
             count = sum(asdict(mode.zones).values())
-            self.assertEqual(count, 0 if name == "full_loop_normal" else 1)
+            self.assertEqual(count, 0 if name in (
+                "full_loop_normal", "full_loop_tunnel_normal",
+            ) else 1)
             self.assertEqual(mode.zones.tunnel, name in (
                 "full_loop_tunnel_dynamic", "full_loop_tunnel_vehicle"))
             with self.assertRaises(FrozenInstanceError):
@@ -257,6 +273,12 @@ class MissionModesTest(unittest.TestCase):
                  3.4004013012027805, "A2256W000054"),
                 (3638, (70.15920404473096, -419.0559893071876, 28.11111997351344),
                  -96.58181855513165, "A2256W000446"),
+            ),
+            "full_loop_tunnel_normal": (
+                (3723, (57.79791772423833, -459.4873225380194, 28.25457937406963),
+                 -117.21164428345622, "A2256W000446"),
+                (4107, (-104.45401996170119, -550.2514332389879, 28.428755624976738),
+                 172.15965654587896, "A2256W000128"),
             ),
             "full_loop_tunnel_dynamic": (
                 (3768, (43.761510782991536, -476.41094469698146, 28.294397987369784),
@@ -419,6 +441,11 @@ class MissionModesTest(unittest.TestCase):
         for name, mode in MISSION_MODES.items():
             with self.subTest(name=name):
                 scenario = self.make_scenario(name)
+                if mode.zones.tunnel_static:
+                    with self.assertRaisesRegex(RuntimeError, "owned fixture"):
+                        scenario.setup()
+                    scenario.grpc.start_world.assert_not_called()
+                    continue
                 self.setup_scenario(scenario)
                 grpc = scenario.grpc
                 self.assertEqual(grpc.spawn_obstacle.call_count, int(mode.zones.static))
@@ -456,6 +483,62 @@ class MissionModesTest(unittest.TestCase):
         scenario.grpc.spawn_obstacle.assert_not_called()
         scenario.grpc.spawn_pedestrian.assert_not_called()
         scenario.grpc.create_vehicle_spawn_point.assert_not_called()
+
+    def test_tunnel_normal_contains_mapped_portals_and_external_margins(self):
+        scenario = self.make_scenario("full_loop_tunnel_normal")
+        self.setup_scenario(scenario)
+        mode = MISSION_MODES["full_loop_tunnel_normal"]
+        entry_index, exit_index = 3806, 4045
+        tunnel_link = self.map_loader.get_link("A2256W000126")
+        self.assertEqual(tuple(tunnel_link["points"][0]), self.points[entry_index])
+        self.assertEqual(tuple(tunnel_link["points"][-1]), self.points[exit_index])
+        self.assertLess(mode.start.index, entry_index)
+        self.assertGreater(mode.end.index, exit_index)
+        self.assertEqual(
+            scenario.route_points,
+            self.points[mode.start.index:mode.end.index + 1],
+        )
+        approach_m = polyline_length(self.points[mode.start.index:entry_index + 1])
+        departure_m = polyline_length(self.points[exit_index:mode.end.index + 1])
+        self.assertGreaterEqual(approach_m, 40.0)
+        self.assertLess(approach_m, 40.6)
+        self.assertGreaterEqual(departure_m, 30.0)
+        self.assertLess(departure_m, 30.6)
+        self.assertIn("A2256W000126", scenario.route_links)
+        expert_points = mission_route.build_expert_route_points(scenario)
+        self.assertEqual(expert_points[:len(scenario.route_points)], scenario.route_points)
+        self.assertGreaterEqual(
+            polyline_length(expert_points[len(scenario.route_points) - 1:]),
+            mission_route.EXPERT_LOOKAHEAD_TAIL_M,
+        )
+
+    def test_tunnel_normal_has_no_model_dependency_or_approach_event_spawn(self):
+        scenario = self.make_scenario("full_loop_tunnel_normal")
+        self.setup_scenario(scenario)
+        scenario.grpc.get_available_obstacle_models.assert_not_called()
+        scenario.grpc.get_available_pedestrian_models.assert_not_called()
+        scenario.grpc.get_available_surround_vehicle_models.assert_not_called()
+        scenario.grpc.get_time.return_value = scenario.scenario_hour
+        mission_tunnel_baseline.before_drive(scenario)
+        for elapsed, index in enumerate([3723, 3768, 3806, 3880, 3960, 4045, 4107]):
+            s = scenario.path_s_at_index(index)
+            xyz = self.points[index]
+            ego = {"x": xyz[0], "y": xyz[1], "z": xyz[2], "speed": 3.0}
+            observed_ego = SimpleNamespace(
+                actor_info=SimpleNamespace(id=SimpleNamespace(value="ego-test")),
+                transform=transform(*xyz, 0.0),
+            )
+            scenario.grpc.world._sim_adapter._actor_stub.GetAllActorsState.return_value = (
+                SimpleNamespace(states=[observed_ego])
+            )
+            scenario.on_expert_timeline_tick(elapsed, ego, s, scenario.route_length_m - s)
+        mission_tunnel_baseline.finish(scenario, "passed")
+        scenario.grpc.spawn_vehicle.assert_not_called()
+        scenario.grpc.spawn_obstacle.assert_not_called()
+        scenario.grpc.spawn_pedestrian.assert_not_called()
+        scenario.grpc.create_vehicle_spawn_point.assert_not_called()
+        self.assertEqual(scenario.tunnel_event_phase, "disabled")
+        self.assertTrue(scenario.tunnel_baseline_report["baseline_drive_passed"])
 
     def test_static_location_models_and_singleton_recovery_call_are_preserved(self):
         scenario = self.make_scenario("full_loop_static")
@@ -3678,6 +3761,8 @@ class MissionModesTest(unittest.TestCase):
 
     def test_weather_time_model_reroll_and_history_isolation(self):
         for name in MISSION_MODES:
+            if MISSION_MODES[name].zones.tunnel_static:
+                continue
             a, b = self.make_scenario(name, 1), self.make_scenario(name, 2)
             self.setup_scenario(a)
             self.setup_scenario(b)
@@ -3720,6 +3805,8 @@ class MissionModesTest(unittest.TestCase):
 
     def test_real_goal_check_ends_at_each_selected_end_not_at_start(self):
         for name in MISSION_MODES:
+            if MISSION_MODES[name].zones.tunnel_static:
+                continue
             scenario = self.make_scenario(name)
             self.setup_scenario(scenario)
             controller = Mock()
@@ -3850,10 +3937,10 @@ class MissionModesTest(unittest.TestCase):
         self.assertEqual(observed["collision_objects"], ["barrier-1"])
         self.assertEqual(observed["speed"], 5.0)
 
-    def test_main_recreates_and_repeats_each_mode_three_times(self):
+    def test_main_repeats_mission_modes_and_runs_tunnel_baseline_once(self):
         for name in MISSION_MODES:
-            if name == "full_loop_tunnel_vehicle":
-                continue  # Whole-tunnel vehicle trials require --once.
+            if MISSION_MODES[name].zones.tunnel_static or name == "full_loop_tunnel_vehicle":
+                continue  # Guarded static dispatch and whole-tunnel vehicle trials have distinct run ownership.
             factory = Mock()
             client = Mock()
             with patch.dict(main_runner.SUPPORTED_SCENARIOS, {name: factory}), patch.object(
@@ -3865,8 +3952,9 @@ class MissionModesTest(unittest.TestCase):
                 "sys.argv", ["runner", "--scenario", name, "--max-runs", "3"],
             ), redirect_stdout(io.StringIO()):
                 main_runner.main()
-            self.assertEqual(factory.call_count, 3)
-            self.assertEqual(factory.return_value.run.call_count, 3)
+            expected_runs = 1 if name == "full_loop_tunnel_normal" else 3
+            self.assertEqual(factory.call_count, expected_runs)
+            self.assertEqual(factory.return_value.run.call_count, expected_runs)
             self.assertEqual(factory.call_args.kwargs["scenario_cfg"]["mission_mode"], name)
             client.stop.assert_called_once()
 

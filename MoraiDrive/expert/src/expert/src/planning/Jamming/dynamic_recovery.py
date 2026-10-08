@@ -103,6 +103,10 @@ def make_recovery(owner, ego, statics):
                 continue
             points=[Point(*p) for p in np.vstack((edge,xy[index+1:]))]
             headings=np.array([owner.planner._path_heading(points,i) for i in range(len(points))])
+            road_clear = getattr(owner, 'road_clear', None)
+            if (road_clear is not None and (not road_clear([ego.position], [ego.yaw])
+                    or not road_clear(points, headings))):
+                continue
             if (not owner._envelope_clear(np.asarray(points[len(edge):]),headings[len(edge):])
                     or not owner.collision_free(np.asarray(points),headings,statics,.12)
                     or owner.planner._max_curvature(points)>MAX_CURVATURE):
@@ -134,6 +138,10 @@ def recovery_result(tracker, ego, statics, initial):
         return None
     points=tracker.path[max(0,index-1):]
     headings=np.array([tracker.planner._path_heading(points,i) for i in range(len(points))])
+    road_clear = getattr(tracker, 'road_clear', None)
+    if (road_clear is not None and (not road_clear([ego.position], [ego.yaw])
+            or not road_clear(points, headings))):
+        return None
     if (not tracker.collision_free(np.asarray([ego.position]),np.asarray([ego.yaw]),statics,.12)
             or not tracker.collision_free(np.asarray(points),headings,statics,.12)):
         return None

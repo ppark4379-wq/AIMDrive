@@ -50,7 +50,7 @@ python3 -m scenario_runner.main_runner \
 
 ## 구간별 모드 선택
 
-위 실행 명령의 `--scenario` 값만 바꿉니다. 일반 사용 모드는 6개입니다.
+위 실행 명령의 `--scenario` 값만 바꿉니다. 일반 사용 모드는 아래 표와 같습니다.
 
 | 모드 | 주행 범위 | 장애물·NPC |
 |---|---|---|
@@ -60,6 +60,8 @@ python3 -m scenario_runner.main_runner \
 | `full_loop_dynamic` | 인덱스 753 → 1081 (160.0m) | 좁힌 NPC 배치 영역에서 승인된 동적 횡단을 1~2개 순차 실행 |
 | `full_loop_roundabout` | 인덱스 1668 → 1975 (150.0m) | NPC 3대, 진입 100m 전 생성, 출구 30m 후 제거 |
 | `full_loop_highway` | 인덱스 1975 → 3638 (825.0m) | 기존 SpawnPoint 3개(각 4대, 총 12대, 5초 주기) 활성화 시점에 합류 링크 시작 70m 지점에 실주행 확인된 승용차 13종 중 정지 차량 1대를 시드 기반 랜덤 생성 |
+| `full_loop_tunnel_normal` | 인덱스 3723 → 4107 (189.7m), 터널 진입 40.2m 전 → 이탈 30.5m 후 | 장애물·NPC·급제동 이벤트 없음, 도로 비움 검사, 단회 검증 |
+| `full_loop_tunnel_static` | 같은 터널 전후 시험 경로 | 승인된 활성 배치 121개 중 랜덤 선택, 실측·Expert 재검사 후 주행 |
 
 예: 장애물·NPC 없는 전체 주행을 3회 실행:
 
@@ -84,7 +86,7 @@ python3 -m scenario_runner.main_runner \
   --static-obstacle-count 2
 ```
 
-여섯 모드는 정상 도착 후 객체 정리 → 같은 모드 시작점으로 재배치 → 다음 회차를 반복합니다.
+터널 기본 검증을 제외한 위 모드는 정상 도착 후 객체 정리 → 같은 모드 시작점으로 재배치 → 다음 회차를 반복합니다.
 날씨는 SUNNY/FOGGY 교대, 시간은 11/13/15시 중 선택하며 정적 장애물 모델은 직전 회차와 다르게 재선택합니다. 동적 장면은 직전 회차를 참조하지 않고 `run_seed`만으로 선택하므로 같은 장면이 연속될 수 있고, 같은 seed는 같은 횡단·모델·속도를 재현합니다.
 새 모드는 각자 날씨 이력을 저장하므로 기존 full_loop 날씨 이력을 변경하지 않습니다.
 `--once`는 1회, `--max-runs 10`은 10회입니다. 복구되지 않은 실행 오류는 전체 반복 명령을 중단합니다.
@@ -95,8 +97,182 @@ python3 -m scenario_runner.main_runner \
 
 실행에 사용하는 구간 시작·끝 좌표는 [segment_modes/modes.py](scenarios/segment_modes/modes.py)에 고정되어 있으며 테스트에서 직접 검증합니다.
 
+### 장애물 없는 터널 기본 검증
+
+`full_loop_tunnel_normal`은 Expert 소스를 수정하지 않고 원본 공식 경로의 터널 전후만 주행합니다. 센서 저장과 동기화 수집 없이 실행하려면 01번 브리지를 먼저 켭니다.
+
+```bash
+cd ~/AIMDrive/MoraiDrive
+./data_collection/tools/01_internal_sensor_record_preflight.sh --scenario-only
+```
+
+별도 터미널에서 실행합니다. MORAI Ego 제어와 차량 상태는 01번 브리지의 ROS 주소·9090 포트에 연결되어 있어야 합니다.
+
+```bash
+cd ~/AIMDrive/MoraiDrive
+./scenario_runner/tools/tunnel_static/run_tunnel_baseline.sh
+```
+
+지도상 터널은 `A2256W000126`이며 반대 차로는 `A2256W000131`입니다. 진입점은 `(29.589356, -487.650273, 28.301251)`, 이탈점은 `(-74.860745, -544.578033, 28.429146)`입니다. 두 차로의 지도 폭은 각각 3.5m인 명목값으로, 실제 벽이나 구조물 입출구를 실측한 값은 아닙니다. 기존 `zones.tunnel.center/yaw/size`는 GPS 음영 영역 값이므로 구조물 경계 대신 사용하지 않습니다.
+
+이 모드는 러너 소유 객체만 정리하고 새 객체를 생성하지 않습니다. 출발 전과 주행 중 전체 client의 객체를 조회해 양방향 도로에 차량·보행자·장애물이 있으면 실패 처리합니다. 외부 객체는 삭제하지 않습니다. 외부 SpawnPoint의 비활성화를 보증하는 기능이 아니라 실제 객체의 지속적인 도로 비움 검사입니다.
+
+결과는 `scenario_runner/.runtime/tunnel_baseline/<run_instance_id>/baseline.json`에 저장합니다. 무충돌, 지도상 터널 진입·이탈과 목표 도달을 통과하면 주행 결과가 `passed`가 됩니다. 보고서의 실제 입출구·벽 검증 상태는 별도 MORAI 화면/센서 근거가 확보되기 전까지 미확인으로 남습니다. 시간 초과(180초), 진행 정체, 경로 이탈, 충돌이나 도로 비움 조회 실패도 실패 사유로 저장합니다.
+
+
 오프라인 확인: 원하는 명령에 `--check`를 붙이면 접속 없이 경계 좌표·길이·이벤트 ON/OFF를 출력합니다.
 이 검사는 실제 AI 주행, 신호 준수, 무충돌 또는 MORAI RPC 성공을 보장하지 않습니다.
+
+## 터널 정적 장애물 후보와 실주행 검증
+
+터널 기본 주행과 별도로, Ego를 P기어에 둔 상태에서 장애물 후보 생성·정지 유지·정리를 검증할 수 있습니다. 이 도구는 Expert를 실행하거나 소스를 수정하지 않습니다. 설정은 `config/tunnel_static.yaml`입니다.
+
+터널 정적 장애물의 진입점은 다른 존과 같은 [full_loop_parts/tunnel_static.py](scenarios/full_loop_parts/tunnel_static.py)입니다. 일반 실행의 배치 검증·주행·프로세스 관리·복구와 후보 생성 구현은 `tunnel_static_parts/`에 모았습니다. 개발·시험 도구는 `tools/tunnel_static/`에서 `python -m scenario_runner.tools.tunnel_static`으로 실행합니다. 기존 Python 모듈 명령은 호환 별칭으로 유지하며, 최상위 `tools/`에는 소유 프로세스 검사에 사용하는 trial/safety 쉘 두 개만 남깁니다. 기존 `.runtime` 결과·모델 검증 자료는 변경하지 않습니다.
+
+`full_loop_tunnel_static`은 기존 `segment_modes`에 등록되며, 기존 `tunnel.py` 급제동 이벤트와 분리합니다. 일반 러너의 같은 `--scenario` 옵션으로 실행하고, 내부에서 활성 승인 목록의 랜덤 선택과 기존 단회 시험의 실측·Expert 검사·주행·정리·복구를 연결합니다. 검증된 소유 장면 없이 `MissionScenario`를 직접 실행하는 보호 조건은 유지합니다. 센서 수집·학습 모드 목록에는 자동 추가하지 않습니다. `full_loop_tunnel_normal`은 장애물 없는 기본 검증 모드입니다.
+
+터널 정적 장애물도 다른 존과 같은 명령 형식으로 실행합니다. MORAI와 센서/ROS
+브리지가 켜진 상태에서 아래처럼 실행하면 기존 검증 배치 121개 전체에서 랜덤으로
+하나를 선택해 1회 주행합니다. 새 설정의 승인 목록으로 선택 범위를 줄이지 않습니다.
+121개 원본 배치와 새 속도 조건의 별도 재검증 기록은 그대로 보존합니다.
+각 실행에서 실측·Expert 경로·충돌·복귀·정리·복구를 다시 검사합니다.
+Expert는 기존 공용 소스를 실행·종료하고,
+최대 속도는 원본 Expert 설정을 그대로 상속합니다. 터널의 10/15km/h 상한은 없습니다.
+
+```bash
+cd ~/AIMDrive/MoraiDrive
+source data_collection/tools/internal_sensor_record_env.sh
+morai_load_internal_sensor_record_environment
+
+/usr/bin/python3 -m scenario_runner.main_runner \
+  --zone full_loop \
+  --scenario full_loop_tunnel_static \
+  --once \
+  --no-sync-runtime
+```
+
+`--once`를 빼면 다른 존처럼 `auto_repeat` 설정에 따라 반복합니다.
+`--max-runs 3`이면 최대 3회이며, 회차마다 배치를 새로 선택하고 실제 검사와 복구를
+완료합니다. 실제 주행 실패나 검증·복구 오류는 반복 명령을 중단합니다. 이 터널
+모드는 현재 시나리오 전용 비동기 주행이며 센서 저장·Sync Runtime 수집을 켜지
+않습니다. 센서/ROS 브리지는 실제 객체 검증을 위해 계속 필요합니다.
+
+같은 명령에 `--check`를 붙이면 Simulator 접속·주행 없이 121개 원본 증거와
+제외 목록을 검증하고 배치 선택 결과만 저장합니다. `--tunnel-static-seed 42`는
+배치·날씨·시간에 같은 run_seed를 전달합니다. 명시한 seed는 다른 존처럼 반복 실행에서도
+유지하며, seed를 생략하면 회차마다 새 값을 사용합니다. 날씨는 존별 영속 이력에서
+SUNNY/FOGGY를 교대하고, 시간은 기존 방식대로 11/13/15 중 이전 시각을 제외해 선택합니다.
+배치 균형 이력도 이어받으므로 재현에는 seed와 이전 이력이 함께 필요합니다.
+
+원본 Expert 설정으로 최초 재검증하거나 아직 승인되지 않은 배치를 확인하려면:
+
+```bash
+/usr/bin/python3 -m scenario_runner.main_runner \
+  --zone full_loop --scenario full_loop_tunnel_static \
+  --tunnel-static-revalidate --max-runs 121 --no-sync-runtime
+```
+
+이 옵션은 현재 설정의 실주행 성공 기록을 별도로 누적하며, 일반 실행의 121개
+랜덤 목록을 제한하지 않습니다. 주행 전 기하 검사·메타데이터
+재시도는 기존 조건을 유지하며, 실제 실패 후 복구된 배치는 승인하지 않고 다음 후보를
+검사합니다. 신원·통신·소스·정리 등 분류되지 않은 오류는 재검증 명령도 중단합니다.
+
+결과는 기본 `.runtime/tunnel_static_replays/session_*/`에 저장합니다.
+회차별 상세 Expert stdout/stderr는 `selection_*_live/attempts/*/trial.log`에 저장하고
+일반 실행에서는 터미널에도 실시간으로 표시합니다. 반복 준비 성공 문구는 콘솔에서만
+줄이며, 오류·Expert 주행 원문은 보존합니다. 콘솔 출력이 막혀도 주행·정리와 파일 기록을
+막지 않습니다. `sequence=2`는 다음 회차를 시작했다는 뜻입니다.
+`ACC ON_Vehicle`은 차량 ACC가 적용될 때만 출력되며, 모든 차량 인식의 표시가 아닙니다.
+
+생성 직후 객체 등록·조회 지연은 같은 요청 ID로 최대 10회, 전체 1.5초 안에서
+재조회합니다. 생성 요청은 반복하지 않습니다. 정적 객체의 초기 위치 고정은 최대
+8회 시도하며, 종류 불일치·식별 모호성·주행 중 이동 등은 재조회 허용 사유가 아닙니다.
+
+`--tunnel-static-output <디렉터리>`와 `--tunnel-static-library <승인 JSON>`으로
+다른 위치를 지정할 수 있습니다. 라이브러리는 활성 목록 표시와 해시로 검증된
+제외 이력이 있어야 하며, 원본 133개 보관 파일이나 제외된 12개를 다시 포함한
+목록에는 실행을 허용하지 않습니다.
+
+검증된 정적 모델과 실제 NPC 차량 모델에서 기본 스케일 `[1,1,1]`의 1~2개를 선택합니다. 박스 중심을 터널 길이 방향 20~75m, 자기 차로 중심에서 횡방향 ±0.25m에 배치하고, 두 개일 때는 18m 이상 간격을 확보합니다. 모델의 피벗과 실제 박스 중심 오프셋을 반영해 전체 형상이 차로 안에 들어가는지 검사합니다. 반대 차로를 회피 통로로 남기되 실제 벽이 검증된 것으로 취급하지 않습니다.
+
+시뮬레이터 접속 없이 후보를 생성하고 실제 `JammingPlanner`로 사전 선별합니다. Expert와 같은 녹화 경로 9개, 공식 경로·접근·복귀 구간, PathManager의 local/prediction 입력을 사용합니다. 지도의 두 터널 차로 약 7m와 실제 연결된 접근·이탈 차로를 공통 `RoadBoundary`로 검사합니다. 녹화 경로 폭이나 LiDAR 집계 폭을 도로 폭으로 사용하지 않습니다. 터널 내부의 경로 탐색에는 전체 차체·뒤범퍼에 35cm 여유를 적용해 추종 오차 공간을 남기며, 실제 자세와 접근·이탈 기본 경로의 경계 검사는 15cm를 유지합니다. 같은 정책으로 장애물 충돌·곡률·원래 차로 복귀를 검사합니다. `--count`를 생략하면 1~2개를 랜덤 선택하며, `--seed`로 재현할 수 있습니다.
+
+```bash
+cd ~/AIMDrive/MoraiDrive
+./scenario_runner/tools/tunnel_static/prepare_tunnel_static.sh \
+  --seed 42 --count 2 --actor-kind mixed --candidates 10
+```
+
+`--actor-kind obstacle`은 일반 정적 모델, `vehicle`은 실제 NPC 차량, `mixed`는 양쪽 후보 풀을 사용합니다. `mixed`의 모든 배치가 반드시 차량과 일반 장애물을 하나씩 포함하는 것은 아닙니다. `--obstacle-model WoodBox`, `--vehicle-model DEFAULT_SEDAN`처럼 종류를 제한할 수도 있습니다. 차량은 검증된 표면 형상과 API 충돌 박스를 모두 감싸는 크기를 사용하며, 관측된 박스가 작아졌다고 기존 검증 형상을 축소하지 않습니다.
+
+실제 생성·정지 유지 검사는 01번 브리지와 MORAI를 준비한 뒤, 다른 Ego 제어기를 종료하고 빈 터널에서 실행합니다. Ego는 진입 전 위치의 P기어로 유지되며 이 명령으로 회피 주행을 시작하지 않습니다.
+
+```bash
+./scenario_runner/tools/tunnel_static/prepare_tunnel_static.sh \
+  --preview --seed 44 --count 2 --actor-kind mixed \
+  --obstacle-model WoodBox --vehicle-model DEFAULT_SEDAN --hold-seconds 10
+```
+
+실제 객체의 모델·위치·회전·크기·정지 상태를 읽고, 관측된 형상으로 오프라인 경로를 다시 검사합니다. 정적 객체는 기존 위치 고정 로직을 재사용하고, 실제 NPC는 고속도로 테스트와 같은 경로 지정·속도 제한 0·속도 0·정지 제동을 사용합니다. NPC의 AI와 물리는 유지합니다. 새 차량의 초기 지면·서스펜션 정렬이 안정된 뒤 기준 상태를 잡으며, 검사 중 위치가 움직이면 속도값이 0이어도 실패 처리합니다. 이동·외부 객체 점유·조회 실패·잘못된 형상·정리 실패는 후보 실패입니다. 이 도구가 생성한 객체만 제거하며 외부 객체를 이동하거나 삭제하지 않습니다. 현재 장면에 직접 배치한 터널 객체가 있으면 사전 검사에서 중단합니다.
+
+결과는 `scenario_runner/.runtime/tunnel_static/<실행 ID>/` 아래에 남습니다.
+
+- `candidate.json`: seed, 개수·모델·위치, 형상 출처, 지도와 카탈로그 SHA.
+- `screening.json`: 지도 기준 경로 후보, 차체 충돌·곡률·도로 범위 검사, 시간 초과 등 실패 사유.
+- `preview.json`: 실제 생성한 객체의 관측값과 정지 검증, 관측 형상 경로 검사, 소유 객체 정리 결과.
+- `manifest.json`: 사전 선별을 통과한 후보와 탈락 후보의 목록.
+
+`nominal_path_found`는 공통 경계와 형상 기준으로 실제 Jamming 선택 경로가 사전 검사를 통과했다는 뜻이고, `valid_preview`는 생성·정지 유지·정리 검증 통과입니다. 두 결과 모두 `expert_verified=false`, `live_avoidance_verified=false`입니다. 후보마다 별도 검사 프로세스를 사용하고 전체 15초 제한 후 종료·회수합니다. `--time-budget`으로 조정할 수 있으며, 시간 초과는 통과 불가능의 증명이 아닙니다. 검사 구현·녹화·정책 해시가 바뀐 기존 검사 및 승인 캐시는 재사용하지 않습니다.
+
+현재 서버에서 NPC의 박스 중심이 차량 피벗으로 반환되는 경우를 실제로 확인했습니다. 모델명·치수·단일/전체 조회가 일치하는 알려진 변형만 별도로 기록하고, 검증된 차체·기존 충돌 박스·실제 반환 박스를 모두 감싸서 경로를 검사합니다. 이 경우 `current_api_center_variant=actor_pivot`, `catalog_offset_verified=false`를 남깁니다. 임의의 다른 위치 오프셋이나 크기 변경은 실패입니다. 이는 실제 렌더링 형상이나 충돌 동작을 새로 승인한 결과가 아니며, 팀원의 객체 중심 처리와 최종 주행 검증에서 확인해야 합니다.
+
+실주행은 새 01번 브리지와 MORAI를 준비하고, 다른 Ego 제어기를 종료한 상태에서 한 후보씩 시험합니다. 후보 생성 결과의 `candidate.json`을 지정합니다.
+
+```bash
+./scenario_runner/tools/run_tunnel_static_trial.sh \
+  --candidate scenario_runner/.runtime/tunnel_static/<실행 ID>/candidate_000/candidate.json \
+  --time-budget 15 --expert-max-velocity-kmh 15 --no-sync-runtime
+```
+
+이 도구는 실제 Ego 자세·박스 중심 오프셋·앞뒤 돌출부와 장애물의 관측 형상을 사전 검사에 전달합니다. Ego 박스 높이와 중심의 FLU 오프셋까지 사용해 roll/pitch ±3°의 수평 차체 투영을 감싸며, 실제 기울기가 이 범위를 넘으면 중단합니다. 접근 경로는 실제 PathManager의 지도 경로를 검사하고, 실측 위치·방향·차체·초기 추종 오차는 별도로 검증합니다. 같은 경계 정책과 검증한 객체 형상을 시나리오 전용 Expert 실행 설정에 주입합니다. Jamming은 해당 객체의 GT 식별자·자세·치수가 일치할 때만 보정 형상을 사용하며, 이동·누락·형상 변경은 실패 처리합니다. 기존 정적·고속도로 공용 플래너와 전역 차체 상수는 변경하지 않습니다. 전체 차체 경계·충돌 검사는 탐색, 복귀, 남은 경로, 실제 자세 및 특수 복구에도 적용합니다.
+
+시험 속도를 생략하면 원본 Expert 설정을 상속하며, 자동 반복은 하지 않습니다. 개발용 단회 시험은 `--expert-max-velocity-kmh 10`으로 명시적으로 속도를 낮출 수 있습니다. 실제 GT, 선택 경로, 터널 입출구 통과, 원래 차로 복귀, 정지 장애물 유지와 무충돌 완주가 확인되어야 `valid_driving_trial`로 기록합니다. 실패 시 외부 Ego 입력을 차단하고 속도 0/P기어를 먼저 요청·확인한 다음 Expert를 종료하고 소유 객체를 정리합니다. 결과는 `.runtime/tunnel_static_trials/`에 남으며, 실제 완주 증거가 없는 후보는 승인하지 않습니다. 단일 장애물 → 단일 차량 → 혼합 2개 순서로 확인한 뒤 반복 시험에 사용합니다.
+
+새 공통 경계 구현은 Shapely 2.0.7을 사용합니다. 운영 의존성은 `data_collection/internal_sensor_record/requirements-runtime.txt`에 고정되어 있습니다. 지금 저장하는 터널 후보와 실주행 결과는 기존 교차로의 승인 프리셋과 구분합니다.
+
+2026-10-07 연동 검증에서 최대 10km/h로 WoodBox 1개, DEFAULT_SEDAN 1대, WoodBox＋DEFAULT_SEDAN 2개 장면이 모두 실제 회피·무충돌 완주·원차로 복귀·정지 유지·소유 객체 정리 검사를 통과했습니다. 각 실제 주행은 약 75초였으며 회귀 테스트 410개가 통과했습니다. 이 PC의 근거는 `.runtime/tunnel_static_trials/alignment_20261007_summary.json`과 `alignment_20261007_actual_trajectories.png`입니다. 이는 세 배치의 단회 주행 결과이며, 전체 모델·랜덤 배치 또는 밤샘 자동 반복의 승인은 아닙니다.
+
+## 정지 LiDAR 경계 측정과 모델별 검증
+
+터널 경계 도구는 Expert 없이 Ego를 정지시켜 여러 위치에서 LiDAR를 수집합니다. 각 새 프레임의 전후 위치·전체 roll/pitch/yaw·속도·기어와 타임스탬프를 기록하고, 측정 종료 시 원래 Ego 자세를 복원합니다. 센서 위치·각도·FOV는 변경하지 않습니다. 이미 로드된 MORAI와 01번 브리지가 필요하며, 다른 Ego 제어기가 실행 중이면 중단합니다.
+
+```bash
+cd ~/AIMDrive/MoraiDrive
+source data_collection/tools/internal_sensor_record_env.sh
+morai_load_internal_sensor_record_environment
+/usr/bin/python3 -m scenario_runner.tools.survey_tunnel_boundaries
+```
+
+2026-10-06 정지 측정은 13개 지점·39개 새 프레임을 확보했습니다. 다중 관측의 고밀도 벽·천장 시작은 지도상 입구 이후 약 2.875m(샘플 구간 2.5~3.25m), 끝은 입구 이후 약 120.875m(120.5~121.25m)였습니다. 중심선에 대응한 구조물 위치 추정은 입구 `(27.200136, -489.249288, 28.301124)`, 출구 `(-76.591290, -545.335174, 28.434457)`입니다. 이 구간은 직접 측정한 입출구 면의 통계적 신뢰구간이 아니며, 정확한 포탈·연석 경계 확정 여부는 계속 false입니다.
+
+관측된 연속 평평한 바닥은 중심선 횡방향 약 -2.75~+6.0m(8.75m)이고, 기존 계획 범위 -1.75~+5.25m(7m)가 안에 포함됐습니다. 벽 사이 약 12m를 주행 폭으로 사용하지 않습니다. 측정 근거는 `.runtime/tunnel_static/boundary_survey_20261006_v2/`의 `manifest.json`, `boundaries.json`, `boundaries.png`, 원본 cloud 및 CSV에 있습니다.
+
+모델별 검증 도구는 종류마다 한 개씩 생성하고 5초 이상 정지·실제 형상 경로·소유 객체 정리를 확인합니다. 형상 원본이나 기존 승인 값을 수정하지 않습니다. 이는 일반 배치의 실주행 승인이 아니라 해당 모델의 생성·정지 검증입니다.
+
+```bash
+/usr/bin/python3 -m scenario_runner.tools.verify_tunnel_models --live
+```
+
+2026-10-06 검사에서 요청한 38종(정적 25종＋차량 13종)을 모두 분류했습니다. 정적 20종과 차량 12종은 실제 검증을 통과했습니다. BabyStroller1/2는 생성 확인 실패, Rockslide/Steel_Barricade/concrete-barrier는 현재 차로 폭 정책 초과, 2015_Toyota_Prius(HEV)는 검증된 형상 자료 부재로 별도 기록했습니다. 실패·제외를 통과로 바꾸거나 치수를 추정해 채우지 않습니다.
+
+이 PC의 결과 목록은 `.runtime/tunnel_model_coverage/live_20261006_all38_verified/manifest.json`과 `acceptance.json`입니다. 현재 형상·지도·관측 보고서 해시를 확인한 통과 모델만 랜덤 후보로 제한하려면 다음처럼 지정합니다.
+
+```bash
+./scenario_runner/tools/tunnel_static/prepare_tunnel_static.sh --seed 42 --candidates 10 \
+  --model-acceptance scenario_runner/.runtime/tunnel_model_coverage/live_20261006_all38_verified/acceptance.json
+```
+
+이 목록을 사용해도 새로운 위치·조합은 자체 관측과 경로 검사를 거쳐야 하며, 실제 Ego 회피 주행은 Expert 연결 후 별도 검증합니다. `.runtime` 검증 파일은 Git에 포함하지 않습니다. 다른 PC에서는 그 환경의 모델 검사 결과를 만들거나 검증 파일과 참조된 원본 보고서를 함께 준비해야 합니다.
 
 ## 동적 장애물 횡단 카탈로그
 
@@ -752,3 +928,404 @@ plan에 고정하며, 기본값은 SUNNY/FOGGY 50/50과 11/13/15시 34/33/33이�
 SHA-256을 고정하고 02번 수집기가 run마다 서로 다른 프리셋을 선택한다. 계획 또는
 YAML이 이후 변경되면 수집 전 검사가 실패한다. Scenario Runner가 적용한 날씨·시간이
 해당 run의 plan과 다르면 수집 원본은 보존하지만 캠페인을 즉시 중단한다.
+
+### 터널 실제 주행 24회 배치
+
+`run_tunnel_static_batch.sh`는 단일 Expert trial을 별도 process group으로 실행한다.
+기본 목표는 **실제 주행 24회**이며 24회 모두 통과했다는 뜻은 아니다.
+WoodBox 1개, DEFAULT_SEDAN 1개, 혼합 2개를 각각 8회 시험한다. 첫 세 시험은 지정한
+기존 후보를 재생하고, 이후에는 고정 seed로 같은 검증 모델에서 위치를 생성한다.
+Expert 진입과 3개 이상 Ego 표본의 0.5m 이상 이동을 확인하여 실제 주행을 집계한다.
+screening·preflight 거부는 별도 집계하고 후보 재시도는 종류별 시험당 최대 5회이다.
+
+```bash
+./scenario_runner/tools/tunnel_static/run_tunnel_static_batch.sh \
+  --output scenario_runner/.runtime/tunnel_static_trials/batch_20261007 \
+  --woodbox-candidate scenario_runner/.runtime/tunnel_static_trials/alignment_20261007_inputs/woodbox_one/candidate.json \
+  --sedan-candidate scenario_runner/.runtime/tunnel_static_trials/alignment_20261007_inputs/sedan_one/candidate.json \
+  --mixed-candidate scenario_runner/.runtime/tunnel_static_trials/alignment_20261007_inputs/mixed_two/candidate.json \
+  --recovery-helper scenario_runner/tools/tunnel_static_batch_safety.sh \
+  --scene-helper scenario_runner/tools/tunnel_static_batch_safety.sh \
+  --relocate-actor-ids 2,4,5 --hold-seconds 5 --max-velocity 10 --time-budget 15
+```
+
+수동 객체 이동은 `--scene-helper`를 지정했을 때만 실행한다. 객체 ID의 기본값은 비어
+있으므로 해당 PC에서 확인한 ID만 명시한다. helper가 원본을 먼저 저장하고 이동하며,
+배치 종료 시 복원한다. 매 trial은 240초 제한이며, 통과·실패 모두 recovery helper가
+Ego 정지와 소유 객체 정리를 확인해야 다음 시험을 시작한다.
+
+`batch_manifest.json`은 종류별 통과·실패·사전 거부와 고정 source/candidate hash를,
+`progress.json`은 현재 PID/PGID·heartbeat·집계를 원자적으로 저장한다. 같은 디렉터리의
+`batch.lock`과 공통 `.runtime/tunnel_static_trials/.batch_execution.lock`으로 동시 실행을
+막는다. 같은 인자에 `--resume`을 붙이면 source가 동일할 때만 미완료 시험을 복구한다.
+중단 신호는 자식에 SIGINT를 먼저 보내 finally 정지를 기다리고, 제한 시간 후 종료한다.
+이번 PC의 시험은 `/tmp/aimdrive_tunnel_batch_watch_20261007.py`를 별도 guardian으로
+함께 실행하여 worker 강제 종료 시에도 recovery·원본 복원을 재시도하도록 구성했다.
+
+2026-10-07 실제 24회 연속 시험은 약 37분에 완료했다. WoodBox 단일은 7/8회,
+DEFAULT_SEDAN 단일은 8/8회, 혼합 2개는 8/8회 통과했고 충돌은 0건이었다.
+첫 WoodBox 시험은 주행 시작 약 0.99초 후 접근 구간에서 차체 투영과 15cm 여유를
+포함한 범위가 지도 경계를 약 3mm 벗어나 정지·복구됐다. 실패 기록은 유지했다.
+매 시험 후 정리와 전체 종료 후 기존 수동 객체 복원이 확인됐다. SIGINT와
+SIGKILL 복구 시험도 별도로 통과했고, 배치·복구·기존 주행 관련 테스트 42개가 통과했다.
+이 PC의 요약은 `.runtime/tunnel_static_trials/batch_20261007/summary.json`, 실제 주행을
+통과한 23개 배치 목록은 같은 폴더의 `approved_candidates.json`이다. 적용 범위는
+위 두 모델·1~2개 배치·10km/h와 지도상 도로 경계이며 실제 벽 확정은 별도 상태로 남긴다.
+
+현재 일반 터널 실행과 02 데이터수집은 공통 `activate_expert_drive()`의 AUTO·D →
+수집 준비 → Expert 시작 순서를 사용한다. 준비 중에는 실제 브레이크·무가속·정지와
+측정 자세를 확인하며 P단 유지나 강제 yaw 정렬을 출발 조건으로 삼지 않는다.
+실측 이후 재배치는 하지 않는다. 수집은 Record ON 확인 후 Expert를 시작하고,
+주행 중 현재 Expert의 새 명령·계획과 기존 차체·충돌·복귀 조건을 검증한다.
+아래 P단 정렬 및 시험 기록은 2026-10-07 당시 구현과 결과를 보존한 것이다.
+
+2026-10-07 터널 실주행의 출발 준비는 `scenarios/segment_modes/tunnel_static_startup.py`에서
+분리했다. P단·외부 입력 차단 상태에서 실제 yaw를 읽어 지도상 START 방향으로
+보정하고, 현재 물리 높이를 유지한다. SetTransform 뒤에는 기어가 초기화될 수 있어
+P단을 재적용한다. 자세를 다시 덮어쓰지 않고 Expert를 시작하여, 현재 Expert PID의
+새 명령 3개·일치하는 ROS Ego 자세·새 진단을 확인한 뒤 AUTO/P 검사와 D단 전환을
+수행한다. D단 직전에도 준비 상태를 다시 확인한다. 정렬은 15초, Expert 준비는
+12초 제한이며 실패하면 정지·정리를 수행한다. 기존 존의 출발 절차는 유지한다.
+
+2026-10-07 보완 후 동일 실패 배치 재시험 1건과 연속 시험 12건이 모두 통과했다.
+첫 반복 시험은 외부 입력을 차단한 P단에서 이전 조향·가속 명령을 bridge에 남긴
+조건도 포함했다. 정렬 후 최대 yaw 오차는 약 0.0017°, 새 Expert 준비 대기는 최대
+약 1.20초였다. 초기 3m의 차체 투영에 15cm 여유를 포함한 뒤에도 지도 경계까지
+최소 약 13.5cm가 남았다. 도로 폭 7m와 계획 35cm·실제 검사 15cm 기준은 유지했다.
+관련 회귀 테스트 227개(신규 출발 테스트 14개 포함)가 통과했고 기존 객체 복원을
+확인했다. 결과는 `.runtime/tunnel_static_trials/startup_alignment_20261007/summary.json`,
+12건의 개별 근거는 `.runtime/tunnel_static_trials/startup_alignment_regression_20261007/`이다.
+
+
+### 터널 모델·조합 확대와 3개 시험
+
+`--expanded-models`는 현재 소스에서 정지 생성 검증을 통과한 `--model-acceptance`의
+정적 모델과 차량을 사용한다. 기본 목표는 실제 주행 30회이며 단일 정적 장애물,
+단일 차량, 정적 2개, 차량 2개, 혼합 2개를 순환한다. 각 모델을 적어도 한 번 포함하도록
+조합을 구성한다. 정지 생성 성공, 실제 주행 노출, 실제 회피 성공은 서로 다른 결과다.
+`actual_model_occurrences`에는 실패 주행도 포함하므로 모델별 승인에는 실제 통과한
+`approved_candidates.json`과 각 `drive_trial.json`을 확인해야 한다.
+
+```bash
+./scenario_runner/tools/tunnel_static/run_tunnel_static_batch.sh   --expanded-models   --model-acceptance scenario_runner/.runtime/tunnel_model_coverage/expanded_20261007_v4/acceptance.json   --output scenario_runner/.runtime/tunnel_static_trials/expanded_driving_20261007_v5   --actual-runs 30 --hold-seconds 5 --max-velocity 10 --time-budget 15   --recovery-helper scenario_runner/tools/tunnel_static_batch_safety.sh   --scene-helper scenario_runner/tools/tunnel_static_batch_safety.sh   --relocate-actor-ids 2,4,5
+```
+
+위 수동 객체 ID는 이번 PC에서 확인한 값이다. 다른 환경에서는 실제 ID를 확인하여
+지정한다. `--static-model` 또는 `--vehicle-model`을 반복 지정하면 승인 풀을 제한한다.
+소스·승인 파일·후보의 hash가 달라졌으면 기존 배치를 resume하지 않고 새 출력 폴더에서
+다시 시험한다. 기존 실패와 원본 복구 근거는 보존한다.
+
+일반 생성의 장애물 수는 계속 1~2개다. 3개 후보는 `tunnel_static_candidates.py`의
+`--count 3 --experimental-three`로 명시적으로 생성한다. 3개 전체 OBB의 터널 내부
+포함, 모든 쌍의 간격, 장애물 앞뒤 공간과 종방향 길이 예산을 확인한다. 실제 JammingPlanner의
+선택 경로·곡률·전체 차체 경계·충돌·원래 차로 복귀 검사도 동일하게 수행한다.
+배치에는 현재 소스로 검사한 `screening.json`이 옆에 있는 3개 후보를
+`--three-candidate /path/to/candidate.json`으로 추가한다. 반복 지정 가능하며 일반 시험
+후반에 실행한다. 단순히 개수나 간격만으로 3개를 승인하지 않는다.
+
+차량은 같은 actor의 제한 시간 내 `GetVehicleSpec`을 입력 크기 계약으로 고정한다.
+정적 모델은 Ego P단에서 같은 actor의 새로운 ROS 메시지 3개를 검증하여 native 입력
+크기를 고정한다. publisher, 실제 header seq/stamp, pose, ID·모델·정지 상태와 치수
+안정성을 확인하며, 주행 중 크기나 publisher 변경도 거부한다. 이 입력 정보와 별개로
+회피·충돌 검사는 sealed 표면과 실제 gRPC collider의 보수 union을 그대로 사용한다.
+ROS 명목 크기의 차이 때문에 충돌 형상을 줄이거나 허용오차를 늘리지 않는다.
+
+현재 도로 경계는 지도상 두 차로 7m, 터널 길이는 약 118.99m다. 계획 시 35cm,
+실제 주행 검사 시 15cm 여유를 유지한다. 물리 벽·포털의 정확한 경계는 미확정 상태로
+기록하며, 통과 결과의 적용 범위는 시험한 모델·배치·10km/h와 이 지도 경계다.
+
+
+2026-10-07 최종 소스의 확대 검증은 **실주행 30/30회 통과**, 충돌 0건으로 약 50분
+51초에 완료했다. 정적 20종·차량 12종의 총 32종이 각각 실제 성공 주행에 포함됐다.
+단일 정적 6회·단일 차량 6회·정적 2개 5회·차량 2개 5회·혼합 2개 5회와 아래 3개
+시험 각 1회가 통과했다. 정지 모델 검증만으로 성공 수를 집계하지 않았다.
+
+| 실제 성공한 3개 구성 | 터널 진입 기준 중심 위치 | 중심 간격 | 실측 union의 최소 종방향 표면 간격 | 점유 길이 | 출구까지 여유 |
+| --- | --- | --- | --- | --- | --- |
+| Bollard01 + TrafficBarrel + WoodBox | 25·45·65m | 20m | 19.039m | 40.783m | 53.386m |
+| WoodBox + DEFAULT_SEDAN + 2015_Kia_K5 | 25·49·73m | 24m | 19.074m | 51.051m | 43.535m |
+| DEFAULT_SEDAN + 2015_Kia_K5 + 2020_Kia_K5 | 25·49·73m | 24m | 19.070m | 52.974m | 43.509m |
+
+세 시험 모두 실제 Expert 선택 경로·전체 차체 경계·장애물 정지·출구 통과·원래 차로
+전체 차체 복귀를 통과했다. 실측 후보 경로의 최대 곡률은 약 0.12564/m로 Expert
+제한 0.24/m 이하였다. 작은 정적 조합의 lateral 값은 -0.25·+0.25·-0.25m이고, 혼합·차량 조합은
++0.25·-0.25·+0.25m였다. 위치별 실제 XYZ와 모델 크기는 아래 `summary.json`에
+저장했다. 반대 차로를 비운 10km/h 시험이며, 해당 조합의 성공으로 임의 모델·간격의
+3개 전체를 승인하지 않는다. 기본 자동 생성 수는 1~2개, 3개는 명시적 시험 옵션이다.
+
+새 native ROS 메시지의 publisher·sequence/stamp 순서 검증에서 주행 전 4회 거부가
+발생했다. 기준을 유지하여 재시도했고 네 경우 모두 Expert 시작 전에 정리했다.
+실제 주행 실패와 무이동 Expert 시험은 없었다. 총 36회 recovery 확인, 모든 임시
+객체 제거, 기존 수동 객체 복원을 확인했다. 종료 후 활성 제어 publisher가 없고
+Ego P단·속도 약 0.0000925를 최종 읽기 확인했다. 기존 수동 객체 외 추가 장애물을
+시뮬레이터에 남겨 놓지는 않았다.
+
+- 집계: `.runtime/tunnel_static_trials/expanded_driving_20261007_v5/summary.json`
+- 실제 통과한 30개 후보: 같은 폴더의 `approved_candidates.json`
+- 원본 실행·복구 근거: 같은 폴더의 `batch_manifest.json`, `supervisor.json`, `attempts/`
+- 최종 정지 생성 승인: `.runtime/tunnel_model_coverage/expanded_20261007_v4/acceptance.json`
+
+회귀 검사 485개와 Expert 경계·동시 처리 검사 35개가 통과했다. 마지막 native 입력
+보완을 포함한 Runner 전용 검사 34개도 통과했다. 전용 검사는 회귀 검사와 중복되므로
+단순 합산하지 않는다. 이전 소스에서 실패한 시험은 그대로 보존했다. 물리 벽·정확한
+구조물 포털 확정은 여전히 별도 확인 대상이다.
+
+
+### 제외 모델 추가 가능성 재검토
+
+2026-10-07 추가 요청으로 BabyStroller1/2와 큰 정적 모델 3종을 다시 확인했다.
+이 단계는 별도 후보의 가능성 검증이며, 기본 자동 배치 설정과 32종 승인 목록은 유지했다.
+모델 크기·sealed 형상 자료·계획 35cm·실제 검사 15cm·충돌 여유는 변경하지 않았다.
+
+| 모델 | 결과 | 검증된 추가 조건 |
+| --- | --- | --- |
+| Steel_Barricade | 90° 배치 실주행 성공 | 터널 진입 후 35m, 횡방향 0m, 단일 장애물 |
+| concrete-barrier | 90° 배치 실주행 성공 | 45m, 횡방향 0m, 단일 장애물 |
+| Rockslide | 현재 Expert의 실측 형상 경로 확보 실패 | 추가 제외 |
+| BabyStroller1/2 | 다른 위치에서도 SpawnObstacle 서버 생성 거부 | 추가 제외 |
+
+Steel 기본 방향은 명목 경로를 찾았지만 실제 2회 모두 차체 충돌 여유 검사에서 정지했고
+45초 무진행 watchdog으로 복구했다. 실제 yaw 약 1.5°·위치 약 5cm의 추종 차이가
+여유를 소진한 결과로, 충돌과 도로 이탈은 없었다. 90° 회전 대안은 기존 치수
+약 폭 3.013×길이 1.081m를 유지하면서 도로 횡방향 폭이 약 1.081m가 되어 성공했다.
+이 재시험의 첫 시도는 native ROS sequence/stamp 검증에서 주행 전에 거부되고,
+두 번째 시도가 전체 통과했다.
+
+concrete-barrier는 원래 약 3.205×0.617m 형상을 90° 돌려 횡방향 폭 약 0.617m로
+사용한 실제 시험이 통과했다. 두 성공 시험은 전체 차체 경계·충돌·출구 통과·원래 차로
+복귀·장애물 정지·객체 정리까지 확인했다. 스케일은 1을 유지했으며 크기를 줄이지 않았다.
+
+Rockslide는 봉인 표면 값 4.301×2.989m보다 실제 gRPC collider가 커서, 실측 보수
+union은 폭 4.783×길이 3.144m였다. 90°로 돌려도 도로 횡방향 폭이 3.144m가 된다.
+35m에서 실측 검사 2회, 같은 측정 형상을 25·30·40m로 강체 재투영한 추가 검사 3회
+모두 현재 Jamming의 경로를 확보하지 못했다. 추가 검사는 실제 주행이 아닌 재투영
+검사로 표시했다. 이는 수학적 불가능 증명이 아니라 현재 Expert·검증 조건의 제외 판단이다.
+
+BabyStroller1/2는 실제 크기 때문에 탈락한 모델이 아니다. WoodBox 정상 생성·정지
+검증 후 다른 위치인 35m에서 다시 생성했지만 두 모델 모두 서버가 status=0,
+`Unknown error`로 거부했다. 생성되는 객체가 없어 실제 회피 시험으로 진행하지 않았다.
+
+검증된 추가 가능 모델은 2종이며, 이 회전 조건을 자동 생성에 연결하면 32→34종으로
+확대할 수 있다. 자동 풀 등록은 이 검토 단계에 포함하지 않았다. 모델별 yaw 정책,
+회전 후 투영 폭의 eligibility와 Batch의 같은 layout 전달·승인 SHA 검사가 필요한
+연결 지점이다. 현재 후보는 단일 trial 도구의 `--candidate`로 재생할 수 있으며 각
+재생은 실제 측정·경로·주행 검사를 다시 통과해야 한다.
+
+근거는 `.runtime/tunnel_static_trials/wide_models_assessment_20261007/`의
+`additional_model_assessment.json`, `approved_extra_candidates.json`, `live_trials/`,
+`rotation_retry/`, `baby_retry/`, `offline_candidates/`에 보존했다. 시험 후 Ego P단,
+활성 제어 publisher 없음, 기존 수동 객체 복원·추가 시험 객체 제거를 최종 확인했다.
+
+### 두 차로 배치·모델 검사 확대
+
+`config/tunnel_static_expanded.yaml`은 두 차로의 실제 배치 공간을 사용하는 별도
+설정이다. `short_detour`, `asymmetric_return`, `long_group_bypass`,
+`independent_detours`, `alternating_three`, `window_bypass`를 선택할 수 있다.
+반대 차로의 정차 차량은 반대 차로 방향과 링크를 사용한다. 3개 배치는
+`--count 3 --experimental-three`를 명시해야 생성하며, 차체 전체·장애물 간격·입출구
+여유·도로 경계와 실제 Jamming 경로 검사를 통과해야 한다. 요청한 패턴과 실제
+선택 경로·주행 궤적으로 확인한 패턴은 각각 기록한다. S자 성공은 두 번의 반대
+차로 회피와 복귀가 계획 경로와 실제 궤적 모두에서 확인된 경우에만 집계한다.
+
+```bash
+python -m scenario_runner.tools.tunnel_static_candidates \
+  --config scenario_runner/config/tunnel_static_expanded.yaml \
+  --pattern alternating_three --count 3 --experimental-three \
+  --actor-kind obstacle --obstacle-model Bollard01 --time-budget 15 \
+  --output /tmp/tunnel_alternating_candidate
+```
+
+`audit_tunnel_models.py`는 API에 있는 131항목에서 기존 38항목을 제외한 93항목을
+기본 감사 범위로 삼는다. `--live`는 지도·위치·주변 여유·허용 모델이 명시된
+`--quarantine-region`이 있어야 실행된다. 실제 모델명, 단위 크기 생성, 직접 조회와
+전역 조회의 형상 일치, 5초 정지, 생성 객체의 정리를 검증한다. 차량의 nominal
+VehicleSpec이나 API collider만으로 보이는 전체 차체의 형상을 승인하지 않는다.
+독립적으로 검토한 표면 형상이 없는 모델은 `missing_geometry_needs_surface_review`로
+보류한다. 이는 물리적 회피 불가능 판정과 구분한다. 측정 자료·검토 자료의 해시를
+검증하는 `runtime_catalog.json`은 `--runtime-catalog`로 후보 생성, 정지 모델 검증,
+반복 주행에 전달할 수 있다.
+
+새로운 자동 배치의 정지 모델 승인 파일은 같은 확대 설정과 현재 소스에서 다시
+생성해야 한다. `run_tunnel_static_batch.sh --expanded-models --config ...
+--runtime-catalog ... --model-acceptance ...`는 이 입력과 모델별 회전 조건을 고정한다.
+배치·경로가 없는 경우는 제한 횟수 안에서 재검사하고 제외 사유를 저장한다.
+통신·형상 식별·정리·소스 변경 오류는 주행을 중단하고 복구한다. 실제 주행에 노출한
+모델과 회피·원차로 복귀까지 통과한 모델은 별도로 집계한다.
+
+에디터를 자동 시험 관찰에 사용할 때는 조회 전용으로 실행한다.
+
+```bash
+python -m scenario_runner.tools.static_scenario_editor --view-only \
+  --trial-root scenario_runner/.runtime/tunnel_static_trials/pattern_expansion_20261007/scenarios \
+  --listen 127.0.0.1 --port 8765
+```
+
+조회 전용 화면은 `http://localhost:8765`이며 ROS 차량 제어 publisher를 생성하지
+않는다. 생성·주행은 시험 프로그램이 담당한다. 도로 경계는 현재 MGeo의 명목상
+두 차로 7m, 터널 길이 약 118.99m를 사용한다. 실제 벽·천장·구조물 입출구 측량
+완료를 의미하지 않으며, 관련 검증 상태는 결과에 별도로 남긴다.
+
+2026-10-07 확대 검사의 최종 기록은
+`.runtime/tunnel_static_trials/pattern_expansion_20261007/`에 보존했다.
+추가 API 93항목의 실측 감사는 완료했으며, 검토된 형상과 실제 정지를 통과한 새
+30종, 표면 형상 검토가 필요한 56종, 생성·정지·제원 검사를 통과하지 못한 7항목으로
+분류했다. 검토 자료 부족은 물리적 회피 불가능 판정과 구분한다.
+
+현재 형상 자료가 있는 72종의 개별 정지·실측 Jamming 검사는 64종
+(정적 33종·차량 31종)이 통과했다. 이 64종을 최소 한 번씩 실제 주행에 노출시키는
+64개 대표 배치 시험은 약 110.24분에 완료됐고, 56개 배치 통과·8개 배치 실패 후
+복구·보고 충돌 0건이었다. 성공 배치는 1개 20건·2개 19건·3개 17건이며, 계획과
+실제 궤적 모두에서 S자 회피를 확인한 시험은 4건이다. 이는 모델 종류와 대표
+패턴을 확인하는 검증이며, 종류·개수·위치·간격의 모든 조합을 탐색한 결과가 아니다.
+
+성공 배치에 포함된 모델은 62종(정적 31종·차량 31종)이다. `TrafficBarrel`과
+`concrete-barrier`는 이번 조합에서 주행을 통과하지 못했다. 다른 위치·조합에서도
+불가능하다는 뜻은 아니다. 같은 송신자의 native ROS 프레임 순서 오류 12회는
+주행 전에 객체 정리·복구를 확인한 뒤 제한 횟수 안에서 재검사했다. 송신자 변경·
+통신·객체 식별 오류와 재시도 소진은 중단하며, 3개 신선 프레임 검증은 유지한다.
+마지막 시험 후 Ego P단·활성 제어 publisher 없음·기존 수동 객체 복원을 확인했다.
+
+- 최종 집계: `scenarios_v2/final_results.json`
+- 실제 회피·복귀를 통과한 56개 배치: `scenarios_v2/approved_candidates.json`
+- 해당 배치에 포함된 62종 허용목록: `scenarios_v2/driving_model_acceptance.json`
+- 64종 개별 정지·경로 승인: `parked_verification_current/models/acceptance.json`
+- 추가 93항목 감사: `model_audit_remaining_93_v4/audit_summary.json`
+
+위 경로는 이 PC의 캠페인 폴더 기준이다. 새 후보와 저장 후보의 재실행은 현재
+실측·경로·주행 검사를 다시 통과해야 한다. 조회 전용 GUI에서 최종 시험을 보려면
+위 명령의 `--trial-root`를 같은 캠페인 아래 `scenarios_v2`로 지정한다.
+
+### 터널 정적 장애물의 적응형 탐색과 실주행 100건
+
+`run_tunnel_static_search`는 기존 성공 기록을 보존하면서 새 배치를 생성·검사하고,
+실제 주행 시도 100건을 목표로 실행한다. Expert 코드·설정·녹화 경로는 읽기만
+하며, 현재 `JammingPlanner`로 통과하지 못하는 배치는 승인하지 않는다.
+
+먼저 125개 후보를 생성한다. 합격 수와 종류·개수·위치·간격·회피 형태의 부족분을
+확인한 뒤 필요한 후보를 50개씩 추가한다. 1개 30건·2개 40건·3개 30건을 기본
+배정으로 사용한다. 주행 전 탈락은 100건에 포함하지 않고, 실제 주행 실패는
+시도 횟수에 포함한다. 2,000개 후보·12시간 상한은 오류나 지속적인 후보 부족
+상태에서 무한 반복을 막는 제한이며, 해당 상한으로 중단하면 완료로 보고하지 않는다.
+
+아래 명령은 이 PC의 원본 56건과 현재 코드로 다시 정지 검증한 64종을 사용한다.
+`runtime_catalog`는 실측 자료의 원본 위치를 유지해야 한다. 새 작업에는 새
+`--output`을 지정하고, 같은 결과를 이어갈 때는 동일한 인자로 `--resume`을 추가한다.
+`--live`를 생략하면 후보 생성·사전 검사만 수행한다.
+
+```bash
+cd MoraiDrive
+./scenario_runner/tools/tunnel_static/run_tunnel_static_search.sh \
+  --output scenario_runner/.runtime/tunnel_static_trials/mass_search_20261008/search \
+  --model-acceptance scenario_runner/.runtime/tunnel_static_trials/mass_search_20261008/parked_refresh/models/acceptance.json \
+  --runtime-catalog scenario_runner/.runtime/tunnel_static_trials/pattern_expansion_20261007/inputs/runtime_catalog_full93_v4.json \
+  --baseline-approved scenario_runner/.runtime/tunnel_static_trials/pattern_expansion_20261007/scenarios_v2/approved_candidates.json \
+  --ego-template scenario_runner/.runtime/tunnel_static_trials/mass_search_20261008/nominal_ego_template.json \
+  --actual-runs 100 --initial-candidates 125 --adaptive-batch 50 --live
+```
+
+반복 처리는 모델 API를 호출하지 않는 프로그램이 수행한다. 소스와 원본 증거의
+해시를 고정하고, 공통 실행 잠금으로 다른 터널 시험과 동시 제어를 막는다. 매 시험
+객체 정리·Ego 정차·복구를 확인하며, 종료 시 시험 전에 저장한 수동 객체를 복원한다.
+중단 복구는 동일한 인자에 `--resume --recover-only`를 추가한다.
+
+`progress.json`과 `search_manifest.json`에 진행 상태·실제 시도·성공·실패·주행 전
+탈락을 나누어 남긴다. 최종 `approved_candidates.json`에는 원본 증거를 보존한
+기존 성공 기록과 새 실주행 성공 기록을 누적한다. 성공 배치 수와 실제 궤적의
+중복을 제외한 경로 수는 별도로 집계한다. 100건 시도가 성공 배치 또는 서로 다른
+경로 100개를 의미하지 않는다.
+
+저장 목록의 랜덤 선택은 다음 도구로 수행한다. `--live` 없이 실행하면 검증된
+목록에서 균형 있게 선택한 결과만 저장한다. `--live`를 추가하면 선택한 장애물
+배치를 새로 실측하고 현재 Expert로 검사·주행한다. 저장된 궤적을 강제로 추종하지
+않으며, 미검증 후보는 랜덤 실행 목록에 포함하지 않는다.
+
+```bash
+./scenario_runner/tools/tunnel_static/replay_tunnel_static_library.sh \
+  --library scenario_runner/.runtime/tunnel_static_trials/mass_search_20261008/search/approved_candidates.json \
+  --seed 42 \
+  --output scenario_runner/.runtime/tunnel_static_trials/mass_search_20261008/replay_42.json
+```
+
+실제 벽·천장·입출구 측량 상태는 기존과 동일하게 미확정이며, 현재 지도상의 명목
+두 차로 7m와 실측 차체·장애물 경계를 적용한다. 이 탐색은 검증된 일부 배치의
+목록을 넓히는 시험이고 모든 조합의 통과를 보장하지 않는다.
+
+2026-10-08 이 PC에서 위 탐색을 실제로 완료했다. 후보 제안 675개 중 배치 형상
+검사를 통과한 626개를 사전 검사했고, 206개에서 명목 경로를 찾았다. 실제 주행은
+100건이며, 주행 전 탈락·재검사 11회는 별도로 집계했다.
+
+| 장애물 수 | 실주행 | 성공 | 실패 |
+| --- | ---: | ---: | ---: |
+| 1개 | 30 | 28 | 2 |
+| 2개 | 40 | 30 | 10 |
+| 3개 | 30 | 19 | 11 |
+| 합계 | 100 | 77 | 23 |
+
+실제 시험에 64종(정적 33종·차량 31종)을 모두 노출했다. 새 성공 배치에는 62종이
+포함됐고, 기존 성공 배치까지 합친 목록에는 64종이 모두 포함된다. 새 성공 77건과
+기존 56건을 합친 승인 배치는 133개로, 완전히 같은 배치는 없다. 실제 궤적을
+거리·회피 형태로 묶은 경로 그룹은 기존 11개에서 누적 33개가 됐다.
+
+배치는 20.176~103.818m 지점, 횡방향 -1.339~4.749m, 간격 0~53.338m에 분포한다.
+100건의 조합은 정적 장애물만 59건·차량만 24건·혼합 17건이다. 실제 통과 가능한
+후보를 선별한 결과 정적 장애물과 자차로 쪽 배치가 더 많았으며, 모든 위치·유형이
+같은 비율이라는 뜻은 아니다. 새 성공에서는 단일 반대 차로 우회 49건·차로 안
+회피 21건·반대 차로로 진입했다가 원차로에 복귀한 7건을 확인했다. 새 S자 성공은
+추가되지 않았고 기존 S자 성공 4건은 보존했다. 복귀한 7건의 특징 라벨에는
+`without_verified_return`이라는 잘못된 명칭이 있어, 최종 집계는 원본 주행의
+복귀 증거를 사용했다. 원본 특징과 주행 파일은 그대로 보존한다.
+
+실패 23건은 모두 약 45초간 진행하지 못해 중단한 경우이며, 100건의 충돌 보고
+목록은 모두 비어 있다. 마지막 정리·Ego P단·활성 제어 publisher 없음·수동 객체
+복원을 확인했다. Expert의 10,183개 파일 해시는 작업 전과 모두 같았다. 후보
+준비부터 종료까지 중단 검토 시간을 포함한 실행 시간은 약 4시간 46분이다.
+
+69건에서 실측 Scooter1 형상이 도로 여유 범위를 벗어난 후보 하나로 중단됐다.
+별도 `tunnel_static_search_preflight_review` 도구로 Expert·주행·이동이 없고 소유
+객체 정리·정차·장면 복구가 증명된 해당 후보만 제외했다. 원본 실패·횟수·소스
+고정값을 보존한 변경 이력이 `operator_preflight_reviews/`에 남는다.
+`supervise_tunnel_static_search`는 이 좁은 사유만 최대 8회 검토·재개하며,
+통신·송신자·소스·객체 식별 또는 실제 주행 중단에 이 검토를 적용하지 않는다.
+일반적인 주행 실패는 기존 시험 로직이 실패로 집계하고 복구 후 다음 후보를 검사한다.
+
+완료 근거는 같은 `mass_search_20261008/search/` 아래 `final_audit.json`,
+`summary.json`, `approved_candidates.json`에 있다. 랜덤 선택의 최종 검증에서
+133개 모두 증거 검사를 통과했고, 미검증 후보는 선택 목록에 포함되지 않았다.
+실제로 검증된 배치를 랜덤 재실행하려면 다음처럼 `--live`를 지정한다.
+
+```bash
+./scenario_runner/tools/tunnel_static/replay_tunnel_static_library.sh \
+  --library scenario_runner/.runtime/tunnel_static_trials/mass_search_20261008/search/approved_candidates.json \
+  --seed 42 \
+  --output scenario_runner/.runtime/tunnel_static_trials/mass_search_20261008/replay_42.json \
+  --live
+```
+
+매 실행에 새 `--seed`와 새 `--output`을 사용한다. 실행할 때 실제 형상·현재 Expert
+경로를 다시 검사하며, 저장된 궤적을 강제로 추종하지 않는다.
+
+2026-10-08 회피가 필수인 상황을 우선하도록 승인 목록을 추가 선별했다.
+반대 차로에만 객체가 있는 13개 중, 기존 자차로 기준 경로에서 장애물 회피가
+불필요한 12개를 재검사한 뒤 활성 랜덤 목록에서 제외했다. 측정된 Ego의 3도
+차체 투영과 계획 모델 앞부분 4.64m를 함께 포함하고, 장애물 안전 여유 0.72m,
+1~2cm 간격의 경로 표본, 표본 사이 회전까지 반영한 연속 차체 이동 영역을
+확인했다. 원본 실측 객체 박스와 배치 형상도 각각 대조했다. 12개 모두 여유가
+남았으며, 가장 작은 추가 여유는 약 7.48cm였다.
+
+실제 주행 기록이 거의 직진인 7개와 자차로 안에서 좌우 이동한 5개를 구분했다.
+후자의 5개도 기존 경로가 비어 있어 장애물 때문에 회피가 필수인 경우는 아니므로
+제외했다. `PE_Firewall_Orange`의 안전 여유가 기존 경로와 겹치는 후보 107은
+유지했다. 이번 판단은 원본 실주행 증거와 실측 형상을 다시 계산한 결과이며,
+새 실주행을 추가하거나 전체 접근·출구 이후 경로를 다시 승인한 것은 아니다.
+
+같은 실행 명령이 읽는 `approved_candidates.json`은 이제 **121개**이며,
+1개 배치 44개·2개 배치 42개·3개 배치 35개다. 경로 모양은 여전히 33개 그룹이고
+기존 S형 성공 4개는 유지된다. TrafficBarrel의 유일한 성공 배치가 제외된 12개에
+포함되어 활성 모델은 63종(정적 32종·차량 31종)이다. TrafficBarrel 자체를 회피
+불가능한 모델로 판정하거나 개별 생성 허용목록에서 삭제한 것은 아니다.
+
+원본 133개는 `approved_candidates_before_no_avoidance_filter_133.json`, 제외한
+12개는 `excluded_no_required_avoidance_12.json`에 보존했다. 실주행 100건·성공
+77건 등의 원본 시험 집계와 실제 배치·미리보기·주행·CSV 파일은 변경하지 않았다.
+현재 목록의 검증 결과는 `active_library_status.json`이며, 재실행 증거 검사에서
+121개 전부 통과했고 seed 1,000개를 확인해 제외한 배치가 선택되지 않음을 확인했다.
