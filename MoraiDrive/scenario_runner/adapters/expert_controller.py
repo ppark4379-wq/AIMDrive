@@ -1,11 +1,47 @@
 import csv
 import json
+import hashlib
+import math
 import os
 import signal
 import subprocess
 import sys
 import time
 from ..utils import safe_print as print
+
+
+def validate_max_velocity_kmh(value):
+    """Validate an explicit speed without introducing a tunnel-specific cap."""
+    if isinstance(value, bool):
+        raise ValueError("Expert maximum velocity must be finite and positive")
+    try:
+        result = float(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Expert maximum velocity must be finite and positive") from error
+    if not math.isfinite(result) or result <= 0:
+        raise ValueError("Expert maximum velocity must be finite and positive")
+    return result
+
+
+def _speed_contract(path, raw, requested):
+    config = json.loads(raw)
+    original = config["planning"]["velocity_profile"]["max_velocity"]
+    resolved = validate_max_velocity_kmh(original if requested is None else requested)
+    return {"schema": "aimdrive_expert_speed_source_v1", "inherited": requested is None,
+            "requested_max_velocity_kmh": None if requested is None else resolved,
+            "resolved_max_velocity_kmh": resolved, "expert_config_path": os.path.abspath(path),
+            "expert_config_sha256": hashlib.sha256(raw).hexdigest()}
+
+
+def expert_max_velocity_contract(expert_root, requested=None):
+    """Read the original Expert speed and its source pin for this invocation."""
+    path = os.path.join(os.path.abspath(expert_root), "src", "expert", "src", "config", "config.json")
+    with open(path, "rb") as source:
+        return _speed_contract(path, source.read(), requested)
+
+
+def resolve_expert_max_velocity(expert_root, requested=None):
+    return expert_max_velocity_contract(expert_root, requested)["resolved_max_velocity_kmh"]
 
 
 class ExpertController:
@@ -34,7 +70,8 @@ class ExpertController:
         self.route_points = route_points
         self.start_link = start_link
         self.end_link = end_link
-        self.max_velocity_kmh = float(max_velocity_kmh)
+        self.max_velocity_kmh = None if max_velocity_kmh is None else validate_max_velocity_kmh(max_velocity_kmh)
+        self.requested_max_velocity_kmh = self.max_velocity_kmh
         self.traffic_light_control = bool(traffic_light_control)
         self.python_executable = python_executable or sys.executable
         self.ros_remaps = list(ros_remaps or [])
@@ -93,8 +130,11 @@ class ExpertController:
                     f"{float(point[0]):.6f} {float(point[1]):.6f}\n"
                 )
 
-        with open(self.base_config_path, "r", encoding="utf-8") as source:
-            config = json.load(source)
+        with open(self.base_config_path, "rb") as source:
+            source_bytes = source.read()
+        config = json.loads(source_bytes)
+        self.speed_contract = _speed_contract(self.base_config_path, source_bytes, self.requested_max_velocity_kmh)
+        self.max_velocity_kmh = self.speed_contract["resolved_max_velocity_kmh"]
 
         config["map"]["name"] = self.map_name
         config["map"]["data_dir"] = self.mgeo_root
@@ -102,7 +142,8 @@ class ExpertController:
         config["map"]["traffic_light_control"] = self.traffic_light_control
         config["map"]["is_closed_path"] = self.is_closed_path
         velocity_profile = config["planning"]["velocity_profile"]
-        velocity_profile["max_velocity"] = self.max_velocity_kmh
+        if self.requested_max_velocity_kmh is not None:
+            velocity_profile["max_velocity"] = self.max_velocity_kmh
         if self.velocity_profile_window_size is not None:
             velocity_profile["window_size"] = int(
                 self.velocity_profile_window_size

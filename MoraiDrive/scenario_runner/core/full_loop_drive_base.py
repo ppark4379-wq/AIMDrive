@@ -309,6 +309,18 @@ class FullLoopDriveBase(BaseScenario):
             if hasattr(self.grpc, "stop_ego_cruise"):
                 self.grpc.stop_ego_cruise()
 
+        return self.activate_expert_drive()
+
+    def activate_expert_drive(
+        self, *, before_expert_start=None, after_expert_setup=None,
+        after_expert_start=None,
+    ):
+        """Select AUTO/D and start the shared Expert without moving Ego.
+
+        Optional hooks keep measured fixtures stationary while collection and
+        current-Expert readiness gates run. Ordinary zones use no hooks and
+        retain their existing control and process call order.
+        """
         drive_control_mode = str(
             self.cfg.get("drive_control_mode", "aimdrive_expert")
         ).lower()
@@ -319,6 +331,10 @@ class FullLoopDriveBase(BaseScenario):
             )
 
         if drive_control_mode == "morai_keyboard":
+            if any(hook is not None for hook in (
+                before_expert_start, after_expert_setup, after_expert_start,
+            )):
+                raise RuntimeError("Keyboard control cannot bypass guarded Expert startup")
             if self.cfg.get("sync_runtime", {}).get("enabled", True):
                 raise RuntimeError("MORAI keyboard mode requires asynchronous runtime")
             if not self.grpc.set_ego_control_mode_keyboard():
@@ -334,8 +350,14 @@ class FullLoopDriveBase(BaseScenario):
         if hasattr(self.grpc, "set_ego_gear_drive"):
             self.grpc.set_ego_gear_drive()
 
+        if before_expert_start is not None:
+            before_expert_start()
         self.setup_expert_controller()
+        if after_expert_setup is not None:
+            after_expert_setup()
         self.expert_controller.start_process()
+        if after_expert_start is not None:
+            after_expert_start()
         self.route_configured = auto_ok
         self.route_setup_mode = "aimdrive_expert"
         print("[KCityFullLoop] using external AIMDrive expert process")
@@ -363,6 +385,8 @@ class FullLoopDriveBase(BaseScenario):
 
     def setup_expert_controller(self):
         paths = self.global_cfg["paths"]
+        tunnel_static = self.cfg.get("mission_mode") == "full_loop_tunnel_static"
+        velocity = self.cfg.get("expert_max_velocity_kmh", None if tunnel_static else 60.0)
         self.expert_controller = ExpertController(
             expert_root=paths["expert_root"],
             runtime_root=os.path.join(paths["runtime_root"], "expert"),
@@ -374,9 +398,7 @@ class FullLoopDriveBase(BaseScenario):
             route_points=self.route_points,
             start_link=self.start_link,
             end_link=self.end_link,
-            max_velocity_kmh=float(
-                self.cfg.get("expert_max_velocity_kmh", 60.0)
-            ),
+            max_velocity_kmh=None if tunnel_static and velocity is None else float(velocity),
             traffic_light_control=bool(
                 self.cfg.get("expert_traffic_light_control", False)
             ),
@@ -465,6 +487,10 @@ class FullLoopDriveBase(BaseScenario):
                 previous_s=None,
             )
         return best_s, best_distance
+
+    def on_goal_reached_before_stop(self, *, elapsed, ego_state, current_s, remaining_s):
+        """Notify a specialized scenario before the normal GOAL stop only."""
+        return None
 
     def run_timeline(self):
         self.run_expert_timeline()
@@ -841,6 +867,10 @@ class FullLoopDriveBase(BaseScenario):
                     progress_anchor_s = None
                     last_progress_time = lap_start_time
                     continue
+                self.on_goal_reached_before_stop(
+                    elapsed=elapsed, ego_state=ego_state,
+                    current_s=current_s, remaining_s=remaining_s,
+                )
                 self.stop_drive_control()
                 if max_laps > 0 and lap >= max_laps:
                     break

@@ -275,6 +275,22 @@ def build_parser():
             "Used by scenario-only static preset verification."
         ),
     )
+    parser.add_argument(
+        "--tunnel-static-library", type=Path, default=None,
+        help="Optional approved layout library for full_loop_tunnel_static; defaults to the current curated list.",
+    )
+    parser.add_argument(
+        "--tunnel-static-seed", type=int, default=None,
+        help="Optional reproducible random seed for full_loop_tunnel_static.",
+    )
+    parser.add_argument(
+        "--tunnel-static-output", type=Path, default=None,
+        help="Optional private result directory for full_loop_tunnel_static.",
+    )
+    parser.add_argument(
+        "--tunnel-static-revalidate", action="store_true",
+        help="Verify historical tunnel layouts at the current inherited Expert settings; approve only successful fresh drives.",
+    )
     return parser
 
 
@@ -331,6 +347,9 @@ def main():
     args = parser.parse_args()
     if args.max_runs is not None and args.max_runs < 1:
         parser.error("--max-runs must be at least 1")
+    if args.scenario != "full_loop_tunnel_static" and (args.tunnel_static_revalidate or any(value is not None for value in (
+            args.tunnel_static_library, args.tunnel_static_seed, args.tunnel_static_output))):
+        parser.error("--tunnel-static-* options require --scenario full_loop_tunnel_static")
     if args.manual_ego and (
         args.scenario not in ("full_loop_tunnel_dynamic", "full_loop_tunnel_vehicle") or not args.once
     ):
@@ -438,6 +457,15 @@ def main():
             "enabled"
         ] = True
 
+    if args.scenario == "full_loop_tunnel_static":
+        if args.ego_trace:
+            parser.error("full_loop_tunnel_static records its own guarded Ego trace; --ego-trace is unavailable")
+        from .scenarios.segment_modes.tunnel_static_replay import run_tunnel_static_scenario
+        try:
+            return run_tunnel_static_scenario(args, global_cfg, base_scenario_cfg)
+        except (OSError, ValueError, RuntimeError) as error:
+            parser.exit(2, str(error) + "\n")
+
     if args.check:
         run_offline_check(global_cfg, base_scenario_cfg, args.scenario)
         return
@@ -492,4 +520,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

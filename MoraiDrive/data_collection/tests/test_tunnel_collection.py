@@ -22,6 +22,7 @@ from scenario_collection import (TUNNEL_SCENARIOS, configure_collection_scenario
 from dataset_layout import collecting_campaign, final_campaign
 from nas_publish import scenario_folder as nas_scenario_folder
 from audit_scenario_interventions import scenario_zone_contract, zone_observation_checks
+from async_capture.scenario_catalog import COLLECTION_SCENARIOS, TUNNEL_STATIC_SCENARIO
 from scenario_runner.main_runner import load_configuration
 from scenario_runner.scenarios.segment_modes import events
 from scenario_runner.scenarios.full_loop_parts import tunnel_dynamic, tunnel_vehicle_dynamic
@@ -112,14 +113,27 @@ class TunnelCollectionTest(unittest.TestCase):
             json.dumps(complete)
 
     def test_existing_scenario_config_is_unchanged(self):
-        for name in ("full_loop", "full_loop_dynamic", "full_loop_static"):
+        for name in ("full_loop", "full_loop_dynamic", "full_loop_static", TUNNEL_STATIC_SCENARIO):
             cfg = copy.deepcopy(self.cfg)
             original = copy.deepcopy(cfg)
             configure_collection_scenario(cfg, name)
             self.assertEqual(cfg, original)
 
+    def test_guarded_static_collection_stays_separate_from_dynamic_mission_policy(self):
+        self.assertIn(TUNNEL_STATIC_SCENARIO, COLLECTION_SCENARIOS)
+        self.assertNotIn(TUNNEL_STATIC_SCENARIO, TUNNEL_SCENARIOS)
+        context = SimpleNamespace(cfg={"mission_mode": TUNNEL_STATIC_SCENARIO},
+                                  run_seed=12, tunnel_event_phase="disabled")
+        self.assertIsNone(tunnel_collection_evidence(context))
+        self.assertEqual(collection_tunnel_phase(context), "disabled")
+        self.assertEqual(nas_scenario_folder({"scenario_name": TUNNEL_STATIC_SCENARIO}),
+                         "tunnel_static_obstacle")
+        self.assertTrue(scenario_zone_contract(TUNNEL_STATIC_SCENARIO)["tunnel_static"])
+        self.assertFalse(scenario_zone_contract(TUNNEL_STATIC_SCENARIO)["tunnel"])
+
     def test_tunnel_dataset_and_export_paths_agree(self):
-        for name, folder in zip(TUNNEL_SCENARIOS, ("tunnel_dynamic", "tunnel_vehicle")):
+        for name, folder in list(zip(TUNNEL_SCENARIOS, ("tunnel_dynamic", "tunnel_vehicle"))) + [
+                (TUNNEL_STATIC_SCENARIO, "tunnel_static_obstacle")]:
             self.assertEqual(nas_scenario_folder({"scenario_name": name}), folder)
             self.assertEqual(collecting_campaign(PROJECT, name, "campaign_01").parts[-3:],
                 (".collecting", folder, "campaign_01"))
@@ -144,7 +158,8 @@ class TunnelCollectionTest(unittest.TestCase):
             self.skipTest("Bash is required for collection script argument tests")
         source = (INTERNAL / "tools/collect_scenario_laps.sh").read_text(encoding="utf-8")
         parser = source[source.index("usage() {"):source.index("export MORAI_ANALYSIS_PYTHON=")]
-        for name, folder in zip(TUNNEL_SCENARIOS, ("tunnel_dynamic", "tunnel_vehicle")):
+        for name, folder in list(zip(TUNNEL_SCENARIOS, ("tunnel_dynamic", "tunnel_vehicle"))) + [
+                (TUNNEL_STATIC_SCENARIO, "tunnel_static_obstacle")]:
             process = subprocess.run([bash, "-s", "--", "3", "campaign_01", "--scenario", name],
                 input=parser + '\nprintf "%s %s %s %s\\n" "$SCENARIO" "$SCENARIO_FOLDER" "$LAPS" "$CAMPAIGN_ID"\n',
                 env=dict(os.environ, MORAI_ANALYSIS_PYTHON=sys.executable),

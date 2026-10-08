@@ -74,7 +74,7 @@ MoraiDrive 루트에서 다음 entrypoint를 순서대로 사용한다.
 실행한다. 수집 중에는 시뮬레이션 시간 180초 동안 경로 진행이 2m 미만이거나 경로를 10초 이상
 벗어나면 그 회차를 즉시 실패로 끝낸다.
 
-02번은 메인 `scenario_runner`의 6개 시나리오를 직접 선택할 수 있다. 첫 번째 인자는
+02번은 메인 `scenario_runner`의 구간 시나리오와 터널 정적 장애물 시나리오를 직접 선택할 수 있다. 첫 번째 인자는
 회차 수이며, `--scenario`를 생략하면 기존과 동일하게 `full_loop`를 실행한다.
 
 ```bash
@@ -84,7 +84,36 @@ MoraiDrive 루트에서 다음 entrypoint를 순서대로 사용한다.
 ./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_dynamic --scenario full_loop_dynamic
 ./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_roundabout --scenario full_loop_roundabout
 ./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_highway --scenario full_loop_highway
+./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_tunnel --scenario full_loop_tunnel_static
 ```
+
+`full_loop_tunnel_static`은 활성 터널 라이브러리의 저장된 배치를 seed로 선택하고,
+매 회차 새로 측정한 객체와 차체·도로 경계로 주행을 검증한다. 기존 구간과 같은 AUTO/D
+제어 모드에서 공통 ROS `/ctrl_cmd`로 제동을 계속 전달하며 실제 정지를 확인한다.
+마지막 실측 확인 후 제동 발행을 종료·해제하고 Expert를 시작해 제어가 겹치지 않도록 한다.
+자체 제동 발행자만 식별해 허용하며 다른 제어기는 계속 차단한다. 원본 수집기 준비와 Sensor Record ON을
+확인한 뒤 공통 Expert 시작 절차로 제어를 넘기며 기존 센서 동기화·GT·원본 보존 계약을 사용한다. 속도는 원본
+Expert 설정을 상속한다. 수집 경로는 `dataset/.collecting/tunnel_static_obstacle/<campaign>/`이고,
+03 검증 후 `dataset/tunnel_static_obstacle/<campaign>/`으로 같은 디렉터리를 승격한다.
+
+터널 회차는 `episode_000/tunnel_static/COLLECTION_TUNNEL_COMPLETE.json`의 최종 증거가 필요하다.
+전체 임무 완료, 충돌 없음, 원래 차로로 전체 차체 복귀, 객체 정지, 현재 측정 geometry와 실제
+Expert 계획 일치, Sensor Record 종료·원본 seal, 소유 객체 정리와 외부 장면 복원이 함께
+통과해야 유효하다. 초기 episode 정보나 과거 라이브러리 성공만으로 수집을 승인하지 않는다.
+종료 시 공통 ROS 경로로 최소 1.5초 제동을 유지한 뒤, 최대 3초 동안 실제 브레이크·스로틀·
+정지 상태를 재확인한다. 전달·감속 중의 관측 지연은 시도별 이력에 남기며 최종 상태로 판정하고,
+실제 제어 요청 거부나 다른 제어기와의 경합은 계속 실패로 기록한다. 원본 수집을 닫은 뒤에는
+확인된 시험 객체 네임스페이스만 정리하고 1.5초 대기 후 최대 3초 동안 소유 객체의 부재를 확인한다.
+외부 객체는 보존하며, 정리·복원 증거가 부족한 회차는 승인하지 않는다.
+main 업데이트 후 과거 터널 자료를 검증할 때는 캡처 당시 SHA와 정확히 일치하는
+보존된 source·route 증거만 읽는다. archive 코드를 실행하거나 현재 Expert의 주행 승인으로
+옮기지 않으며, 원본 RAW·보고서와 기존 형상·충돌·라벨 검사는 유지한다.
+같은 ROS 시각·sequence의 중복 메시지는 원본을 그대로 보존하면서 건너뛰고 검증 프레임 수에는
+추가하지 않는다. 객체를 생성한 소유 네임스페이스와 글로벌 조회 주소를 구분하며, 초기 조회에서
+지원하지 않는 핸들 오류가 나면 기록된 생성 요청과 제한 시간 내의 유일한 글로벌 객체 증거로
+확인하고 같은 객체를 다시 생성하지 않는다.
+기존 `full_loop_static`의 실선 검사는 그대로 유지하며, 터널은 두 차로의 전체 도로·차체
+계약으로 중앙선 통과를 검증한다. 이 문서의 명령은 실제 센서 기록을 시작하므로 별도로 실행한다.
 
 검증을 통과한 서로 다른 정적 장애물 프리셋을 분포 계획에 따라 수집할 때는 단일
 `--static-preset` 대신 `--static-plan`을 사용한다. plan의 run 수, ready 상태,

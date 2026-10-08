@@ -39,11 +39,13 @@ usage() {
     echo "      $0 30 --scenario full_loop_static --static-preset intersection_pair_01"
     echo "      $0 100 --scenario full_loop_static --static-plan scenario_runner/config/static_scenario_presets/plans/static_balanced_100.json"
     echo "      $0 3 campaign_static --scenario full_loop_static"
+    echo "      $0 3 --scenario full_loop_tunnel_static"
     echo "campaign_id를 생략하면 <시나리오_폴더>_lap<회차>_<생성일시>로 자동 생성합니다."
     echo "시나리오: full_loop, full_loop_normal, full_loop_static, full_loop_dynamic,"
     echo "          full_loop_roundabout, full_loop_roundabout_nonuniform,"
     echo "          full_loop_roundabout_speed_random, full_loop_roundabout_brake,"
-    echo "          full_loop_highway, full_loop_tunnel_dynamic, full_loop_tunnel_vehicle"
+    echo "          full_loop_highway, full_loop_tunnel_static,"
+    echo "          full_loop_tunnel_dynamic, full_loop_tunnel_vehicle"
     echo "터널: 보행자는 랜덤 4구간 조합, 차량은 회차별 랜덤 미션·모델로 실행합니다."
     echo "선택 환경변수: MORAI_STORAGE_ROOT, MORAI_BASE_SEED, MORAI_LAP_WALL_SECONDS, MORAI_SIMULATOR_PID"
     echo "                MORAI_SCENARIO_RUNTIME=current (기본 current)"
@@ -115,7 +117,7 @@ while (( $# > 0 )); do
     esac
 done
 case "$SCENARIO" in
-    full_loop|full_loop_normal|full_loop_static|full_loop_dynamic|full_loop_roundabout|full_loop_roundabout_nonuniform|full_loop_roundabout_speed_random|full_loop_roundabout_brake|full_loop_highway|full_loop_tunnel_dynamic|full_loop_tunnel_vehicle)
+    full_loop|full_loop_normal|full_loop_static|full_loop_dynamic|full_loop_roundabout|full_loop_roundabout_nonuniform|full_loop_roundabout_speed_random|full_loop_roundabout_brake|full_loop_highway|full_loop_tunnel_static|full_loop_tunnel_dynamic|full_loop_tunnel_vehicle)
         ;;
     *)
         echo "[FAIL] 지원하지 않는 시나리오입니다: $SCENARIO" >&2
@@ -139,6 +141,7 @@ case "$SCENARIO" in
     full_loop) SCENARIO_FOLDER="full_route" ;;
     full_loop_normal) SCENARIO_FOLDER="basic_driving" ;;
     full_loop_static) SCENARIO_FOLDER="static_obstacle" ;;
+    full_loop_tunnel_static) SCENARIO_FOLDER="tunnel_static_obstacle" ;;
     full_loop_dynamic) SCENARIO_FOLDER="dynamic_obstacle" ;;
     full_loop_roundabout) SCENARIO_FOLDER="roundabout" ;;
     full_loop_roundabout_nonuniform) SCENARIO_FOLDER="roundabout_nonuniform" ;;
@@ -206,8 +209,11 @@ scenario_check=(
     --check --scenario "$SCENARIO" --nearby-actors
     --expert-runtime "$SCENARIO_RUNTIME"
     --time-mode simulation_free_run --collision-policy record
-    --raw-camera-transport bridge_dropped --max-speed-kmh 60
+    --raw-camera-transport bridge_dropped
 )
+if [[ "$SCENARIO" != "full_loop_tunnel_static" ]]; then
+    scenario_check+=(--max-speed-kmh 60)
+fi
 if [[ -n "$STATIC_CHECK_PRESET" ]]; then
     scenario_check+=(--static-preset "$STATIC_CHECK_PRESET")
 fi
@@ -352,7 +358,7 @@ payload = {
     "mission_distribution_changes": [
         "scenario route-light red-stop release after 10 host-monotonic seconds; exact-ID command/readback events are disclosed"
     ],
-    "expert_max_speed_kmh": 60,
+    "expert_max_speed_kmh": None if scenario_name == "full_loop_tunnel_static" else 60,
     "raw_camera_transport": "bridge_dropped",
     "native_camera_storage": "configured local Windows Sensor Record storage",
     "offline_review": "deferred until validate_sensor_record_campaign.py",

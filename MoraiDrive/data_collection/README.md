@@ -16,6 +16,11 @@ LMDrive 호환 데이터셋으로 변환합니다. 기본 `sync_native_files` �
 ./data_collection/tools/03_validate_internal_sensor_record.sh campaign_name
 ```
 
+같은 02 진입점에서 터널 정적 장애물 수집은 `--scenario full_loop_tunnel_static`을 사용한다.
+저장 경로는 `dataset/tunnel_static_obstacle/<campaign>/`이며, 기존 센서·GT 검증에 더해
+새로 측정한 터널 주행과 차로 복귀·정리·장면 복원 최종 증거가 있어야 03을 통과한다.
+자세한 계약은 [수집 시나리오 안내](internal_sensor_record/README.md)를 따른다.
+
 01·02·03은 실행할 때마다 공통 자동 준비를 먼저 수행한다. ROS/catkin, MORAI Launcher,
 Windows 저장 드라이브와 분석 Python을 검사하고, 빠진 SensorData 폴더를 만들며, 필요한
 일반 Python 패키지만 Git에서 제외된 `.runtime/data_collection/internal_sensor_record_deps`에

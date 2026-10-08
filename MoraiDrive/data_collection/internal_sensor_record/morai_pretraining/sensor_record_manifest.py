@@ -369,9 +369,17 @@ def build_episode_manifest(episode, *, campaign_validation_sha256, split,
         evidence[key] = digest(folder / seal_name)
 
     if expected_evidence is not None:
-        verify_episode_evidence(episode, expected_evidence)
-    # The source campaign still pins its original recovery. Verify it above,
-    # then bind the new publication explicitly to the requested additive one.
+        # A current validation may pin the requested named recovery, while a
+        # geometry-only reprocessing source still pins its original recovery.
+        # Choose by its recorded digest; verification keeps every seal check.
+        source_recovery_name = "ADMISSION_RECOVERY.json"
+        requested = recovery_record_path(episode, recovery_name)
+        if (requested.is_file() and expected_evidence.get("admission_recovery")
+                == digest(requested)):
+            source_recovery_name = recovery_name
+        verify_episode_evidence(episode, expected_evidence, source_recovery_name)
+    # Bind the output explicitly to the requested additive recovery, independent
+    # of which exact recovery the source validation originally sealed.
     admission_dir, recovery_seals = effective_admission_directory(episode, recovery_name)
     geometry_dir = effective_object_geometry_directory(episode, recovery_name)
     evidence.update(recovery_seals)

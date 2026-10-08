@@ -3,12 +3,14 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]/"internal_sensor_record"
 sys.path.insert(0, str(ROOT))
 from async_capture.journal import digest
 from async_capture.route_sources import resolve_route_sources, verify_route_report
 from async_capture.route_review_rebuild import archive_route_review, ROUTE_DERIVED
+from scenario_runner.scenarios.full_loop_parts.tunnel_static_parts import source_compatibility
 
 
 class RouteSourcesTest(unittest.TestCase):
@@ -57,6 +59,62 @@ class RouteSourcesTest(unittest.TestCase):
         self.definition.write_text("changed")
         with self.assertRaisesRegex(ValueError, "route_definition"):
             self.sources()
+
+    def captured_definition_archive(self):
+        blob = self.root/'archive/captured.source'
+        blob.parent.mkdir()
+        blob.write_bytes(self.definition.read_bytes())
+        sha = digest(blob)
+        def resolve(path, expected):
+            return blob if Path(path) == self.definition and expected == sha and blob.is_file() and digest(blob) == sha else None
+        patcher = patch.object(source_compatibility, 'archived_source_path', side_effect=resolve)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.definition.write_text('latest main added tunnel modes')
+        return blob
+
+    def test_exact_registered_definition_archive_preserves_capture_and_current_main(self):
+        blob = self.captured_definition_archive()
+        original_metadata = (self.ep/'episode.json').read_bytes()
+        sources = self.sources()
+        self.assertEqual(sources['route_definition'], blob)
+        self.assertEqual(sources['hashes']['route_definition'], digest(blob))
+        self.assertIn('exact_captured_route_archive', sources['resolution'])
+        self.assertEqual(self.definition.read_text(), 'latest main added tunnel modes')
+        self.assertEqual((self.ep/'episode.json').read_bytes(), original_metadata)
+
+    def test_archive_cannot_hide_unknown_digest_or_changed_map_or_global_path(self):
+        self.captured_definition_archive()
+        self.contract['capture']['traffic_light_ground_truth']['source_sha256']['route_definition'] = 'f'*64
+        with self.assertRaisesRegex(ValueError, 'route_definition'): self.sources()
+        self.contract['capture']['traffic_light_ground_truth']['source_sha256']['route_definition'] = digest(self.root/'archive/captured.source')
+        for name in ('link_set.json', 'node_set.json', '2026_molit_comp_global_path.txt'):
+            with self.subTest(file=name):
+                path = self.map/name
+                original = path.read_bytes()
+                path.write_text('changed map/route data')
+                with self.assertRaises(ValueError): self.sources()
+                path.write_bytes(original)
+
+    def test_missing_or_changed_registered_archive_is_rejected(self):
+        blob = self.captured_definition_archive()
+        blob.write_text('tampered archive')
+        with self.assertRaisesRegex(ValueError, 'route_definition'): self.sources()
+        blob.unlink()
+        with self.assertRaisesRegex(ValueError, 'route_definition'): self.sources()
+
+    def test_definition_archive_survives_exact_map_relocation(self):
+        scenario, target = self.replica()
+        blob = self.captured_definition_archive()
+        (self.map/'node_set.json').unlink()
+        sources = resolve_route_sources(self.ep, self.contract, scenario_root=scenario)
+        self.assertEqual(sources['map_root'], target)
+        self.assertEqual(sources['route_definition'], blob)
+
+    def test_explicit_unverified_definition_does_not_override_captured_archive(self):
+        self.captured_definition_archive()
+        with self.assertRaisesRegex(ValueError, 'route_definition'):
+            resolve_route_sources(self.ep, self.contract, route_definition=self.definition)
 
     def test_map_changes_rejected(self):
         (self.map/"link_set.json").write_text("changed")

@@ -43,7 +43,7 @@ from sensor_record_barrier import (
     prepare_coordination_directory, require_stop_acknowledgement,
     wait_for_native_quiescence,
 )
-from scenario_runner.scenarios.segment_modes.modes import PRIMARY_SCENARIOS
+from async_capture.scenario_catalog import COLLECTION_SCENARIOS, TUNNEL_STATIC_SCENARIO
 
 
 def quick_native_capture_summary(native, *, progress=None):
@@ -178,7 +178,7 @@ def main():
                    help='Direct dataset run directory; sensors and topic evidence are written together')
     p.add_argument('--session-evidence-root', type=Path,
                    help='Campaign-private directory for pre-creation junction plans and UI evidence')
-    p.add_argument('--scenario', choices=PRIMARY_SCENARIOS, default='full_loop',
+    p.add_argument('--scenario', choices=COLLECTION_SCENARIOS, default='full_loop',
                    help='Main Scenario Runner mode to execute (default: full_loop)')
     p.add_argument('--static-preset',
                    help='Static editor preset name or YAML path; full_loop_static only')
@@ -363,11 +363,13 @@ def main():
         ]
     command += [
         '--time-mode','simulation_free_run','--collision-policy','record',
-        '--max-speed-kmh','60','--seconds',str(a.seconds),'--audit-scope','timing','--output',str(run),
+        '--seconds',str(a.seconds),'--audit-scope','timing','--output',str(run),
         '--audit-python',str(analysis_python),
         '--sensor-record-coordination',str(coordination),
         '--raw-camera-transport',a.raw_camera_transport,'--seed',str(a.seed),
         '--grpc-target',grpc_target]
+    if a.scenario != TUNNEL_STATIC_SCENARIO:
+        command += ['--max-speed-kmh','60']
     if direct:
         command.append('--prepared-output-root')
     if a.profile_state is not None:
@@ -461,7 +463,8 @@ def main():
     with log_path.open('x') as log:
         proc=subprocess.Popen(command,env=env,stdout=log,stderr=subprocess.STDOUT)
         try:
-            deadline=time.monotonic()+65
+            ready_timeout = 240 if a.scenario == TUNNEL_STATIC_SCENARIO else 65
+            deadline=time.monotonic()+ready_timeout
             while not (ep/'ready.json').exists():
                 if proc.poll() is not None or (ep/'outcome.json').exists():
                     supervisor_tail=(log_path.read_text(
@@ -474,7 +477,7 @@ def main():
                     )
                 if time.monotonic()>deadline:
                     raise TimeoutError(
-                        'Scenario ROS capture did not become ready within 65 seconds; '
+                        'Scenario ROS capture did not become ready within '+str(ready_timeout)+' seconds; '
                         'inspect '+str(log_path)
                     )
                 time.sleep(.2)

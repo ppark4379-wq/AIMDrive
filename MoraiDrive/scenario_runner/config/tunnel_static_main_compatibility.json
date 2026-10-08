@@ -1,0 +1,377 @@
+{
+  "schema": "aimdrive_tunnel_static_main_compatibility_v1",
+  "previous_main_commit": "b500f10c5707f971623d80cd4ce53437805fc0dc",
+  "integrated_main_commit": "cb69f9841fcb47a21b037475a3ec14dc0634590c",
+  "previous_screening_provenance": {
+    "planner_source_sha256": {
+      "scenario_runner/scenarios/full_loop_parts/tunnel_static_parts/screening.py": "86963918820a04bd647888a8738448d550246f22831cde68692e0007c5fa60de",
+      "scenario_runner/scenarios/full_loop_parts/tunnel_static_parts/live.py": "2ea792572e19af69102684bb886b1eca55822b32728e8eebb6875dfd89253542",
+      "scenario_runner/scenarios/full_loop_parts/tunnel_static_parts/layout.py": "5d8c381a546f3a9becb13486ae06080081e5644be5e2f33ff6a1cf7fa372ed43",
+      "scenario_runner/scenarios/full_loop_parts/tunnel_static_parts/advanced_patterns.py": "f5da2e04218e81ca2c215512438a9d7f897953088078838e8145b01eb00705a2",
+      "expert/src/expert/src/planning/lattice_planning/parameters.py": "890d9ec4ba9c73f1185121334e74ab3b8df4ac60163dfc9df9966fdb8e888b10",
+      "expert/src/expert/src/planning/lattice_planning/lattice_planner.py": "7ee196a6592d66d0b69a0050119b414080f2c12aebae73b0a35e848187a9b235",
+      "expert/src/expert/src/localization/path_manager.py": "747f22141b47e5c63af57a70f906739df86ed57081e42be616e703f9cfd21588",
+      "expert/src/expert/src/autonomous_driving.py": "e8590bd1da134d5a03b9f40796dadab3687f7bde62bb2c4645d708c985ab3042",
+      "expert/src/expert/src/config/config.json": "37bcc14cac15f80bf82e2cac51b12574d2538dc85d1c0c927b64a1a9e31371db",
+      "scenario_runner/scenarios/segment_modes/modes.py": "10edc7884b7ba2fbb0d391727b94163cdb78309369ae721a1b5b46bc42c33dd9",
+      "scenario_runner/scenarios/segment_modes/route.py": "43c5ad6b98e5ff9ade0fb78438155f8913c3c0ed4f985024ebf15d484c12a5c4",
+      "expert/src/expert/src/planning/Jamming/__init__.py": "091974a7f9f992a0ab346043ce203819171111e90df53e9edb3f9f745e83a782",
+      "expert/src/expert/src/planning/Jamming/dynamic_planner.py": "e2054e7002a06f8172ffc59d352ae7b1b5e9fcc33aedbbf13d174e8dc1b2003d",
+      "expert/src/expert/src/planning/Jamming/dynamic_recovery.py": "020264da99fd6deb72bd697979c81f6e2e3d4d10bcf1d8ce5c162c9facb402d0",
+      "expert/src/expert/src/planning/Jamming/motion.py": "01d2baabecedbe9e8b5cf5bbb104980da4807b3c689bf37e9c0a436a281fbb9a",
+      "expert/src/expert/src/planning/Jamming/prepare_routes.py": "84e81b25017a284baa68b70dd20426bf7dd561e56a30f916bac67f374fa52b56",
+      "expert/src/expert/src/planning/Jamming/recorded_planner.py": "cf379fb44354904ed37f74966c7021b0550651865dd1c6cda8160dc85c19b9bb",
+      "expert/src/expert/src/planning/Jamming/road_boundary.py": "ef08ca9dc988855fe1f88d6b813b355eb1bb6acc13faff3b687e6254d56cbd5d",
+      "expert/src/expert/src/planning/Jamming/section.py": "fcc081aa190f6c06014d1a7b8b6fd8dc0836fc1ca490e3a8456dc2e42ebd4035",
+      "expert/src/expert/src/planning/정적장애물/__init__.py": "9234f1109b8fbd2b3e0db1628182afb90004230588ea412d7c14829d335ac96a",
+      "expert/src/expert/src/planning/정적장애물/corridor_graph.py": "2d7ee9f07ca7a05bbd584252d7a1d7b890df482a291a79d8be2d8a98bfeee60e",
+      "expert/src/expert/src/planning/정적장애물/recorded_planner.py": "516de5321e186adecc49799e8dbd9f8fe0ece8efc546ab28a0de6606c292b612"
+    },
+    "recorded_library_sha256": {
+      "expert/src/expert/src/planning/Jamming/routes.json": "d040568a3a6ffd3fd666d17d87867975b9acf2838baef779ae20b0f020a8f554",
+      "expert/src/expert/src/planning/Jamming/section.json": "c3d32ff1a9f9ff0a4cb9190a212fc4772d4f572c6776f9af18388a1adeaf9f85",
+      "expert/src/expert/src/planning/Jamming/공통종료선 경로/jamming_01.csv": "ad873348da6b59a33b7e56ba6a16b0f8e07be2e0d761301064d1e4b8a2fb1e27",
+      "expert/src/expert/src/planning/Jamming/공통종료선 경로/jamming_02.csv": "72b00704a9139c5a6d29d99484927049e05a3090d07c252b0506164bf91b0c02",
+      "expert/src/expert/src/planning/Jamming/공통종료선 경로/jamming_03.csv": "9f4277ccb5963c95cbfe8291184869e66cc8fc21691afa34a91b12a34b9b4e07",
+      "expert/src/expert/src/planning/Jamming/공통종료선 경로/jamming_04.csv": "1105beaa7f02928cbae5fd32173d7149da5a3255ede9b89a95e57c315d56f7cb",
+      "expert/src/expert/src/planning/Jamming/공통종료선 경로/jamming_05.csv": "a067aa73f8b4ac7946f1dbd3d358b9dc94f9e5005f798dc696bb5f6e11f9ab7b",
+      "expert/src/expert/src/planning/Jamming/공통종료선 경로/jamming_06.csv": "c32ab4c6727620ef2bfe8872778b1ca53165d59f566ac65844917c3a0305c3a2",
+      "expert/src/expert/src/planning/Jamming/공통종료선 경로/jamming_07.csv": "006d1fec1a42a03dfce539d76a78beb93ab425328c8159593bc78ea4bfab66e1",
+      "expert/src/expert/src/planning/Jamming/공통종료선 경로/jamming_08.csv": "997d4d45168bb846b8a4a556ae7225e7fce6f1ba076536c676841fbbd38e0e02",
+      "expert/src/expert/src/planning/Jamming/공통종료선 경로/jamming_09.csv": "42e1548d1a903bf98030758e1f77554a1393d6a8e6b7e273aa073880e32e0065"
+    },
+    "original_route_sha256": "50658991e607d9339d76e4cd6cb169dfc733ea53b93de2c3e222460bb497cc05",
+    "screening_policy": {
+      "planner": "production_JammingPlanner",
+      "recorded_routes": 9,
+      "mission": "full_loop_tunnel_normal",
+      "start_original_route_index": 3723,
+      "end_original_route_index": 4107,
+      "expert_lookahead_tail_m": 35.0,
+      "prediction_preview_points_at_spawn": 120,
+      "local_reference_policy": "production_PathManager/config.local_path_size",
+      "initial_path_position_tolerance_m": 0.25,
+      "initial_path_heading_tolerance_deg": 15.0,
+      "measured_pose_policy": "separate body/collision/alignment checks; never prepend a synthetic repositioning edge",
+      "ego_body_projection_schema": "actor_flu_obb_roll_pitch_envelope_v1",
+      "ego_body_max_abs_roll_pitch_deg": 3.0,
+      "minimum_ego_body": {
+        "rear_m": 0.85,
+        "front_m": 3.85,
+        "width_m": 2.17
+      },
+      "ego_body_projection_formula": "X_pad=sin(P)*(maxAbsY*sin(R)+maxAbsZ); Y_half=maxAbsY+sin(R)*maxAbsZ",
+      "road_boundary_approach_m": 120.0,
+      "road_boundary_departure_m": 70.0,
+      "full_body_road_margin_m": 0.15,
+      "planning_tunnel_body_road_margin_m": 0.35,
+      "planning_road_reserve_basis": "paired tunnel interior only; connected approach/exit reference keeps runtime 0.15 m",
+      "central_line_crossing_allowed": true,
+      "worker_process_per_candidate": true
+    },
+    "screening_policy_sha256": "3fceaf1e9458fe6cedf59f7595ade6a447043426bfbf843da96eaae24c905d0d"
+  },
+  "previous_runtime_source_sha256": {
+    "/home/jun/AIMDrive/MoraiDrive/scenario_runner/scenarios/segment_modes/tunnel_static_trial.py": "3bd59473559ff0a9ccf0e0db21b22fc26e9645daea04b142a35bdea3a1333824",
+    "/home/jun/AIMDrive/MoraiDrive/scenario_runner/adapters/expert_process.py": "321b52342920703d7727bbf24d6525aaa5e03cb427ac327430971ffc397b2f7f",
+    "/home/jun/AIMDrive/MoraiDrive/scenario_runner/adapters/expert_controller.py": "51ebed01b8dcec0df200ca6f619091d8c439de46cc3d1fd8ad6b7f5077ac9da1",
+    "/home/jun/AIMDrive/MoraiDrive/scenario_runner/core/full_loop_drive_base.py": "92ae161f0af1f08a7cd9f790fd83efa17051a1fd1a82ddab950c7031ba6646c0",
+    "/home/jun/AIMDrive/MoraiDrive/scenario_runner/scenarios/segment_modes/scenario.py": "8211e56982ad79ded84f7119215398ae144696ce82603af29429c8e7039be62d",
+    "/home/jun/AIMDrive/MoraiDrive/scenario_runner/scenarios/segment_modes/expert.py": "1d2551e4e393cf09b216e333d336e016c3e7af54d64c07294050becf193e8150",
+    "/home/jun/AIMDrive/MoraiDrive/scenario_runner/scenarios/segment_modes/tunnel_static_startup.py": "c24a06208938267bb7ff42ae211c39489f5866498740728a3479a71b3a32d8df",
+    "/home/jun/AIMDrive/MoraiDrive/expert/src/expert/src/network/ros_manager.py": "5ef13e89f37247cc7292227cbbbf0380b42fe9c1f60642e9061fd1b07407f6fc"
+  },
+  "archived_sources": {
+    "expert/src/expert/src/autonomous_driving.py": {
+      "sha256": "e8590bd1da134d5a03b9f40796dadab3687f7bde62bb2c4645d708c985ab3042",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/e8590bd1da134d5a03b9f40796dadab3687f7bde62bb2c4645d708c985ab3042.source"
+    },
+    "expert/src/expert/src/config/config.json": {
+      "sha256": "37bcc14cac15f80bf82e2cac51b12574d2538dc85d1c0c927b64a1a9e31371db",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/37bcc14cac15f80bf82e2cac51b12574d2538dc85d1c0c927b64a1a9e31371db.source"
+    },
+    "expert/src/expert/src/localization/path_manager.py": {
+      "sha256": "747f22141b47e5c63af57a70f906739df86ed57081e42be616e703f9cfd21588",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/747f22141b47e5c63af57a70f906739df86ed57081e42be616e703f9cfd21588.source"
+    },
+    "expert/src/expert/src/network/ros_manager.py": {
+      "sha256": "5ef13e89f37247cc7292227cbbbf0380b42fe9c1f60642e9061fd1b07407f6fc",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/5ef13e89f37247cc7292227cbbbf0380b42fe9c1f60642e9061fd1b07407f6fc.source"
+    },
+    "expert/src/expert/src/planning/Jamming/__init__.py": {
+      "sha256": "091974a7f9f992a0ab346043ce203819171111e90df53e9edb3f9f745e83a782",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/091974a7f9f992a0ab346043ce203819171111e90df53e9edb3f9f745e83a782.source"
+    },
+    "expert/src/expert/src/planning/Jamming/dynamic_planner.py": {
+      "sha256": "e2054e7002a06f8172ffc59d352ae7b1b5e9fcc33aedbbf13d174e8dc1b2003d",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/e2054e7002a06f8172ffc59d352ae7b1b5e9fcc33aedbbf13d174e8dc1b2003d.source"
+    },
+    "expert/src/expert/src/planning/Jamming/dynamic_recovery.py": {
+      "sha256": "020264da99fd6deb72bd697979c81f6e2e3d4d10bcf1d8ce5c162c9facb402d0",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/020264da99fd6deb72bd697979c81f6e2e3d4d10bcf1d8ce5c162c9facb402d0.source"
+    },
+    "expert/src/expert/src/planning/Jamming/motion.py": {
+      "sha256": "01d2baabecedbe9e8b5cf5bbb104980da4807b3c689bf37e9c0a436a281fbb9a",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/01d2baabecedbe9e8b5cf5bbb104980da4807b3c689bf37e9c0a436a281fbb9a.source"
+    },
+    "expert/src/expert/src/planning/Jamming/prepare_routes.py": {
+      "sha256": "84e81b25017a284baa68b70dd20426bf7dd561e56a30f916bac67f374fa52b56",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/84e81b25017a284baa68b70dd20426bf7dd561e56a30f916bac67f374fa52b56.source"
+    },
+    "expert/src/expert/src/planning/Jamming/recorded_planner.py": {
+      "sha256": "cf379fb44354904ed37f74966c7021b0550651865dd1c6cda8160dc85c19b9bb",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/cf379fb44354904ed37f74966c7021b0550651865dd1c6cda8160dc85c19b9bb.source"
+    },
+    "expert/src/expert/src/planning/Jamming/road_boundary.py": {
+      "sha256": "ef08ca9dc988855fe1f88d6b813b355eb1bb6acc13faff3b687e6254d56cbd5d",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/ef08ca9dc988855fe1f88d6b813b355eb1bb6acc13faff3b687e6254d56cbd5d.source"
+    },
+    "expert/src/expert/src/planning/Jamming/section.py": {
+      "sha256": "fcc081aa190f6c06014d1a7b8b6fd8dc0836fc1ca490e3a8456dc2e42ebd4035",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/fcc081aa190f6c06014d1a7b8b6fd8dc0836fc1ca490e3a8456dc2e42ebd4035.source"
+    },
+    "expert/src/expert/src/planning/lattice_planning/lattice_planner.py": {
+      "sha256": "7ee196a6592d66d0b69a0050119b414080f2c12aebae73b0a35e848187a9b235",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/7ee196a6592d66d0b69a0050119b414080f2c12aebae73b0a35e848187a9b235.source"
+    },
+    "expert/src/expert/src/planning/lattice_planning/parameters.py": {
+      "sha256": "890d9ec4ba9c73f1185121334e74ab3b8df4ac60163dfc9df9966fdb8e888b10",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/890d9ec4ba9c73f1185121334e74ab3b8df4ac60163dfc9df9966fdb8e888b10.source"
+    },
+    "expert/src/expert/src/planning/정적장애물/__init__.py": {
+      "sha256": "9234f1109b8fbd2b3e0db1628182afb90004230588ea412d7c14829d335ac96a",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/9234f1109b8fbd2b3e0db1628182afb90004230588ea412d7c14829d335ac96a.source"
+    },
+    "expert/src/expert/src/planning/정적장애물/corridor_graph.py": {
+      "sha256": "2d7ee9f07ca7a05bbd584252d7a1d7b890df482a291a79d8be2d8a98bfeee60e",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/2d7ee9f07ca7a05bbd584252d7a1d7b890df482a291a79d8be2d8a98bfeee60e.source"
+    },
+    "expert/src/expert/src/planning/정적장애물/recorded_planner.py": {
+      "sha256": "516de5321e186adecc49799e8dbd9f8fe0ece8efc546ab28a0de6606c292b612",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/516de5321e186adecc49799e8dbd9f8fe0ece8efc546ab28a0de6606c292b612.source"
+    },
+    "scenario_runner/adapters/expert_controller.py": {
+      "sha256": "51ebed01b8dcec0df200ca6f619091d8c439de46cc3d1fd8ad6b7f5077ac9da1",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/51ebed01b8dcec0df200ca6f619091d8c439de46cc3d1fd8ad6b7f5077ac9da1.source"
+    },
+    "scenario_runner/adapters/expert_process.py": {
+      "sha256": "321b52342920703d7727bbf24d6525aaa5e03cb427ac327430971ffc397b2f7f",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/321b52342920703d7727bbf24d6525aaa5e03cb427ac327430971ffc397b2f7f.source"
+    },
+    "scenario_runner/adapters/morai_grpc.py": {
+      "sha256": "2263514e8d0eaea0191d32684e24a67b28f91f0a74d76d6f7e74aa9d9f432c16",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/2263514e8d0eaea0191d32684e24a67b28f91f0a74d76d6f7e74aa9d9f432c16.source"
+    },
+    "scenario_runner/config/full_loop.yaml": {
+      "sha256": "cac72b0ec620927247ee15574ab640ce74b88118228eeb5846765d9309bd8ec0",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/cac72b0ec620927247ee15574ab640ce74b88118228eeb5846765d9309bd8ec0.source"
+    },
+    "scenario_runner/config/full_loop_links.yaml": {
+      "sha256": "3d655b67a63b869c90ac7e3ae365efb22216183aac591d924fbe82dd63100519",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/3d655b67a63b869c90ac7e3ae365efb22216183aac591d924fbe82dd63100519.source"
+    },
+    "scenario_runner/config/global.yaml": {
+      "sha256": "7b38cbc876b492cc950cce36535b2a773f3d028aefb6ed827faf339142457c85",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/7b38cbc876b492cc950cce36535b2a773f3d028aefb6ed827faf339142457c85.source"
+    },
+    "scenario_runner/config/tunnel_static.yaml": {
+      "sha256": "1ee646f3458b1b92552ffcd2389f35c8d9bf118176c676b7ab182b2196f20294",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/1ee646f3458b1b92552ffcd2389f35c8d9bf118176c676b7ab182b2196f20294.source"
+    },
+    "scenario_runner/core/full_loop_drive_base.py": {
+      "sha256": "92ae161f0af1f08a7cd9f790fd83efa17051a1fd1a82ddab950c7031ba6646c0",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/92ae161f0af1f08a7cd9f790fd83efa17051a1fd1a82ddab950c7031ba6646c0.source"
+    },
+    "scenario_runner/scenarios/full_loop_parts/tunnel_static_parts/__init__.py": {
+      "sha256": "f1545d63eac75baccef75c6fe47baec54969edc6f4653c9870a5eb8f5579d0fd",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/f1545d63eac75baccef75c6fe47baec54969edc6f4653c9870a5eb8f5579d0fd.source"
+    },
+    "scenario_runner/scenarios/full_loop_parts/tunnel_static_parts/advanced_patterns.py": {
+      "sha256": "f5da2e04218e81ca2c215512438a9d7f897953088078838e8145b01eb00705a2",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/f5da2e04218e81ca2c215512438a9d7f897953088078838e8145b01eb00705a2.source"
+    },
+    "scenario_runner/scenarios/full_loop_parts/tunnel_static_parts/catalog.py": {
+      "sha256": "a6bfaf48c0a9355f08d02e29fa0a8298ca9644e89ce56cf08521c1e558b71ec1",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/a6bfaf48c0a9355f08d02e29fa0a8298ca9644e89ce56cf08521c1e558b71ec1.source"
+    },
+    "scenario_runner/scenarios/full_loop_parts/tunnel_static_parts/connection.py": {
+      "sha256": "dabb27ad11fc618e833108b5d9fd88ec324a9be5d1a6969f1525a96fcaf10d53",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/dabb27ad11fc618e833108b5d9fd88ec324a9be5d1a6969f1525a96fcaf10d53.source"
+    },
+    "scenario_runner/scenarios/full_loop_parts/tunnel_static_parts/diversity.py": {
+      "sha256": "55d7e3414dde909720593dac707eeb5565a728c4988f15bb4bd61903558624b6",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/55d7e3414dde909720593dac707eeb5565a728c4988f15bb4bd61903558624b6.source"
+    },
+    "scenario_runner/scenarios/full_loop_parts/tunnel_static_parts/evidence.py": {
+      "sha256": "ca461be8a1d3ccd8d89e003d67f2f7bdadf21798ed246166add098f5d5c288d3",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/ca461be8a1d3ccd8d89e003d67f2f7bdadf21798ed246166add098f5d5c288d3.source"
+    },
+    "scenario_runner/scenarios/full_loop_parts/tunnel_static_parts/execution.py": {
+      "sha256": "5c8c85265040025e0c467cad45d1219f4d0b7471064341dfe40d91ace5436d7b",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/5c8c85265040025e0c467cad45d1219f4d0b7471064341dfe40d91ace5436d7b.source"
+    },
+    "scenario_runner/scenarios/full_loop_parts/tunnel_static_parts/execution_policy.py": {
+      "sha256": "a7b422ccc3e0feaf25a66076b51fb61aef4d5ebd6d934e4648e47a09bbe51eae",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/a7b422ccc3e0feaf25a66076b51fb61aef4d5ebd6d934e4648e47a09bbe51eae.source"
+    },
+    "scenario_runner/scenarios/full_loop_parts/tunnel_static_parts/layout.py": {
+      "sha256": "5d8c381a546f3a9becb13486ae06080081e5644be5e2f33ff6a1cf7fa372ed43",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/5d8c381a546f3a9becb13486ae06080081e5644be5e2f33ff6a1cf7fa372ed43.source"
+    },
+    "scenario_runner/scenarios/full_loop_parts/tunnel_static_parts/live.py": {
+      "sha256": "2ea792572e19af69102684bb886b1eca55822b32728e8eebb6875dfd89253542",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/2ea792572e19af69102684bb886b1eca55822b32728e8eebb6875dfd89253542.source"
+    },
+    "scenario_runner/scenarios/full_loop_parts/tunnel_static_parts/replay.py": {
+      "sha256": "3ea30995d7108d621668c3d9991f402b8b583263383bea3810f8907c99217966",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/3ea30995d7108d621668c3d9991f402b8b583263383bea3810f8907c99217966.source"
+    },
+    "scenario_runner/scenarios/full_loop_parts/tunnel_static_parts/runtime.py": {
+      "sha256": "551db4993ac11205edb7f5bce8b5f41b4bca7d7e8f50b3e91e7df3d47f68ebd3",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/551db4993ac11205edb7f5bce8b5f41b4bca7d7e8f50b3e91e7df3d47f68ebd3.source"
+    },
+    "scenario_runner/scenarios/full_loop_parts/tunnel_static_parts/safety.py": {
+      "sha256": "320e0f322e447d29cc72402ed61fdcb6b81b82132de5bd774972cbb52c31711b",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/320e0f322e447d29cc72402ed61fdcb6b81b82132de5bd774972cbb52c31711b.source"
+    },
+    "scenario_runner/scenarios/full_loop_parts/tunnel_static_parts/sampling.py": {
+      "sha256": "98bef4022eb3d27a719b1bbcb99577f3323ece3fc3345b21738aa721461421b1",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/98bef4022eb3d27a719b1bbcb99577f3323ece3fc3345b21738aa721461421b1.source"
+    },
+    "scenario_runner/scenarios/full_loop_parts/tunnel_static_parts/screening.py": {
+      "sha256": "86963918820a04bd647888a8738448d550246f22831cde68692e0007c5fa60de",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/86963918820a04bd647888a8738448d550246f22831cde68692e0007c5fa60de.source"
+    },
+    "scenario_runner/scenarios/full_loop_parts/tunnel_static_parts/source_compatibility.py": {
+      "sha256": "5f0eb6c56acd0835125d5ffdcf51cc65aa80f777fcf77be0045034c57dcd3f9c",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/5f0eb6c56acd0835125d5ffdcf51cc65aa80f777fcf77be0045034c57dcd3f9c.source"
+    },
+    "scenario_runner/scenarios/full_loop_parts/tunnel_static_parts/survey.py": {
+      "sha256": "7bb8c14cd71669fd595e15062d14182eab653dc6d249968bb8032d197ba7ba25",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/7bb8c14cd71669fd595e15062d14182eab653dc6d249968bb8032d197ba7ba25.source"
+    },
+    "scenario_runner/scenarios/full_loop_parts/tunnel_static_parts/trial.py": {
+      "sha256": "b3a9359f9227cb47a494f8eb1f7d432f2842f59487c99b65903bee4b1556fa77",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/b3a9359f9227cb47a494f8eb1f7d432f2842f59487c99b65903bee4b1556fa77.source"
+    },
+    "scenario_runner/scenarios/segment_modes/expert.py": {
+      "sha256": "1d2551e4e393cf09b216e333d336e016c3e7af54d64c07294050becf193e8150",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/1d2551e4e393cf09b216e333d336e016c3e7af54d64c07294050becf193e8150.source"
+    },
+    "scenario_runner/scenarios/segment_modes/modes.py": {
+      "sha256": "10edc7884b7ba2fbb0d391727b94163cdb78309369ae721a1b5b46bc42c33dd9",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/10edc7884b7ba2fbb0d391727b94163cdb78309369ae721a1b5b46bc42c33dd9.source"
+    },
+    "scenario_runner/scenarios/segment_modes/route.py": {
+      "sha256": "43c5ad6b98e5ff9ade0fb78438155f8913c3c0ed4f985024ebf15d484c12a5c4",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/43c5ad6b98e5ff9ade0fb78438155f8913c3c0ed4f985024ebf15d484c12a5c4.source"
+    },
+    "scenario_runner/scenarios/segment_modes/scenario.py": {
+      "sha256": "8211e56982ad79ded84f7119215398ae144696ce82603af29429c8e7039be62d",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/8211e56982ad79ded84f7119215398ae144696ce82603af29429c8e7039be62d.source"
+    },
+    "scenario_runner/scenarios/segment_modes/tunnel_static_startup.py": {
+      "sha256": "c24a06208938267bb7ff42ae211c39489f5866498740728a3479a71b3a32d8df",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/c24a06208938267bb7ff42ae211c39489f5866498740728a3479a71b3a32d8df.source"
+    },
+    "scenario_runner/scenarios/segment_modes/tunnel_static_trial.py": {
+      "sha256": "3bd59473559ff0a9ccf0e0db21b22fc26e9645daea04b142a35bdea3a1333824",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/3bd59473559ff0a9ccf0e0db21b22fc26e9645daea04b142a35bdea3a1333824.source"
+    },
+    "scenario_runner/tools/__init__.py": {
+      "sha256": "9315f8eed6d254af3fcd5965f56e391d3fa3a8ec38072bef587a7da34ee9b520",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/9315f8eed6d254af3fcd5965f56e391d3fa3a8ec38072bef587a7da34ee9b520.source"
+    },
+    "scenario_runner/tools/run_tunnel_static_trial.sh": {
+      "sha256": "c5135932e67541bc3303975044dfa0aed3abd9aa3e3a830fa4548d1182c2345f",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/c5135932e67541bc3303975044dfa0aed3abd9aa3e3a830fa4548d1182c2345f.source"
+    },
+    "scenario_runner/tools/tunnel_static_batch_safety.sh": {
+      "sha256": "26f88467c72a06da6e9ff9dde13f181cee734dc0241c1f4e4c0e844dba07e743",
+      "archive_path": "scenario_runner/config/tunnel_static_source_archive/26f88467c72a06da6e9ff9dde13f181cee734dc0241c1f4e4c0e844dba07e743.source"
+    }
+  },
+  "historical_approvals_transferred": false,
+  "fresh_current_planner_and_runtime_guards_required": true,
+  "previous_project_root": "/home/jun/AIMDrive/MoraiDrive",
+  "current_screening_provenance": {
+    "planner_source_sha256": {
+      "scenario_runner/scenarios/full_loop_parts/tunnel_static_parts/screening.py": "86963918820a04bd647888a8738448d550246f22831cde68692e0007c5fa60de",
+      "scenario_runner/scenarios/full_loop_parts/tunnel_static_parts/live.py": "2ea792572e19af69102684bb886b1eca55822b32728e8eebb6875dfd89253542",
+      "scenario_runner/scenarios/full_loop_parts/tunnel_static_parts/layout.py": "5d8c381a546f3a9becb13486ae06080081e5644be5e2f33ff6a1cf7fa372ed43",
+      "scenario_runner/scenarios/full_loop_parts/tunnel_static_parts/advanced_patterns.py": "f5da2e04218e81ca2c215512438a9d7f897953088078838e8145b01eb00705a2",
+      "expert/src/expert/src/planning/lattice_planning/parameters.py": "4e5b396861605cfa9c4b12d80b83ec1fcd30d989574b35136ba0153f4846012f",
+      "expert/src/expert/src/planning/lattice_planning/lattice_planner.py": "7ee196a6592d66d0b69a0050119b414080f2c12aebae73b0a35e848187a9b235",
+      "expert/src/expert/src/localization/path_manager.py": "747f22141b47e5c63af57a70f906739df86ed57081e42be616e703f9cfd21588",
+      "expert/src/expert/src/autonomous_driving.py": "149c7ef81322eabe4e0ef345ef51e38de4cad7999761e34b9634e0be2f662ca1",
+      "expert/src/expert/src/config/config.json": "37bcc14cac15f80bf82e2cac51b12574d2538dc85d1c0c927b64a1a9e31371db",
+      "scenario_runner/scenarios/segment_modes/modes.py": "addc8ea86f9c0d70c586a679413c786ae5b8ea0f3c9f5bc43157a10fb5fde387",
+      "scenario_runner/scenarios/segment_modes/route.py": "43c5ad6b98e5ff9ade0fb78438155f8913c3c0ed4f985024ebf15d484c12a5c4",
+      "expert/src/expert/src/planning/Jamming/__init__.py": "091974a7f9f992a0ab346043ce203819171111e90df53e9edb3f9f745e83a782",
+      "expert/src/expert/src/planning/Jamming/dynamic_planner.py": "9caeed9a59c2d95423e108901d759e5c6597f698fb4e59e99f79a7a9003b0d2a",
+      "expert/src/expert/src/planning/Jamming/dynamic_recovery.py": "020264da99fd6deb72bd697979c81f6e2e3d4d10bcf1d8ce5c162c9facb402d0",
+      "expert/src/expert/src/planning/Jamming/motion.py": "01d2baabecedbe9e8b5cf5bbb104980da4807b3c689bf37e9c0a436a281fbb9a",
+      "expert/src/expert/src/planning/Jamming/pedestrian_safety.py": "cd5b0831131d42c89248a849eab5638c88db4559f70e18339e0768aea708fd30",
+      "expert/src/expert/src/planning/Jamming/prepare_routes.py": "84e81b25017a284baa68b70dd20426bf7dd561e56a30f916bac67f374fa52b56",
+      "expert/src/expert/src/planning/Jamming/recorded_planner.py": "aade944b011a9f3d80bb2ec7914e7641dfa25de6d14c89cb5bec375864afd15d",
+      "expert/src/expert/src/planning/Jamming/road_boundary.py": "ef08ca9dc988855fe1f88d6b813b355eb1bb6acc13faff3b687e6254d56cbd5d",
+      "expert/src/expert/src/planning/Jamming/section.py": "fcc081aa190f6c06014d1a7b8b6fd8dc0836fc1ca490e3a8456dc2e42ebd4035",
+      "expert/src/expert/src/planning/정적장애물/__init__.py": "9234f1109b8fbd2b3e0db1628182afb90004230588ea412d7c14829d335ac96a",
+      "expert/src/expert/src/planning/정적장애물/corridor_graph.py": "2d7ee9f07ca7a05bbd584252d7a1d7b890df482a291a79d8be2d8a98bfeee60e",
+      "expert/src/expert/src/planning/정적장애물/recorded_planner.py": "516de5321e186adecc49799e8dbd9f8fe0ece8efc546ab28a0de6606c292b612"
+    },
+    "recorded_library_sha256": {
+      "expert/src/expert/src/planning/Jamming/routes.json": "d040568a3a6ffd3fd666d17d87867975b9acf2838baef779ae20b0f020a8f554",
+      "expert/src/expert/src/planning/Jamming/section.json": "c3d32ff1a9f9ff0a4cb9190a212fc4772d4f572c6776f9af18388a1adeaf9f85",
+      "expert/src/expert/src/planning/Jamming/공통종료선 경로/jamming_01.csv": "ad873348da6b59a33b7e56ba6a16b0f8e07be2e0d761301064d1e4b8a2fb1e27",
+      "expert/src/expert/src/planning/Jamming/공통종료선 경로/jamming_02.csv": "72b00704a9139c5a6d29d99484927049e05a3090d07c252b0506164bf91b0c02",
+      "expert/src/expert/src/planning/Jamming/공통종료선 경로/jamming_03.csv": "9f4277ccb5963c95cbfe8291184869e66cc8fc21691afa34a91b12a34b9b4e07",
+      "expert/src/expert/src/planning/Jamming/공통종료선 경로/jamming_04.csv": "1105beaa7f02928cbae5fd32173d7149da5a3255ede9b89a95e57c315d56f7cb",
+      "expert/src/expert/src/planning/Jamming/공통종료선 경로/jamming_05.csv": "a067aa73f8b4ac7946f1dbd3d358b9dc94f9e5005f798dc696bb5f6e11f9ab7b",
+      "expert/src/expert/src/planning/Jamming/공통종료선 경로/jamming_06.csv": "c32ab4c6727620ef2bfe8872778b1ca53165d59f566ac65844917c3a0305c3a2",
+      "expert/src/expert/src/planning/Jamming/공통종료선 경로/jamming_07.csv": "006d1fec1a42a03dfce539d76a78beb93ab425328c8159593bc78ea4bfab66e1",
+      "expert/src/expert/src/planning/Jamming/공통종료선 경로/jamming_08.csv": "997d4d45168bb846b8a4a556ae7225e7fce6f1ba076536c676841fbbd38e0e02",
+      "expert/src/expert/src/planning/Jamming/공통종료선 경로/jamming_09.csv": "42e1548d1a903bf98030758e1f77554a1393d6a8e6b7e273aa073880e32e0065"
+    },
+    "original_route_sha256": "50658991e607d9339d76e4cd6cb169dfc733ea53b93de2c3e222460bb497cc05",
+    "screening_policy": {
+      "planner": "production_JammingPlanner",
+      "recorded_routes": 9,
+      "mission": "full_loop_tunnel_normal",
+      "start_original_route_index": 3723,
+      "end_original_route_index": 4107,
+      "expert_lookahead_tail_m": 35.0,
+      "prediction_preview_points_at_spawn": 120,
+      "local_reference_policy": "production_PathManager/config.local_path_size",
+      "initial_path_position_tolerance_m": 0.25,
+      "initial_path_heading_tolerance_deg": 15.0,
+      "measured_pose_policy": "separate body/collision/alignment checks; never prepend a synthetic repositioning edge",
+      "ego_body_projection_schema": "actor_flu_obb_roll_pitch_envelope_v1",
+      "ego_body_max_abs_roll_pitch_deg": 3.0,
+      "minimum_ego_body": {
+        "rear_m": 0.85,
+        "front_m": 3.85,
+        "width_m": 2.17
+      },
+      "ego_body_projection_formula": "X_pad=sin(P)*(maxAbsY*sin(R)+maxAbsZ); Y_half=maxAbsY+sin(R)*maxAbsZ",
+      "road_boundary_approach_m": 120.0,
+      "road_boundary_departure_m": 70.0,
+      "full_body_road_margin_m": 0.15,
+      "planning_tunnel_body_road_margin_m": 0.35,
+      "planning_road_reserve_basis": "paired tunnel interior only; connected approach/exit reference keeps runtime 0.15 m",
+      "central_line_crossing_allowed": true,
+      "worker_process_per_candidate": true
+    },
+    "screening_policy_sha256": "3fceaf1e9458fe6cedf59f7595ade6a447043426bfbf843da96eaae24c905d0d"
+  },
+  "current_runtime_source_sha256": {
+    "scenario_runner/scenarios/segment_modes/tunnel_static_trial.py": "3bd59473559ff0a9ccf0e0db21b22fc26e9645daea04b142a35bdea3a1333824",
+    "scenario_runner/adapters/expert_process.py": "9b52328fb696076f538c946e4ca070512e63fa957f003b8ca5787dff9aef8a0f",
+    "scenario_runner/adapters/expert_controller.py": "51ebed01b8dcec0df200ca6f619091d8c439de46cc3d1fd8ad6b7f5077ac9da1",
+    "scenario_runner/core/full_loop_drive_base.py": "62d8ce0601e1a9a6b527f0153c2208e04e8e37cc8bfeabb2df00e948a0c3004c",
+    "scenario_runner/scenarios/segment_modes/scenario.py": "8211e56982ad79ded84f7119215398ae144696ce82603af29429c8e7039be62d",
+    "scenario_runner/scenarios/segment_modes/expert.py": "f7be7d367cac3bf3fb2da8e20ea7f0c1835ec59aa118026c285d8f227332d1a3",
+    "scenario_runner/scenarios/segment_modes/tunnel_static_startup.py": "c24a06208938267bb7ff42ae211c39489f5866498740728a3479a71b3a32d8df",
+    "expert/src/expert/src/network/ros_manager.py": "5ef13e89f37247cc7292227cbbbf0380b42fe9c1f60642e9061fd1b07407f6fc"
+  }
+}

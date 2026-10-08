@@ -1,5 +1,43 @@
 """Explicit Simulation Time integration; never manufactures a ROS /clock."""
+import json
+import math
+from pathlib import Path
 import time
+
+
+def wait_for_native_capture_armed(coordination, collector, *, timeout=65.0,
+                                  monotonic=None, sleep=None):
+    """Use the existing UI owner's verified Record ON before releasing Ego.
+
+    The coordination directory belongs to the fresh episode. This helper never
+    toggles recording, drives Ego or manufactures sensor/clock messages.
+    """
+    if not math.isfinite(timeout) or not 0 < timeout <= 120:
+        raise ValueError('Native recording readiness needs a bounded timeout')
+    now, wait = monotonic or time.monotonic, sleep or time.sleep
+    directory = Path(coordination)
+    started = now()
+    deadline = started + timeout
+    while True:
+        if collector is None or collector.poll() is not None:
+            raise RuntimeError('Raw recorder exited before native Sensor Record readiness')
+        if (directory/'recording_stopped.json').is_file():
+            raise RuntimeError('Native Sensor Record stopped before Ego drive readiness')
+        marker = directory/'recording_armed.json'
+        if marker.is_file():
+            try:
+                value = json.loads(marker.read_text(encoding='utf-8-sig'))
+            except (OSError, ValueError) as error:
+                raise RuntimeError('Native recording readiness marker is invalid') from error
+            if (not isinstance(value,dict) or value.get('status') != 'armed'
+                    or value.get('record_on') is not True or value.get('error')):
+                raise RuntimeError('Native Sensor Record ON was not verified by its owner')
+            return dict(coordination_directory=str(directory.resolve()),
+                        marker_path=str(marker.resolve()),
+                        elapsed_wall_seconds=now()-started, owner_evidence=value)
+        if now() >= deadline:
+            raise TimeoutError('Native Sensor Record ON was not acknowledged before Ego drive')
+        wait(min(.05,max(0.,deadline-now())))
 
 
 def cleanup_unreachable_expert_publishers(topic, master=None, ping=None, cleanup=None):

@@ -5,6 +5,7 @@ always receives ENU paths. Collision margins, search, speed and tracking are
 the implementations in 정적장애물, shared rather than copied.
 """
 import copy
+import hashlib
 import json
 import math
 
@@ -13,7 +14,7 @@ import numpy as np
 from ...localization.point import Point
 from ..lattice_planning.lattice_planner import LatticePlanner
 from ..lattice_planning import parameters
-from ..lattice_planning.structures import CandidatePath
+from ..lattice_planning.structures import CandidatePath, LatticePlanningResult
 from ..정적장애물.recorded_planner import (
     RecordedStaticPlanner, RecordedRouteGeometry, load_routes, connector,
 )
@@ -21,11 +22,117 @@ from .section import JammingSection, ROOT, ROUTE_DIRECTORY
 from .prepare_routes import PREPARED_DIRECTORY, clip_rows
 from .motion import stationary, moving, key as motion_key
 from .dynamic_planner import DynamicObstaclePlanner
+from .road_boundary import RoadBoundary
+
+
+def _path_poses(points):
+    """Remove repeated map nodes before calculating headings and dense poses."""
+    xy = np.asarray(points, dtype=float)
+    if xy.ndim != 2 or xy.shape[1] != 2 or len(xy) < 2 or not np.isfinite(xy).all():
+        raise ValueError("Invalid maneuver path")
+    xy = xy[np.r_[True, np.linalg.norm(np.diff(xy, axis=0), axis=1)>1e-7]]
+    if len(xy) < 2:
+        raise ValueError("Maneuver path has no progress")
+    delta = np.diff(xy, axis=0)
+    length = np.linalg.norm(delta, axis=1)
+    headings = np.unwrap(np.arctan2(delta[:, 1], delta[:, 0]))
+    curvature = (float(np.max(np.abs(np.diff(headings))/np.maximum(
+        1e-8, .5*(length[:-1]+length[1:])))) if len(headings)>1 else 0.)
+    stations = np.r_[0., np.cumsum(length)]
+    dense_s = np.linspace(0., stations[-1], int(math.ceil(stations[-1]/.1))+1)
+    dense = np.column_stack([np.interp(dense_s, stations, xy[:, axis]) for axis in (0, 1)])
+    yaw = np.interp(dense_s, stations, np.r_[headings, headings[-1]])
+    return dense, yaw, curvature, float(length.max())
+
+
+def _native_static_frames(contract, reference, identity):
+    """Validate captured native metadata; it is not a physical OBB size."""
+    def vector(value, count, *, positive=False):
+        if (not isinstance(value, (list, tuple)) or len(value)!=count
+                or any(isinstance(item, bool) or not math.isfinite(float(item))
+                       or (positive and float(item)<=0.) for item in value)):
+            raise ValueError('Invalid native static metadata vector')
+        return np.asarray(value, dtype=float)
+    size = vector(contract.get('size_lwh_m'), 3, positive=True)
+    if not np.allclose(size[:2], vector(contract.get('size_lw_m'), 2, positive=True), rtol=0., atol=1e-9):
+        raise ValueError('Native static metadata dimensions disagree')
+    binding = float(contract.get('binding_monotonic', float('nan')))
+    validated = float(contract.get('validated_monotonic', float('nan')))
+    frames = contract.get('native_frames')
+    if (not math.isfinite(binding) or binding<0. or not math.isfinite(validated) or validated<=binding
+            or not isinstance(frames, list) or len(frames)!=3):
+        raise ValueError('Native static metadata requires three post-binding frames')
+    publisher, previous_receipt, previous_sequence, previous_stamp = None, binding, None, None
+    captured = []
+    for frame in frames:
+        if not isinstance(frame, dict):
+            raise ValueError('Invalid native static metadata frame')
+        node, receipt = frame.get('publisher_node'), float(frame.get('receipt_monotonic', float('nan')))
+        sequence, stamp = frame.get('source_sequence'), frame.get('source_stamp_ns')
+        if (not isinstance(node, str) or not node or (publisher is not None and publisher!=node)
+                or not math.isfinite(receipt) or receipt<=previous_receipt
+                or receipt>validated or validated-receipt>.5
+                or not isinstance(sequence, int) or isinstance(sequence, bool) or sequence<0
+                or (previous_sequence is not None and sequence<=previous_sequence)
+                or not isinstance(stamp, int) or isinstance(stamp, bool) or stamp<0
+                or (stamp and previous_stamp is not None and stamp<=previous_stamp)):
+            raise ValueError('Native static metadata frames are not fresh and ordered')
+        row = frame.get('row', {})
+        if (not isinstance(row, dict) or row.get('raw_actor_id')!=identity or row.get('actor_kind')!='obstacle'
+                or row.get('name')!=reference['model']):
+            raise ValueError('Native static metadata actor identity differs from the owned scene')
+        position = vector(row.get('position_xyz'), 3)
+        observed_size = vector(row.get('size_xyz'), 3, positive=True)
+        heading, velocity = float(row.get('heading_deg', float('nan'))), float(row.get('velocity_raw', float('nan')))
+        error = abs(math.atan2(math.sin(math.radians(heading-reference['rotation_xyz_deg'][2])),
+                               math.cos(math.radians(heading-reference['rotation_xyz_deg'][2]))))
+        if (not math.isfinite(heading) or not math.isfinite(velocity) or abs(velocity)>.05
+                or np.linalg.norm(position[:2]-np.asarray(reference['position_xyz'][:2]))>.15
+                or error>math.radians(2.) or np.max(np.abs(observed_size-size))>.01+1e-9):
+            raise ValueError('Native static metadata pose, motion or dimensions changed')
+        captured.append(observed_size)
+        publisher, previous_receipt, previous_sequence = node, receipt, sequence
+        if stamp:
+            previous_stamp = stamp
+    if (frames[-1]['receipt_monotonic']-frames[0]['receipt_monotonic']>.5
+            or np.max(np.ptp(np.asarray(captured), axis=0))>.01+1e-9):
+        raise ValueError('Native static metadata dimensions are stale or unstable')
+
+
+def _static_geometry_source(source, model):
+    """Keep legacy and independently reviewed unit-3D sources distinct."""
+    def digest(key):
+        value = source.get(key, '')
+        return (isinstance(value, str) and len(value) == 64
+                and all(char in '0123456789abcdef' for char in value.lower()))
+    if not isinstance(source, dict):
+        return False
+    kind = source.get('type')
+    if kind == 'sealed_lidar_verified_static_footprint':
+        return digest('catalog_sha256')
+    if kind != 'reviewed_unit3d_static_surface_and_api_collider_union':
+        return False
+    if (source.get('validation_scope') != 'static_unit_visible_surface_multiview_3d'
+            or source.get('model_key') != 'obstacle|' + model + '|1,1,1'
+            or not all(digest(key) for key in (
+                'registry_sha256', 'profiles_sha256', 'confirmation_sha256', 'camera_review_sha256'))):
+        return False
+    if source.get('runtime_catalog_path'):
+        return digest('runtime_catalog_sha256') and digest('measurement_sha256')
+    return True
 
 
 class _LocalPlanner(RecordedStaticPlanner):
-    def __init__(self, section, planner, background):
+    def __init__(self, section, planner, background, road_boundary=None):
         self.section = section
+        self.road_boundary = road_boundary
+        self._planning_road_context = False
+        if road_boundary is not None:
+            # Keep the shared static/highway planner instances untouched.
+            planner = copy.copy(planner)
+            planner.vehicle_length = max(planner.vehicle_length, 4.64)
+            planner.vehicle_half_width = max(planner.vehicle_half_width,
+                                            road_boundary.body_policy['width_m']*.5)
         width, length = section.activation_half_width_m, section.length
         geometry = RecordedRouteGeometry(
             rejoin_point=(0., length, section.end[2]), active_x=(-width, width),
@@ -40,25 +147,126 @@ class _LocalPlanner(RecordedStaticPlanner):
         # shorter static section, especially beside the ROS control thread.
         self.recording_search_timeout = 8.
 
+    def _world_poses(self, xy, yaw):
+        xy = np.asarray(xy, dtype=float)
+        return (np.asarray(self.section.start[:2])+xy[:, :1]*np.asarray(self.section.right)+
+                xy[:, 1:2]*np.asarray(self.section.forward),
+                np.asarray(yaw)-self.section.rotation)
+
+    def road_clear(self, xy, yaw, margin=.15):
+        if self.road_boundary is None:
+            return True
+        world, headings = self._world_poses(xy, yaw)
+        return bool(np.all(self.road_boundary.mask_world(world, headings, margin)))
+
+    def _envelope_mask(self, xy, yaw, body_margin=0.):
+        xy, yaw = np.asarray(xy, dtype=float), np.asarray(yaw, dtype=float)
+        recorded = super()._envelope_mask(xy, yaw, body_margin)
+        if self.road_boundary is None:
+            return recorded
+        world, headings = self._world_poses(xy, yaw)
+        return recorded & self.road_boundary.planning_mask_world(world, headings,
+            max(self.road_boundary.planning_margin_m, body_margin))
+
+    def _envelope_clear(self, xy, yaw, body_margin=0.):
+        xy, yaw = np.asarray(xy, dtype=float), np.asarray(yaw, dtype=float)
+        if self._planning_road_context:
+            return bool(np.all(self._envelope_mask(xy, yaw, body_margin)))
+        # RecordedStaticPlanner.plan calls this for the measured Ego pose.
+        # Its runtime guard must not inherit the larger search reservation.
+        recorded = super()._envelope_mask(xy, yaw, body_margin)
+        if self.road_boundary is None:
+            return bool(np.all(recorded))
+        world, headings = self._world_poses(xy, yaw)
+        return bool(np.all(recorded & self.road_boundary.mask_world(world, headings,
+                                                                   self.road_boundary.runtime_margin_m)))
+
+    def _edge(self, curve, y0, y1, obstacles, body_margin=0., tracking_reserve=True):
+        previous = self._planning_road_context
+        self._planning_road_context = True
+        try:
+            return super()._edge(curve, y0, y1, obstacles, body_margin, tracking_reserve)
+        finally:
+            self._planning_road_context = previous
+
     def _search(self, ego, obstacles):
-        if not obstacles:
-            # For moving traffic, start with the official lane. Selecting an
-            # arbitrary recording here creates an extra lateral maneuver before
-            # the moving-object planner has checked the overtake.
-            start=float(ego.position.y)
-            for distance in (6.,8.,12.,18.):
-                join=min(start+distance,self.goal_y-.5)
-                if join<=start:
-                    continue
-                entry=connector((start,ego.position.x,
-                    math.cos(ego.yaw)/max(.5,math.sin(ego.yaw)),0.),
-                    self._state(self.global_curve,join))
-                first=self._edge(entry,start,join,obstacles)
-                rest=self._edge(self.global_curve,join,self.goal_y,obstacles)
-                if first is not None and rest is not None:
-                    self.selected_names=['jamming_global_reference']
-                    return np.vstack((first,rest[1:]))
-        return super()._search(ego,obstacles)
+        previous = self._planning_road_context
+        self._planning_road_context = True
+        try:
+            if not obstacles:
+                # For moving traffic, start with the official lane. Selecting an
+                # arbitrary recording here creates an extra lateral maneuver before
+                # the moving-object planner has checked the overtake.
+                start=float(ego.position.y)
+                for distance in (6.,8.,12.,18.):
+                    join=min(start+distance,self.goal_y-.5)
+                    if join<=start:
+                        continue
+                    entry=connector((start,ego.position.x,
+                        math.cos(ego.yaw)/max(.5,math.sin(ego.yaw)),0.),
+                        self._state(self.global_curve,join))
+                    first=self._edge(entry,start,join,obstacles)
+                    rest=self._edge(self.global_curve,join,self.goal_y,obstacles)
+                    if first is not None and rest is not None:
+                        self.selected_names=['jamming_global_reference']
+                        return np.vstack((first,rest[1:]))
+            return super()._search(ego,obstacles)
+        finally:
+            self._planning_road_context = previous
+
+    def _collision_mask(self, xy, yaw, obstacles, extra=0., tracking_reserve=True):
+        modeled = super()._collision_mask(xy, yaw, obstacles, extra, tracking_reserve)
+        if self.road_boundary is None:
+            return modeled
+        margin = self.planner.collision_margin+extra
+        if tracking_reserve:
+            margin += parameters.STATIC_TRACKING_MARGIN
+        # SAT is invariant under a rigid rotation, so local poses/objects use
+        # the same normalized physical-body implementation as world rechecks.
+        return modeled & self.road_boundary.collision_mask_world(xy, yaw, obstacles, margin)
+
+    def _remaining_clear(self, points, yaw, obstacles):
+        return self.road_clear(points, yaw) and super()._remaining_clear(points, yaw, obstacles)
+
+    def _early_handoff_ready(self, ego, reference_path, obstacles):
+        if not super()._early_handoff_ready(ego, reference_path, obstacles):
+            return False
+        forward = [point for point in reference_path if ego.position.y-.2 <= point.y <= self.goal_y]
+        headings = np.array([self.planner._path_heading(forward, i) for i in range(len(forward))])
+        return (self.road_clear([ego.position], [ego.yaw]) and self.road_clear(forward, headings))
+
+    def _waiting_result(self, ego, reference_path, obstacles, phase, error=None):
+        return self.guard_result(super()._waiting_result(ego, reference_path, obstacles, phase, error),
+                                 ego, obstacles)
+
+    def guard_result(self, result, ego, obstacles):
+        """Cover preview, approach, handoff and special recovery exit paths."""
+        if result is None or self.road_boundary is None:
+            return result
+        failure = None
+        try:
+            xy, yaw, curvature, step = _path_poses(result.path)
+            if (not self.road_clear([ego.position], [ego.yaw]) or not self.road_clear(xy, yaw)):
+                failure = 'road_boundary'
+            elif (not self.collision_free([ego.position], [ego.yaw], obstacles, .12)
+                    or not self.collision_free(xy, yaw, obstacles,
+                        max(.12, .5*min(step, .1)*(1+self.planner.vehicle_length*curvature)))):
+                failure = 'whole_body_collision'
+        except ValueError:
+            failure = 'invalid_road_path'
+        result = copy.copy(result)
+        result.debug_details = copy.deepcopy(result.debug_details)
+        details = result.debug_details.setdefault('static_avoidance', {})
+        details['road_boundary'] = dict(policy=self.road_boundary.policy,
+            source_sha256=self.road_boundary.source_sha256,
+            policy_sha256=self.road_boundary.policy_sha256, passed=failure is None)
+        if failure:
+            result.active = True
+            result.acc_override = True
+            result.acc_target_velocity = 0.
+            result.reason = 'jamming_'+failure
+            details.update(path_validated=False, error=failure, phase='blocked')
+        return result
 
     def approach_result(self, ego, reference_path):
         result = super().approach_result(ego, reference_path)
@@ -93,17 +301,215 @@ class _LocalPlanner(RecordedStaticPlanner):
 
 
 class JammingPlanner:
-    def __init__(self, root=ROOT, planner=None, background=True):
+    def __init__(self, root=ROOT, planner=None, background=True, road_boundary=None):
         self.section = JammingSection(root)
         self.local = _LocalPlanner(self.section, planner or LatticePlanner(
-            sample_spacing=parameters.STATIC_SAMPLE_SPACING), background)
+            sample_spacing=parameters.STATIC_SAMPLE_SPACING), background, road_boundary)
         self.dynamic = DynamicObstaclePlanner()
         self._motion_states = {}
         self._last_position = None
+        self._global_path = None
+        self._object_geometries = {}
+        self._scene_geometry_sha256 = None
+        self._scene_error = None
+
+    def set_object_geometries(self, rows):
+        """Install one immutable, observed geometry contract before planning."""
+        if self._last_position is not None or self.local.pending is not None or self.active:
+            raise ValueError('Scene geometry must be installed before planning')
+        rows = copy.deepcopy(list(rows))
+        geometries = {}
+        for row in rows:
+            identity = row.get('raw_actor_id', row.get('raw_id', row.get('unique_id', row.get('name'))))
+            if identity is None or not str(identity):
+                raise ValueError('Observed scene geometry requires an actor ID')
+            key = str(identity)
+            if key in geometries:
+                raise ValueError('Duplicate scene actor geometry: '+key)
+            for name in ('position_xyz', 'rotation_xyz_deg', 'center_xyz'):
+                values = row[name]
+                if len(values) != 3 or not all(math.isfinite(float(v)) for v in values):
+                    raise ValueError('Invalid scene geometry: '+name)
+            for name in ('heading_deg', 'length_m', 'width_m'):
+                value = float(row[name])
+                if not math.isfinite(value) or (name != 'heading_deg' and value <= 0.):
+                    raise ValueError('Invalid scene geometry: '+name)
+            raw = row['raw_bbox_normalized']
+            if len(raw['center_xyz']) != 3 or not all(math.isfinite(float(v)) for v in raw['center_xyz']):
+                raise ValueError('Invalid original scene bounding box')
+            for name in ('heading_deg', 'length_m', 'width_m'):
+                value = float(raw[name])
+                if not math.isfinite(value) or (name != 'heading_deg' and value<=0.):
+                    raise ValueError('Invalid original scene bounding box: '+name)
+            spec = row.get('vehicle_spec_contract')
+            if spec is not None:
+                if (not isinstance(spec, dict) or row.get('actor_kind') != 'vehicle'
+                        or spec.get('source') != 'bounded_GetVehicleSpec'
+                        or spec.get('raw_actor_id') != key or not row.get('model')
+                        or spec.get('model') != row['model']):
+                    raise ValueError('Vehicle specification identity/source differs from the owned scene')
+                size = spec.get('size_lwh_m')
+                if (not isinstance(size, (list, tuple)) or len(size) != 3
+                        or any(isinstance(value, bool) or not math.isfinite(float(value))
+                               or float(value)<=0. for value in size)):
+                    raise ValueError('Invalid bounded vehicle specification dimensions')
+                if float(size[0])>row['length_m']+.1 or float(size[1])>row['width_m']+.1:
+                    raise ValueError('Vehicle specification exceeds the conservative observed union')
+            surface = row.get('static_surface_contract')
+            if surface is not None:
+                source = surface.get('geometry_source', {}) if isinstance(surface, dict) else {}
+                if (not isinstance(surface, dict) or row.get('actor_kind') != 'obstacle'
+                        or surface.get('source') not in ('sealed_lidar_static_catalog', 'verified_native_ROS_static_metadata')
+                        or surface.get('raw_actor_id') != key or not row.get('model')
+                        or surface.get('model') != row['model']
+                        or not _static_geometry_source(source, row['model'])):
+                    raise ValueError('Static surface identity/source differs from the owned scene')
+                size = surface.get('size_lw_m')
+                if (not isinstance(size, (list, tuple)) or len(size) != 2
+                        or any(isinstance(value, bool) or not math.isfinite(float(value))
+                               or float(value)<=0. for value in size)):
+                    raise ValueError('Invalid sealed static surface dimensions')
+                if surface['source']=='verified_native_ROS_static_metadata':
+                    # ROS nominal X/Y can be larger or have different intrinsic
+                    # axes than a measured collider/surface. Evidence binds the
+                    # input signature; it never replaces the collision geometry.
+                    _native_static_frames(surface, row, key)
+                elif float(size[0])>row['length_m']+.1 or float(size[1])>row['width_m']+.1:
+                    raise ValueError('Static surface exceeds the conservative observed union')
+            geometries[key] = row
+        digest = hashlib.sha256(json.dumps(rows, sort_keys=True, separators=(',', ':'),
+                                           allow_nan=False).encode()).hexdigest()
+        if self._scene_geometry_sha256 is not None and self._scene_geometry_sha256 != digest:
+            raise ValueError('Scene geometry cannot change after installation')
+        self._object_geometries = geometries
+        self._scene_geometry_sha256 = digest
+
+    def _scene_object(self, original):
+        row = None
+        for key in (getattr(original, 'unique_id', None), getattr(original, 'name', None)):
+            if key is not None and str(key) in self._object_geometries:
+                row = self._object_geometries[str(key)]
+                break
+        if row is None:
+            return original
+        actual = np.asarray(original.position)
+        known = [np.asarray(row['position_xyz'][:2]), np.asarray(row['raw_bbox_normalized']['center_xyz'][:2])]
+        heading_error = abs(math.atan2(math.sin(math.radians(original.heading_deg-row['rotation_xyz_deg'][2])),
+                                       math.cos(math.radians(original.heading_deg-row['rotation_xyz_deg'][2]))))
+        reported = np.array([original.size_x, original.size_y])
+        raw = row['raw_bbox_normalized']
+        # gRPC uses the measured collider. Native ROS can use the model's
+        # nominal L/W metadata (e.g. a narrower Prius body). Accept that fixed
+        # order only when a bounded GetVehicleSpec contract is bound to this
+        # exact owned actor/model. Every accepted input uses the SAME larger
+        # observed collision union below; no size tolerance is enlarged.
+        expected = (np.array([raw['width_m'], raw['length_m']]),
+                    np.array([raw['length_m'], raw['width_m']]))
+        spec = row.get('vehicle_spec_contract')
+        spec_identity_invalid = False
+        if spec is not None:
+            expected += (np.asarray(spec['size_lwh_m'][:2], dtype=float),)
+            input_name = str(getattr(original, 'name', '') or '')
+            spec_identity_invalid = (original.type != 1 or (input_name and input_name not in (
+                str(row.get('raw_actor_id', row.get('raw_id', row.get('unique_id')))), row['model'])))
+        surface = row.get('static_surface_contract')
+        if surface is not None:
+            # Obstacle Object_topic metadata can describe the sealed visible
+            # surface while gRPC reports a larger physical collision box.
+            # Keep this model-bound nominal L/W as an input signature only.
+            expected += (np.asarray(surface['size_lw_m'], dtype=float),)
+            input_name = str(getattr(original, 'name', '') or '')
+            spec_identity_invalid |= (original.type != 2 or (input_name and input_name not in (
+                str(row.get('raw_actor_id', row.get('raw_id', row.get('unique_id')))), row['model'])))
+        if (not np.isfinite(actual).all() or min(np.linalg.norm(actual-point) for point in known)>.15
+                or not math.isfinite(original.heading_deg) or not np.isfinite(reported).all()
+                or np.any(reported<=0.)
+                or min(np.max(np.abs(reported-size)) for size in expected)>.1
+                or spec_identity_invalid
+                or not stationary(original) or heading_error>math.radians(2.)):
+            self._scene_error = 'owned_actor_geometry_changed'
+            return original
+        value = copy.copy(original)
+        value.position = Point(*row['center_xyz'][:2])
+        value.heading_deg = float(row['heading_deg'])
+        value.size_x, value.size_y = float(row['length_m']), float(row['width_m'])
+        return value
+
+    def validate_world_path(self, path, objects, ego=None, global_path=None, require_complete=True,
+                            planning=True):
+        """Public offline recheck of the actual chosen complete maneuver."""
+        result = dict(passed=False, nominal_envelope_passed=False, inflated_obb_passed=False,
+                      ego_lane_rejoin_passed=False, physical_walls_verified=False)
+        boundary = self.local.road_boundary
+        if boundary is None:
+            result['reason'] = 'road_boundary_missing'
+            return result
+        try:
+            xy, yaw, curvature, step = _path_poses(path)
+            runtime_road = bool(np.all(boundary.mask_world(xy, yaw, boundary.runtime_margin_m)))
+            planned_road = bool(np.all(boundary.planning_mask_world(xy, yaw)))
+            road = planned_road if planning else runtime_road
+            local_xy, local_yaw = self._path(xy), yaw+self.section.rotation
+            normalized = self._obstacles([obj if isinstance(obj, dict) else {'object_info': obj}
+                                          for obj in objects])
+            sweep = .5*min(step, .1)*(1+self.local.planner.vehicle_length*curvature)
+            collision = bool(np.all(self.local._collision_mask(np.asarray(local_xy), local_yaw,
+                                                               normalized, max(.12, sweep))))
+            actual = (ego is None or (bool(np.all(boundary.mask_world([ego.position], [ego.yaw],
+                                                                      boundary.runtime_margin_m)))
+                        and self.local.collision_free([self._ego(ego).position], [self._ego(ego).yaw], normalized, .12)))
+            reference = global_path if global_path is not None else self._global_path
+            rejoined = False
+            if reference is not None:
+                ref, _, _, _ = _path_poses(reference)
+                delta = np.diff(ref, axis=0)
+                fraction = np.clip(np.sum((xy[-1]-ref[:-1])*delta, axis=1)/np.maximum(1e-10,np.sum(delta*delta,axis=1)),0.,1.)
+                projected = ref[:-1]+fraction[:, None]*delta
+                index = int(np.argmin(np.linalg.norm(projected-xy[-1],axis=1)))
+                angle = math.atan2(delta[index,1],delta[index,0])
+                error = abs(math.atan2(math.sin(yaw[-1]-angle),math.cos(yaw[-1]-angle)))
+                rejoined = (np.linalg.norm(projected[index]-xy[-1])<=.15 and error<=math.radians(3.)
+                            and self.section.to_local(xy[-1])[1]>=self.section.length)
+            reason = ('scene_geometry_invalid' if self._scene_error else
+                      'curvature_limit' if curvature>parameters.STATIC_MAX_CURVATURE+1e-6 else
+                      'nominal_road_envelope' if not road or not actual else
+                      'inflated_obb_collision' if not collision else
+                      'not_rejoined_ego_lane' if require_complete and not rejoined else '')
+            result.update(passed=not reason, reason=reason, nominal_envelope_passed=road,
+                actual_ego_footprint_passed=actual, inflated_obb_passed=collision,
+                ego_lane_rejoin_passed=bool(rejoined), max_curvature_inv_m=curvature,
+                curvature_limit_inv_m=parameters.STATIC_MAX_CURVATURE, max_sample_step_m=step,
+                sweep_margin_m=sweep, tracking_reserve_m=.15,
+                planning_road_margin_m=boundary.planning_margin_m,
+                runtime_road_margin_m=boundary.runtime_margin_m,
+                road_margin_mode='planning' if planning else 'runtime',
+                runtime_path_road_passed=runtime_road,
+                planning_road_envelope_passed=planned_road,
+                planner_body_policy=boundary.policy, road_boundary_source_sha256=boundary.source_sha256,
+                road_boundary_policy_sha256=boundary.policy_sha256)
+        except (ValueError, KeyError, TypeError) as error:
+            result['reason'] = 'invalid_path: '+str(error)
+        return result
 
     @property
     def active(self):
         return self.local.active
+
+    @property
+    def road_boundary(self):
+        return self.local.road_boundary
+
+    def set_road_boundary(self, boundary):
+        if self._last_position is not None or self.local.pending is not None or self.active:
+            raise ValueError('Road boundary must be installed before planning')
+        if not isinstance(boundary, RoadBoundary):
+            raise ValueError('A validated RoadBoundary is required')
+        self.local.road_boundary = boundary
+        self.local.planner = copy.copy(self.local.planner)
+        self.local.planner.vehicle_length = max(self.local.planner.vehicle_length, 4.64)
+        self.local.planner.vehicle_half_width = max(self.local.planner.vehicle_half_width,
+                                                    boundary.body_policy['width_m']*.5)
+        self.local.reset()
 
     def close(self):
         self.dynamic.reset()
@@ -130,7 +536,7 @@ class JammingPlanner:
     def _obstacles(self, objects):
         result = []
         for item in objects:
-            original = item['object_info']
+            original = self._scene_object(item['object_info'])
             if not stationary(original):
                 continue
             obj = copy.copy(original)
@@ -187,6 +593,9 @@ class JammingPlanner:
     def run(self, ego, reference_path, objects, prediction_path=None, global_path=None, desired_velocity=None):
         local_ego = self._ego(ego)
         x, y = local_ego.position
+        if global_path is not None:
+            self._global_path = list(global_path)
+        self._scene_error = None
         states={motion_key(item['object_info']): moving(item['object_info']) for item in objects
                 if item['object_info'].type in (1,2)}
         relevant={motion_key(o) for o in self.local.known}
@@ -226,12 +635,30 @@ class JammingPlanner:
         forward = math.sin(local_ego.yaw) > .5
         if not self.active and not (in_band and in_extent and forward):
             return None
+        boundary = self.local.road_boundary
+        if (boundary is not None and not self.active and y<self.local.geometry.entry_y
+                and not bool(np.all(boundary.covers_world([ego.position], [ego.yaw])))):
+            return None
         reference = self._path(reference_path)
+        if self._object_geometries:
+            received = {str(key) for item in objects for key in (
+                getattr(item['object_info'], 'unique_id', None),
+                getattr(item['object_info'], 'name', None)) if key is not None}
+            if not set(self._object_geometries).issubset(received):
+                self._scene_error = 'owned_actor_geometry_missing'
         inside = self.local.contains(local_ego)
         def finish(result):
+            if self._scene_error:
+                result = LatticePlanningResult(reference, active=True, mode='static_obstacle',
+                    acc_override=True, acc_target_velocity=0., reason='jamming_scene_geometry_invalid',
+                    debug_details={'static_avoidance': {'path_validated': False,
+                                   'error': self._scene_error, 'phase': 'blocked'}})
             if result is not None:
-                result=self.dynamic.run(self.local,local_ego,reference,obstacles,movers,result,
-                    float(desired_velocity) if desired_velocity is not None else 30./3.6)
+                if not self._scene_error:
+                    result=self.dynamic.run(self.local,local_ego,reference,obstacles,movers,result,
+                        float(desired_velocity) if desired_velocity is not None else 30./3.6)
+                result=self.local.guard_result(result,local_ego,obstacles)
+                result.debug_details['jamming_scene_geometry_sha256'] = self._scene_geometry_sha256
             return self._world_result(result)
         if self.dynamic.active:
             # The overlay tracks a validated detour until it rejoins the fixed

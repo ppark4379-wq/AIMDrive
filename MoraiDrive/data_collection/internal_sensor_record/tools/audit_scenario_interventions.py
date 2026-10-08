@@ -20,9 +20,9 @@ sys.path[:0] = [str(ROOT), str(PROJECT_ROOT)]
 from async_capture.journal import digest, write_json
 from async_capture.sensor_record_admission import verify_sealed_directory
 from ssd_storage import require_ssd
-from scenario_runner.scenarios.segment_modes.modes import (
-    PRIMARY_SCENARIOS,
-    get_scenario_zones,
+from async_capture.scenario_catalog import (
+    COLLECTION_SCENARIOS, TUNNEL_STATIC_SCENARIO, scenario_zone_contract as collection_zone_contract,
+    validate_tunnel_static_collection,
 )
 
 
@@ -152,9 +152,9 @@ def summarize_roundabout_observation(events, configured):
 
 def scenario_zone_contract(scenario_name):
     """Read the enabled-zone contract from the main Scenario Runner."""
-    if scenario_name not in PRIMARY_SCENARIOS:
+    if scenario_name not in COLLECTION_SCENARIOS:
         raise ValueError("Unsupported scenario: " + str(scenario_name))
-    return asdict(get_scenario_zones(scenario_name))
+    return collection_zone_contract(scenario_name)
 
 
 def zone_observation_checks(
@@ -276,7 +276,7 @@ def main():
         or config.get("mission_mode")
         or "full_loop"
     )
-    scenario_known = scenario_name in PRIMARY_SCENARIOS
+    scenario_known = scenario_name in COLLECTION_SCENARIOS
     zones = (
         scenario_zone_contract(scenario_name)
         if scenario_known
@@ -367,10 +367,14 @@ def main():
         "actor_transport": actor.get("structural_valid") is True,
         **zone_checks,
     }
+    tunnel_guard = validate_tunnel_static_collection(args.episode, scenario_name) if scenario_name == TUNNEL_STATIC_SCENARIO else None
+    if tunnel_guard is not None:
+        checks["tunnel_static_guarded_collection"] = tunnel_guard["valid"]
     report = {
         "schema": "morai_team_scenario_fidelity_audit_v3",
         "scenario_name": scenario_name,
         "enabled_zones": zones,
+        "tunnel_static_guarded_collection": tunnel_guard,
         "checks": checks,
         "selected_profile": {
             "weather": profile.get("weather"),

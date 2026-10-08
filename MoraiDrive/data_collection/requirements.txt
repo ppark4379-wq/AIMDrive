@@ -3,6 +3,7 @@ opencv-python
 pyyaml
 pyproj
 scipy
+shapely==2.0.7
 Pillow
 psutil
 

@@ -11,6 +11,7 @@ does not prove a manually resized actor was tested at its native dimensions.
 """
 
 import argparse
+import copy
 import json
 import math
 import os
@@ -72,7 +73,7 @@ def require_native_scale(scale, actor_id):
 
 
 class LiveState:
-    def __init__(self, preset_dir):
+    def __init__(self, preset_dir, *, view_only=False):
         self.lock = threading.RLock()
         self.preset_dir = Path(preset_dir).resolve()
         self.global_path = []
@@ -111,6 +112,73 @@ class LiveState:
         self.expert_objects_updated_at = None
         self.grpc_updated_at = None
         self.models, self.model_scales, self.default_scale = load_editor_policy()
+        self.view_only = bool(view_only)
+        self.trial_root = None
+        self.trial_report = None
+        self.trial_report_error = None
+        self.owned_actor_geometry = {}
+        self.actual_body_policy = None
+        self.road_policy = None
+        self.road_geometry = None
+        self.source_fps = {}
+        self._source_receipts = {}
+
+    def _source_tick(self, source):
+        receipts = self._source_receipts.setdefault(source, [])
+        receipts.append(time.monotonic())
+        del receipts[:-32]
+        self.source_fps[source] = ((len(receipts)-1)/(receipts[-1]-receipts[0])
+                                   if len(receipts) >= 2 and receipts[-1] > receipts[0] else None)
+
+    def update_trial_report(self, document, root):
+        """Display the active guarded trial's policy and exact owned geometry."""
+        policy = document.get("road_boundary_policy", {})
+        body = policy.get("body")
+        rows = document.get("owned_actor_geometry", [])
+        with self.lock:
+            self.trial_root = str(root)
+            self.trial_report = {key: copy.deepcopy(document.get(key)) for key in (
+                "status", "failure_reason", "expert_verified", "live_avoidance_verified",
+                "requested_pattern", "realized_pattern", "s_avoidance_verified", "road_boundary_policy_sha256")}
+            self.trial_report_error = None
+            self.trial_status = str(document.get("status", "waiting_for_scenario"))
+            self.owned_actor_geometry = {str(row["raw_actor_id"]): copy.deepcopy(row) for row in rows}
+            self.actual_body_policy = copy.deepcopy(body)
+            self.road_policy = copy.deepcopy(policy)
+            self.road_geometry = copy.deepcopy(document.get("road_boundary_geometry"))
+            self.status = "Trial {}: {}".format(document.get("status", "waiting"), document.get("failure_reason", ""))
+            self.ego_trace = [list(row["position_xyz"][:2]) for row in document.get("trajectory", [])][-20000:]
+            self._source_tick("trial_report")
+
+    def visible_actor_payloads(self, payloads):
+        if not self.view_only:
+            return payloads
+        with self.lock:
+            references = copy.deepcopy(self.owned_actor_geometry)
+        visible = []
+        for row in payloads:
+            reference = references.get(str(row["actor_id"]))
+            if reference is None:
+                continue
+            item = copy.deepcopy(row)
+            item["identity_matches_trial"] = (item["model"] == reference.get("model")
+                and math.dist([item["x"], item["y"], item["z"]], reference["position_xyz"]) <= .15
+                and abs((item["yaw_deg"]-reference["rotation_xyz_deg"][2]+180.)%360.-180.) <= .5)
+            if not item["identity_matches_trial"]:
+                continue
+            item["conservative_box"] = {key: reference[key] for key in (
+                "center_xyz", "heading_deg", "length_m", "width_m")}
+            visible.append(item)
+        return visible
+
+    def on_ego_status(self, message):
+        heading = math.radians(float(message.heading))
+        with self.lock:
+            self.ego = {"x": float(message.position.x), "y": float(message.position.y),
+                        "yaw_deg": float(message.heading),
+                        "yaw_quaternion": [0., 0., math.sin(heading*.5), math.cos(heading*.5)]}
+            self.ros_updated_at = time.time()
+            self._source_tick("ego_ros")
 
     @staticmethod
     def _obstacle_signature(obstacles):
@@ -175,7 +243,7 @@ class LiveState:
                 status = str(marker.text)
         with self.lock:
             self.candidates = candidates
-            if ego is not None:
+            if ego is not None and not self.view_only:
                 self.ego = ego
                 if self.drive_enabled:
                     point = [ego["x"], ego["y"]]
@@ -192,6 +260,7 @@ class LiveState:
             self.status = status
             self.ros_updated_at = time.time()
             self.lattice_updated_at = self.ros_updated_at
+            self._source_tick("lattice_ros")
 
     def on_lattice_objects(self, message):
         objects = []
@@ -217,9 +286,10 @@ class LiveState:
 
     def update_obstacles(self, obstacles, error=None):
         with self.lock:
-            self.obstacles = obstacles
+            self.obstacles = self.visible_actor_payloads(obstacles)
             self.grpc_error = error
             self.grpc_updated_at = time.time()
+            self._source_tick("grpc")
             if (
                 self.layout_verified
                 and self.verified_obstacle_signature is not None
@@ -326,6 +396,8 @@ class LiveState:
                 self.trial_reset_ready = True
 
     def set_drive(self, enabled):
+        if self.view_only:
+            raise ValueError("Read-only trial viewer cannot control Ego")
         enabled = bool(enabled)
         with self.lock:
             now = time.time()
@@ -385,7 +457,7 @@ class LiveState:
 
     def snapshot(self):
         with self.lock:
-            return {
+            result = {
                 "global_path": list(self.global_path),
                 "local_path": list(self.local_path),
                 "candidates": list(self.candidates),
@@ -429,8 +501,21 @@ class LiveState:
                 "collision_age_sec": None if self.collision_updated_at is None else time.time() - self.collision_updated_at,
                 "control_age_sec": None if self.control_updated_at is None else time.time() - self.control_updated_at,
             }
+            result.update(view_only=self.view_only, trial_root=self.trial_root,
+                          trial_report=copy.deepcopy(self.trial_report), trial_report_error=self.trial_report_error,
+                          road_geometry=copy.deepcopy(self.road_geometry), source_fps=dict(self.source_fps))
+            result["road_policy"] = copy.deepcopy(self.road_policy)
+            if self.view_only:
+                body = self.actual_body_policy
+                result["vehicle_footprint"] = ({"length_m": body["front_m"]+body["rear_m"],
+                    "width_m": body["width_m"], "front_m": body["front_m"], "rear_m": body["rear_m"],
+                    "center_forward_m": (body["front_m"]-body["rear_m"])*.5,
+                    "margin_m": .72, "display_only": True, "source": "active_trial_actual_body_policy"} if body else None)
+            return result
 
     def save(self, request):
+        if self.view_only:
+            raise ValueError("Read-only trial viewer cannot save or edit a scenario")
         name = str(request.get("name", "")).strip()
         if not NAME_PATTERN.fullmatch(name):
             raise ValueError("Name must use 1-64 ASCII letters, digits, '_' or '-'")
@@ -556,7 +641,7 @@ class MoraiObstacleReader(threading.Thread):
             # Actor IDs are reused by MORAI after a scenario restart. Keep a
             # previous value only as a short RPC-failure fallback; successful
             # reads always refresh the current actor's model name.
-            return self.model_cache.get(actor_id, "")
+            return "" if self.state.view_only else self.model_cache.get(actor_id, "")
         value = str(value)
         self.model_cache[actor_id] = value
         return value
@@ -590,11 +675,13 @@ class MoraiObstacleReader(threading.Thread):
 
     def read(self):
         response = self.stub.GetAllActorsState(
-            self.filter_type(client_key="", vehicle=False, pedestrian=False, obstacle=True),
+            self.filter_type(client_key="", vehicle=self.state.view_only, pedestrian=False, obstacle=True),
             timeout=0.75,
         )
         obstacles = []
         for actor in response.states:
+            if str(actor.actor_info.id.value).casefold() == "ego":
+                continue
             obstacles.append(self._obstacle_payload(
                 actor, self._option_name(actor.actor_info)
             ))
@@ -641,6 +728,60 @@ class MoraiObstacleReader(threading.Thread):
         self.stop_event.set()
         if self.channel is not None:
             self.channel.close()
+
+
+class TrialReportWatcher(threading.Thread):
+    """Observe atomic report files without creating or changing artifacts."""
+    def __init__(self, state, root, poll_hz=4.):
+        super().__init__(name="trial-report-viewer", daemon=True)
+        self.state, self.root = state, Path(root).resolve()
+        self.period = 1./max(.2, float(poll_hz))
+        self.stop_event = threading.Event()
+        self.last_revision = None
+
+    def report_path(self):
+        if self.root.is_file():
+            return self.root
+        direct = self.root/"drive_trial.json"
+        if direct.is_file():
+            return direct
+        progress = self.root/"progress.json"
+        manifest = self.root/"batch_manifest.json"
+        value = json.loads(progress.read_text()) if progress.is_file() else {}
+        directory = (value.get("inflight") or {}).get("trial_dir")
+        if not directory and manifest.is_file():
+            attempts = json.loads(manifest.read_text()).get("attempts", [])
+            directory = attempts[-1].get("trial_dir") if attempts else None
+        if not directory:
+            raise ValueError("Waiting for an active guarded trial report")
+        target = Path(directory).resolve()/"drive_trial.json"
+        try:
+            target.relative_to(self.root)
+        except ValueError as error:
+            raise ValueError("Trial report escapes the selected batch root") from error
+        return target
+
+    def read_once(self):
+        path = self.report_path()
+        revision = (str(path), path.stat().st_mtime_ns)
+        if revision != self.last_revision:
+            document = json.loads(path.read_text(encoding="utf-8"))
+            if document.get("schema") != "aimdrive_tunnel_static_drive_trial_v1":
+                raise ValueError("The selected report is not a guarded tunnel trial")
+            self.state.update_trial_report(document, path.parent)
+            self.last_revision = revision
+
+    def run(self):
+        while not self.stop_event.is_set():
+            try:
+                self.read_once()
+            except (OSError, ValueError, TypeError, KeyError) as error:
+                with self.state.lock:
+                    self.state.trial_report_error = str(error)
+            self.stop_event.wait(self.period)
+
+    def close(self):
+        self.stop_event.set()
 
 
 class ExpertCommandRelay:
@@ -732,6 +873,9 @@ def make_handler(state):
             self.send_error(HTTPStatus.NOT_FOUND)
 
         def do_POST(self):
+            if state.view_only:
+                self.send_json({"error": "Read-only trial viewer denies all mutation endpoints"}, HTTPStatus.FORBIDDEN)
+                return
             if self.path not in ("/api/save", "/api/drive"):
                 self.send_error(HTTPStatus.NOT_FOUND)
                 return
@@ -757,7 +901,26 @@ def make_handler(state):
     return Handler
 
 
-def main():
+def configure_ros(state, rospy, types):
+    """View-only sessions subscribe without ever constructing a publisher."""
+    rospy.init_node("static_scenario_viewer" if state.view_only else "static_scenario_editor", anonymous=True, disable_signals=True)
+    rospy.Subscriber("/global_path", types["Path"], state.on_global_path, queue_size=1)
+    rospy.Subscriber("/local_path", types["Path"], state.on_local_path, queue_size=1)
+    rospy.Subscriber("/lattice/paths", types["MarkerArray"], state.on_lattice_paths, queue_size=1)
+    rospy.Subscriber("/lattice/objects", types["MarkerArray"], state.on_lattice_objects, queue_size=1)
+    if state.view_only:
+        rospy.Subscriber("/Ego_topic", types["EgoVehicleStatus"], state.on_ego_status, queue_size=1)
+        return None
+    rospy.Subscriber("/static_scenario_editor/trial_event", types["String"],
+                     lambda message: state.on_trial_event(message.data), queue_size=10)
+    control_publisher = rospy.Publisher("/ctrl_cmd", types["CtrlCmd"], queue_size=1)
+    mode_publisher = rospy.Publisher("/static_scenario_editor/drive_enabled", types["Bool"], queue_size=1, latch=True)
+    relay = ExpertCommandRelay(state, control_publisher, types["CtrlCmd"], mode_publisher=mode_publisher, arming_delay_sec=.15)
+    rospy.Subscriber("/static_scenario_editor/ctrl_cmd", types["CtrlCmd"], relay.on_command, queue_size=1)
+    return relay
+
+
+def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--listen", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
@@ -765,6 +928,8 @@ def main():
     parser.add_argument("--grpc-port", type=int, default=int(os.environ.get("MORAI_GRPC_PORT", "7789")))
     parser.add_argument("--poll-hz", type=float, default=4.0)
     parser.add_argument("--preset-dir", default=str(DEFAULT_PRESET_DIR))
+    parser.add_argument("--view-only", action="store_true", help="Observe the guarded trial; publish no control or edit commands")
+    parser.add_argument("--trial-root", type=Path, help="Active trial directory, drive_trial.json, or batch root to observe")
     parser.add_argument(
         "--auto-drive",
         action="store_true",
@@ -773,45 +938,31 @@ def main():
             "and a selected valid path are available."
         ),
     )
+    return parser
+
+
+def main():
+    parser = build_parser()
     args = parser.parse_args()
     if not 1 <= args.port <= 65535 or not 1 <= args.grpc_port <= 65535:
         parser.error("ports must be in 1..65535")
+    if args.view_only and args.auto_drive:
+        parser.error("--view-only cannot enable --auto-drive")
+    if args.trial_root and not args.view_only:
+        parser.error("--trial-root requires --view-only")
 
     import rospy
-    from morai_msgs.msg import CtrlCmd
+    from morai_msgs.msg import CtrlCmd, EgoVehicleStatus
     from nav_msgs.msg import Path as RosPath
     from std_msgs.msg import Bool, String
     from visualization_msgs.msg import MarkerArray
 
-    state = LiveState(args.preset_dir)
-    rospy.init_node("static_scenario_editor", anonymous=True, disable_signals=True)
-    rospy.Subscriber("/global_path", RosPath, state.on_global_path, queue_size=1)
-    rospy.Subscriber("/local_path", RosPath, state.on_local_path, queue_size=1)
-    rospy.Subscriber("/lattice/paths", MarkerArray, state.on_lattice_paths, queue_size=1)
-    rospy.Subscriber("/lattice/objects", MarkerArray, state.on_lattice_objects, queue_size=1)
-    rospy.Subscriber(
-        "/static_scenario_editor/trial_event",
-        String,
-        lambda message: state.on_trial_event(message.data),
-        queue_size=10,
-    )
-    control_publisher = rospy.Publisher("/ctrl_cmd", CtrlCmd, queue_size=1)
-    mode_publisher = rospy.Publisher(
-        "/static_scenario_editor/drive_enabled", Bool, queue_size=1, latch=True
-    )
-    relay = ExpertCommandRelay(
-        state,
-        control_publisher,
-        CtrlCmd,
-        mode_publisher=mode_publisher,
-        arming_delay_sec=0.15,
-    )
-    rospy.Subscriber(
-        "/static_scenario_editor/ctrl_cmd",
-        CtrlCmd,
-        relay.on_command,
-        queue_size=1,
-    )
+    state = LiveState(args.preset_dir, view_only=args.view_only)
+    relay = configure_ros(state, rospy, {"Path": RosPath, "MarkerArray": MarkerArray,
+        "CtrlCmd": CtrlCmd, "Bool": Bool, "String": String, "EgoVehicleStatus": EgoVehicleStatus})
+    watcher = TrialReportWatcher(state, args.trial_root, args.poll_hz) if args.trial_root else None
+    if watcher is not None:
+        watcher.start()
 
     grpc_host = windows_host_gateway() if args.grpc_host.casefold() == "auto" else args.grpc_host
     sdk_root = ROOT / "data_collection" / "third_party" / "grpc_inha_univ" / "src"
@@ -845,7 +996,8 @@ def main():
     print("[Editor] MORAI gRPC: {}:{}".format(grpc_host, args.grpc_port))
     print("[Editor] browser: http://{}:{}".format(args.listen, args.port))
     print("[Editor] presets: {}".format(state.preset_dir))
-    print("[Editor] Move obstacles while drive is stopped; use the browser to release Expert control.")
+    print("[Editor] Read-only trial viewer: controls and saves are disabled." if args.view_only else
+          "[Editor] Move obstacles while drive is stopped; use the browser to release Expert control.")
     try:
         server.serve_forever(poll_interval=0.2)
     except KeyboardInterrupt:
@@ -856,7 +1008,11 @@ def main():
         auto_drive_stop.set()
         if auto_drive_thread is not None:
             auto_drive_thread.join(timeout=1.0)
-        relay.close()
+        if relay is not None:
+            relay.close()
+        if watcher is not None:
+            watcher.close()
+            watcher.join(timeout=2.)
         reader.close()
         reader.join(timeout=2.0)
 

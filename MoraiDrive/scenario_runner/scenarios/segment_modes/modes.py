@@ -10,6 +10,7 @@ class ZoneSelection:
     roundabout: bool = False
     highway: bool = False
     tunnel: bool = False
+    tunnel_static: bool = False
 
 
 @dataclass(frozen=True)
@@ -53,6 +54,16 @@ HIGHWAY_END = RouteBoundary(
     3638, (70.15920404473096, -419.0559893071876, 28.11111997351344),
     -96.58181855513165, "A2256W000446",
 )
+# Original route samples: 40.188 m before the mapped tunnel link and
+# 30.500 m after it. These are test bounds, not surveyed physical portals.
+TUNNEL_NORMAL_START = RouteBoundary(
+    3723, (57.79791772423833, -459.4873225380194, 28.25457937406963),
+    -117.21164428345622, "A2256W000446",
+)
+TUNNEL_NORMAL_END = RouteBoundary(
+    4107, (-104.45401996170119, -550.2514332389879, 28.428755624976738),
+    172.15965654587896, "A2256W000128",
+)
 TUNNEL_START = RouteBoundary(
     3768, (43.761510782991536, -476.41094469698146, 28.294397987369784),
     -137.400207519, "A2256W000448",
@@ -90,6 +101,14 @@ MISSION_MODES = {
         "full_loop_highway", ZoneSelection(highway=True),
         ROUNDABOUT_END, HIGHWAY_END,
     ),
+    "full_loop_tunnel_normal": MissionMode(
+        "full_loop_tunnel_normal", ZoneSelection(),
+        TUNNEL_NORMAL_START, TUNNEL_NORMAL_END,
+    ),
+    "full_loop_tunnel_static": MissionMode(
+        "full_loop_tunnel_static", ZoneSelection(tunnel_static=True),
+        TUNNEL_NORMAL_START, TUNNEL_NORMAL_END,
+    ),
     "full_loop_tunnel_dynamic": MissionMode(
         "full_loop_tunnel_dynamic", ZoneSelection(tunnel=True),
         TUNNEL_START, TUNNEL_END,
@@ -99,7 +118,11 @@ MISSION_MODES = {
         TUNNEL_START, TUNNEL_END,
     ),
 }
-PRIMARY_SCENARIOS = ("full_loop",) + tuple(MISSION_MODES)
+# Tunnel static collection uses its guarded fixture/evidence adapter, while
+# primary modes use the shared ordinary scenario constructor.
+PRIMARY_SCENARIOS = ("full_loop",) + tuple(
+    name for name in MISSION_MODES if name != "full_loop_tunnel_static"
+)
 FULL_LOOP_ZONES = ZoneSelection(
     static=True, dynamic=True, roundabout=True, highway=True, tunnel=True,
 )
@@ -120,7 +143,9 @@ def get_scenario_zones(name):
 
 
 def automatic_repeat_enabled(name, configuration, once=False, highway_audit=False):
-    """Keep legacy repeat semantics; include every new primary mode."""
+    """Keep legacy repeat semantics; the tunnel baseline runs once."""
+    if name in ("full_loop_tunnel_normal", "full_loop_tunnel_static"):
+        return False
     eligible = (
         name in PRIMARY_SCENARIOS
         or name == "full_loop_after_static"

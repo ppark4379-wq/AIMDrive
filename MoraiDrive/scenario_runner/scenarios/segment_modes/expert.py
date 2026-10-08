@@ -12,7 +12,7 @@ FILTERED_MISSIONS = frozenset((
     "full_loop_static", "full_loop_dynamic", "full_loop_roundabout",
     "full_loop_roundabout_nonuniform", "full_loop_roundabout_speed_random",
     "full_loop_roundabout_brake",
-    "full_loop_highway",
+    "full_loop_highway", "full_loop_tunnel_normal", "full_loop_tunnel_static",
     "full_loop_tunnel_dynamic",
     "full_loop_tunnel_vehicle",
 ))
@@ -110,3 +110,20 @@ def prepare_speed_zones(context):
         f"[Mission] speed zones mode={context.mission_mode.name} "
         f"kept={len(kept)} excluded_outside_route={skipped}"
     )
+
+
+def prepare_tunnel_static_inputs(context):
+    """Export measured scene rows only to this trial's private runtime config."""
+    from .tunnel_static_trial import required
+    trial = required(context)
+    path = Path(context.expert_controller.runtime_config_path)
+    config = json.loads(path.read_text(encoding="utf-8"))
+    planning = config["planning"]
+    planning["jamming_scene_geometry"] = list(trial.references.values())
+    planning["jamming_trial_contract"] = {
+        "mode": "full_loop_tunnel_static", "road_boundary_policy": trial.boundary.policy,
+        "road_boundary_policy_sha256": trial.boundary.policy_sha256,
+        "measured_screening": trial.preview_report["measured_route_screen"],
+    }
+    planning["jamming_trial_diagnostics_path"] = str(trial.output_dir / "planner_diagnostics.json")
+    path.write_text(json.dumps(config, indent=2, allow_nan=False) + "\n", encoding="utf-8")
