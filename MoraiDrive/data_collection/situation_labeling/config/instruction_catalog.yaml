@@ -96,7 +96,43 @@ static_obstacle:
     label: null
     instruction: "Return to the original driving path while moving forward."
     required_variables: []
+  static_signal_stop_plan:
+    label: null
+    instruction: "Remain stopped at the red traffic light; the planned avoidance path goes to the {direction}."
+    required_variables: [direction]
+  static_stop_plan:
+    label: null
+    instruction: "Remain stopped; the planned avoidance path goes to the {direction}."
+    required_variables: [direction]
+  static_prepare_resume_plan:
+    label: null
+    instruction: "Prepare to resume along the planned avoidance path to the {direction}."
+    required_variables: [direction]
+  static_resume_plan:
+    label: null
+    instruction: "Resume driving along the planned avoidance path to the {direction}."
+    required_variables: [direction]
+  follow_signal_stop_plan:
+    label: follow
+    instruction: "Remain stopped at the red traffic light; the planned avoidance path goes to the {direction}."
+    required_variables: [direction]
+  follow_stop_plan:
+    label: follow
+    instruction: "Remain stopped; the planned avoidance path goes to the {direction}."
+    required_variables: [direction]
+  follow_prepare_resume_plan:
+    label: follow
+    instruction: "Prepare to resume along the planned avoidance path to the {direction}."
+    required_variables: [direction]
+  follow_resume_plan:
+    label: follow
+    instruction: "Resume driving along the planned avoidance path to the {direction}."
+    required_variables: [direction]
 roundabout:
+  current_departure_plan:
+    label: null
+    instruction: "Resume driving."
+    required_variables: []
   cruise_approach:
     label: cruise
     instruction: "There is a vehicle {position} the ego vehicle. Proceed to the roundabout entry point."
@@ -117,6 +153,18 @@ roundabout:
     instruction: "There is a vehicle {position} the ego vehicle. Merge into the roundabout."
     required_variables:
     - position
+  current_plan_drive:
+    label: null
+    instruction: "Continue driving along the current path."
+    required_variables: []
+  current_plan_slowdown:
+    label: null
+    instruction: "Slow down along the current path."
+    required_variables: []
+  current_plan_stop:
+    label: null
+    instruction: "Stop along the current path."
+    required_variables: []
   follow_merge:
     label: follow
     instruction: "There is a vehicle {position} the ego vehicle. Merge into the roundabout while following the lead vehicle."
@@ -144,7 +192,7 @@ roundabout:
     - position
   collision_slowdown:
     label: collision_slowdown
-    instruction: "There is a vehicle {position} the ego vehicle. Decelerate."
+    instruction: "There is a vehicle {position} the ego vehicle. Adjust speed in response to the vehicle."
     required_variables:
     - position
   collision_stopped:
@@ -366,17 +414,21 @@ tunnel:
     instruction: "Continue driving."
     required_variables: []
 dynamic_obstacle:
+  current_departure_plan:
+    label: null
+    instruction: "Resume driving."
+    required_variables: []
   dynamic_approach:
     label: null
     instruction: "There is {object} {position} the ego vehicle. Maintain the current driving behavior."
     required_variables: [position, object]
   dynamic_yield_start:
     label: null
-    instruction: "There is {object} {position} the ego vehicle. Yield to pedestrians."
+    instruction: "There is {object} {position} the ego vehicle. Yield to {object}."
     required_variables: [position, object]
   dynamic_yielding:
     label: null
-    instruction: "There is {object} {position} the ego vehicle. Yield to pedestrians."
+    instruction: "There is {object} {position} the ego vehicle. Yield to {object}."
     required_variables: [position, object]
   dynamic_waiting:
     label: null

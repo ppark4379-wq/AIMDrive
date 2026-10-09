@@ -11,6 +11,8 @@ from .instruction_features import (
 )
 
 RESPONDING_ACC_STATES = {"hard_braking", "stopped", "yielding", "decelerating"}
+EGO_HALF_WIDTH_M = 1.0  # Captured Expert VEHICLE_WIDTH=2.0 m.
+LANE_ASSOCIATION_MAX_HEADING_ERROR_DEG = 15.0
 
 
 def _projection(mgeo, link_id, x, y, profiles):
@@ -50,6 +52,73 @@ def _heading_error(heading, projection):
     if heading is None or projection is None:
         return None
     return (heading - math.degrees(math.atan2(projection[4], projection[3])) + 180) % 360 - 180
+
+
+def _association_neighbors(mgeo):
+    """Only different lanes on one road sharing an actual endpoint node."""
+    endpoints = defaultdict(set)
+    for identity, link in mgeo.links.items():
+        road = link.get("road_id")
+        if road is None or road == "":
+            continue
+        for end in ("from_node_idx", "to_node_idx"):
+            node = link.get(end)
+            if node is not None and node != "":
+                endpoints[(str(road), end, str(node))].add(identity)
+    neighbors = defaultdict(set)
+    for candidates in endpoints.values():
+        for identity in candidates:
+            neighbors[identity].update(other for other in candidates
+                                       if _lane_id(mgeo, other) != _lane_id(mgeo, identity))
+    return neighbors
+
+
+def current_lane_association_ambiguity(mgeo, link, x, y, heading, profiles, neighbors=None):
+    """Detect an unresolved current body overlap; never select a truer lane.
+
+    The 1 m distance guard is half the captured ego width, not a confidence
+    score tuned to neighboring labels. Both links must also be compatible with
+    current recorded heading and share one endpoint on the same road.
+    """
+    receipt = {"schema": "current_highway_lane_association_v1",
+               "selected_link_id": link, "ego_half_width_m": EGO_HALF_WIDTH_M,
+               "ego_width_source": "captured_Expert_VEHICLE_WIDTH_2.0_m",
+               "max_heading_error_deg": LANE_ASSOCIATION_MAX_HEADING_ERROR_DEG,
+               "source": "current_recorded_gt_ego_xy_and_capture_verified_mgeo",
+               "uses_future_ego": False, "uses_neighbor_sentence": False,
+               "physical_lane_boundary_certified": False, "candidates": []}
+    if link not in mgeo.links or any(number(v) is None for v in (x, y, heading)):
+        return False, receipt
+    projection = _projection(mgeo, link, x, y, profiles)
+    error = _heading_error(heading, projection)
+    if (projection is None or projection[0] > EGO_HALF_WIDTH_M
+            or error is None or abs(error) > LANE_ASSOCIATION_MAX_HEADING_ERROR_DEG):
+        return False, receipt
+    selected = mgeo.links[link]
+    receipt["candidates"].append({"link_id": link, "lane_id": _lane_id(mgeo, link),
+        "distance_m": projection[0], "signed_left_m": projection[2],
+        "heading_error_deg": error, "selected": True})
+    neighbors = _association_neighbors(mgeo) if neighbors is None else neighbors
+    for other in sorted(neighbors.get(link, ())):
+        target = mgeo.links[other]
+        # Recheck source relationships even when callers provide a cache.
+        same_road = (selected.get("road_id") is not None and selected.get("road_id") != ""
+                     and str(selected.get("road_id")) == str(target.get("road_id")))
+        shared = [end for end in ("from_node_idx", "to_node_idx")
+                  if selected.get(end) is not None and selected.get(end) != ""
+                  and selected.get(end) == target.get(end)]
+        if not same_road or not shared or _lane_id(mgeo, other) == _lane_id(mgeo, link):
+            continue
+        candidate = _projection(mgeo, other, x, y, profiles)
+        error = _heading_error(heading, candidate)
+        if (candidate is None or candidate[0] > EGO_HALF_WIDTH_M
+                or error is None or abs(error) > LANE_ASSOCIATION_MAX_HEADING_ERROR_DEG):
+            continue
+        receipt["candidates"].append({"link_id": other, "lane_id": _lane_id(mgeo, other),
+            "distance_m": candidate[0], "signed_left_m": candidate[2],
+            "heading_error_deg": error, "selected": False,
+            "shared_endpoint_fields": shared, "road_id": selected.get("road_id")})
+    return len(receipt["candidates"]) > 1, receipt
 
 
 def _bumper_gap(center_gap, heading, actor, tx, ty):
@@ -92,6 +161,7 @@ def enrich_highway(frames, objects, route, mgeo):
     for row in objects:
         grouped[row["index"]].append(row)
     profiles, paths = {}, {}
+    association_neighbors = _association_neighbors(mgeo) if mgeo is not None else {}
     maneuver = None
     previous = None
     prev_acc_responding = False
@@ -113,6 +183,8 @@ def enrich_highway(frames, objects, route, mgeo):
             source_lane_center_offset_m=None, target_lane_center_offset_m=None,
             lane_change_completed=False, lane_change_aborting=False,
             return_direction=None, highway_lateral_step_m=None,
+            highway_lane_association_ambiguous=False,
+            highway_lane_association_evidence=None,
             lead_actor_id=None, lead_distance_m=None,
             lead_bumper_gap_m=None, lead_speed_mps=None,
             relative_speed_to_lead_mps=None, lead_stopped=None, lead_slow=None,
@@ -154,6 +226,11 @@ def enrich_highway(frames, objects, route, mgeo):
         frame["ego_current_lane_id"] = _lane_id(mgeo, link)
         frame["ego_lane_center_offset_m"] = projection[2]
         frame["ego_heading_error_deg"] = _heading_error(heading, projection)
+        ambiguous, association = current_lane_association_ambiguity(
+            mgeo, link, x, y, heading, profiles, association_neighbors)
+        association.update(index=frame["index"], lidar_source_ns=frame.get("lidar_source_ns"))
+        frame["highway_lane_association_ambiguous"] = ambiguous
+        frame["highway_lane_association_evidence"] = association
         for side in ("left", "right"):
             neighbor = _neighbor(mgeo, link, side)
             frame[side+"_lane_link_id"] = neighbor

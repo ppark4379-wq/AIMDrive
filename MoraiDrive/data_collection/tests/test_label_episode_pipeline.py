@@ -148,7 +148,10 @@ class LabelEpisodeTests(unittest.TestCase):
     def test_single_command_exports_and_seals_after_labeling(self):
         episode, native, features, _ = self.fixture()
         output = self.root / "result"
-        pipeline.write_json(features / "report.json", {})
+        from MoraiDrive.data_collection.situation_labeling.instruction_quality import generation_contract, SCHEMA
+        pipeline.write_json(features / "report.json", {
+            "labeling_provenance": generation_contract(), "instruction_quality": {"schema": SCHEMA}})
+        (features / "object_features.jsonl").write_text("", encoding="utf-8")
         pipeline.write_json(self.root / "sensor_contract.json", {})
         (self.root / "supervisor.log").write_text("static log", encoding="utf-8")
         modules = {
@@ -157,7 +160,7 @@ class LabelEpisodeTests(unittest.TestCase):
                 probe_analysis_environment=lambda *args: None),
             "async_capture.route_sources": SimpleNamespace(resolve_route_sources=lambda *args: {
                 "route_definition": "route.yaml", "global_path": "route.txt",
-                "route_key": "full_loop", "provenance": {}}),
+                "route_key": "full_loop", "map_root": self.root, "provenance": {}}),
             "async_capture.native_session": SimpleNamespace(recorded_native_root=lambda *args: native),
             "ssd_storage": SimpleNamespace(SSD_ROOT=self.root),
         }
@@ -177,7 +180,26 @@ class LabelEpisodeTests(unittest.TestCase):
         self.assertEqual(result["status"], "completed")
         self.assertEqual(result["frame_counts"], {"labeled": 1, "unlabeled": 1})
         pipeline.verify_stage(output)
+        pipeline.verify_stage(output / "features")
+        self.assertEqual(pipeline.read_json(output / "COMPLETE.json")["features_seal_sha256"],
+                         pipeline.digest(output / "features/COMPLETE.json"))
+        (output / "features/situation_rules.jsonl").write_text("{}\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "Changed"):
+            pipeline.verify_stage(output / "features")
         self.assertEqual(len(calls), 2)  # dependency probe, then build_labels
+
+    def test_export_preserves_explicit_training_masks(self):
+        episode, native, features, _ = self.fixture()
+        rules = pipeline.read_jsonl(features / "situation_rules.jsonl")
+        rules[0].update(action_valid=True, observation_valid=True)
+        rules[1].update(action_valid=False, observation_valid=False)
+        (features / "situation_rules.jsonl").write_text(
+            "".join(json.dumps(row) + "\n" for row in rules), encoding="utf-8")
+        destination = self.root / "masked.jsonl"
+        counts = pipeline.export_labeled_frames(episode, native, features, destination)
+        self.assertEqual(counts["action_valid"], 1)
+        self.assertEqual([r["instruction_label_valid"] for r in pipeline.read_jsonl(destination)],
+                         [True, False])
 
 
 if __name__ == "__main__":

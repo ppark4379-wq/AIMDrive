@@ -19,6 +19,7 @@ interpolated stand-in for episodes collected before that change, meant to be
 passed as apply_expert_instructions(..., index_observations=...).
 """
 import re
+import hashlib
 from pathlib import Path
 
 ANCHOR_RE = re.compile(r"^\[INFO\] \[(\d+\.\d+),\s*([\d.]+)\]")
@@ -37,7 +38,9 @@ def _parse_log(log_path):
     anchors = []  # (line_no, sim_time)
     ctrl_lines = []  # line_no
     transitions = []  # (line_no, raw_dict)
-    text = Path(log_path).read_text(encoding="utf-8", errors="replace")
+    source_bytes = Path(log_path).read_bytes()
+    text = source_bytes.decode("utf-8", errors="replace")
+    source_sha256 = hashlib.sha256(source_bytes).hexdigest()
     for line_no, line in enumerate(text.splitlines(), 1):
         m = ANCHOR_RE.match(line)
         if m:
@@ -58,6 +61,8 @@ def _parse_log(log_path):
                 "roundabout_conflict_id": _parse_id(conflict_id),
                 "planner_target_speed_mps": float(target_kmh) / 3.6,
                 "source": "existing_roundabout_text_log",
+                "transition_source": {"path": str(log_path), "sha256": source_sha256,
+                                      "line_no": line_no},
             }))
     return anchors, ctrl_lines, transitions
 
@@ -83,7 +88,9 @@ def _frame_index_for_time(frame_times, sim_time):
     for index, t in enumerate(frame_times):
         if t >= sim_time:
             return index
-    return len(frame_times) - 1 if frame_times else None
+    # A transition after capture end has no receiving frame. Clamping it to
+    # the last frame would insert a future planner state into past GT.
+    return None
 
 
 def build_roundabout_observations(frames, log_path):
@@ -106,7 +113,11 @@ def build_roundabout_observations(frames, log_path):
             continue
         position = _frame_index_for_time(frame_times, sim_time)
         if position is not None:
-            events.append((position, raw))
+            before = max((a for a in anchors if a[0] <= line_no), default=None)
+            after = min((a for a in anchors if a[0] >= line_no), default=None)
+            events.append((position, raw, sim_time,
+                           before[1] if before else None,
+                           after[1] if after else None))
     events.sort(key=lambda e: e[0])
     observations = {}
     current = None
@@ -114,8 +125,32 @@ def build_roundabout_observations(frames, log_path):
     next_event = next(event_iter, None)
     for position, frame in enumerate(frames):
         while next_event is not None and next_event[0] == position:
-            current = next_event[1]
+            current = next_event
             next_event = next(event_iter, None)
         if current is not None and frame.get("zone_id") == "roundabout":
-            observations[frame["index"]] = current
+            # A transition log is deduplicated on phase/actor, NOT target speed.
+            # Retain the historical numerical target for audit; never imply
+            # that forward filling the phase freshly observes its target.
+            raw = dict(current[1])
+            next_lower = next_event[3] if next_event is not None else None
+            t = frame["lidar_source_ns"] / 1e9
+            raw["legacy_transition_observation"] = {
+                "schema": "roundabout_transition_observation_v1",
+                "transition_source": raw["transition_source"],
+                "transition_estimated_sim_time_s": current[2],
+                "transition_anchor_lower_s": current[3],
+                "transition_anchor_upper_s": current[4],
+                "next_transition_anchor_lower_s": next_lower,
+                "frame_index": frame["index"],
+                "lidar_source_ns": frame["lidar_source_ns"],
+                "transition_estimated_age_seconds": t - current[2],
+                "phase_within_anchor_bounds": (
+                    current[4] is not None and t >= current[4]
+                    and (next_lower is None or t < next_lower)),
+                "numeric_target_current_verified": False,
+                "numeric_target_reason": "phase_log_dedup_does_not_track_target_changes",
+                "uses_future_ego": False,
+                "physical_simultaneity_verified": False,
+            }
+            observations[frame["index"]] = raw
     return observations

@@ -5,8 +5,8 @@ unknown; candidate geometry is never promoted to a safety certificate.
 """
 from collections import Counter, defaultdict
 from .highway_rules import highway_rule
+from .renderer import actor_semantic_class
 from dataclasses import asdict, dataclass
-import copy
 import math
 
 
@@ -98,6 +98,28 @@ def _target(result, actor, distance, side, kind):
     result["variables"].update(target_actor_id=actor.get("actor_id"),
                                target_kind=kind, target_distance_m=distance,
                                target_side=side)
+    if kind == "pedestrian":
+        semantic, reason = actor_semantic_class(
+            actor.get("kind"), actor.get("model_name"),
+            identity_verified=actor.get("model_identity_verified") is True)
+        # A persisted class that contradicts the exact model is not usable.
+        if actor.get("semantic_class") not in (None, semantic):
+            semantic, reason = "unknown", "semantic_model_mismatch"
+        if actor.get("semantic_class_valid") is False:
+            semantic, reason = "unknown", actor.get("semantic_class_reason") or "semantic_class_unverified"
+        result["variables"].update(
+            target_model_name=actor.get("model_name"), target_semantic_class=semantic,
+            target_semantic_valid=reason is None)
+        result["evidence"]["target_semantics"] = {
+            "model_name": actor.get("model_name"), "semantic_class": semantic,
+            "valid": reason is None, "reason": reason,
+            "identity_source": actor.get("model_identity_source")}
+        if reason is not None:
+            # Keep collision/yield rule results, but do not turn an unknown
+            # class (including legacy rows without model evidence) into human
+            # observation or action supervision.
+            result["observation_valid"] = False
+            result["action_valid"] = False
 
 
 def static_obstacle_rule(frame, objects, config=RuleConfig()):
@@ -151,10 +173,8 @@ def static_obstacle_rule(frame, objects, config=RuleConfig()):
             # The obstacle has gone behind but Ego's own lateral offset has
             # not yet been observed shrinking. What maneuver was actually in
             # progress (a one-sided avoid, a pass_between, ...) is not
-            # knowable from this frame alone -- evaluate_frames' hold-
-            # forward step carries the last resolved static_obstacle
-            # instruction across exactly this gap, so this stays an honest
-            # "no new evidence yet" rather than guessing a specific state.
+            # knowable from this frame alone. Preserve the unknown state;
+            # a prior maneuver is not current evidence for its continuation.
             return _finish(result, reasons=["return_trajectory_unverified"])
         return _finish(result, "normal")
     first = front[0]
@@ -551,44 +571,35 @@ def _latch_static_avoid_direction(results, indexed):
 
 
 def _hold_static_instruction_across_unconfirmed_return(results, indexed):
-    """Carry the last resolved static_obstacle instruction forward across the
-    gap between an avoidance maneuver's obstacle going out of front-facing
-    range and Ego's lateral offset actually being observed shrinking
-    (returning_to_reference_path). What maneuver was in progress (a
-    one-sided avoid, a pass_between corridor, ...) is not re-derivable from
-    a single frame in that gap, so repeating the last confident instruction
-    is more honest than guessing a fresh one -- the real "normal"/
-    "return_to_path" state resumes on its own once there is new evidence.
+    """Record a blocked legacy hold; never invent an unresolved action.
+
+    Only the immediately preceding resolved maneuver is described in the
+    diagnostic. Invalid inventory/geometry and unknown current reasons stay
+    intact, with no copied actor, direction, label, state or validity flags.
     """
-    held = None
-    prior_index = None
+    prior = None
+    maneuvers = {"avoid", "avoid_continue", "pass_between", "pass_avoidance_corridor"}
     for result in results:
         frame = indexed[result["index"]]
         if frame.get("zone_id") != "static_obstacle":
-            held = None
-            prior_index = None
+            prior = None
             continue
-        if prior_index is not None and result["index"] != prior_index + 1:
-            held = None
-        prior_index = result["index"]
+        if prior is not None and result["index"] != prior["index"] + 1:
+            prior = None
         if (result["instruction_state"] is None
                 and frame.get("avoidance_active") is True
                 and frame.get("returning_to_reference_path") is not True
-                and held is not None):
-            held_index, current_label = held["index"], result.get("label")
-            result.clear()
-            result.update(copy.deepcopy(held))
-            result["index"] = frame["index"]
-            # This frame's own Expert label is independently known (static_
-            # obstacle_rule reads frame["expert_label"] unconditionally,
-            # before any front/behind resolution) -- only the GT-derived
-            # instruction_state is what's actually unresolved here, so keep
-            # the current label rather than the held frame's.
-            result["label"] = current_label
-            result["evidence"] = dict(result.get("evidence") or {})
-            result["evidence"]["instruction_held_from_index"] = held_index
-        elif result["instruction_state"] is not None:
-            held = result
+                and prior is not None and prior["state"] in maneuvers):
+            result.setdefault("evidence", {})["instruction_hold_blocked"] = {
+                "prior_index": prior["index"], "prior_state": prior["state"],
+                "reason": "current_frame_action_unverified",
+                "current_unknown_reasons": list(result.get("unknown_reasons") or [])}
+        # An unknown row terminates this diagnostic chain too. It must not
+        # become a source for an unbounded hold over further missing evidence.
+        prior = ({"index": result["index"], "state": result["instruction_state"]}
+                 if result["instruction_state"] is not None
+                 and frame.get("valid") is True
+                 and frame.get("object_inventory_usable") is True else None)
 
 
 def summarize_rules(results, config=RuleConfig()):

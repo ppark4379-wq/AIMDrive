@@ -1,9 +1,37 @@
 """Expert labels require a unique bounded ROS Ego sequence match."""
 import json
+import pytest
 
 from MoraiDrive.data_collection.situation_labeling.expert_instructions import (
     apply_expert_instructions, canonical_state, load_config,
+    hold_roundabout_instruction_across_brief_tracking_gaps,
 )
+
+
+def test_roundabout_missing_actor_does_not_copy_prior_expert_action():
+    import copy
+    rows = [dict(index=0, zone_id="roundabout", instruction="Yield to the vehicle.",
+                 expert_state="YIELD_MOVING", label="yield"),
+            dict(index=1, zone_id="roundabout", instruction=None, expert_state=None,
+                 label=None, status="unknown", unknown_reasons=["object_inventory_unusable"],
+                 variables={"target_actor_id": None}),
+            dict(index=2, zone_id="roundabout", instruction=None, status="unknown")]
+    before = copy.deepcopy(rows)
+    hold_roundabout_instruction_across_brief_tracking_gaps(rows)
+    assert rows[1]["instruction"] is None
+    assert rows[1]["expert_state"] is None
+    assert rows[1]["variables"] == before[1]["variables"]
+    assert rows[1]["unknown_reasons"] == before[1]["unknown_reasons"]
+    assert rows[1]["evidence"]["instruction_hold_blocked"]["from_index"] == 0
+    assert "evidence" not in rows[2]  # No chain of fabricated hold evidence.
+
+
+def test_roundabout_hold_audit_does_not_cross_frame_gap_or_zone():
+    rows = [dict(index=0, zone_id="roundabout", instruction="Yield."),
+            dict(index=2, zone_id="roundabout", instruction=None),
+            dict(index=3, zone_id="highway", instruction=None)]
+    hold_roundabout_instruction_across_brief_tracking_gaps(rows)
+    assert all("evidence" not in row for row in rows)
 
 
 def _sources(tmp_path, signals, records):
@@ -30,6 +58,18 @@ def _frame(index, zone, stamp):
 def _rule(index, zone, variables=None):
     return {"index":index, "zone_id":zone, "variables":variables or {},
             "instruction_state":None, "instruction_id":None}
+
+
+def _admitted_roundabout(frame):
+    return dict(frame, valid=True, dataset_build_candidate=True, object_inventory_usable=True)
+
+
+def _vehicle(frame, actor_id="7", forward=12.0):
+    return dict(index=frame["index"], lidar_source_ns=frame["lidar_source_ns"],
+                actor_id=actor_id, instance_key="vehicle:"+actor_id, kind="npc",
+                model_name="2019_Hyundai_Nexo", model_identity_verified=True,
+                semantic_class="vehicle", semantic_class_valid=True,
+                rule_geometry_usable=True, forward_m=forward, left_m=0.0)
 
 
 def test_catalog_and_mapping_keep_distinct_instruction_ids():
@@ -66,7 +106,7 @@ def test_roundabout_committed_cruise_and_follow_are_not_entry_merge():
     assert entry["instruction_id"] == "follow_merge"
 
 
-def test_committed_cruise_renders_continuing_instruction():
+def test_committed_bits_alone_do_not_prove_the_geometric_after_merge_phase():
     raw = {"mode": "roundabout_entry", "roundabout_phase": "cruise",
            "roundabout_entering": True, "roundabout_committed": True,
            "source": "existing_roundabout_text_log"}
@@ -74,10 +114,23 @@ def test_committed_cruise_renders_continuing_instruction():
     row = _rule(144, "roundabout")
     apply_expert_instructions([frame], [row], None, [],
                               index_observations={144: raw})
-    assert row["expert_state"] == "CRUISE_AFTER_MERGE"
+    assert row["expert_state"] == "CRUISE"
     assert row["label"] == "cruise"
     assert row["instruction_id"] == "cruise_normal"
     assert row["instruction"] == load_config()[1]["roundabout"]["cruise_normal"]["instruction"]
+    assert "roundabout_current_phase_mapping" not in row.get("evidence", {})
+
+
+@pytest.mark.parametrize("phase", ["circulating", "exit"])
+def test_current_geometry_supports_after_merge_cruise(phase):
+    frame=dict(_frame(1,"roundabout",1_000_000_000),roundabout_phase=phase)
+    row=_rule(1,"roundabout")
+    raw={"mode":"roundabout_entry","roundabout_phase":"cruise",
+         "roundabout_entering":True,"roundabout_committed":True}
+    apply_expert_instructions([frame],[row],None,[],index_observations={1:raw})
+    assert row["expert_state"]=="CRUISE_AFTER_MERGE"
+    proof=row["evidence"]["roundabout_current_phase_mapping"]
+    assert proof["phase"]==phase and proof["uses_future_ego"] is False
 
 
 def test_canonical_state_selects_follow_resume_only_when_flagged():
@@ -92,11 +145,27 @@ def test_canonical_state_selects_follow_resume_only_when_flagged():
     assert flagged["instruction_id"] == "follow_resume"
 
 
-def test_follow_resume_fires_once_then_settles_back_to_plain_follow():
-    # Expert yields, then resolves back to following -- the single frame
-    # right after a yield/decel/stop response should say "resume following",
-    # not the generic "앞차를 따라 주행해라" that plain FOLLOW repeats
-    # indefinitely once already following.
+@pytest.mark.parametrize("target", [0.,1.])
+def test_sparse_transition_target_is_not_compared_to_current_ego_speed(target):
+    mapping,_=load_config()
+    raw={"mode":"roundabout_entry","roundabout_phase":"follow","roundabout_before_merge":True,
+         "ego_speed_mps":4.,"planner_target_speed_mps":target,"source":"existing_roundabout_text_log"}
+    assert canonical_state("roundabout",raw,mapping)[0]["state"]=="FOLLOW_MERGE"
+    # The same number in a current source observation still supervises deceleration.
+    assert canonical_state("roundabout",dict(raw,source="explicit_ros"),mapping)[0]["state"]=="FOLLOW_DECEL"
+
+
+def test_historical_zero_is_not_a_current_stop_plan_but_fresh_zero_is():
+    mapping,_=load_config()
+    raw={"mode":"roundabout_entry","roundabout_phase":"follow","roundabout_before_merge":True,
+         "ego_speed_mps":0.,"planner_target_speed_mps":0.,"source":"existing_roundabout_text_log"}
+    assert canonical_state("roundabout",raw,mapping)[0]["state"]=="FOLLOW_MERGE"
+    assert canonical_state("roundabout",dict(raw,source="explicit_ros"),mapping)[0]["state"]=="FOLLOW_STOPPED"
+
+
+def test_phase_flip_alone_does_not_invent_resume_or_an_actor_sentence():
+    # A phase flip without admitted past motion/current actor geometry is
+    # insufficient to prove departure, even if the sparse phase says follow.
     frames = [dict(_frame(1, "roundabout", 1_000_000_000)),
               dict(_frame(2, "roundabout", 1_100_000_000),
                    lead_actor_id="3", lead_distance_m=12.0),
@@ -110,11 +179,31 @@ def test_follow_resume_fires_once_then_settles_back_to_plain_follow():
     }
     apply_expert_instructions(frames, rows, None, [], index_observations=observations)
     assert rows[0]["expert_state"] == "YIELD_MOVING"
-    assert rows[1]["expert_state"] == "FOLLOW_RESUME"
+    assert rows[1]["expert_state"] == "FOLLOW"
     assert rows[1]["label"] == "follow"
-    assert rows[1]["instruction"] == load_config()[1]["roundabout"]["follow_resume"]["instruction"].format(position="in front of")
-    # The frame after that is just ordinary, continuing follow.
+    assert rows[1]["instruction"] is None
     assert rows[2]["expert_state"] == "FOLLOW"
+
+
+def test_verified_same_actor_departure_fires_resume_once_then_plain_follow():
+    frames,rows,observations,objects=[],[],{},[]
+    x=0.0
+    for index,speed in enumerate([0.,0.,0.,0.,1.,1.]):
+        if index:x+=speed*.1
+        frame=_admitted_roundabout(dict(_frame(index,"roundabout",1_000_000_000+index*100_000_000),
+            ego_world_x_m=x,ego_world_y_m=0.,ego_speed_mps=speed,
+            ego_speed_source="backward_gt_ego_xy_difference",roundabout_phase="circulating",
+            lead_actor_id="3",lead_distance_m=12.0,conflict_actor_id="3"))
+        frames.append(frame);rows.append(_rule(index,"roundabout"));objects.append(_vehicle(frame,"3"))
+        observations[index]={"mode":"roundabout_entry","roundabout_phase":"yield" if index<4 else "follow",
+            "roundabout_front_id":"3","roundabout_conflict_id":"3",
+            "planner_target_speed_mps":0. if index<4 else 5.,"ego_speed_mps":speed,"source":"explicit_ros"}
+    apply_expert_instructions(frames,rows,None,[],index_observations=observations,objects=objects)
+    assert rows[3]["expert_state"]=="YIELD_STOPPED"
+    assert rows[4]["expert_state"]=="FOLLOW_RESUME"
+    assert rows[4]["evidence"]["roundabout_current_departure"]["valid"] is True
+    assert "Resume driving" in rows[4]["instruction"]
+    assert rows[5]["expert_state"]=="FOLLOW" and "Resume" not in rows[5]["instruction"]
 
 
 def test_follow_resume_does_not_fire_across_a_non_contiguous_or_missing_frame():
@@ -232,25 +321,48 @@ def test_highway_emergency_and_merge_are_selected_from_expert_reason():
     assert canonical_state("highway", stopped, mapping)[0]["instruction_id"] == "acc_merge_stop"
 
 
-def test_roundabout_sentence_requires_expert_selected_actor_match(tmp_path):
+def test_roundabout_sentence_requires_current_selected_actor_geometry(tmp_path):
     log = _sources(tmp_path,
         [{"role":"ego", "source_timestamp_ns":1_000_000_000, "seq":3}],
         [{"ego_seq":3, "mode":"roundabout_entry", "roundabout_phase":"follow",
           "roundabout_front_id":"7", "ego_speed_mps":4.0,
           "planner_target_speed_mps":4.0}])
-    frame = _frame(1,"roundabout",1_000_000_000)
+    frame = _admitted_roundabout(_frame(1,"roundabout",1_000_000_000))
     frame.update(lead_actor_id=7, lead_distance_m=12.0)
     row = _rule(1,"roundabout", {"target_actor_id":7, "target_kind":"vehicle",
                                 "target_distance_m":12.0})
-    apply_expert_instructions([frame],[row],tmp_path,log)
+    actor=_vehicle(frame)
+    apply_expert_instructions([frame],[row],tmp_path,log,objects=[actor])
     assert row["instruction_id"] == "follow"
     assert row["instruction"] is not None
     frame["lead_actor_id"] = 8
     row = _rule(1,"roundabout", {"target_actor_id":7, "target_kind":"vehicle",
                                 "target_distance_m":12.0})
-    apply_expert_instructions([frame],[row],tmp_path,log)
+    apply_expert_instructions([frame],[row],tmp_path,log,objects=[actor])
     assert row["label"] == "follow"
+    # An independently matched Expert identity remains authoritative when
+    # the route heuristic proposes another lead. The actual actor is fresh.
+    assert row["instruction"] is not None
+    assert row["evidence"]["roundabout_expert_target"]["geometric_target_matches"] is False
+    row=_rule(1,"roundabout",{"target_actor_id":7,"target_kind":"vehicle","target_distance_m":12.0})
+    apply_expert_instructions([frame],[row],tmp_path,log,objects=[_vehicle(frame,"8")])
     assert row["instruction"] is None
+
+
+@pytest.mark.parametrize("fault", ["stale","identity","geometry","semantic","duplicate"])
+def test_selected_actor_without_fresh_verified_geometry_has_no_sentence(tmp_path,fault):
+    log=_sources(tmp_path,[{"role":"ego","source_timestamp_ns":1_000_000_000,"seq":3}],
+        [{"ego_seq":3,"mode":"roundabout_entry","roundabout_phase":"follow","roundabout_front_id":"7"}])
+    frame=_admitted_roundabout(_frame(1,"roundabout",1_000_000_000));actor=_vehicle(frame);actors=[actor]
+    if fault=="stale":actor["lidar_source_ns"]-=1
+    elif fault=="identity":actor["model_identity_verified"]=False
+    elif fault=="geometry":actor["rule_geometry_usable"]=False
+    elif fault=="semantic":actor["semantic_class"]="pedestrian"
+    elif fault=="duplicate":actors.append(dict(actor))
+    row=_rule(1,"roundabout",{"target_actor_id":"7","target_kind":"vehicle","target_distance_m":12.})
+    apply_expert_instructions([frame],[row],tmp_path,log,objects=actors)
+    assert row["instruction"] is None
+    assert row["expert_alignment"]["current_actor_reason"]=="expert_selected_actor_current_identity_or_geometry_unverified"
 
 
 def test_expert_ego_position_disagreement_blocks_label(tmp_path):
@@ -285,12 +397,12 @@ def test_existing_roundabout_jsonl_is_processed_without_new_collection_log(tmp_p
                           "committed":True,"front_id":7},
               "desired_mps":4.0}
     log.write_text(json.dumps(record)+"\n",encoding="utf8")
-    frame = _frame(1,"roundabout",0)
+    frame = _admitted_roundabout(_frame(1,"roundabout",0))
     frame.update(ego_world_x_m=10.0, ego_world_y_m=2.0,
                  lead_actor_id=7, lead_distance_m=12.0)
     row = _rule(1,"roundabout", {"target_actor_id":7,"target_kind":"vehicle",
                                 "target_distance_m":12.0})
-    apply_expert_instructions([frame],[row],tmp_path,log)
+    apply_expert_instructions([frame],[row],tmp_path,log,objects=[_vehicle(frame)])
     assert row["expert_state"] == "FOLLOW"
     assert row["instruction"] is not None
     assert row["expert_alignment"]["method"] == "unique_ego_position"
@@ -341,7 +453,8 @@ def test_multiple_existing_expert_logs_can_be_processed_together(tmp_path):
     b.update(ego_world_x_m=10.0,ego_world_y_m=20.0)
     rows = [_rule(1,"roundabout"),_rule(2,"highway")]
     apply_expert_instructions([a,b],rows,tmp_path,[roundabout,highway])
-    assert rows[0]["expert_state"] == "CRUISE_MERGE"
+    assert rows[0]["expert_state"] == "CRUISE_APPROACH"
+    assert rows[0]["evidence"]["roundabout_current_phase_mapping"]["phase"] == "entry"
     assert rows[1]["expert_state"] == "ACC_EMERGENCY"
 
 
@@ -363,7 +476,8 @@ def test_standalone_postprocess_reads_existing_features_without_modifying_them(t
     output = tmp_path / "new_instructions"
     main(["--features-dir",str(features),"--expert-log",str(log),"--output",str(output)])
     rows = [json.loads(line) for line in (output / "situation_instructions.jsonl").read_text(encoding="utf8").splitlines()]
-    assert rows[0]["expert_state"] == "CRUISE_MERGE"
+    assert rows[0]["expert_state"] == "CRUISE_APPROACH"
+    assert rows[0]["instruction_id"] == "cruise_approach_plain"
     assert rows[0]["instruction"] is not None
     assert (features / "frame_features.jsonl").read_text(encoding="utf8") == original_frame
     assert (features / "situation_rules.jsonl").read_text(encoding="utf8") == original_rule

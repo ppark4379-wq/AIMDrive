@@ -33,8 +33,20 @@ def _side(value):
 
 
 def _mgeo(route):
+    # The labeling pipeline resolves and capture-hash-verifies this root.
+    # Its map geometry must not be replaced by a same-ID checkout copy.
+    if "map_root" in route:
+        root = route["map_root"]
+        if not isinstance(root, (str, Path)) or not str(root).strip():
+            return None
+        root = Path(root).expanduser()
+        if not root.is_absolute():
+            return None
+        path = root / "link_set.json"
+        return MGeoMap(str(path)) if path.is_file() else None
+    # Compatibility for constructed/legacy routes without a selected root.
     map_id = route.get("map_id")
-    if not map_id or Path(map_id).name != map_id:
+    if not isinstance(map_id, str) or not map_id or Path(map_id).name != map_id:
         return None
     path = Path(__file__).resolve().parents[2] / "scenario_runner" / "data" / map_id / "link_set.json"
     return MGeoMap(str(path)) if path.is_file() else None
@@ -287,9 +299,16 @@ def enrich(frames, objects, route):
             if s is not None and merge_s is not None:
                 frame["in_entry_section"] = s < merge_s - 5.0
                 frame["in_merge_section"] = abs(s - merge_s) <= 5.0
-                if frame["in_circulating_lane"] is True and s > merge_s + 5:
-                    frame["roundabout_phase"] = "circulating"
-                elif frame["in_merge_section"]:
+            # A matched ring link is direct current topology evidence. The
+            # route projection can still be before its merge anchor while
+            # Ego is already on that ring; treating its same-lane lead as
+            # incoming entry traffic then invents a yield conflict.
+            if frame["in_circulating_lane"] is True:
+                frame["roundabout_phase"] = "circulating"
+                frame["in_entry_section"] = False
+                frame["in_merge_section"] = False
+            elif s is not None and merge_s is not None:
+                if frame["in_merge_section"]:
                     frame["roundabout_phase"] = "merge"
                 elif frame["in_entry_section"]:
                     frame["roundabout_phase"] = "approach" if entry_s is None or s < entry_s else "entry"
@@ -476,9 +495,15 @@ def enrich(frames, objects, route):
                               else abs(ego_eta_s - actor_eta_s) <= 3.0)
                 if is_conflict:
                     conflicts.append((to_merge, row))
-            if not yield_phase:
+            if (frame["roundabout_phase"] is None or mgeo is None
+                    or not circulating_links or merge_link_id is None or ego_link is None):
+                # Missing topology/phase is not evidence of a clear entry.
+                # In particular, None must not become False simply because
+                # it is not one of the named approach/entry/merge phases.
+                frame["collision_risk"] = None
+            elif not yield_phase:
                 frame["collision_risk"] = False
-            elif ego_link is None or unresolved:
+            elif unresolved:
                 frame["collision_risk"] = None
             elif conflicts:
                 conflicts.sort(key=lambda item: item[0])

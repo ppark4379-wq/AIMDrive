@@ -72,8 +72,11 @@ def attach_rule_instructions(rules, *, mapping=None, catalog=None):
             continue
         expert_label = row.get("label")
         candidate_label = row.get("label_candidate") if zone == "highway" else None
-        label = expert_label if expert_label is not None else candidate_label
-        source = ("expert_label_and_rule" if expert_label is not None else
+        selected_plan = (row.get("evidence") or {}).get("current_highway_selected_plan") or {}
+        current_plan = zone == "highway" and selected_plan.get("valid") is True
+        label = candidate_label if current_plan else expert_label if expert_label is not None else candidate_label
+        source = ("captured_current_selected_plan" if current_plan else
+                  "expert_label_and_rule" if expert_label is not None else
                   "rule_label_candidate" if candidate_label is not None else "rule_state")
         instruction_id = mapping.get((zone, label, state))
         if instruction_id is None:

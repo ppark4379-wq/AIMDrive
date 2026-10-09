@@ -5,7 +5,7 @@ labels; absent planner states are never inferred from GT rule candidates.
 """
 from bisect import bisect_right
 from collections import Counter
-import copy
+from copy import deepcopy
 import json
 import math
 import re
@@ -33,8 +33,9 @@ RAW_FIELDS = {"mode", "reason", "highway_state", "roundabout_phase",
 # _plan), so they cannot distinguish "still approaching the merge point" from
 # "already merged" the way route geometry can.
 # roundabout_resume_detected is never present in a real Expert observation --
-# apply_expert_instructions injects it on a copy of `raw` only on the single
-# frame after a yield/decel/stop response resolves back to plain following,
+# apply_expert_instructions injects it on a copy of `raw` only when continuous
+# admitted past GT motion and the same current actor prove actual departure
+# after a yield/decel/stop response returns to following,
 # so FOLLOW_RESUME is selected through the same declarative canonical_state
 # matching as every other state, not a separate code path.
 ROUNDABOUT_RESPONDING_STATES = {
@@ -42,6 +43,160 @@ ROUNDABOUT_RESPONDING_STATES = {
     "COLLISION_STOPPED", "COLLISION_SLOWDOWN", "EMERGENCY_STOPPED", "EMERGENCY",
 }
 VARIABLE_FIELDS = {"position", "distance", "object", "direction", "pedestrian_state"}
+
+
+def _roundabout_admitted(frame):
+    return (frame.get("valid") is True and frame.get("dataset_build_candidate") is True
+            and frame.get("object_inventory_usable") is True)
+
+
+def _roundabout_finite(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _roundabout_connected(previous, current):
+    return (previous is not None and _roundabout_admitted(previous) and _roundabout_admitted(current)
+            and current["index"] == previous["index"] + 1
+            and all(_roundabout_finite(f.get("lidar_source_ns")) for f in (previous, current))
+            and 0 < (current["lidar_source_ns"] - previous["lidar_source_ns"]) / 1e9 <= .25)
+
+
+def enrich_roundabout_current_observation(frame, raw):
+    """Supplement old text-log observations from admitted causal current GT.
+
+    Original observations, including exact ROS observations, remain intact.
+    The returned match copy and provenance make the supplemental source clear.
+    """
+    match = dict(raw)
+    speed = frame.get("ego_speed_mps")
+    if (raw.get("source") == "existing_roundabout_text_log"
+            and "ego_speed_mps" not in raw and _roundabout_admitted(frame)
+            and frame.get("ego_speed_source") == "backward_gt_ego_xy_difference"
+            and _roundabout_finite(speed) and speed >= 0):
+        match["ego_speed_mps"] = speed
+        return match, {"field": "ego_speed_mps", "value": speed,
+                       "source": "backward_gt_ego_xy_difference", "frame_index": frame["index"],
+                       "lidar_source_ns": frame.get("lidar_source_ns"), "uses_future_ego": False}
+    return match, None
+
+
+def _roundabout_actor(frame, objects, actor_id):
+    matches = [obj for obj in objects if actor_id is not None and obj.get("actor_id") is not None
+               and str(obj["actor_id"]) == str(actor_id)]
+    if not _roundabout_admitted(frame) or len(matches) != 1:
+        return None
+    actor = matches[0]
+    if (actor.get("index") != frame["index"] or actor.get("lidar_source_ns") != frame.get("lidar_source_ns")
+            or actor.get("rule_geometry_usable") is not True or actor.get("model_identity_verified") is not True
+            or actor.get("semantic_class_valid") is not True or actor.get("semantic_class") != "vehicle"
+            or actor.get("kind") not in ("npc", "vehicle") or not actor.get("instance_key")):
+        return None
+    return actor
+
+
+def _roundabout_target_proof(frame, raw, objects):
+    phase = raw.get("roundabout_phase")
+    if phase == "follow":
+        selected, current = raw.get("roundabout_front_id"), frame.get("lead_actor_id")
+    elif phase in ("yield", "collision_slowdown", "emergency"):
+        selected, current = raw.get("roundabout_conflict_id"), frame.get("conflict_actor_id")
+    else:
+        return None
+    actor = _roundabout_actor(frame, objects, selected)
+    if actor is None:
+        return {"valid": False, "reason": "expert_selected_actor_current_identity_or_geometry_unverified",
+                "selected_actor_id": selected, "current_actor_id": current}
+    forward, left = actor.get("forward_m"), actor.get("left_m")
+    if not all(_roundabout_finite(v) for v in (forward, left)):
+        x, y, heading = frame.get("ego_world_x_m"), frame.get("ego_world_y_m"), frame.get("ego_heading_deg")
+        ox, oy = actor.get("world_x_m"), actor.get("world_y_m")
+        if all(_roundabout_finite(v) for v in (x, y, ox, oy, heading)):
+            angle = math.radians(heading)
+            forward = (ox-x)*math.cos(angle)+(oy-y)*math.sin(angle)
+            left = -(ox-x)*math.sin(angle)+(oy-y)*math.cos(angle)
+        else:
+            return {"valid": False, "reason": "expert_selected_actor_current_position_unverified",
+                    "selected_actor_id": selected, "current_actor_id": current}
+    side = (("front" if forward >= 0 else "rear") if abs(forward) >= abs(left)
+            else "left" if left > 0 else "right")
+    return {"valid": True, "selected_actor_id": selected, "current_actor_id": current,
+            "geometric_target_matches": current is not None and str(selected) == str(current),
+            "instance_key": actor["instance_key"], "lidar_source_ns": frame["lidar_source_ns"],
+            "forward_m": forward, "left_m": left, "side": side, "position": _position(side),
+            "distance_m": math.hypot(forward, left)}
+
+
+def _bind_roundabout_selected_target(rule, frame, objects, proof):
+    """Keep the rendered actor description and its final identity together.
+
+    The original geometric rule target remains separate evidence. In
+    particular, a descriptive binding does not verify a legacy phase or erase
+    the selected/current actor mismatch used by the causal action guard.
+    """
+    if not proof or proof.get("valid") is not True:
+        return False
+    actor = _roundabout_actor(frame, objects, proof.get("selected_actor_id"))
+    if (actor is None or actor["instance_key"] != proof.get("instance_key")
+            or proof.get("lidar_source_ns") != frame.get("lidar_source_ns")
+            or not _roundabout_finite(proof.get("distance_m"))
+            or proof.get("side") not in ("front", "rear", "left", "right")):
+        return False
+    evidence = rule.setdefault("evidence", {})
+    variables = rule.get("variables") or {}
+    evidence.setdefault("roundabout_rule_target_provenance", {
+        "variables": deepcopy(variables),
+        "related_actors": deepcopy(rule.get("related_actors")),
+        "target_actor_ref": deepcopy(evidence.get("target_actor_ref")),
+    })
+    rule["variables"] = dict(variables,
+        target_actor_id=actor["actor_id"], target_kind="vehicle",
+        target_distance_m=proof["distance_m"], target_side=proof["side"],
+        target_instance_key=actor["instance_key"])
+    rule["related_actors"] = [actor["actor_id"]]
+    evidence["target_actor_ref"] = {
+        "actor_id": actor["actor_id"], "instance_key": actor["instance_key"]}
+    evidence["roundabout_selected_target_binding"] = {
+        "schema": "roundabout_selected_target_binding_v1", "valid": True,
+        "frame_index": frame["index"], "lidar_source_ns": frame["lidar_source_ns"],
+        "actor_id": actor["actor_id"], "instance_key": actor["instance_key"],
+        "source": "current_sealed_gt_selected_actor_identity_and_geometry",
+        "uses_future_ego": False, "verifies_legacy_phase_time": False,
+    }
+    return True
+
+
+def roundabout_departure_proof(history, frame, raw, objects, response):
+    """A phase flip is not a departure: recheck past motion and current actor."""
+    proof = {"valid": False, "uses_future_ego": False}
+    target = _roundabout_target_proof(frame, raw, objects)
+    if response is None or raw.get("roundabout_phase") != "follow" or not target or not target["valid"]:
+        return dict(proof, reason="current_follow_response_or_target_unverified")
+    if (str(response["actor_id"]) != str(target["selected_actor_id"])
+            or response["instance_key"] != target["instance_key"]):
+        return dict(proof, reason="response_actor_changed_or_respawned")
+    track = history + [frame]
+    if len(track) < 2 or any(not _roundabout_connected(a, b) for a, b in zip(track, track[1:])):
+        return dict(proof, reason="current_departure_track_unverified")
+    first = next((f for f in reversed(track[:-1])
+                  if .3 <= (frame["lidar_source_ns"] - f["lidar_source_ns"]) / 1e9 <= .6), None)
+    if first is None or not all(_roundabout_finite(f.get(k)) for f in track
+                                for k in ("ego_world_x_m", "ego_world_y_m", "ego_speed_mps")):
+        return dict(proof, reason="current_departure_motion_unavailable")
+    previous = track[-2]
+    dt = (frame["lidar_source_ns"] - previous["lidar_source_ns"]) / 1e9
+    instant = math.hypot(frame["ego_world_x_m"]-previous["ego_world_x_m"],
+                         frame["ego_world_y_m"]-previous["ego_world_y_m"]) / dt
+    window = (frame["lidar_source_ns"] - first["lidar_source_ns"]) / 1e9
+    mean = math.hypot(frame["ego_world_x_m"]-first["ego_world_x_m"],
+                      frame["ego_world_y_m"]-first["ego_world_y_m"]) / window
+    speed = frame["ego_speed_mps"]
+    accelerating = speed >= response["speed_mps"] + .3 and speed > previous["ego_speed_mps"]
+    valid = (instant > .2 and mean > .2 and instant < 50
+             and math.isclose(speed, instant, rel_tol=1e-4, abs_tol=1e-4) and accelerating)
+    return dict(proof, valid=valid, reason=None if valid else "actual_departure_not_observed",
+                response_index=response["index"], past_start_index=first["index"],
+                current_speed_mps=instant, past_mean_speed_mps=mean,
+                response_speed_mps=response["speed_mps"], target=target)
 
 
 def load_config(config_dir=CONFIG):
@@ -77,11 +232,24 @@ def load_config(config_dir=CONFIG):
 def _matches(spec, raw):
     for key, expected in spec.items():
         if key in ("planner_target_speed_mps_lte", "acc_target_speed_mps_lte"):
+            if (key == "planner_target_speed_mps_lte"
+                    and raw.get("source") == "existing_roundabout_text_log"):
+                # A retained phase does not freshly observe its numerical
+                # target, including a historical zero. A current stop must
+                # instead have an independently observed current response.
+                return False
             field = key[:-4]
             value = raw.get(field)
             if not isinstance(value, (int, float)) or not math.isfinite(value) or value > expected:
                 return False
         elif key in ("planner_below_ego_mps", "acc_below_ego_mps"):
+            if key == "planner_below_ego_mps" and raw.get("source") == "existing_roundabout_text_log":
+                # Sparse ROUNDABOUT transitions persist phase/actor identity,
+                # but their target is a historical value: target changes are
+                # absent from the logger's dedup key. Comparing that target to
+                # current Ego creates false FOLLOW_DECEL labels seconds later.
+                # Exact per-tick observations keep their original comparison.
+                return False
             field = "planner_target_speed_mps" if key.startswith("planner") else "acc_target_speed_mps"
             target, ego = raw.get(field), raw.get("ego_speed_mps")
             if (not isinstance(target, (int, float)) or not isinstance(ego, (int, float))
@@ -240,6 +408,18 @@ def _variables(frame, rule, raw, objects=()):
     target_distance = source.get("target_distance_m")
     zone = frame.get("zone_id")
     if zone == "roundabout":
+        proof = _roundabout_target_proof(frame, raw, objects)
+        if proof is not None and not proof["valid"]:
+            # A position from another GT target cannot describe the Expert's
+            # selected actor, even when the sentence needs only a position.
+            return dict(position=None, distance=None, object=None,
+                        direction=None, pedestrian_state=None)
+        if proof is not None:
+            # Raw selected identity is authoritative for this independently
+            # aligned Expert observation. Missing route anchors may prevent a
+            # geometric lead/conflict join; they do not change its actor.
+            return dict(position=proof["position"], distance=round(proof["distance_m"]),
+                        object="a vehicle", direction=None, pedestrian_state=None)
         phase = raw.get("roundabout_phase")
         if phase == "follow":
             selected_id = raw.get("roundabout_front_id")
@@ -284,7 +464,9 @@ def _variables(frame, rule, raw, objects=()):
 
 def apply_expert_instructions(frames, rules, episode, expert_log, *, max_gap_ns=25_000_000,
                               config_dir=CONFIG, index_observations=None, objects=()):
-    """Add Expert fields to rule rows without changing GT rule decisions.
+    """Add Expert fields and bind descriptions to their verified current actor.
+
+    Original GT rule target provenance and rule decisions remain recorded.
 
     `index_observations`, if given, is a {frame_index: raw_dict} mapping
     already resolved to an exact frame (e.g. from
@@ -311,12 +493,17 @@ def apply_expert_instructions(frames, rules, episode, expert_log, *, max_gap_ns=
     counts = Counter()
     prev_roundabout_responding = False
     prior_roundabout_index = None
+    roundabout_history, roundabout_response = [], None
+    previous_roundabout_frame = None
     for row in rules:
         frame = indexed[row["index"]]
         row.update(expert_state=None, expert_raw_state=None, label=None,
                    instruction_id=None, instruction_variables=None, instruction=None,
                    instruction_source=None, expert_alignment=None)
         zone = frame.get("zone_id")
+        if (zone != "roundabout" or not _roundabout_connected(previous_roundabout_frame, frame)):
+            roundabout_history, roundabout_response = [], None
+        previous_roundabout_frame = frame if zone == "roundabout" and _roundabout_admitted(frame) else None
         if zone != "roundabout":
             prev_roundabout_responding = False
             prior_roundabout_index = None
@@ -383,25 +570,83 @@ def apply_expert_instructions(frames, rules, episode, expert_log, *, max_gap_ns=
         if raw is None:
             if zone == "roundabout":
                 prev_roundabout_responding = False
+                roundabout_history, roundabout_response = [], None
             row["expert_alignment"] = {"status":"unknown", "reason":reason}
             counts[reason] += 1
             continue
         row["expert_raw_state"] = raw
         row["expert_alignment"] = alignment
+        if zone == "roundabout" and raw.get("source") == "existing_roundabout_text_log":
+            row.setdefault("evidence", {})["roundabout_legacy_numeric_target"] = {
+                "historical_target_speed_mps": raw.get("planner_target_speed_mps"),
+                "numeric_target_current_verified": False,
+                "current_speed_delta_comparison_enabled": False,
+                "reason": "phase_log_dedup_does_not_track_target_changes",
+                "transition_observation": raw.get("legacy_transition_observation"),
+            }
         match_raw = raw
         if zone == "roundabout":
-            match_raw = dict(raw, roundabout_before_merge=
-                              frame.get("roundabout_phase") in ("approach", "entry", "merge"))
-            if prev_roundabout_responding:
-                # A yield/decel/stop response just resolved back to plain
-                # following -- match as FOLLOW_RESUME instead of FOLLOW through
-                # the same declarative canonical_state lookup, not a separate
-                # code path (see ROUNDABOUT_RESPONDING_STATES above).
-                match_raw["roundabout_resume_detected"] = True
+            match_raw, speed_proof = enrich_roundabout_current_observation(frame, raw)
+            if speed_proof is not None:
+                row.setdefault("evidence", {})["roundabout_current_observation"] = speed_proof
+            phase = frame.get("roundabout_phase")
+            match_raw["roundabout_before_merge"] = (
+                True if phase in ("approach", "entry", "merge") else
+                False if phase in ("circulating", "exit") else None)
+            row.setdefault("evidence", {})["roundabout_geometry_phase"] = {
+                "phase": phase, "before_merge": match_raw["roundabout_before_merge"]}
+            target_proof = _roundabout_target_proof(frame, raw, objects_by_index.get(row["index"], ()))
+            if target_proof is not None:
+                row.setdefault("evidence", {})["roundabout_expert_target"] = target_proof
+            departure = roundabout_departure_proof(
+                roundabout_history, frame, raw, objects_by_index.get(row["index"], ()), roundabout_response)
+            match_raw["roundabout_resume_detected"] = departure["valid"]
+            if roundabout_response is not None and raw.get("roundabout_phase") == "follow":
+                row.setdefault("evidence", {})["roundabout_current_departure"] = departure
         entry, reason = canonical_state(frame.get("zone_id"), match_raw, mapping)
+        if (zone == "roundabout" and raw.get("source") == "existing_roundabout_text_log"
+                and raw.get("roundabout_phase") == "emergency"
+                and (raw.get("legacy_transition_observation") or {}).get(
+                    "phase_within_anchor_bounds") is not True):
+            # The timestamp-less emergency transition may lie on either side
+            # of this sensor frame. Neither a guessed emergency nor an
+            # opposite departure command is a current plan observation.
+            entry, reason = None, "expert_roundabout_emergency_transition_time_unverified"
+        if zone == "roundabout" and raw.get("roundabout_phase") == "cruise":
+            # The old before-merge bool collapses approach, entry and merge.
+            # Use the current topology phase when available: approaching a
+            # merge does not mean the ego is already merging. Unknown topology
+            # keeps the intermediate legacy mapping; the final current-motion
+            # guard rejects unsupported entry/merge claims separately.
+            phase_state = {"approach": "CRUISE_APPROACH", "entry": "CRUISE_APPROACH",
+                           "merge": "CRUISE_MERGE", "circulating": "CRUISE_AFTER_MERGE",
+                           "exit": "CRUISE_AFTER_MERGE"}.get(frame.get("roundabout_phase"))
+            if phase_state is not None:
+                exact_phase_entries = [item for item in mapping[zone] if item["state"] == phase_state]
+                if len(exact_phase_entries) == 1:
+                    previous_state = entry.get("state") if entry is not None else None
+                    entry, reason = exact_phase_entries[0], None
+                    row.setdefault("evidence", {})["roundabout_current_phase_mapping"] = {
+                        "phase": frame["roundabout_phase"], "frame_index": frame["index"],
+                        "lidar_source_ns": frame.get("lidar_source_ns"),
+                        "previous_mapped_state": previous_state, "selected_state": phase_state,
+                        "source": "current_route_geometry_phase", "uses_future_ego": False}
         if zone == "roundabout":
             prev_roundabout_responding = (
                 reason is None and entry["state"] in ROUNDABOUT_RESPONDING_STATES)
+            front = _roundabout_actor(frame, objects_by_index.get(row["index"], ()), raw.get("roundabout_front_id"))
+            if prev_roundabout_responding and front is not None and _roundabout_finite(frame.get("ego_speed_mps")):
+                roundabout_response = dict(index=frame["index"], actor_id=front["actor_id"],
+                                           instance_key=front["instance_key"], speed_mps=frame["ego_speed_mps"])
+            elif (reason is not None or entry["state"] == "FOLLOW_RESUME" or front is None
+                  or (roundabout_response is not None and
+                      (str(front["actor_id"]) != str(roundabout_response["actor_id"])
+                       or front["instance_key"] != roundabout_response["instance_key"]))):
+                roundabout_response = None
+            if _roundabout_admitted(frame):
+                roundabout_history.append(frame)
+                roundabout_history = [f for f in roundabout_history
+                                      if (frame["lidar_source_ns"]-f["lidar_source_ns"])/1e9 <= .6]
         if reason is not None:
             row["expert_alignment"]["status"] = "unmapped"
             row["expert_alignment"]["reason"] = reason
@@ -419,53 +664,42 @@ def apply_expert_instructions(frames, rules, episode, expert_log, *, max_gap_ns=
             row["expert_alignment"]["instruction_status"] = "missing_variables"
             row["expert_alignment"]["missing_variables"] = missing
             counts["instruction_variables_missing"] += 1
+            if zone == "roundabout" and target_proof is not None and not target_proof["valid"]:
+                row["expert_alignment"]["current_actor_reason"] = target_proof["reason"]
         else:
             row["instruction"] = rendered
             row["instruction_source"] = "expert_observation"
+            if (zone == "roundabout" and raw.get("roundabout_phase") == "follow"
+                    and roundabout_response is not None and not departure["valid"]
+                    and _roundabout_finite(frame.get("ego_speed_mps"))
+                    and frame["ego_speed_mps"] <= .2 and entry["state"] != "FOLLOW_STOPPED"):
+                row["instruction"] = None
+                row["expert_alignment"]["instruction_status"] = "current_departure_unverified"
+                counts["current_departure_unverified"] += 1
+                continue
+            if zone == "roundabout":
+                _bind_roundabout_selected_target(
+                    row, frame, objects_by_index.get(row["index"], ()), target_proof)
             counts["instruction_rendered"] += 1
         counts["expert_state_mapped"] += 1
     return dict(sorted(counts.items()))
 
 
 def hold_roundabout_instruction_across_brief_tracking_gaps(rules, max_gap=3):
-    """Bridge a brief (<= max_gap frame) interruption in the per-frame
-    lead/conflict actor association -- e.g. the frame's own lead_actor_id
-    briefly not re-identifying the vehicle the Expert observation is already
-    tracking -- that otherwise leaves a roundabout row with no instruction
-    even though nothing about the underlying situation (label, expert_state)
-    actually changed. Call this after both apply_expert_instructions and
-    attach_rule_instructions, since either can be the one that leaves
-    row["instruction"] None.
+    """Record a blocked stale hold without copying an action or actor.
 
-    A longer gap is left alone on purpose: that is the GT rule genuinely
-    unable to verify object geometry over a real stretch (status
-    "unknown"), not a one-tick tracking blip, and should stay an honest
-    blank rather than being papered over with a stale sentence.
+    A short association gap is still missing current-frame evidence. A later
+    gap pass may rerender a verified current tuple, but cannot borrow a prior
+    Expert state. Keep this API for callers and auditable legacy comparisons.
     """
-    held = None
-    gap = 0
-    prior_index = None
+    previous = None
     for row in rules:
-        if row.get("zone_id") != "roundabout":
-            held, gap, prior_index = None, 0, None
-            continue
-        if prior_index is not None and row["index"] != prior_index + 1:
-            held, gap = None, 0
-        prior_index = row["index"]
-        if row.get("instruction") is not None:
-            held, gap = row, 0
-            continue
-        if held is None:
-            continue
-        gap += 1
-        if gap > max_gap:
-            held = None
-            continue
-        held_index = held["index"]
-        for field in ("instruction", "instruction_id", "instruction_variables",
-                      "instruction_source", "instruction_mapping_status",
-                      "expert_state", "label"):
-            row[field] = copy.deepcopy(held.get(field))
-        evidence = row.get("evidence")
-        row["evidence"] = dict(evidence) if isinstance(evidence, dict) else {}
-        row["evidence"]["instruction_held_from_index"] = held_index
+        if (max_gap > 0 and previous is not None
+                and previous.get("zone_id") == row.get("zone_id") == "roundabout"
+                and row["index"] == previous["index"] + 1
+                and previous.get("instruction") and row.get("instruction") is None):
+            evidence = row.get("evidence")
+            row["evidence"] = dict(evidence) if isinstance(evidence, dict) else {}
+            row["evidence"]["instruction_hold_blocked"] = {
+                "from_index": previous["index"], "reason": "current_frame_evidence_required"}
+        previous = row

@@ -1,11 +1,47 @@
-# Situation instruction features v0.3
+# Situation GT 생성과 SSD 적용
 
-회전교차로에서 매칭된 Expert 관측이 있으면 Expert phase와 진입·합류 플래그에
-따라 Expert 매핑에서 선택한 instruction을 우선 사용합니다. 이 매핑의 기존
-`0.2m/s` 정지 기준과 `0.3m/s` 목표 속도 차이 기준은 유지합니다.
-이후 규칙 기반 판정이 해당 instruction을 다른 문장으로 덮어쓰지 않습니다.
-Expert 관측이 없는 경우의 기존 규칙 기반 라벨링은 유지합니다.
-객체 위치 등 필수 변수가 부족하면 Expert 라벨은 보존하되 문장은 생성하지 않습니다.
+`label_episode.py`는 저장된 센서·객체 GT·Expert publication·수집 당시 경로를 검증하여 프레임별 instruction을 생성한다. `build_labels.py`와 이 디렉터리의 모듈·카탈로그가 최신 생성 알고리즘이다. 확인할 수 없는 instruction은 null과 유효성 마스크로 제외하며, 앞뒤 문장을 정답으로 복사하지 않는다.
+
+## 현재 검수한 500개 에피소드에 최신 라벨 적용
+
+SSD의 기존 생성 결과와 검수 필터를 합쳐 최종 JSONL을 저장하고, 기존 학습 로더가 읽는 각 `episode_000/situation_labels/`에 설치한다.
+
+```bash
+bash MoraiDrive/data_collection/tools/apply_latest_situation_labels.sh
+```
+
+입력은 SSD의 `instruction_labels/situation_gt_20261009_reviewed_v1`과 `situation_gt_20261009_visual_profile_v2`다. 실행 결과는 `instruction_labels/situation_gt_20261009_applied_v3`에 보존한다. 이전 유효 102,519프레임에서 추가 55개 instruction target을 제외하여 최종 102,464개를 사용한다. 기존의 null 프레임은 복원하지 않는다.
+
+이 명령은 이미 검수한 라벨에 필터를 **실제 저장 파일로 적용**한다. 500개 에피소드의 특징 추출·GT 알고리즘을 다시 실행하는 명령은 아니다. 모델 학습이나 센서 파일 변환도 실행하지 않는다.
+
+`instruction`, `instruction_label_valid`, `labeling.instruction`, `labeling.action_valid` 등 instruction 유효성 필드는 최종 마스크와 일치한다. 제외된 instruction은 null이므로 별도의 필터 loader가 필요 없다. 객체·관찰·waypoint 및 원래 프레임은 보존한다. `COMPLETE.json`과 파일 SHA256이 생성 결과를 고정한다.
+
+기존 `situation_labels`가 있으면 설치 journal에 기록된 위치에 백업한다. 이미지·LiDAR·raw·quality·bbox GT를 덮어쓰지 않는다. 중단되면 같은 명령으로 검증된 단계부터 재개한다.
+
+검증만 하려면:
+
+```bash
+bash MoraiDrive/data_collection/tools/apply_latest_situation_labels.sh --preflight-only
+```
+
+다른 컴퓨터에서는 데이터셋과 두 입력 라벨 패키지를 함께 옮긴다. `.collecting` 안의 에피소드도 포함해야 한다. SSD 마운트 위치가 다르면 지정한다.
+
+```bash
+SITUATION_DATASET_ROOT=/path/to/MoraiDrive/dataset \
+  bash MoraiDrive/data_collection/tools/apply_latest_situation_labels.sh
+```
+
+`SITUATION_LABEL_BASE`, `SITUATION_VISUAL_PROFILE`, `SITUATION_APPLIED_ROOT`, `SITUATION_PYTHON`으로 각 위치나 Python을 개별 지정할 수 있다. Python 3.8 이상 표준 라이브러리를 사용한다. 원본의 절대 경로와 실제 수신 컴퓨터의 파일 경로는 분리하여 기록한다.
+
+전체 메타데이터 검색과 후보 이미지 검수로 만든 필터이며, 모든 이미지의 수동 의미 인증을 뜻하지 않는다. 과거 generation과 검수 근거는 최종 파일의 provenance에 보존한다.
+
+## 새 에피소드의 GT 생성
+
+```bash
+python3 -m MoraiDrive.data_collection.situation_labeling.label_episode --help
+```
+
+실제 에피소드·검증된 geometry tag·수집 당시 경로 snapshot·supervisor log를 지정한다. 수집 당시 경로 해시와 다른 현재 경로를 임의로 사용하지 않는다. 이미 완료된 생성 결과를 수정하려면 새 output을 지정하여 이전 근거를 보존한다.
 
 ## 수집 episode에서 한 번에 라벨링
 
@@ -233,40 +269,11 @@ the input feature directory is read only. `--episode EPISODE_DIR` is needed
 only for a separately supplied journal with true ROS header seq and source
 time. Existing sparse logs do not require it.
 
-## 학습 라벨용 움직임 정렬 (`consistency.py`)
+## 최신 행동·문장 정합
 
-Stage 2는 2.5초 미래 궤적을 학습하므로, 문장이 그 궤적과 어긋나면 모델이
-문장을 무시하도록 배웁니다. `build_labels`는 규칙 판정 뒤에 녹화된 자차
-움직임으로 다음을 적용합니다. 미래를 쓰므로 학습 라벨 전용이며 실시간
-규칙이 아닙니다.
+현재 프레임의 Expert publication, 선택된 local plan, actor 연결, 경로와 움직임 근거를 함께 검사한다. 과거 문장은 새 generation의 근거로 사용하지 않는다. 좌우 방향·정지·출발·양보 구간은 관련 모듈에서 판정하고, 문장 변수나 현재 목표를 확인할 수 없으면 instruction을 null로 남긴다.
 
-- 정적 회피 방향은 한 회피 구간 안에서 처음 방향을 유지합니다. 자차가 경로
-  반대편으로 0.3 m 이상 넘어간 경우에만 바뀝니다 (`rules.py`).
-- `align_static_avoidance`: 2.5초 안에 실제 옆 이동이 시작되기 전은 "유지",
-  시작부터 "회피" 5프레임 뒤 "회피 계속", 2.5초 안에 경로 쪽으로 0.3 m 이상
-  돌아오면 "원래 경로로 복귀".
-- `hold_dynamic_wait_until_moving`: 양보로 이어지는 접근 구간은 크게 감속하기
-  시작한 프레임부터 "양보". 양보 뒤 자차가 서 있으면 "Remain stopped.",
-  출발 중(3 m/s 미만)이면 "Resume driving.", 그 뒤 "Continue driving.".
-- `align_highway_lane_changes`: 고주로 차선 변경은 지도 링크 상태 대신 실제 좌우
-  이동으로 정합니다. 경로 기준 2 m 이상 옆으로 움직인 구간이 차선 변경이며, 2.5초
-  안에 0.3 m 이상 이동이 시작되는 프레임부터 이동이 끝날 때까지입니다. 경로 차선에서
-  멀어지면 "Move into the left/right lane.", 경로 차선으로 돌아오면 "Return to the
-  original lane while moving forward.". 구간 밖에 남은 차선 변경 판정은 앞차 정보로
-  따라가기 / 앞차 있음 유지 / 계속 주행 중 하나로 다시 정합니다.
-- `fill_short_instruction_gaps`: 같은 문장 사이 3프레임 이하 판정 공백을 메웁니다.
-- `smooth_short_instruction_islands`: 같은 문장 사이 1~2프레임의 다른 문장은 앞뒤
-  문장으로 맞춥니다. 고주로의 계속 주행 / 앞차 있음 유지 / 따라가기는 1초 미만까지 맞춥니다.
-- `use_stopped_roundabout_sentences`: 회전교차로에서 0.3초 이상 서 있으면 양보·추종·감속
-  문장을 카탈로그의 "Remain stopped." 변형으로 바꿉니다.
-- `drop_contradicted_instructions`: 2.5초 미래와 모순되는 문장을 `null`로 비우고
-  원문은 `instruction_dropped`, 이유는 `instruction_consistency`에 남깁니다.
-  회피·차선 변경 방향 반대, 서 있는데 기동 문장, 감속해 멈추는데 "계속/유지",
-  서 있는데 "계속/유지"를 모순으로 봅니다. 0.3초 미만 모순은 유지하고,
-  비운 구간 사이 0.5초 미만의 같은 문장은 같이 비웁니다.
-
-`report.json`의 `motion_alignment`, `instruction_gap_frames_filled`,
-`instruction_consistency`에 단계별 변경 수가 남습니다.
+`fill_short_instruction_gaps`는 해당 프레임 자체의 검증된 상태로 문장 렌더링을 복원한다. `smooth_short_instruction_islands`는 실제 행동이 바뀐 경우를 덮어쓰지 않는다. 앞뒤 같은 문장만을 근거로 실제 행동 라벨을 복사하지 않는다. 충돌·불충분한 근거는 instruction consistency/quality와 유효성 마스크에 남긴다.
 
 ## 라벨 검토 뷰어 (`review_viewer.py`)
 
