@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from collections import OrderedDict
 from typing import Optional, Sequence, Union
 
 import torch
@@ -99,6 +100,38 @@ class VLDriveModel(nn.Module):
         self.use_ddia = use_ddia
         self.debug_vldrive = debug_vldrive
         self.precision = precision
+        # Runtime-only integer IDs. Learned embeddings are never cached.
+        self.token_cache_size = 0
+        self._token_id_cache = OrderedDict()
+        self._token_cache_identity = None
+
+    def _encode_texts(self, texts):
+        tokenizer = self.tokenizer
+        if not self.token_cache_size or not getattr(tokenizer, 'is_fast', False):
+            return tokenizer(texts, padding=True, truncation=False, return_tensors='pt')
+        identity = (id(tokenizer), len(tokenizer), tokenizer.padding_side, tokenizer.pad_token_id,
+                    getattr(tokenizer, 'add_bos_token', None), getattr(tokenizer, 'add_eos_token', None))
+        if identity != self._token_cache_identity:
+            self._token_id_cache.clear()
+            self._token_cache_identity = identity
+        rows = {text: self._token_id_cache[text] for text in texts if text in self._token_id_cache}
+        missing = list(dict.fromkeys(text for text in texts if text not in rows))
+        if missing:
+            encoded = tokenizer(missing, padding=False, truncation=False)
+            rows.update({text: {key: tuple(value[i]) for key, value in encoded.items()}
+                         for i, text in enumerate(missing)})
+        batch_rows = []
+        for text in texts:
+            row = self._token_id_cache.pop(text, None)
+            if row is None:
+                row = rows[text]
+            self._token_id_cache[text] = row
+            # Keep the current batch even if its unique texts exceed the LRU limit.
+            rows[text] = row
+            while len(self._token_id_cache) > self.token_cache_size:
+                self._token_id_cache.popitem(last=False)
+            batch_rows.append({key: list(value) for key, value in row.items()})
+        return tokenizer.pad(batch_rows, padding=True, return_tensors='pt')
 
     def _tokenize(self, instructions: Union[Sequence[str], dict], device, *, max_length=None):
         if isinstance(instructions, dict):
@@ -106,7 +139,7 @@ class VLDriveModel(nn.Module):
         if (not isinstance(instructions, (list, tuple)) or not instructions
                 or any(not isinstance(text, str) or not text.strip() for text in instructions)):
             raise ValueError("VLDrive requires nonempty navigation instructions")
-        encoded = self.tokenizer(list(instructions), padding=True, truncation=False, return_tensors="pt")
+        encoded = self._encode_texts(list(instructions))
         limit = self.max_instruction_length if max_length is None else max_length
         if encoded["input_ids"].shape[1] > limit:
             raise ValueError("Instruction exceeds token limit; refusing semantic truncation")

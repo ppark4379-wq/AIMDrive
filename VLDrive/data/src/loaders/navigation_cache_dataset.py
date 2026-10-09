@@ -1,6 +1,7 @@
 """Stage 2 windows joined by episode and native sensor time, with LMDrive text sampling."""
 import hashlib
 import json
+from collections import OrderedDict
 from pathlib import Path
 
 from navigation.sampling import NavigationLabels
@@ -11,7 +12,12 @@ class NavigationCacheDataset:
     def __init__(self, cache_root, instructions, split, sequence_length=11, seed=42,
                  train_variants=tuple(range(8)), validation_variants=tuple(range(8)),
                  frame_sampling_interval=1, include_validation_in_train=False, path_feature_cache=None,
-                 situation_datasets=None, zone_datasets=None):
+                 situation_datasets=None, zone_datasets=None, array_cache_bytes=0):
+        if type(array_cache_bytes) is not int or array_cache_bytes < 0:
+            raise ValueError('array_cache_bytes must be a nonnegative integer')
+        self._array_cache_limit = array_cache_bytes
+        self._array_cache = OrderedDict()
+        self._array_cache_size = 0
         self.root=Path(cache_root).resolve()
         self.labels=NavigationLabels(instructions)
         self.situations = None
@@ -97,7 +103,7 @@ class NavigationCacheDataset:
                     self.windows.append(window)
         if not self.windows:
             raise ValueError('No valid navigation cache windows')
-        self._verified=set()
+        self._verified={}
 
     def set_epoch(self, epoch): self.epoch=int(epoch) if self.split=='train' else 0
     def __len__(self): return len(self.windows)
@@ -107,12 +113,29 @@ class NavigationCacheDataset:
         import torch
         path=(self.root/reference['path']).resolve()
         if self.root not in path.parents: raise ValueError('Unsafe token cache path')
-        if path not in self._verified:
+        stat = path.stat()
+        identity = (stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, reference['sha256'])
+        entry = self._array_cache.pop(path, None)
+        if entry is not None:
+            previous, value = entry
+            if previous == identity and value.shape == shape:
+                self._array_cache[path] = entry
+                # Return owned storage: callers cannot mutate a later sample.
+                return torch.from_numpy(value.astype('float32'))
+            self._array_cache_size -= value.nbytes
+        if self._verified.get(path) != identity:
             if hashlib.sha256(path.read_bytes()).hexdigest()!=reference['sha256']:
                 raise ValueError('Cached tensor changed')
-            self._verified.add(path)
+            self._verified[path] = identity
         value=np.load(path,allow_pickle=False)
         if value.shape!=shape or not np.isfinite(value).all(): raise ValueError('Invalid cached tensor')
+        if value.nbytes <= self._array_cache_limit:
+            while self._array_cache and self._array_cache_size + value.nbytes > self._array_cache_limit:
+                _, (_, evicted) = self._array_cache.popitem(last=False)
+                self._array_cache_size -= evicted.nbytes
+            value.setflags(write=False)
+            self._array_cache[path] = (identity, value)
+            self._array_cache_size += value.nbytes
         return torch.from_numpy(value.astype('float32'))
 
     def __getitem__(self,index):

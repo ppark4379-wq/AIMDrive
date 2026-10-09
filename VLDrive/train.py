@@ -92,6 +92,14 @@ def run_vldrive(args):
         raise ValueError('validation_enabled must be boolean')
     if type(settings.get('initial_evaluation', True)) is not bool:
         raise ValueError('initial_evaluation must be boolean')
+    evaluation_options = settings.get('evaluation', {})
+    evaluation_batch_size = evaluation_options.get('batch_size', 1)
+    epoch_evaluation_windows = evaluation_options.get('max_windows', 0)
+    epoch_evaluation_every = evaluation_options.get('every_epochs', 1)
+    if (type(evaluation_batch_size) is not int or evaluation_batch_size < 1
+            or type(epoch_evaluation_windows) is not int or epoch_evaluation_windows < 0
+            or type(epoch_evaluation_every) is not int or epoch_evaluation_every < 0):
+        raise ValueError('Invalid evaluation batch size, window limit or epoch interval')
     full_route = settings.get('include_validation_in_train', False)
     if type(full_route) is not bool or (full_route and validation_enabled):
         raise ValueError('Full-route training requires validation_enabled=false')
@@ -125,8 +133,15 @@ def run_vldrive(args):
         save_model_checkpoint, restore_model_checkpoint, periodic_checkpoint_path,
         warm_start_model_checkpoint)
     from functools import partial
-    evaluate = partial(evaluate, seed=settings.get('evaluation_seed', settings['seed']))
+    evaluate = partial(evaluate, seed=settings.get('evaluation_seed', settings['seed']),
+                       batch_size=evaluation_batch_size, progress_interval=128)
     torch.set_num_threads(settings.get('cpu_threads', 4))
+    performance = settings.get('performance', {})
+    array_cache_mb = performance.get('array_cache_mb', 0)
+    token_cache_size = performance.get('token_cache_size', 0)
+    if (type(array_cache_mb) is not int or array_cache_mb < 0
+            or type(token_cache_size) is not int or token_cache_size < 0):
+        raise ValueError('Performance cache limits must be nonnegative integers')
     seed_all(settings['seed'])
     device = settings.get('device', 'cuda')
     if device == 'cuda' and not torch.cuda.is_available():
@@ -175,6 +190,7 @@ def run_vldrive(args):
             path_feature_cache=path_cache,
             situation_datasets=situation_datasets,
             zone_datasets=zone_datasets,
+            array_cache_bytes=array_cache_mb * 1024**2,
         ) for split in splits}
     else:
         datasets = {split: MoraiExpertVLDriveDataset(
@@ -210,6 +226,7 @@ def run_vldrive(args):
     write(output / 'window_indices.json', indices)
     print('Loading cached frozen visual tokens and full trainable pretrained TinyLlama/DDIA...', flush=True)
     model = VLDriveTrainingModel(config, device=device)
+    model.language_model.token_cache_size = token_cache_size
     from training.connector_llm.stages import apply_instruction_stage
     apply_instruction_stage(model, path_settings.get('stage', 'joint') if config.path_navigation else 'joint')
     if token_folder:
@@ -229,8 +246,17 @@ def run_vldrive(args):
         optimizer = make_optimizer(model, **settings.get('optimizer', {}))
         state = restore_checkpoint(args.checkpoint, model, optimizer, provenance=provenance)
         start_update = state['updates']
-        if state['settings'] != settings:
+        previous_settings, current_settings = dict(state['settings']), dict(settings)
+        # These controls do not alter training samples, optimizer state or LR.
+        for key in ('evaluation', 'performance'):
+            previous_settings.pop(key, None)
+            current_settings.pop(key, None)
+        if previous_settings != current_settings:
             raise ValueError('Resume requires identical settings, sampling and cosine schedule')
+        if state['settings'] != settings:
+            write(output / 'resume_performance.json', dict(checkpoint=str(args.checkpoint), updates=start_update,
+                previous={k: state['settings'].get(k) for k in ('evaluation', 'performance')},
+                current={k: settings.get(k) for k in ('evaluation', 'performance')}))
         del state
     report = dict(training_path='frozen_encoder_dynamic_ccdp_mefa_tinyllama_ddia_l1',
                   start_update=start_update, semantic_annotations=True, schedule_updates=schedule_updates)
@@ -284,7 +310,8 @@ def run_vldrive(args):
             report['initial_evaluation'] = dict(enabled=initial_evaluation)
             if initial_evaluation:
                 print('Initial full evaluation started; optimizer updates begin after evaluation and baseline checkpoint saving.', flush=True)
-                report['before'] = {k: evaluate(model, datasets[k], indices[k], device) for k in datasets}
+                report['before'] = {k: evaluate(model, datasets[k],
+                    [indices[k][i] for i in subset_indices(len(indices[k]), epoch_evaluation_windows)], device) for k in datasets}
                 print('Initial full evaluation complete.', flush=True)
             else:
                 report['before'] = None
@@ -311,9 +338,21 @@ def run_vldrive(args):
                 save_model_checkpoint(output / 'model-best.pt', model, updates=start_update,
                     provenance=provenance, settings=settings, metrics=baseline_row)
             epoch_metrics = output / 'epoch_metrics.jsonl'
+            score_indices = indices[score_split]
+            epoch_score_indices = [score_indices[i] for i in subset_indices(len(score_indices), epoch_evaluation_windows)]
+            if len(epoch_score_indices) != len(score_indices):
+                best['scope'] += '_fixed_subset'
+
+            def evaluation_progress(progress):
+                write(output / 'evaluation_status.json', dict(phase='evaluating', **progress))
 
             def end_epoch(epoch, step):
-                validation = evaluate(model, datasets[score_split], indices[score_split], device)
+                if not epoch_evaluation_every or (epoch + 1) % epoch_evaluation_every:
+                    return
+                evaluation_progress(dict(completed=0, total=len(epoch_score_indices), elapsed_s=0., eta_s=None))
+                validation = evaluate(model, datasets[score_split], epoch_score_indices, device,
+                                      progress_callback=evaluation_progress)
+                validation['evaluation_scope'] = ('full' if len(epoch_score_indices) == len(score_indices) else 'fixed_subset')
                 row = dict(epoch=int(epoch) + 1, updates=int(step), **{score_name: validation})
                 with epoch_metrics.open('a', encoding='utf-8') as stream:
                     stream.write(json.dumps(row, allow_nan=False, sort_keys=True) + '\n')
@@ -324,6 +363,7 @@ def run_vldrive(args):
                     save_model_checkpoint(output / 'model-best.pt', model, updates=step,
                         provenance=provenance, settings=settings, metrics=row)
                 print(json.dumps(dict(event='epoch_' + score_name, **row), allow_nan=False), flush=True)
+                write(output / 'evaluation_status.json', dict(phase='complete', completed=len(epoch_score_indices), total=len(epoch_score_indices)))
 
             train(model, optimizer, datasets['train'], indices['train'], start_update=start_update,
                 updates=updates, schedule_updates=schedule_updates, seed=settings['seed'], device=device,
@@ -331,6 +371,7 @@ def run_vldrive(args):
                 on_update=periodic, on_epoch=end_epoch, batch_size=batch_size,
                 telemetry_enabled=settings.get('logging', {}).get('telemetry_enabled', True),
                 gradient_log_interval=settings.get('logging', {}).get('gradient_interval', 100),
+                profile_interval=settings.get('performance', {}).get('profile_interval', 0),
                 **settings.get('lr_schedule', {}))
             report['after'] = {k: evaluate(model, datasets[k], indices[k], device,
                 save_predictions=output / (k + '_predictions.json')) for k in datasets}
@@ -338,7 +379,10 @@ def run_vldrive(args):
                              **{score_name: report['after'][score_split]})
             save_model_checkpoint(output / 'model-last.pt', model, updates=updates,
                 provenance=provenance, settings=settings, metrics=final_row)
-            if best['epoch'] is None or report['after'][score_split]['fde_m'] < best['fde_m']:
+            # Subset and full-set metrics are different populations: never use
+            # the final full-set score to overwrite a subset-ranked best model.
+            if best['epoch'] is None or (len(epoch_score_indices) == len(score_indices)
+                    and report['after'][score_split]['fde_m'] < best['fde_m']):
                 best.update(fde_m=report['after'][score_split]['fde_m'], epoch=final_row['epoch'], metrics=final_row)
                 save_model_checkpoint(output / 'model-best.pt', model, updates=updates,
                     provenance=provenance, settings=settings, metrics=final_row)

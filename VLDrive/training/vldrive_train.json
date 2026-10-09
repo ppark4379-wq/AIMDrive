@@ -16,6 +16,16 @@
   "warm_start_checkpoint": null,
   "validation_enabled": false,
   "initial_evaluation": false,
+  "evaluation": {
+    "batch_size": 4,
+    "max_windows": 512,
+    "every_epochs": 1
+  },
+  "performance": {
+    "profile_interval": 100,
+    "array_cache_mb": 512,
+    "token_cache_size": 4096
+  },
   "include_validation_in_train": true,
   "checkpoint_every": 1000,
   "dashboard": {
@@ -29,6 +39,11 @@
     "weight_decay": 0.06,
     "state_device": "cpu",
     "cpu_fused": true
+  },
+  "lr_schedule": {
+    "warmup_epochs": 1,
+    "warmup_lr": 1e-06,
+    "min_lr": 1e-06
   },
   "model": {
     "zone_instruction": true,
@@ -327,10 +342,5 @@
       ]
     }
   },
-  "data_version": "data/processed/joint_v001/manifest.json",
-  "lr_schedule": {
-    "warmup_epochs": 1,
-    "warmup_lr": 1e-06,
-    "min_lr": 1e-06
-  }
+  "data_version": "data/processed/joint_v001/manifest.json"
 }

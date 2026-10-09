@@ -1,5 +1,48 @@
 {
   "files": {
+    "data/src/loaders/navigation_cache_dataset.py": {
+      "path": "data/src/loaders/navigation_cache_dataset.py",
+      "before": [
+        "1a74a874a0a7ecd94d170360400808e46326dbd8296f7c2968009604e52a534a"
+      ],
+      "after": [
+        "ef30777bf10a8bd64a042a7c3a943f3c412429f4842757d152e7e829bdb1d9eb"
+      ],
+      "performance_note": "Reviewed bounded immutable array/token-ID reuse, identical snapshot hashing and epoch shuffle reuse; original padded model computation and optimizer unchanged. Evaluation-only subset/batching preserves training RNG."
+    },
+    "training/connector_llm/training.py": {
+      "path": "training/connector_llm/training.py",
+      "before": [
+        "ec71cbf0f77365103e70819c07751acb8c59b38cfcafcdc3907f790fc91d1a47"
+      ],
+      "after": [
+        "55614143b7c3aee8de93655dc06fe102ecd9c75c63396c6f1d09a578410a9d2e"
+      ],
+      "performance_note": "Reviewed bounded immutable array/token-ID reuse, identical snapshot hashing and epoch shuffle reuse; original padded model computation and optimizer unchanged. Evaluation-only subset/batching preserves training RNG."
+    },
+    "models/llm/language_model.py": {
+      "path": "models/llm/language_model.py",
+      "before": [
+        "6b248aadebb1d0f5c145b3dc0377637f1d676762b6bcde3516f4ce46d85509aa"
+      ],
+      "after": [
+        "17c7454c14efb6dd6b4cd8fe847643b31617b421492a11aec189f2c2d3b24c75",
+        "5855a0a97063f99baca8c2902d5d71def5abc610fbf757ff3342934efafe4ab5"
+      ],
+      "performance_note": "Reviewed bounded immutable array/token-ID reuse, identical snapshot hashing and epoch shuffle reuse; original padded model computation and optimizer unchanged. Evaluation-only subset/batching preserves training RNG."
+    },
+    "models/llm/multimodal_sequence.py": {
+      "path": "models/llm/multimodal_sequence.py",
+      "before": [
+        "c1cf82e65d5f83d040ab3b275d8775708a4bb6865f498d5cf5cbdb1da1ae85d9"
+      ],
+      "after": [
+        "0f46202e824d19e81e83924a91d6f857f3dc83235946fe90075bb56f2a8f3ca8",
+        "9f507a4a9c8a24c5842a367319435e0b17a6abdd4a06bf912f78c3e54d11cc3c"
+      ],
+      "performance_note": "Reviewed bounded immutable array/token-ID reuse, identical snapshot hashing and epoch shuffle reuse; original padded model computation and optimizer unchanged. Evaluation-only subset/batching preserves training RNG."
+    },
+
     "inference/udp_relay.py": {
       "path": "inference/sensors/udp_relay.py",
       "before": [
@@ -904,13 +947,17 @@
         "e5d482a2f094c247e93da310f267a05b2312ea3c55a54a08a48e4b1539f5c05d",
         "f2e351a941e93f64aff151b9de57bb4d69609ae77ff460dea0f3e4da460c8e76",
         "f6c043b83b4705b81022b0046744a7ca1b176c42a1c1c0a0ad9e30afd3450952",
-        "fa93e45eb050b59372e053d49e0a8bea345fd55191d241d240a0a32738495ac2"
+        "fa93e45eb050b59372e053d49e0a8bea345fd55191d241d240a0a32738495ac2",
+        "098c87c736a9e775f8d83dd000472ec1fdbffb8a7a95d6d949cd922545205f96"
       ],
       "after": [
         "2472f5dc44b6280e2c453e26945131c408d651fe9f4b1c93fb77561a03a098d1",
         "32f2c20fc5dbe17c00446f836fc421ceb52ff6831b5079f858a4964773d6b57d",
-        "f63159ca02d44898f29729ee1114465608558d61e1ff632dffa029c322c60fc6"
-      ]
+        "f63159ca02d44898f29729ee1114465608558d61e1ff632dffa029c322c60fc6",
+        "817ec0039c6a17977ee0534601df35a062fbbf7283db99099baea5ed96294c98",
+        "63d8cda55b7eec7bdfe70d8469c66ea5c879f30a43bfd9fc8b61a67b02211b31"
+      ],
+      "performance_note": "Reviewed bounded immutable array/token-ID reuse, identical snapshot hashing and epoch shuffle reuse; original padded model computation and optimizer unchanged. Evaluation-only subset/batching preserves training RNG."
     },
     "data/loaders/loader.py": {
       "path": "data/src/loaders/loader.py",
@@ -3590,12 +3637,15 @@
         "2e8b0123d725be1e20dd241e32abd130d4bb98733d9752c72b8ef352d8e21e25",
         "3b1e70a67fddce5f030ef1cbec83ff1168e817698a0b55642bea66589f7c5b38",
         "8a446f7e6100e3270ffebeff2fa4b51c15995a5ab5b65f025353d55eb34de760",
-        "cf42f2199fa9fd098cd8a04fb0a0335415e03ce5756b7690f6447902b8357da6"
+        "cf42f2199fa9fd098cd8a04fb0a0335415e03ce5756b7690f6447902b8357da6",
+        "3a53a902a74accb98cac66f93d7fee5ff38dda916579502a69b2f75ad2ac4097"
       ],
       "after": [
         "8a446f7e6100e3270ffebeff2fa4b51c15995a5ab5b65f025353d55eb34de760",
-        "cf42f2199fa9fd098cd8a04fb0a0335415e03ce5756b7690f6447902b8357da6"
-      ]
+        "cf42f2199fa9fd098cd8a04fb0a0335415e03ce5756b7690f6447902b8357da6",
+        "0db7b47c206c41b24f809c996e8ee81cdde198f65ca8f6bdd3e28b078a440e62"
+      ],
+      "performance_note": "Reviewed bounded immutable array/token-ID reuse, identical snapshot hashing and epoch shuffle reuse; original padded model computation and optimizer unchanged. Evaluation-only subset/batching preserves training RNG."
     },
     "inference/discover_udp.py": {
       "path": "inference/diagnostics/discover_udp.py",
@@ -3998,4 +4048,5 @@
       ]
     }
   }
+
 }

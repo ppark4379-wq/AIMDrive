@@ -16,7 +16,7 @@ import time
 
 import numpy as np
 import torch
-from training.common.runtime.precision import autocast
+from training.common.runtime.precision import autocast, causality_precision
 from training.common.runtime.batching import batch, batch_samples, subset_indices
 from training.common.logging import gradient_report
 from training.common.runtime.reproducibility import seed_all
@@ -36,7 +36,8 @@ from training.common.checkpoints import periodic_checkpoint_path, save_model_che
 
 @torch.no_grad()
 @preserve_rng_state()
-def evaluate(model, dataset, indices, device, *, save_predictions=None, seed=607):
+def evaluate(model, dataset, indices, device, *, save_predictions=None, seed=607,
+             batch_size=1, progress_interval=0, progress_callback=None):
     """Evaluate with live-inference Gumbel selection and a repeatable RNG stream.
 
     Seed once per evaluation, never once per frame. The decorator restores all
@@ -47,6 +48,8 @@ def evaluate(model, dataset, indices, device, *, save_predictions=None, seed=607
         raise ValueError('Evaluation needs unique chronological indices, not balanced resampled draws')
     if type(seed) is not int or not 0 <= seed < 2**32:
         raise ValueError('Evaluation seed must be an integer in [0, 2**32)')
+    if type(batch_size) is not int or batch_size < 1 or type(progress_interval) is not int or progress_interval < 0:
+        raise ValueError('Invalid evaluation batch size or progress interval')
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -58,23 +61,36 @@ def evaluate(model, dataset, indices, device, *, save_predictions=None, seed=607
     losses, predictions, selected_counts = [], [], []
     selector_diagnostics = {key: [] for key in ('sampled_retention', 'soft_retention', 'saturated_keep_fraction')}
     evaluation_sample = getattr(dataset, 'evaluation_sample', dataset.__getitem__)
-    for index in indices:
-        item = batch(evaluation_sample(index), device)
+    started, last_progress = time.monotonic(), 0
+    for offset in range(0, len(indices), batch_size):
+        selected = indices[offset:offset + batch_size]
+        item = batch_samples([evaluation_sample(index) for index in selected], device)
         with autocast(model):
             output = model.predict(item['model_inputs'], compute_auxiliary=False,
                                    token_selection_mode='gumbel')
         target = item['training_targets']['future_trajectory']
         # Last frame is used for independent-window metrics to avoid multiplying
         # overlapping-history labels. Training uses every valid real frame.
-        losses.append(torch.nn.functional.l1_loss(output['trajectory'][:, -1].float(), target[:, -1].float()).item())
+        losses.extend((output['trajectory'][:, -1].float() - target[:, -1].float()).abs().mean((1, 2)).tolist())
         sample_id = item['metadata']['sample_ids'][-1]
         metrics.update(output['trajectory'][:, -1], target[:, -1], item['metadata']['run_id'], sample_id)
-        predictions.append(dict(sample_id=sample_id[0], trajectory=output['trajectory'][0, -1].float().cpu().tolist(),
-            selected_count=output['selected_count'][0].tolist()))
+        if save_predictions:
+            predictions.extend(dict(sample_id=sample_id[i], trajectory=output['trajectory'][i, -1].float().cpu().tolist(),
+                selected_count=output['selected_count'][i].tolist()) for i in range(len(selected)))
         selected_counts.extend(output['selected_count'].detach().cpu().reshape(-1).tolist())
         for key in selector_diagnostics:
             if key in output:
                 selector_diagnostics[key].extend(output[key].detach().float().cpu().reshape(-1).tolist())
+        done = offset + len(selected)
+        if done == len(indices) or (progress_interval and done - last_progress >= progress_interval):
+            elapsed = time.monotonic() - started
+            progress = dict(completed=done, total=len(indices), elapsed_s=elapsed,
+                            eta_s=elapsed / done * (len(indices) - done), batch_size=batch_size)
+            if progress_interval:
+                print(json.dumps(dict(event='evaluation_progress', **progress)), flush=True)
+            if progress_callback:
+                progress_callback(progress)
+            last_progress = done
     if not losses:
         raise ValueError('No evaluation windows selected')
     report = metrics.compute()
@@ -83,7 +99,8 @@ def evaluate(model, dataset, indices, device, *, save_predictions=None, seed=607
     if 'zone_ids' in item['model_inputs']:
         report['zone_conditioning'] = 'recorded_per_frame_zone_ids'
     report.update(waypoint_l1=sum(losses) / len(losses),
-        selection_policy='gumbel', evaluation_seed=seed, stochastic_passes=1, windows=len(losses),
+        selection_policy='gumbel', evaluation_seed=seed, evaluation_batch_size=batch_size,
+        stochastic_passes=1, windows=len(losses),
         selected_count_mean=float(np.mean(selected_counts)), selected_count_min=int(min(selected_counts)),
         selected_count_max=int(max(selected_counts)))
     report.update({key: float(np.mean(values)) for key, values in selector_diagnostics.items() if values})
@@ -117,7 +134,7 @@ def preflight(model, sample, device):
             else:
                 tensor[:, -1].zero_()
         return changed
-    with torch.no_grad(), autocast(model):
+    with causality_precision(model):
         baseline = model.predict(inputs, compute_auxiliary=False)
         future = model.predict(perturb(inputs), compute_auxiliary=False)
         delta = (baseline['trajectory'][:, :-1] - future['trajectory'][:, :-1]).abs().max().item()
@@ -154,7 +171,7 @@ def preflight(model, sample, device):
             rejected[name] = False
     return dict(passed=gradients['passed'] and delta < 1e-5 and path_delta < 1e-5 and situation_delta < 1e-5
                 and zone_delta < 1e-5 and history_delta > 0 and all(rejected.values()),
-        optimizer_updates=0, gradients=gradients, initial_losses=initial,
+        optimizer_updates=0, gradients=gradients, initial_losses=initial, causality_precision='float32',
         trajectory_shape=list(baseline['trajectory'].shape),
         future_to_past_max_delta=delta, history_dependency_delta=history_delta,
         future_path_to_past_max_delta=path_delta,
@@ -167,7 +184,7 @@ def preflight(model, sample, device):
 def train(model, optimizer, dataset, indices, *, start_update, updates, schedule_updates,
           seed, device, log_path, lr=1e-5, on_update=None, on_epoch=None, sampling_step_offset=0,
           telemetry_enabled=True, gradient_log_interval=100, batch_size=1,
-          warmup_epochs=0., warmup_lr=0., min_lr=0.):
+          warmup_epochs=0., warmup_lr=0., min_lr=0., profile_interval=0):
     if (not indices or not 0 <= start_update <= updates <= schedule_updates
             or not isinstance(sampling_step_offset, int) or not 0 <= sampling_step_offset <= start_update):
         raise ValueError('Invalid update range or empty training split')
@@ -175,6 +192,8 @@ def train(model, optimizer, dataset, indices, *, start_update, updates, schedule
         raise ValueError('gradient_log_interval must be a nonnegative integer')
     if type(batch_size) is not int or batch_size < 1:
         raise ValueError("batch_size must be a positive integer")
+    if type(profile_interval) is not int or profile_interval < 0:
+        raise ValueError('profile_interval must be a nonnegative integer')
     steps_per_epoch = math.ceil(len(indices) / batch_size)
     if not math.isfinite(warmup_epochs) or warmup_epochs < 0:
         raise ValueError('warmup_epochs must be finite and nonnegative')
@@ -185,10 +204,22 @@ def train(model, optimizer, dataset, indices, *, start_update, updates, schedule
                              schedule_updates=schedule_updates, **schedule)
     model.train()
     start = time.monotonic()
+    order, order_epoch = None, None
     with TrainingTelemetry(model, device, enabled=telemetry_enabled,
                            gradient_interval=gradient_log_interval) as telemetry, Path(log_path).open('x') as log:
         for step in range(start_update, updates):
             update_start = time.monotonic()
+            profile = profile_interval > 0 and (step == start_update or (step + 1) % profile_interval == 0)
+            timings = {}
+            measured_at = update_start
+            def measure(name):
+                nonlocal measured_at
+                if profile:
+                    if torch.device(device).type == 'cuda':
+                        torch.cuda.synchronize()
+                    now = time.monotonic()
+                    timings[name] = now - measured_at
+                    measured_at = now
             # A caller may draw a fresh balanced bag for each global epoch.
             # Only its shuffle cursor is local; LR, checkpoints and callbacks
             # continue to use global update numbers for exact resume.
@@ -196,26 +227,34 @@ def train(model, optimizer, dataset, indices, *, start_update, updates, schedule
             epoch = step // steps_per_epoch
             if hasattr(dataset, 'set_epoch'):
                 dataset.set_epoch(epoch)
-            order = torch.randperm(len(indices), generator=torch.Generator().manual_seed(seed + shuffle_epoch)).tolist()
+            if order_epoch != shuffle_epoch:
+                order = torch.randperm(len(indices), generator=torch.Generator().manual_seed(seed + shuffle_epoch)).tolist()
+                order_epoch = shuffle_epoch
             batch_indices = [indices[i] for i in order[offset * batch_size:(offset + 1) * batch_size]]
             index = batch_indices[0]
             current_lr = set_cosine_learning_rate(optimizer, lr=lr, step=step,
                                                   schedule_updates=schedule_updates, **schedule)
             item = batch_samples([dataset[i] for i in batch_indices], device)
             optimizer.zero_grad(set_to_none=True)
+            measure('data_time_s')
             with autocast(model):
                 output = model(item)
             if not bool(torch.isfinite(output['loss'])):
                 raise RuntimeError('Nonfinite VLDrive loss')
+            measure('forward_time_s')
             output['loss'].backward()
+            measure('backward_time_s')
             module_gradients = telemetry.gradients(step + 1)
             norm = torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad],
                                                  10., error_if_nonfinite=True)
+            measure('gradient_time_s')
             optimizer.step()
+            measure('optimizer_time_s')
             values = {k: float(v.detach()) for k, v in output.items()}
             values.update(telemetry.values(first=step == start_update, item=item))
             if module_gradients is not None:
                 values['module_gradients'] = module_gradients
+            values.update(timings)
             values.update(update=step + 1, index=index, batch_indices=batch_indices, batch_size=len(batch_indices), lr=current_lr,
                 group_lrs=[float(group['lr']) for group in optimizer.param_groups],
                 grad_norm=float(norm), elapsed_s=time.monotonic() - start,

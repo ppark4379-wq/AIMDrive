@@ -33,6 +33,15 @@ def parameter_hash(model, *, trainable):
     return digest.hexdigest()
 
 
+def _snapshot_hash(state):
+    """Hash the exact CPU snapshot using parameter_hash's name/byte order."""
+    digest = hashlib.sha256()
+    for name, value in state.items():
+        digest.update(name.encode())
+        digest.update(value.contiguous().reshape(-1).view(torch.uint8).numpy().tobytes())
+    return digest.hexdigest()
+
+
 def source_hashes(root):
     """Hash every source file a run depends on, for the checkpoint provenance."""
     from utils.common.runtime import sha256
@@ -58,7 +67,7 @@ def save_checkpoint(path, model, optimizer, *, updates, provenance, settings):
     path = Path(path)
     trainable = {n: p.detach().cpu().clone() for n, p in model.named_parameters() if _checkpoint_parameter(model, n, p)}
     state = dict(schema=getattr(model, 'checkpoint_schema', 'morai-goal-stack-v1'), model_config=asdict(model.config), trainable_state=trainable,
-        trainable_hash=parameter_hash(model, trainable=True), frozen_hash=parameter_hash(model, trainable=False),
+        trainable_hash=_snapshot_hash(trainable), frozen_hash=parameter_hash(model, trainable=False),
         optimizer=optimizer.state_dict(), updates=updates, provenance=provenance, settings=settings,
         rng=dict(python=random.getstate(), numpy=np.random.get_state(), torch=torch.get_rng_state(),
                  cuda=torch.cuda.get_rng_state_all() if torch.cuda.is_available() else []))
@@ -123,13 +132,14 @@ def save_model_checkpoint(path, model, *, updates, provenance, settings, metrics
             name: parameter.detach().cpu().clone()
             for name, parameter in model.named_parameters() if _checkpoint_parameter(model, name, parameter)
         },
-        trainable_hash=parameter_hash(model, trainable=True),
+        trainable_hash=None,
         frozen_hash=parameter_hash(model, trainable=False),
         updates=int(updates),
         provenance=provenance,
         settings=settings,
         metrics=metrics,
     )
+    state['trainable_hash'] = _snapshot_hash(state['trainable_state'])
     pending = path.with_suffix(path.suffix + '.pending')
     torch.save(state, pending)
     pending.replace(path)
