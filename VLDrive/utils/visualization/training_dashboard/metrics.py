@@ -10,7 +10,45 @@ ALIASES = {'total_loss': 'loss', 'l_way': 'waypoint_loss', 'l_prun': 'pruning_lo
            'p_keep_mean': 'soft_retention', 'learning_rate': 'lr'}
 DIRECT = ('update', 'epoch', 'elapsed_s', 'update_time_s', 'p_keep_std', 'selected_tokens_mean',
           'selected_tokens_min', 'selected_tokens_max', 'selected_tokens_target', 'grad_norm',
-          'gpu_memory_gb', 'gpu_utilization')
+          'gpu_memory_gb', 'gpu_utilization', 'train_ade_m', 'train_fde_m', 'trajectory_samples',
+          'navigation_tokens', 'situation_tokens', 'zone_tokens', 'visual_tokens',
+          'llm_valid_tokens', 'llm_max_valid_tokens', 'llm_padded_tokens', 'llm_padding_ratio', 'llm_context_limit')
+
+ZONE_LABELS = ('일반 주행', '정적 장애물', '동적 장애물', '회전교차로', '고속도로', '터널')
+
+
+def zone_stats(value):
+    """Keep counts and sums for sample-weighted aggregation, including short batches."""
+    result = {}
+    for key, stat in value.items() if isinstance(value, dict) else ():
+        if key not in tuple(map(str, range(6))) or not isinstance(stat, dict):
+            continue
+        n, a, f = (number(stat.get(k)) for k in ('samples', 'ade_sum_m', 'fde_sum_m'))
+        if n is not None and n > 0 and n == int(n) and a is not None and f is not None and min(a, f) >= 0:
+            result[key] = dict(samples=int(n), ade_sum_m=a, fde_sum_m=f)
+    return result
+
+
+def accumulate(total, rows, sign=1):
+    for zone, values in rows.items():
+        entry = total.setdefault(zone, dict(samples=0, ade_sum_m=0., fde_sum_m=0.))
+        for key in entry:
+            entry[key] += sign * values[key]
+        if entry['samples'] <= 0:
+            total.pop(zone)
+
+
+def epoch_rows(raw):
+    """Scope comes from the recorded result, never from a guessed run setting."""
+    rows = []
+    for row in raw:
+        for key, scope in (('training', 'Train'), ('validation', 'Validation')):
+            result = row.get(key)
+            if not isinstance(result, dict):
+                continue
+            rows.append(dict(epoch=number(row.get('epoch')), update=number(row.get('updates')),
+                             scope=scope, ade_m=number(result.get('ade_m')), fde_m=number(result.get('fde_m'))))
+    return rows
 
 
 def parse_time(value):
@@ -28,6 +66,9 @@ class MetricSeries:
         self.durations = deque(maxlen=rolling)
         self.rows = []
         self.previous = None
+        self.driving_window = deque(maxlen=100)
+        self.zone_window = deque(maxlen=100)
+        self.zone_recent, self.zone_totals = {}, {}
 
     def append(self, raw):
         row = {key: number(raw.get(key)) for key in DIRECT}
@@ -72,8 +113,32 @@ class MetricSeries:
         gradients = raw.get('module_gradients')
         row['module_gradients'] = {k: number(v) for k, v in gradients.items()} if isinstance(gradients, dict) else None
         row['system'] = raw.get('system')
+        row['zone_metrics'] = zone_stats(raw.get('zone_metrics'))
+        if len(self.zone_window) == self.zone_window.maxlen:
+            accumulate(self.zone_recent, self.zone_window[0], -1)
+        self.zone_window.append(row['zone_metrics'])
+        accumulate(self.zone_recent, row['zone_metrics'])
+        accumulate(self.zone_totals, row['zone_metrics'])
+        n = row['trajectory_samples']
+        valid = n is not None and n > 0 and row['train_ade_m'] is not None and row['train_fde_m'] is not None
+        self.driving_window.append((n, n*row['train_ade_m'], n*row['train_fde_m']) if valid else (0, 0., 0.))
+        count = sum(v[0] for v in self.driving_window)
+        row['train_ade_recent_m'] = sum(v[1] for v in self.driving_window)/count if count and valid else None
+        row['train_fde_recent_m'] = sum(v[2] for v in self.driving_window)/count if count and valid else None
         self.previous = row; self.rows.append(row)
         return row
+
+    def zone_summary(self):
+        rows = []
+        for i, name in enumerate(ZONE_LABELS):
+            row = dict(zone_id=i, name=name)
+            for label, source in (('recent', self.zone_recent), ('cumulative', self.zone_totals)):
+                stat = source.get(str(i), {})
+                n = stat.get('samples', 0)
+                row.update({label+'_samples': n, label+'_ade_m': stat['ade_sum_m']/n if n else None,
+                            label+'_fde_m': stat['fde_sum_m']/n if n else None})
+            rows.append(row)
+        return rows
 
     def extend(self, rows):
         for row in rows: self.append(row)

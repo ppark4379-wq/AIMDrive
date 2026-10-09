@@ -10,7 +10,7 @@ import time
 import unittest
 
 from utils.visualization.training_dashboard.log_reader import JsonlTail, RunMetadata
-from utils.visualization.training_dashboard.metrics import MetricSeries, ema
+from utils.visualization.training_dashboard.metrics import MetricSeries, ema, epoch_rows
 from utils.visualization.training_dashboard.exporters import csv_text, export_csv, METRIC_COLUMNS, GRADIENT_COLUMNS
 
 
@@ -83,6 +83,61 @@ class ReaderTests(unittest.TestCase):
 
 
 class MetricTests(unittest.TestCase):
+    def test_zone_and_recent_metrics_weight_samples_and_expire_missing_zones(self):
+        series = MetricSeries()
+        series.append(dict(update=1, trajectory_samples=4, train_ade_m=1., train_fde_m=2.,
+            zone_metrics={'1':dict(samples=4, ade_sum_m=4., fde_sum_m=8.)}))
+        row = series.append(dict(update=2, trajectory_samples=1, train_ade_m=6., train_fde_m=12.,
+            zone_metrics={'1':dict(samples=1, ade_sum_m=6., fde_sum_m=12.),
+                          '-1':dict(samples=1, ade_sum_m=99., fde_sum_m=99.)}))
+        self.assertEqual(row['train_ade_recent_m'], 2.)
+        self.assertEqual(row['train_fde_recent_m'], 4.)
+        stat = series.zone_summary()[1]
+        self.assertEqual(stat['recent_ade_m'], 2.)
+        self.assertEqual(stat['cumulative_fde_m'], 4.)
+        self.assertIsNone(series.zone_summary()[0]['recent_ade_m'])
+        for update in range(3, 103): series.append(dict(update=update))
+        stat = series.zone_summary()[1]
+        self.assertIsNone(stat['recent_ade_m'])
+        self.assertEqual(stat['cumulative_ade_m'], 2.)
+        self.assertIsNone(series.rows[-1]['train_ade_recent_m'])
+
+    def test_epoch_reader_keeps_scopes_and_handles_partial_tail(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp)/'epoch_metrics.jsonl'
+            path.write_text('{"epoch":1,"updates":10,"training":{"ade_m":0.4,"fde_m":0.7}}\n')
+            tail = JsonlTail(path, index_key='updates')
+            self.assertEqual(tail.poll(),1)
+            self.assertEqual(epoch_rows(tail.rows)[0]['scope'],'Train')
+            with path.open('a') as f: f.write('{"epoch":2,"updates":20,"validation":{"ade_m":1,"fde_m":2}}')
+            self.assertEqual(tail.poll(),0)
+            with path.open('a') as f: f.write('\n')
+            self.assertEqual(tail.poll(),1)
+            self.assertEqual([r['scope'] for r in epoch_rows(tail.rows)], ['Train','Validation'])
+
+    def test_joint_csv_contains_raw_metrics_and_missing_values_stay_blank(self):
+        rows = MetricSeries().extend([dict(update=1, train_ade_m=.5, trajectory_samples=1,
+            train_fde_m=1., llm_padded_tokens=550,
+            zone_metrics={'2':dict(samples=1, ade_sum_m=.5, fde_sum_m=1.)},
+            module_gradients={'navigation_mlp':.2, 'zone_embedding':0.})])
+        row = list(csv.DictReader(io.StringIO(csv_text(rows))))[0]
+        self.assertEqual(row['zone_2_ade_m'],'0.5')
+        self.assertEqual(row['zone_0_ade_m'],'')
+        self.assertEqual(row['llm_padded_tokens'],'550')
+        grad = list(csv.DictReader(io.StringIO(csv_text(rows, gradients=True))))[0]
+        self.assertEqual(grad['zone_embedding'],'0.0')
+        self.assertEqual(grad['navigation_mlp'],'0.2')
+
+    def test_metadata_uses_batches_for_epoch_schedule(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root/'resolved_config.json').write_text(json.dumps(dict(epochs=2, batch_size=4, validation_enabled=False)))
+            (root/'window_indices.json').write_text(json.dumps({'train':list(range(9))}))
+            context = RunMetadata(root).context()
+            self.assertEqual(context['updates_per_epoch'],3)
+            self.assertEqual(context['total_updates'],6)
+            self.assertFalse(context['validation_enabled'])
+
     def test_resume_uses_global_update_and_session_clock(self):
         series=MetricSeries({'total_updates':2000,'updates_per_epoch':100,'total_epochs':20},minimum_samples=3)
         for i in range(4):

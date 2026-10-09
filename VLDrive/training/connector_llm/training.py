@@ -204,7 +204,7 @@ def train(model, optimizer, dataset, indices, *, start_update, updates, schedule
                                                  10., error_if_nonfinite=True)
             optimizer.step()
             values = {k: float(v.detach()) for k, v in output.items()}
-            values.update(telemetry.values(first=step == start_update))
+            values.update(telemetry.values(first=step == start_update, item=item))
             if module_gradients is not None:
                 values['module_gradients'] = module_gradients
             values.update(update=step + 1, index=index, batch_indices=batch_indices, batch_size=len(batch_indices), lr=current_lr,

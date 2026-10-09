@@ -23,6 +23,7 @@ class VLDriveOutput:
     hidden_states: torch.Tensor
     sequence: MultimodalSequence
     debug: Optional[dict] = None
+    token_metrics: Optional[dict] = None
 
 
 class VLDriveModel(nn.Module):
@@ -209,6 +210,21 @@ class VLDriveModel(nn.Module):
                 visual_batch.visual_attention_mask)
         if bool((sequence.attention_mask.sum(1) > self.tinyllama.config.max_position_embeddings).any()):
             raise ValueError("Visual window exceeds TinyLlama context length")
+        token_metrics = None
+        if getattr(self, 'collect_training_metrics', False) and self.training:
+            # Reuse masks from this forward. No second tokenization or model call.
+            with torch.no_grad():
+                nav_count = encoded['attention_mask'].sum(1) * (t if frame_conditioning else 1)
+                zero = torch.zeros_like(nav_count)
+                situation_count = (situation_mask.reshape(b, t, -1).sum((1, 2))
+                                   if self.situation_instruction else zero)
+                token_metrics = dict(
+                    navigation=nav_count, situation=situation_count,
+                    zone=zone_valid.sum(1) if self.zone_instruction else zero,
+                    visual=visual_batch.visual_attention_mask.sum(1),
+                    valid=sequence.attention_mask.sum(1),
+                    padded_length=sequence.inputs_embeds.shape[1],
+                    context_limit=self.tinyllama.config.max_position_embeddings)
         set_ddia_modality_ids(self.tinyllama, sequence.modality_ids, sequence.frame_ids)
         # Driving needs decoder states, not vocabulary logits or every layer's states.
         outputs = self.tinyllama.model(
@@ -268,4 +284,4 @@ class VLDriveModel(nn.Module):
         predicted_end_logits = self.end_predictor(waypoint_hidden)
         if debug is not None:
             debug["predicted_waypoint_shape"] = tuple(predicted_waypoints.shape)
-        return VLDriveOutput(predicted_waypoints, predicted_end_logits, hidden_states, sequence, debug)
+        return VLDriveOutput(predicted_waypoints, predicted_end_logits, hidden_states, sequence, debug, token_metrics)

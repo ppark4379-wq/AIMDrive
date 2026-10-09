@@ -6,10 +6,10 @@ from utils.visualization.training_dashboard.metrics import ema
 BLUE = '#285f91'
 
 
-def chart(rows, key, title, *, percent=False, target=None, span=100, height=218):
+def chart(rows, key, title, *, percent=False, target=None, span=100, height=218, smooth_key=None):
     x = [r['update'] for r in rows]
     y = [r.get(key) for r in rows]
-    smooth = ema(y, span)
+    smooth = [r.get(smooth_key) for r in rows] if smooth_key else ema(y, span)
     # Retain raw extrema in each bucket when displaying long runs. CSV is full resolution.
     stride = max(1, math.ceil(len(rows)/900))
     keep = set([0, len(rows)-1]) if rows else set()
@@ -20,7 +20,7 @@ def chart(rows, key, title, *, percent=False, target=None, span=100, height=218)
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=[x[i] for i in idx],y=[y[i] for i in idx],mode='lines',name='Raw',
                             line=dict(color='rgba(40,95,145,0.23)',width=1),connectgaps=False))
-    fig.add_trace(go.Scatter(x=[x[i] for i in idx],y=[smooth[i] for i in idx],mode='lines',name=f'EMA {span}',
+    fig.add_trace(go.Scatter(x=[x[i] for i in idx],y=[smooth[i] for i in idx],mode='lines',name='Recent 100 · sample weighted' if smooth_key else f'EMA {span}',
                             line=dict(color=BLUE,width=2),connectgaps=False))
     if target is not None:
         fig.add_hline(y=target,line_dash='dash',line_color='#737d87',line_width=1)
@@ -35,4 +35,22 @@ def chart(rows, key, title, *, percent=False, target=None, span=100, height=218)
                      linecolor='#d5dbe0',showline=True,ticks='outside',tickcolor='#cbd2d9')
     fig.update_yaxes(gridcolor='#edf0f2',zeroline=False,tickformat='.0%' if percent else '.3~g',
                      linecolor='#d5dbe0',showline=True,ticks='outside',tickcolor='#cbd2d9')
+    return fig
+
+
+def epoch_chart(rows, key, title):
+    fig = go.Figure()
+    for scope, color in (('Train', BLUE), ('Validation', '#aa4b20')):
+        selected = [row for row in rows if row['scope'] == scope and row.get(key) is not None]
+        if selected:
+            fig.add_trace(go.Scatter(x=[r['epoch'] for r in selected], y=[r[key] for r in selected],
+                                    mode='lines+markers', name=scope, line=dict(color=color, width=2)))
+    if not fig.data:
+        fig.add_annotation(text='첫 epoch 평가 완료 후 표시됩니다.', x=.5, y=.5,
+                           xref='paper', yref='paper', showarrow=False, font=dict(color='#526277'))
+    fig.update_layout(template='plotly_white', height=220, title=dict(text=title, font=dict(size=13)),
+        margin=dict(l=50, r=18, t=35, b=40), paper_bgcolor='white', plot_bgcolor='white',
+        font=dict(color='#243547'), legend=dict(orientation='h'), uirevision=key)
+    fig.update_xaxes(title_text='Epoch', gridcolor='#edf0f2')
+    fig.update_yaxes(title_text='Error · m', gridcolor='#edf0f2')
     return fig

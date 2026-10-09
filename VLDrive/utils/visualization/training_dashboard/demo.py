@@ -21,6 +21,18 @@ def demo_data():
             selected_tokens_mean=106*keep,selected_tokens_min=24,selected_tokens_max=43,
             selected_tokens_target=31.8,target_retention=.3,num_visual_tokens=106,
             grad_norm=3.2+rng.uniform(-.3,.3),gpu_memory_gb=6.38+rng.uniform(-.01,.01)))
-        if i%100==0: rows[-1]['module_gradients']=dict(selector=1.42,mefa=.81,qformer=1.03,connector_projection=.67,tinyllama=.39,waypoint_head=1.21)
+        ade = .42 + 1.5*math.exp(-i/250)
+        fde = ade * 1.65
+        rows[-1].update(train_ade_m=ade, train_fde_m=fde, trajectory_samples=4,
+            zone_metrics={str(i % 5): dict(samples=4, ade_sum_m=4*ade, fde_sum_m=4*fde)},
+            navigation_tokens=220., situation_tokens=264., zone_tokens=11., visual_tokens=350.,
+            llm_valid_tokens=845., llm_max_valid_tokens=910., llm_padded_tokens=1056,
+            llm_padding_ratio=1-845/1056, llm_context_limit=2048)
+        if i%100==0: rows[-1]['module_gradients']=dict(selector=1.42,mefa=.81,qformer=1.03,connector_projection=.67,tinyllama=.39,waypoint_head=1.21,navigation_mlp=.24,zone_embedding=.08)
     rows[0]['system']=dict(gpu='Example GPU (synthetic)',cuda='—',pytorch='—',python='—')
-    return rows,dict(total_updates=6000,total_epochs=15,updates_per_epoch=400,target_retention=.3,num_visual_tokens=106)
+    return rows,dict(total_updates=6000,total_epochs=15,updates_per_epoch=400,target_retention=.3,
+                     num_visual_tokens=106,validation_enabled=False,path_navigation=True,situation_instruction=True)
+
+
+def demo_epochs():
+    return [dict(epoch=e, updates=e*400, training=dict(ade_m=1.2/e, fde_m=2./e)) for e in (1, 2, 3)]

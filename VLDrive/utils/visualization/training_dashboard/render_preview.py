@@ -38,20 +38,29 @@ def main():
             errors=[]; page.on('pageerror',lambda exc:errors.append(str(exc)))
             page.goto(url,wait_until='domcontentloaded')
             page.get_by_text('TRAINING PROGRESS',exact=True).wait_for(timeout=60000)
-            page.wait_for_function("document.querySelectorAll('.js-plotly-plot').length === 6",timeout=60000)
+            page.wait_for_function("document.querySelectorAll('.js-plotly-plot').length === 10",timeout=60000)
             page.get_by_role('button',name='Export CSV',exact=True).click()
             page.get_by_text('Export snapshot:',exact=False).wait_for(timeout=30000)
             if page.locator('[data-testid="stException"]').count():
                 raise RuntimeError(page.locator('[data-testid="stException"]').inner_text())
+            # Streamlit scrolls its own container; full_page alone can capture
+            # only the bottom viewport after clicking Export CSV.
+            height = page.locator('.block-container').evaluate('el => Math.ceil(el.scrollHeight)')
+            page.set_viewport_size({'width':1920,'height':min(5000,max(1080,height+60))})
+            page.evaluate('document.querySelectorAll("*").forEach(el => { if(el.scrollTop) el.scrollTop=0; })')
             page.wait_for_timeout(750)
             args.output.parent.mkdir(parents=True,exist_ok=True)
             page.screenshot(path=str(args.output),full_page=True)
             if errors: raise RuntimeError(str(errors))
             print('Captured real UI:',args.output)
-            print('Viewport 1920x1080; charts=6; CSV export button passed; browser errors=0')
+            print('Viewport',page.viewport_size,'; charts=10; CSV export button passed; browser errors=0')
             browser.close()
     finally:
-        server.terminate()
+        if sys.platform == 'win32' and server.poll() is None:
+            subprocess.run(['taskkill.exe','/PID',str(server.pid),'/T','/F'],
+                           capture_output=True,creationflags=subprocess.CREATE_NO_WINDOW)
+        else:
+            server.terminate()
         try: server.wait(timeout=10)
         except subprocess.TimeoutExpired: server.kill(); server.wait()
 

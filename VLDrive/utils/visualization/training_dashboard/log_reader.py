@@ -10,8 +10,9 @@ def number(value):
 
 
 class JsonlTail:
-    def __init__(self, path):
+    def __init__(self, path, *, index_key='update'):
         self.path = Path(path)
+        self.index_key = index_key
         self.offset = 0
         self.rows = []
         self.invalid_lines = 0
@@ -46,14 +47,14 @@ class JsonlTail:
                     continue
                 try:
                     row = json.loads(line)
-                    if not isinstance(row, dict) or type(row.get('update')) is not int or row['update'] < 0:
+                    if not isinstance(row, dict) or type(row.get(self.index_key)) is not int or row[self.index_key] < 0:
                         raise ValueError('not an update record')
                     self.rows.append(row); added += 1
                 except (ValueError, UnicodeError):
                     self.invalid_lines += 1
             return added
         except FileNotFoundError:
-            self.error = 'Waiting for training.jsonl'
+            self.error = 'Waiting for ' + self.path.name
         except OSError as exc:
             self.error = str(exc)
         return 0
@@ -87,13 +88,18 @@ class RunMetadata:
         settings = settings.get('base', settings)
         indices = self.read('window_indices.json').get('train')
         epochs = number(settings.get('epochs'))
-        per_epoch = len(indices) if isinstance(indices, list) and indices else None
+        batch_size = number(settings.get('batch_size')) or 1
+        per_epoch = math.ceil(len(indices)/batch_size) if isinstance(indices, list) and indices else None
         total = number(self.read('report.json').get('schedule_updates'))
         if total is None and epochs and per_epoch:
             total = epochs * per_epoch
         model = settings.get('model', {})
         description = self.read('model.json')
         return dict(total_updates=total, total_epochs=epochs, updates_per_epoch=per_epoch,
+                    validation_enabled=settings.get('validation_enabled'),
+                    situation_instruction=model.get('situation_instruction', False),
+                    zone_instruction=model.get('zone_instruction', False),
+                    path_navigation=model.get('path_navigation', False),
                     target_retention=number(model.get('target_retention')),
                     num_visual_tokens=number(description.get('connector', {}).get('num_visual_tokens')),
                     system=self.read('provenance.json').get('backend', {}))

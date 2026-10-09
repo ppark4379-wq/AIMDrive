@@ -12,7 +12,11 @@ METRIC_COLUMNS = ('update epoch timestamp elapsed_s progress_pct eta_s expected_
                   'updates_per_sec learning_rate total_loss l_way l_prun l_rec gumbel_keep_ratio p_keep_mean '
                   'p_keep_std selected_tokens_mean selected_tokens_min selected_tokens_max selected_tokens_target '
                   'grad_norm gpu_memory_gb gpu_utilization').split()
-GRADIENT_COLUMNS = 'update selector mefa qformer connector_projection tinyllama waypoint_head'.split()
+METRIC_COLUMNS += ('train_ade_m train_fde_m trajectory_samples train_ade_recent_m train_fde_recent_m '
+                   'navigation_tokens situation_tokens zone_tokens visual_tokens llm_valid_tokens '
+                   'llm_max_valid_tokens llm_padded_tokens llm_padding_ratio llm_context_limit').split()
+METRIC_COLUMNS += [f'zone_{i}_{key}' for i in range(6) for key in ('samples', 'ade_m', 'fde_m')]
+GRADIENT_COLUMNS = 'update selector mefa qformer connector_projection tinyllama waypoint_head navigation_mlp zone_embedding'.split()
 
 
 def csv_text(rows, *, gradients=False):
@@ -25,7 +29,12 @@ def csv_text(rows, *, gradients=False):
             if not row.get('module_gradients'): continue
             writer.writerow(dict(update=row['update'], **row['module_gradients']))
         else:
-            writer.writerow({key: row.get(key) for key in columns})
+            flat = {key: row.get(key) for key in columns}
+            for zone, stat in (row.get('zone_metrics') or {}).items():
+                flat.update({f'zone_{zone}_samples': stat['samples'],
+                             f'zone_{zone}_ade_m': stat['ade_sum_m']/stat['samples'],
+                             f'zone_{zone}_fde_m': stat['fde_sum_m']/stat['samples']})
+            writer.writerow(flat)
     return stream.getvalue()
 
 
