@@ -1367,6 +1367,7 @@ class TunnelVehicleTest(unittest.TestCase):
             "ar_djmavic_2024",
             "Test_DRONE",
             "Prototype_eVTOL",
+            "SE_CT797F_2009",
         ]
         selected = set()
         for seed in range(12):
@@ -1458,6 +1459,56 @@ class TunnelVehicleTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "Ego position/progress"):
             h.update(c, 0, {"x": 20.0, "y": 10.0, "speed": 36.0}, 20.0)
         c.grpc.spawn_vehicle.assert_not_called()
+
+    def test_spawn_empty_link_waits_for_native_metadata_without_respawn(self):
+        c, a = self.make_context()
+        c.grpc.spawn_vehicle.side_effect = None
+        a.get_actor_state.return_value = state(40, speed=4, link="")
+        prepare_tunnel_vehicle(c)
+        h = c.tunnel_vehicle_handler
+        h.arm(c)
+        self.start(c, h)
+        self.assertFalse(c.tunnel_vehicle_result["spawn_verified"])
+        self.assertFalse(c.tunnel_vehicle_result["startup_motion_verified"])
+        self.assertTrue(c.tunnel_vehicle_result["actual_spawn"]["link_pending"])
+        self.tick(c, a, h, .5, 42, 1, link="")
+        self.assertFalse(c.tunnel_vehicle_result["spawn_verified"])
+        self.tick(c, a, h, 1, 44, 2)
+        self.assertTrue(c.tunnel_vehicle_result["spawn_verified"])
+        self.assertTrue(c.tunnel_vehicle_result["startup_motion_verified"])
+        self.assertEqual(c.grpc.spawn_vehicle.call_count, 1)
+        a.destroy.assert_not_called()
+
+    def test_missing_spawn_link_has_bounded_wait_and_still_checks_geometry(self):
+        for bad in ("timeout", "position", "heading"):
+            with self.subTest(bad=bad):
+                c, a = self.make_context()
+                c.grpc.spawn_vehicle.side_effect = None
+                a.get_actor_state.return_value = state(
+                    45 if bad == "position" else 40, link="",
+                    yaw=180 if bad == "heading" else 0)
+                prepare_tunnel_vehicle(c)
+                h = c.tunnel_vehicle_handler
+                h.arm(c)
+                if bad == "timeout":
+                    self.start(c, h)
+                    with self.assertRaisesRegex(RuntimeError, "reported link unavailable"):
+                        self.tick(c, a, h, 2.1, 40, 2, link="")
+                else:
+                    with self.assertRaises(RuntimeError):
+                        self.start(c, h)
+                self.assertFalse(c.tunnel_vehicle_result["spawn_verified"])
+                self.assertFalse(c.tunnel_vehicle_result["completed"])
+                a.destroy.assert_called_once()
+
+    def test_random_vehicle_placeholder_is_excluded_from_tunnel_pool(self):
+        c, _ = self.make_context()
+        c.vehicle_models = lambda: ["Sedan", "RandomVehicle"]
+        c.cfg["tunnel_vehicle_dynamic"]["models"] = []
+        prepare_tunnel_vehicle(c)
+        c.tunnel_vehicle_handler.arm(c)
+        self.assertEqual(c.tunnel_vehicle_plan["model"], "Sedan")
+        self.assertIn("RandomVehicle", c.tunnel_vehicle_result["model_pool"]["excluded"])
 
     def test_spawn_xyz_and_current_link_are_strict(self):
         for bad in (state(45), state(40, link="tail")):

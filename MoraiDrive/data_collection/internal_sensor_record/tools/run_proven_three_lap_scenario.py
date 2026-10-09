@@ -443,7 +443,7 @@ class RawScenario(FullLoopScenario):
         if hasattr(self, 'clock_guard'):
             self.event('ros_clock_ready_before_expert', **self.clock_guard.arm())
         self.event('raw_ready_before_expert')
-        if self.cfg.get('_tunnel_static_collection') and self.sensor_record_coordination is not None:
+        if self.sensor_record_coordination is not None:
             self.event('waiting_for_native_recording_before_expert')
             armed = wait_for_native_capture_armed(self.sensor_record_coordination,self.collector,timeout=65.)
             self.event('native_recording_ready_before_expert',**armed)

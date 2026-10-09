@@ -76,6 +76,11 @@ class TunnelVehicleHandler:
         ):
             if _finite(cfg[key], key) <= 0:
                 raise ValueError(f"{key} must be positive")
+        cfg["spawn_link_timeout_sec"] = _finite(
+            cfg.get("spawn_link_timeout_sec", 2.0), "spawn_link_timeout_sec"
+        )
+        if cfg["spawn_link_timeout_sec"] <= 0:
+            raise ValueError("spawn_link_timeout_sec must be positive")
         if not 0 < _finite(cfg["slow_ego_speed_ratio"], "slow_ego_speed_ratio") < 1:
             raise ValueError("slow_ego_speed_ratio must be between zero and one")
         if not cfg.get("event_sections") or any(
@@ -432,9 +437,20 @@ class TunnelVehicleHandler:
             "completed",
             "failed",
         )
-        if not direct and (not link or link not in plan["route_links"]):
-            self._fail(context, f"Tunnel vehicle left its assigned route: {link}")
+        reported_link = link
         now = self._now(context)
+        if not direct and not link:
+            timeout = context.cfg["tunnel_vehicle_dynamic"]["spawn_link_timeout_sec"]
+            if (result["spawn_verified"]
+                    or now - context.tunnel_vehicle_spawned_at >= timeout
+                    or time.monotonic() - context.tunnel_vehicle_startup_wall_at >= timeout):
+                self._fail(context, "Tunnel vehicle reported link unavailable after spawn")
+            # The first ActorState may precede native route initialization.
+            # Geometry still has to pass the same lane, heading and spawn checks.
+            _, pose = nearest_route_pose(context.map_loader, plan["route_links"], x, y)
+            link = pose["link"]
+        if not direct and link not in plan["route_links"]:
+            self._fail(context, f"Tunnel vehicle left its assigned route: {link}")
         previous = context.tunnel_vehicle_last_sample
         if previous is not None:
             dt = max(0.0, now - previous["time"])
@@ -456,6 +472,8 @@ class TunnelVehicleHandler:
             "raw_velocity_magnitude": raw_speed,
             "state_velocity_unit": velocity_unit,
             "link": link,
+            "reported_link": reported_link,
+            "link_pending": not direct and not reported_link,
             "actor_id": actor_id,
         }
         if previous is not None and now > previous["time"]:
@@ -653,7 +671,7 @@ class TunnelVehicleHandler:
             or sample["link"] != p["link"]
         ):
             self._fail(context, "Tunnel vehicle spawn verification failed")
-        result["spawn_verified"] = True
+        result["spawn_verified"] = not sample["link_pending"]
         print(
             f"[TunnelVehicle] SPAWN actor={sample['actor_id']} link={sample['link']} gap={gap:.1f}m error={error:.2f}m"
         )
@@ -669,7 +687,7 @@ class TunnelVehicleHandler:
         self._phase(
             context,
             "waiting_for_departure" if wait_departure else "starting",
-            "spawn_verified",
+            "spawn_verified" if result["spawn_verified"] else "waiting_for_reported_spawn_link",
         )
         if plan["behavior"] == "vehicle_sudden_brake":
             context.tunnel_vehicle_brake_event = TunnelVehicleBrakeEvent(self, context)
@@ -1049,6 +1067,12 @@ class TunnelVehicleHandler:
             print(
                 f"[TunnelVehicle] {context.tunnel_vehicle_phase} actor={sample['actor_id']} speed={speed:.1f}m/s gap={gap:.1f}m travel={result['travelled_m']:.1f}m"
             )
+        if not result["spawn_verified"]:
+            if sample["link_pending"]:
+                return
+            result["spawn_verified"] = True
+            result["spawn_link_confirmation"] = dict(sample)
+            self._save(context)
         behavior = plan["behavior"]
         if context.tunnel_vehicle_phase == "waiting_for_departure":
             context.tunnel_vehicle_brake_event.wait_for_departure(

@@ -41,7 +41,7 @@ from python_environment import (
 )
 from sensor_record_barrier import (
     prepare_coordination_directory, require_stop_acknowledgement,
-    wait_for_native_quiescence,
+    wait_for_native_quiescence, request_stop_for_finished_scenario,
 )
 from async_capture.scenario_catalog import COLLECTION_SCENARIOS, TUNNEL_STATIC_SCENARIO
 
@@ -105,13 +105,24 @@ def run_logged_stage(command, *, env, log, label, heartbeat_seconds=30):
     return int(process.returncode)
 
 
-def powershell_with_heartbeat(script, *, timeout, label, heartbeat_seconds=30):
+def powershell_with_heartbeat(script, *, timeout, label, heartbeat_seconds=30,
+                              scenario_process=None, coordination=None):
     """Keep the terminal visibly alive while the Windows UI owner blocks."""
     finished = threading.Event()
     started = time.monotonic()
 
     def heartbeat():
-        while not finished.wait(heartbeat_seconds):
+        next_heartbeat = started + heartbeat_seconds
+        while not finished.wait(.5):
+            if scenario_process is not None and coordination is not None:
+                request = request_stop_for_finished_scenario(scenario_process, coordination)
+                if request is not None:
+                    print("[CAPTURE] %s: scenario exited (code=%s); requesting Record OFF; "
+                          "details in supervisor.log" %
+                          (label, request["scenario_exit_code"]), flush=True)
+            if time.monotonic() < next_heartbeat:
+                continue
+            next_heartbeat = time.monotonic() + heartbeat_seconds
             print(
                 "[CAPTURE] %s: %.0fs elapsed; Sensor Record UI가 ON이며 "
                 "상위 센서 감시가 계속 실행 중입니다." %
@@ -532,6 +543,7 @@ def main():
             print('ROS ready; starting bounded automatic Sensor Record',flush=True)
             result=json.loads(powershell_with_heartbeat(
                 script, timeout=a.seconds+10, label=a.name,
+                scenario_process=proc, coordination=coordination,
             ))
             result['coordination_stop_acknowledgement']=(
                 require_stop_acknowledgement(coordination))
