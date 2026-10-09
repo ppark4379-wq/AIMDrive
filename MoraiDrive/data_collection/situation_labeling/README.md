@@ -18,6 +18,14 @@ bash MoraiDrive/data_collection/tools/apply_latest_situation_labels.sh
 
 기존 `situation_labels`가 있으면 설치 journal에 기록된 위치에 백업한다. 이미지·LiDAR·raw·quality·bbox GT를 덮어쓰지 않는다. 중단되면 같은 명령으로 검증된 단계부터 재개한다.
 
+이미 `applied_v3/COMPLETE.json`이 생성되었으면 설치만 재개할 수 있다.
+
+```bash
+bash MoraiDrive/data_collection/tools/apply_latest_situation_labels.sh --install-only
+```
+
+설치 도구는 완료된 패키지의 해시를 확인하고, 원본 센서 파일의 경로·존재·크기를 검사한다. 같은 부모 폴더와 입력 라벨 해시의 중복 검사는 실행 내에서 재사용하며, 설치 전에 변경 여부를 다시 확인한다. `[PREFLIGHT:SEAL]`, `[PREFLIGHT:ROWS]`와 `[INSTALL]`로 현재 단계와 진행률을 표시한다. 시간 추정치는 현재 단계의 처리 속도 기준이며 전체 설치 완료 시점은 아니다.
+
 검증만 하려면:
 
 ```bash

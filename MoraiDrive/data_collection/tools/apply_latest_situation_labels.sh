@@ -3,17 +3,21 @@
 set -euo pipefail
 
 mode="apply"
+install_only=false
 for argument in "$@"; do
   case "$argument" in
     --preflight-only) mode="preflight" ;;
+    --install-only) install_only=true ;;
     --resume) ;; # Both stages always resume verified results safely.
     -h|--help)
       cat <<'USAGE'
-Usage: bash apply_latest_situation_labels.sh [--preflight-only] [--resume]
+Usage: bash apply_latest_situation_labels.sh [--install-only] [--preflight-only] [--resume]
 
 Writes final filter-applied labeled_frames.jsonl files to each native episode's
 situation_labels folder. Existing labels are backed up. Sensor/GT bytes stay intact.
 --preflight-only checks source packages without applying labels.
+--install-only reuses the completed applied package and runs only native installation.
+Combining both flags verifies the applied package and native files without writing.
 An interrupted run can be resumed with the same command.
 
 Optional environment variables:
@@ -41,10 +45,17 @@ materialize=("$python_executable" "$script_directory/materialize_situation_label
   --base-package "$label_base" --visual-profile "$visual_profile"
   --dataset-root "$dataset_root" --output "$applied_root")
 if [[ "$mode" == "preflight" ]]; then
-  "${materialize[@]}" --preflight-only
+  if [[ "$install_only" == true ]]; then
+    "$python_executable" "$script_directory/install_situation_labels.py" \
+      --labels-root "$applied_root" --dataset-root "$dataset_root" --preflight-only --resume
+  else
+    "${materialize[@]}" --preflight-only
+  fi
   exit 0
 fi
 
-"${materialize[@]}" --resume
+if [[ "$install_only" == false ]]; then
+  "${materialize[@]}" --resume
+fi
 "$python_executable" "$script_directory/install_situation_labels.py" \
   --labels-root "$applied_root" --dataset-root "$dataset_root" --resume

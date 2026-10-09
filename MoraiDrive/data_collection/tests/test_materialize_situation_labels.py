@@ -171,8 +171,10 @@ class MaterializeSituationLabelsTests(unittest.TestCase):
                            SITUATION_VISUAL_PROFILE=str(self.profile), SITUATION_APPLIED_ROOT=str(self.output))
         subprocess.check_output(["bash", str(command), "--preflight-only"], env=environment)
         self.assertFalse(self.output.exists())
-        for _ in range(2):
-            subprocess.check_output(["bash", str(command)], env=environment)
+        subprocess.check_output(["bash", str(command)], env=environment)
+        self.base.rename(self.root / "base_no_longer_needed")
+        subprocess.check_output(["bash", str(command), "--install-only", "--preflight-only"], env=environment)
+        subprocess.check_output(["bash", str(command), "--install-only"], env=environment)
         applied = materializer.read_json(self.output / "applied_index.json")
         total = 0
         for record in applied["records"]:

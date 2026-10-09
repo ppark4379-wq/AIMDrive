@@ -13,6 +13,8 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import shutil
+import stat
+import time
 import tempfile
 
 SCHEMA = "situation_applied_labels_v1"
@@ -63,6 +65,98 @@ def child(root, name):
     return path
 
 
+class SafeAssetPaths:
+    """Validate immutable native/source ancestors once, then recheck at handoff.
+
+    Cache only existing directories. A final identity check detects directories
+    replaced after their first use; every file leaf still receives one lstat.
+    Mutable installation paths continue using the uncached child() helper.
+    """
+    def __init__(self, root):
+        self.root = Path(root).expanduser().resolve()
+        self.directories = {}
+        self.leaf_checks = 0
+        self._directory(self.root)
+
+    @staticmethod
+    def directory_identity(info):
+        return (info.st_dev, info.st_ino, info.st_mode)
+
+    def _directory(self, path):
+        if path in self.directories:
+            return
+        info = os.lstat(str(path))
+        require(stat.S_ISDIR(info.st_mode), "Symlink or unsafe ancestor directory: " + str(path))
+        self.directories[path] = self.directory_identity(info)
+
+    def file(self, name):
+        parts = relative(name).parts
+        parent = self.root
+        for part in parts[:-1]:
+            parent = parent / part
+            self._directory(parent)
+        path = parent / parts[-1]
+        info = os.lstat(str(path))
+        self.leaf_checks += 1
+        require(stat.S_ISREG(info.st_mode), "Symlink or nonregular asset/input file: " + str(path))
+        return path, info
+
+    def revalidate(self):
+        for path, expected in self.directories.items():
+            actual = os.lstat(str(path))
+            require(stat.S_ISDIR(actual.st_mode) and self.directory_identity(actual) == expected,
+                    "Validated ancestor directory changed: " + str(path))
+
+
+class InputVerificationCache:
+    """One invocation's sealed-source hashes; mutable native files never enter."""
+    def __init__(self, root):
+        self.paths = SafeAssetPaths(root)
+        self.root = self.paths.root
+        self.hashes = {}
+        self.json_values = {}
+        self.bytes_hashed = 0
+        self.cache_hits = 0
+
+    @staticmethod
+    def identity(info):
+        return (info.st_dev, info.st_ino, info.st_mode, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+    def digest(self, path):
+        path = Path(path)
+        try:
+            name = path.relative_to(self.root).as_posix()
+        except ValueError:
+            raise ValueError("Hash cache is restricted to sealed inputs: " + str(path))
+        path, info = self.paths.file(name)
+        identity = self.identity(info)
+        previous = self.hashes.get(path)
+        if previous is not None:
+            require(previous[0] == identity, "Sealed input changed during verification: " + str(path))
+            self.cache_hits += 1
+            return previous[1]
+        digest = sha256(path)
+        require(self.identity(os.lstat(str(path))) == identity, "Sealed input changed while hashing: " + str(path))
+        self.hashes[path] = (identity, digest)
+        self.bytes_hashed += info.st_size
+        return digest
+
+    def json(self, path):
+        path = Path(path)
+        self.digest(path)
+        if path not in self.json_values:
+            value = read_json(path)
+            require(self.identity(os.lstat(str(path))) == self.hashes[path][0],
+                    "Sealed metadata changed while reading: " + str(path))
+            self.json_values[path] = value
+        return self.json_values[path]
+
+    def revalidate(self):
+        self.paths.revalidate()
+        for path, (expected, _) in self.hashes.items():
+            require(self.identity(os.lstat(str(path))) == expected, "Sealed input changed during verification: " + str(path))
+
+
 def atomic_json(path, value):
     path = Path(path)
     with tempfile.NamedTemporaryFile(dir=path.parent, prefix="." + path.name, delete=False) as stream:
@@ -90,20 +184,30 @@ def sync_directory(path):
         pass
 
 
-def verify_seal(folder):
-    seal = read_json(child(folder, "COMPLETE.json"))
+def verify_seal(folder, cache=None, progress=False):
+    seal_path = child(folder, "COMPLETE.json")
+    seal = cache.json(seal_path) if cache is not None else read_json(seal_path)
     files = seal.get("files")
     require(isinstance(files, dict) and bool(files), "Missing file seal: " + str(folder))
-    for name, expected in files.items():
+    started = time.monotonic()
+    for number, (name, expected) in enumerate(files.items(), 1):
         require(isinstance(expected, str) and len(expected) == 64 and all(c in "0123456789abcdef" for c in expected),
                 "Invalid file hash: " + str(name))
         path = child(folder, name)
-        require(path.is_file() and sha256(path) == expected, "Sealed file changed: " + str(path))
+        if cache is None:
+            require(path.is_file(), "Sealed file missing or nonregular: " + str(path))
+        actual = cache.digest(path) if cache is not None else sha256(path)
+        require(actual == expected, "Sealed file changed: " + str(path))
+        if progress and (number % 100 == 0 or number == len(files)):
+            elapsed = time.monotonic() - started
+            eta = elapsed * (len(files) - number) / number
+            print("[PREFLIGHT:SEAL] {}/{} files, {:.2f} GiB hashed, elapsed {:.0f}s, ETA {:.0f}s".format(
+                  number, len(files), cache.bytes_hashed / (1024 ** 3) if cache is not None else 0, elapsed, eta), flush=True)
     return seal
 
 
-def file_pins(folder):
-    return {name: sha256(child(folder, name)) for name in FILES}
+def file_pins(folder, cache=None):
+    return {name: cache.digest(child(folder, name)) if cache is not None else sha256(child(folder, name)) for name in FILES}
 
 
 def matches_installed(folder, pins):
@@ -144,7 +248,9 @@ def assets_without_paths(assets):
             for role, ref in assets.items()}
 
 
-def validate_rows(folder, record, dataset, old_folder):
+def validate_rows(folder, record, dataset, old_folder, asset_paths=None):
+    own_paths = asset_paths is None
+    asset_paths = SafeAssetPaths(dataset) if own_paths else asset_paths
     episode = child(dataset, record["native_episode_relative"])
     require(episode.is_dir() and child(episode, "episode.json").is_file()
             and child(episode, "raw").is_dir(), "Native episode metadata/raw missing: " + str(episode))
@@ -192,8 +298,8 @@ def validate_rows(folder, record, dataset, old_folder):
             if asset is None:
                 continue
             name = str(PurePosixPath(native_root) / relative(asset["relative_path"]))
-            path = child(dataset, name)
-            require(asset.get("path") == str(path) and path.is_file() and path.stat().st_size == asset.get("size_bytes"),
+            path, info = asset_paths.file(name)
+            require(asset.get("path") == str(path) and info.st_size == asset.get("size_bytes"),
                     "Native asset missing/size/path differs: " + str(path))
             mapped[role] = dict(dataset_relative_path=name, sha256=asset["sha256"], size_bytes=asset["size_bytes"])
         require(portable.get("assets") == mapped, "Portable asset identity differs")
@@ -201,25 +307,34 @@ def validate_rows(folder, record, dataset, old_folder):
                       frame_valid=int(row.get("frame_valid") is True))
     for name, value in counts.items():
         require(record.get("counts", {}).get(name) == value, "Applied episode count differs: " + name)
+    if own_paths:
+        asset_paths.revalidate()
     return counts
 
 
-def load_package(labels_root, dataset_root):
+def load_package(labels_root, dataset_root, cache=None, progress=False):
     labels, dataset = (Path(p).expanduser().resolve() for p in (labels_root, dataset_root))
     require(labels.is_dir() and dataset.is_dir(), "Labels/dataset root missing")
     require(not inside(labels, dataset) and not inside(dataset, labels), "Labels package overlaps native dataset")
-    seal = verify_seal(labels)
+    cache = InputVerificationCache(labels) if cache is None else cache
+    require(cache.root == labels, "Verification cache belongs to a different source root")
+    if progress:
+        print("[PREFLIGHT:SEAL] Verifying sealed inputs; native labels have not been changed", flush=True)
+    seal = verify_seal(labels, cache, progress)
     require(seal.get("schema") == SCHEMA + "_complete" and seal.get("status") == "COMPLETE", "Incomplete applied package")
-    index = read_json(child(labels, "applied_index.json"))
+    index = cache.json(child(labels, "applied_index.json"))
     require(index.get("schema") == SCHEMA + "_index" and index.get("status") == "COMPLETE", "Invalid applied index")
     require(index.get("input_identity") == seal.get("input_identity") and
             index["input_identity"].get("dataset_root") == str(dataset), "Package dataset/input identity differs")
     records = index.get("records")
     require(isinstance(records, list) and len(records) == index.get("episodes") and bool(records), "Invalid applied episode cohort")
     seen, plans = set(), []
-    generation = sha256(labels / "COMPLETE.json")
+    generation = cache.digest(labels / "COMPLETE.json")
     journal_root = child(dataset, ".situation_label_installs/" + generation)
-    for record in records:
+    index_started = time.monotonic()
+    if progress:
+        print("[PREFLIGHT:INDEX] Checking {} pinned episodes using verified source hashes".format(len(records)), flush=True)
+    for number, record in enumerate(records, 1):
         key, native = record["episode_key"], record["native_episode_relative"]
         relative(key)
         require(native not in seen, "Duplicate native episode mapping")
@@ -231,15 +346,15 @@ def load_package(labels_root, dataset_root):
                 and record["manifest_relative"] == expected + "/manifest.json"
                 and record["complete_relative"] == expected + "/COMPLETE.json", "Episode output mapping differs")
         source = child(labels, expected)
-        episode_seal = verify_seal(source)
+        episode_seal = verify_seal(source, cache)
         require(episode_seal.get("schema") == SCHEMA + "_episode_complete" and episode_seal.get("status") == "COMPLETE"
                 and set(episode_seal["files"]) == {"labeled_frames.jsonl", "manifest.json"}, "Invalid applied episode seal")
-        pins = file_pins(source)
+        pins = file_pins(source, cache)
         for name, field in (("labeled_frames.jsonl", "labels_sha256"), ("manifest.json", "manifest_sha256"), ("COMPLETE.json", "complete_sha256")):
             require(seal["files"].get(expected + "/" + name) == pins[name], "Unpinned episode output file")
             if field in record:
                 require(record[field] == pins[name], "Applied index hash differs: " + field)
-        manifest = read_json(source / "manifest.json")
+        manifest = cache.json(source / "manifest.json")
         require(manifest.get("schema") == SCHEMA and manifest.get("episode_key") == key
                 and manifest.get("category") == record["category"] and manifest.get("counts") == record["counts"]
                 and manifest.get("native_episode_relative") == native
@@ -250,6 +365,11 @@ def load_package(labels_root, dataset_root):
         plans.append(dict(record=record, source=source, episode=episode, target=child(episode, "situation_labels"), pins=pins,
                           backup=child(episode, ".situation_label_backups/" + generation + "/previous"),
                           stage=child(episode, ".situation_label_stage_" + generation), journal=child(journal_root, slot + ".json")))
+        if progress and (number % 25 == 0 or number == len(records)):
+            elapsed = time.monotonic() - index_started
+            print("[PREFLIGHT:INDEX] {}/{} episodes, elapsed {:.0f}s, ETA {:.0f}s".format(
+                  number, len(records), elapsed, elapsed * (len(records) - number) / number), flush=True)
+    cache.revalidate()
     return labels, dataset, index, generation, journal_root, plans
 
 
@@ -354,9 +474,12 @@ def install_episode(plan, generation, state):
 
 
 def install(labels_root, dataset_root, preflight_only=False, resume=False):
-    labels, dataset, index, generation, journal_root, plans = load_package(labels_root, dataset_root)
+    started = time.monotonic()
+    cache = InputVerificationCache(labels_root)
+    labels, dataset, index, generation, journal_root, plans = load_package(labels_root, dataset_root, cache, progress=True)
+    asset_paths = SafeAssetPaths(dataset)
     identity = dict(schema=INSTALL_SCHEMA, generation=generation, labels_root=str(labels), dataset_root=str(dataset),
-                    applied_index_sha256=sha256(labels / "applied_index.json"))
+                    applied_index_sha256=cache.digest(labels / "applied_index.json"))
     existing = journal_root.exists()
     if existing:
         if child(journal_root, "COMPLETE.json").exists():
@@ -364,7 +487,10 @@ def install(labels_root, dataset_root, preflight_only=False, resume=False):
         require(resume or preflight_only, "Installation journal exists; use --resume")
         require(read_json(child(journal_root, "identity.json")) == identity, "Resume installation identity differs")
     states, counts = [], Counter()
-    for plan in plans:
+    row_started = time.monotonic()
+    print("[PREFLIGHT:ROWS] Checking {} episodes, {} rows and native asset metadata".format(
+          len(plans), index.get("counts", {}).get("rows", "?")), flush=True)
+    for number, plan in enumerate(plans, 1):
         plan["native_identity"] = {name: sha256(child(plan["episode"], name)) for name in
                                    ("episode.json", "raw/raw_manifest.json") if child(plan["episode"], name).is_file()}
         require("episode.json" in plan["native_identity"], "Native episode metadata missing")
@@ -385,11 +511,21 @@ def install(labels_root, dataset_root, preflight_only=False, resume=False):
         elif old is not None:
             original_pins(old)
         plan["original_pins"] = state["original_pins"] if state is not None else original_pins(old) if old is not None else None
-        counts.update(validate_rows(plan["source"], plan["record"], dataset, old))
+        counts.update(validate_rows(plan["source"], plan["record"], dataset, old, asset_paths))
+        if number % 10 == 0 or number == len(plans):
+            elapsed = time.monotonic() - row_started
+            expected_rows = index.get("counts", {}).get("rows", counts["rows"])
+            eta = elapsed * max(0, expected_rows - counts["rows"]) / max(1, counts["rows"])
+            print("[PREFLIGHT:ROWS] {}/{} episodes, {} rows, {} assets, elapsed {:.0f}s, ETA {:.0f}s".format(
+                  number, len(plans), counts["rows"], asset_paths.leaf_checks, elapsed, eta), flush=True)
+    asset_paths.revalidate()
+    cache.revalidate()
     for name, value in counts.items():
         require(index.get("counts", {}).get(name) == value, "Applied global count differs: " + name)
     report = dict(schema=INSTALL_SCHEMA + "_report", status="PREFLIGHT_VERIFIED" if preflight_only else "COMPLETE",
                   generation=generation, dataset_root=str(dataset), labels_root=str(labels), episodes=len(plans), **dict(counts),
+                  preflight_elapsed_seconds=round(time.monotonic() - started, 3), assets_checked=asset_paths.leaf_checks,
+                  sealed_input_bytes_hashed=cache.bytes_hashed, sealed_input_hash_cache_hits=cache.cache_hits,
                   native_assets_modified=False, raw_geometry_quality_modified=False,
                   native_asset_verification="Sealed path/hash metadata, safe containment, file existence and size; sensor bytes are not rehashed",
                   backup_policy="Entire prior situation_labels directories preserved in per-episode .situation_label_backups",
