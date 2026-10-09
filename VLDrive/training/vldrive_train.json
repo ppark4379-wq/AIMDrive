@@ -25,7 +25,7 @@
     "refresh_seconds": 2
   },
   "optimizer": {
-    "lr": 1e-5,
+    "lr": 1e-05,
     "weight_decay": 0.06,
     "state_device": "cpu",
     "cpu_fused": true
@@ -65,28 +65,74 @@
   "path_instruction": {
     "feature_cache": "data/processed/joint_v001/navigation_tokens/path_features.json",
     "stage": "joint",
-    "new_module_prefixes": ["language_model.navigation_mlp."]
+    "new_module_prefixes": [
+      "language_model.navigation_mlp."
+    ]
   },
   "situation_instruction": {
     "datasets": [
-      {"root": "data/raw/static_obstacle", "namespace": "static_obstacle"},
-      {"root": "data/raw/dynamic_obstacle", "namespace": "dynamic_obstacle"},
-      {"root": "data/raw/roundabout", "namespace": "roundabout"},
-      {"root": "data/raw/highway", "namespace": "highway"}
+      {
+        "root": "data/raw/static_obstacle",
+        "namespace": "static_obstacle"
+      },
+      {
+        "root": "data/raw/dynamic_obstacle",
+        "namespace": "dynamic_obstacle"
+      },
+      {
+        "root": "data/raw/roundabout",
+        "namespace": "roundabout"
+      },
+      {
+        "root": "data/raw/highway",
+        "namespace": "highway"
+      }
     ]
   },
   "zone_instruction": {
     "datasets": [
-      {"root": "data/raw/static_obstacle", "namespace": "static_obstacle"},
-      {"root": "data/raw/dynamic_obstacle", "namespace": "dynamic_obstacle"},
-      {"root": "data/raw/roundabout", "namespace": "roundabout"},
-      {"root": "data/raw/highway", "namespace": "highway"}
+      {
+        "root": "data/raw/static_obstacle",
+        "namespace": "static_obstacle"
+      },
+      {
+        "root": "data/raw/dynamic_obstacle",
+        "namespace": "dynamic_obstacle"
+      },
+      {
+        "root": "data/raw/roundabout",
+        "namespace": "roundabout"
+      },
+      {
+        "root": "data/raw/highway",
+        "namespace": "highway"
+      }
     ],
-    "new_module_prefixes": ["language_model.zone_embedding."]
+    "new_module_prefixes": [
+      "language_model.zone_embedding."
+    ]
   },
   "navigation_sampling": {
-    "train_variants": [0, 1, 2, 3, 4, 5, 6, 7],
-    "validation_variants": [0, 1, 2, 3, 4, 5, 6, 7]
+    "train_variants": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "validation_variants": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ]
   },
   "checkpoint_slots": 2,
   "dataset": "data/raw",
@@ -116,6 +162,12 @@
         "root": "data/raw/highway",
         "namespace": "highway",
         "format": "sensor_record"
+      },
+      {
+        "root": "data/raw/basic_driving_lap10_20260917_091633",
+        "namespace": "basic_driving",
+        "format": "sensor_record",
+        "frame_source": "sensor_record"
       }
     ],
     "navigation": {
@@ -215,7 +267,13 @@
       "policy": "front_train_purge_rear_validation",
       "train_fraction": 0.8,
       "purge_frames": 25,
-      "future_offsets": [5, 10, 15, 20, 25],
+      "future_offsets": [
+        5,
+        10,
+        15,
+        20,
+        25
+      ],
       "routes": [
         {
           "path": "full_loop_basic_drive_2026_09_09_01_44_15",
@@ -241,7 +299,13 @@
       "policy": "front_train_purge_rear_validation",
       "train_fraction": 0.95,
       "purge_frames": 25,
-      "future_offsets": [5, 10, 15, 20, 25],
+      "future_offsets": [
+        5,
+        10,
+        15,
+        20,
+        25
+      ],
       "routes": [
         {
           "path": "full_loop_basic_drive_2026_09_09_01_44_15",
@@ -263,5 +327,5 @@
       ]
     }
   },
-  "data_version": null
+  "data_version": "data/processed/joint_v001/manifest.json"
 }

@@ -107,21 +107,24 @@ def main():
     parser.add_argument('--prepare-only', action='store_true', help='Prepare joint GP/targets without running the VE')
     parser.add_argument('--resume', action='store_true', help='Continue the unfinished joint version selected by --id')
     parser.add_argument('--reuse-version', help='Reuse compatible prepared episodes/VE records from a completed joint version')
+    parser.add_argument('--extend', action='store_true', help='Add configured episodes to the completed --id, preserving its training path')
     args = parser.parse_args()
     source = read(args.config)
     if source.get('preprocessing', {}).get('mode') == 'ego_joint':
         if str(ROOT.parent) not in sys.path:
             sys.path.insert(0, str(ROOT.parent))
-        if args.resume and not args.id:
-            parser.error('--resume requires --id')
+        if (args.resume or args.extend) and not args.id:
+            parser.error('--resume/--extend requires --id')
+        if args.extend and args.reuse_version:
+            parser.error('--extend already reuses --id; omit --reuse-version')
         if sys.platform.startswith('linux'):
             sys.path.append(str(ROOT / '.runtime/stage2_wsl_deps'))
             sys.path.append(str(ROOT / '.runtime/offline_viz_wsl_deps'))
         from data.src.processing.joint_preprocessing import process as joint_process
         print(joint_process(args.config, args.id, prepare_only=args.prepare_only, resume=args.resume,
-                            reuse_version=args.reuse_version, activate=not args.no_activate))
+                            reuse_version=args.reuse_version, activate=not args.no_activate, extend=args.extend))
     else:
-        if args.prepare_only or args.resume or args.reuse_version:
+        if args.prepare_only or args.resume or args.reuse_version or args.extend:
             parser.error('Incremental/resume flags require preprocessing.mode=ego_joint')
         print(process(args.config, args.id, not args.no_activate))
 

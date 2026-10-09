@@ -3976,5 +3976,26 @@
       "1597f9420269a5d0477c3ae813350383834354b57e83196e1731e971b1e7a850",
       "54d1973dededc6be4f8a6ce2280398f689655c20970ab226afa1fe2bd977b10f"
     ]
+  },
+  "cache_reader_extensions": {
+    "data/src/loaders/situation_dataset.py": {
+      "before": [
+        "b39030ff8f629dfe8f2727e85bf6bf79acedeb1d331ff3660b596795a39ba958"
+      ],
+      "after": [
+        "5af8b303f23ce00b7ef0826a11d3fba2f64d394d4dc13f47ee535d83746e7688",
+        "fa226afb9022b2d87483cf7662698badc9afbd15bc068f15a3f7d288a26eea1d"
+      ]
+    },
+    "data/src/processing/cache_velocity_tokens.py": {
+      "before": [
+        "51d741cddbf82ec81ea81d43eac1de717ed18a3100aaae22b314ee94b814ae86"
+      ],
+      "after": [
+        "48d815b56cbdceed4f9a97bdded8864d4fcba23842ae7dacf3af2a8422bfe735",
+        "9baede228ac0692f7d58b72e3ccb504129597a1e01bedf285338fcb8fda32477",
+        "9c1153f15207e4751a665263425f8905b3180a260a3e3f8fecb2018a99fff36c"
+      ]
+    }
   }
 }

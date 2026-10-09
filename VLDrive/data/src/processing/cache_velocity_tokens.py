@@ -111,6 +111,8 @@ def reuse_situation_records(output, source, previous):
     old = json.loads((previous / 'source.json').read_text())
     for name in ('schema', 'checkpoint_sha256', 'encoder_contract', 'implementations',
                  'inference_precision', 'storage_precision', 'diagnostic_frame_limit'):
+        if name == 'implementations' and compatible_export_sources(old.get(name), source.get(name)):
+            continue
         if old.get(name) != source.get(name):
             raise ValueError('Cannot reuse a different VE recipe: ' + name)
     matching = {name for name, evidence in source['episodes'].items()
@@ -142,6 +144,23 @@ def reuse_situation_records(output, source, previous):
         count += 1
     print(json.dumps(dict(reused_from=str(previous), imported_records=count)), flush=True)
     return count
+
+
+def compatible_export_sources(old, current):
+    """Only exact approved reader additions may reuse previously labeled inputs."""
+    from utils.common.source_compatibility import _manifest
+    if not isinstance(old, dict) or not isinstance(current, dict) or old.keys() != current.keys():
+        return False
+    migrations = _manifest().get('cache_reader_extensions', {})
+    for name, before in old.items():
+        if before == current[name]:
+            continue
+        entry = migrations.get(name, {})
+        accepted = entry.get('before', []) + entry.get('after', [])
+        if (before not in accepted or current[name] not in entry.get('after', [])
+                or sha256(ROOT / name) != current[name]):
+            return False
+    return True
 
 
 def cache_situation(cfg, *, audit_only=False, max_frames_per_episode=None, reuse_cache=None):

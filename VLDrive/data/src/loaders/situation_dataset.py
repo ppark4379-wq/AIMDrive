@@ -59,8 +59,24 @@ def labeled_episodes(specs):
     for spec in specs:
         root = project_path(spec['root'])
         selected = spec.get('include_episodes')
+        source = spec.get('frame_source', 'situation_labels')
+        if source not in ('situation_labels', 'sensor_record'):
+            raise ValueError('Unsupported frame_source: ' + str(source))
+        if source == 'sensor_record':
+            from .unlabeled_sensor_record import sensor_record_episode, episode_directories
+            paths = (episode_directories(root, source) if selected is None
+                     else [child(root, name) for name in selected])
+            if not paths or len(paths) != len(set(paths)):
+                raise ValueError('Missing or duplicate Sensor Record episodes')
+            for path in paths:
+                if path.resolve() in seen:
+                    raise ValueError('Duplicate source episode')
+                seen.add(path.resolve())
+                episodes.append(sensor_record_episode(path, spec, root))
+            continue
         if selected is None:
-            paths = sorted(root.glob('**/situation_labels/labeled_frames.jsonl'))
+            from .unlabeled_sensor_record import episode_directories
+            paths = [folder / 'situation_labels/labeled_frames.jsonl' for folder in episode_directories(root)]
         else:
             if (not isinstance(selected, list) or not selected or
                     len(selected) != len(set(selected))):
@@ -127,7 +143,8 @@ class SituationSensorFrames(Dataset):
         speeds = CausalEgoSpeed.from_episode(episode['path'])
         self.speed_rows, self.reasons = [], Counter()
         for row in episode['rows']:
-            value, reason = speeds.at(row['sensor_time_ns'])
+            value, reason = (speeds.at(row['sensor_time_ns']) if row.get('sensor_input_valid', True)
+                             else (None, 'invalid_sensor_bundle'))
             self.speed_rows.append(value)
             if reason:
                 self.reasons[reason] += 1
