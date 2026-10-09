@@ -115,6 +115,8 @@ def discover_sensor_set(launcher, explicit=None, configured=None):
 
 def run_import_check(python, modules, environment):
     command = "import " + ",".join(modules)
+    if "shapely" in modules:
+        command += "; from shapely import union_all, polygons"
     result = subprocess.run(
         [str(python), "-c", command],
         env=environment,
@@ -444,7 +446,7 @@ def main():
             str(Path(config["ros_root"]) / "lib/python3/dist-packages"),
         ]),
     )
-    capture_modules = ("grpc", "google.protobuf", "psutil", "yaml", "numpy", "rospy", "morai_msgs")
+    capture_modules = ("grpc", "google.protobuf", "psutil", "yaml", "numpy", "shapely", "rospy", "morai_msgs")
     capture_ok, capture_error = run_import_check("/usr/bin/python3", capture_modules, environment)
 
     analysis_candidates = []

@@ -15,6 +15,42 @@ spec.loader.exec_module(recovery)
 
 
 class CaptureRecoveryTests(unittest.TestCase):
+    def direct_fixture(self, root):
+        base = root / "sensor_record_auto_v1"
+        campaign = root / "dataset/.collecting/tunnel_vehicle/campaign_03"
+        metadata = campaign / "_campaign"
+        metadata.mkdir(parents=True)
+        (metadata / "campaign_plan.json").write_text(json.dumps({
+            "schema": "morai_sensor_record_campaign_v1",
+            "campaign_id": "campaign_03", "dataset_scenario_folder": "tunnel_vehicle",
+        }))
+        ledger = metadata / "runs.tsv"
+        ledger.write_text("run_name\tstatus\ncampaign_03_lap_002\tstarted\n")
+        return base, campaign, ledger
+
+    def test_direct_staging_uses_exact_campaign_ledger_and_same_storage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base, campaign, ledger = self.direct_fixture(Path(directory))
+            run = campaign / "campaign_03_lap_002"
+            self.assertEqual(recovery.recovery_run_location(run, base), run.resolve())
+            self.assertEqual(list(recovery.campaign_ledgers(base)), [(ledger, campaign)])
+            other_base = Path(directory) / "other/sensor_record_auto_v1"
+            self.assertIsNone(recovery.recovery_run_location(run, other_base))
+            self.assertIsNone(recovery.recovery_run_location(campaign / "_campaign", base))
+            self.assertIsNone(recovery.recovery_run_location(run / "extra", base))
+            (campaign / "_campaign/campaign_plan.json").write_text("{}")
+            self.assertIsNone(recovery.recovery_run_location(run, base))
+
+    def test_direct_orphan_keeps_interruption_identity_and_parent_requirements(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base, campaign, _ = self.direct_fixture(Path(directory))
+            request, row, processes = self.orphan_fixture(campaign)
+            row["run_root"] = str(campaign / row["run"])
+            proof = recovery.orphaned_stop_evidence(row, base, processes)
+            self.assertEqual(proof["reason"], "campaign_interrupted")
+            processes[10]["args"] = ["python3", "active_parent"]
+            self.assertIsNone(recovery.orphaned_stop_evidence(row, base, processes))
+
     def test_both_supported_runtimes_are_recognized(self):
         for name, kind in (
             ("collect_async_raw.py", "raw_recorder"),

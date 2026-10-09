@@ -15,6 +15,23 @@ def prepare_coordination_directory(coordination, episode):
     return coordination
 
 
+def request_stop_for_finished_scenario(process, coordination):
+    """Notify the UI owner even if the scenario exited before Record was armed."""
+    exit_code = process.poll()
+    if exit_code is None:
+        return None
+    path = Path(coordination) / "stop.request"
+    if path.exists():
+        return None
+    request = dict(reason="scenario_process_exited", scenario_exit_code=exit_code,
+                   request_monotonic_ns=time.monotonic_ns(), training_visible=False)
+    # The UI owner only checks existence. Publish the complete request atomically.
+    temporary = path.with_name("stop.request.supervisor.tmp")
+    temporary.write_text(json.dumps(request), encoding="utf-8")
+    temporary.replace(path)
+    return request
+
+
 def require_stop_acknowledgement(coordination):
     path = Path(coordination) / "recording_stopped.json"
     if not path.is_file():

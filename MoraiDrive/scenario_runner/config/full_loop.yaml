@@ -507,6 +507,9 @@ scenarios:
       # The surround-vehicle registry also includes drones/aerial models.
       # Case-insensitive glob patterns apply before random or fixed model selection.
       excluded_model_patterns:
+        # Registry placeholder rejected by live SpawnVehicle; choose concrete models.
+        - "RandomVehicle"
+        - "SE_CT797F_2009"
         - "AR_DJ*"
         - "*drone*"
         - "*quadcopter*"
@@ -544,6 +547,8 @@ scenarios:
       pass_clearance_m: 15.0
       spawn_position_tolerance_m: 3.0
       lane_position_tolerance_m: 1.5
+      # Await native link metadata while still checking actual spawn/lane geometry.
+      spawn_link_timeout_sec: 2.0
       minimum_observed_travel_m: 5.0
       max_run_sec: 180.0
       maximum_step_speed_mps: 40.0

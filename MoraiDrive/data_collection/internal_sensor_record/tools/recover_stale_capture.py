@@ -77,13 +77,44 @@ def argument_value(args, name):
     return None
 
 
+def recovery_run_location(run, base):
+    """Accept legacy runs or a direct staging run owned by its campaign plan."""
+    base, run = Path(base).resolve(), Path(run).resolve()
+    if run.parent == base:
+        return run
+    if base.name != "sensor_record_auto_v1":
+        return None
+    staging = base.parent / "dataset" / ".collecting"
+    try:
+        parts = run.relative_to(staging).parts
+        if len(parts) != 3 or run.name == "_campaign":
+            return None
+        plan = json.loads((run.parent / "_campaign/campaign_plan.json").read_text())
+        if (plan.get("schema") != "morai_sensor_record_campaign_v1"
+                or plan.get("campaign_id") != parts[1]
+                or plan.get("dataset_scenario_folder") != parts[0]):
+            return None
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+    return run
+
+
+def campaign_ledgers(base):
+    base = Path(base).resolve()
+    for ledger in (base / "campaigns").glob("*/runs.tsv"):
+        yield ledger, base
+    if base.name == "sensor_record_auto_v1":
+        for ledger in (base.parent / "dataset/.collecting").glob("*/*/_campaign/runs.tsv"):
+            yield ledger, ledger.parent.parent
+
+
 def orphaned_stop_evidence(row, base, processes):
     """A started ledger alone never authorizes stopping a recorder."""
     if (row.get("status") != "started" or row.get("kind") != "raw_recorder"
             or not row.get("safe_code_identity") or not row.get("run")):
         return None
-    run = Path(base).resolve() / row["run"]
-    if run.parent != Path(base).resolve():
+    run = recovery_run_location(row.get("run_root", Path(base) / row["run"]), base)
+    if run is None or run.name != row["run"]:
         return None
     child = processes.get(row["pid"])
     if not child or child["identity"] != row.get("process_identity"):
@@ -185,12 +216,14 @@ def main():
 
     terminal = {}
     ledger_paths = {}
-    for ledger in (base / "campaigns").glob("*/runs.tsv"):
+    for ledger, run_parent in campaign_ledgers(base):
         try:
             with ledger.open(newline="", encoding="utf-8") as stream:
                 for row in csv.DictReader(stream, delimiter="\t"):
-                    terminal[row["run_name"]] = row["status"]
-                    ledger_paths[row["run_name"]] = ledger
+                    run = recovery_run_location(run_parent / row["run_name"], base)
+                    if run is not None:
+                        terminal[str(run)] = row["status"]
+                        ledger_paths[str(run)] = ledger
         except (OSError, KeyError):
             continue
 
@@ -258,17 +291,17 @@ def main():
                 continue
             run = output.parent.parent
             kind = "raw_recorder"
-        if run.parent != base:
+        if recovery_run_location(run, base) is None:
             candidates.append({"pid": int(proc.name), "kind": kind,
                                "held_locks": sorted(held_locks), "args": args[:8],
                                "script": str(executable), "run": run.name,
                                "output": str(output), "status": "different_storage_root",
                                "safe_code_identity": same_code})
             continue
-        status = terminal.get(run.name)
+        status = terminal.get(str(run))
         candidates.append({"pid": int(proc.name), "kind": kind,
                            "run": run.name, "output": str(output), "status": status})
-        candidates[-1].update(held_locks=sorted(held_locks),
+        candidates[-1].update(held_locks=sorted(held_locks), run_root=str(run),
                               script=str(executable), safe_code_identity=same_code)
 
     for row in candidates:
@@ -279,7 +312,7 @@ def main():
         if proof:
             row["orphaned_stop_evidence"] = proof
     stale, active = partition_candidates(candidates)
-    if active or not stale or len({row["run"] for row in stale}) != 1:
+    if active or not stale or len({row["run_root"] for row in stale}) != 1:
         print("[FAIL] 다른 수집 프로세스가 capture lock을 사용 중입니다.", file=sys.stderr)
         for row in candidates:
             print("       PID=%s kind=%s run=%s status=%s script=%s" % (
@@ -341,7 +374,7 @@ def main():
 
     ledger_updated = False
     if any(row.get("orphaned_stop_evidence") for row in stale):
-        ledger_updated = append_recovered_interruption(ledger_paths[run_name], run_name)
+        ledger_updated = append_recovered_interruption(ledger_paths[stale[0]["run_root"]], run_name)
     report = {"schema": "morai_stale_capture_recovery_v1", "run": run_name,
               "processes": stale, "interruption_appended_to_ledger": ledger_updated,
               "sensor_record_stop": stop_result,
