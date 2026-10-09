@@ -416,13 +416,14 @@ def test_training_local_sampling_offset_keeps_global_update_and_cosine_lr(tmp_pa
               sampling_step_offset=6, seed=17, device='cpu', log_path=tmp_path/'invalid.jsonl')
 
 
-def test_minibatch_covers_tail_and_resume(tmp_path):
+@pytest.mark.parametrize('schedule', [{}, dict(warmup_epochs=1, warmup_lr=.001, min_lr=.001)])
+def test_minibatch_covers_tail_and_resume(tmp_path, schedule):
     seed_all(19)
     model = _Model()
     optimizer = make_optimizer(model, lr=0.01)
     data = [{'model_inputs': {'x': torch.tensor([i * .1, -.1])}} for i in range(5)]
     options = dict(schedule_updates=6, seed=19, device='cpu', lr=.01,
-                   batch_size=2, telemetry_enabled=False)
+                   batch_size=2, telemetry_enabled=False, **schedule)
     epochs = []
     train(model, optimizer, data, list(range(5)), start_update=0, updates=2,
           log_path=tmp_path/'first.jsonl', **options)
@@ -440,3 +441,28 @@ def test_minibatch_covers_tail_and_resume(tmp_path):
     for epoch in (1,2):
         assert sorted(i for x in rows if x['epoch']==epoch for i in x['batch_indices']) == list(range(5))
     assert epochs == [(0,3),(1,6)]
+    if schedule:
+        assert [row['lr'] for row in rows] == pytest.approx([.001, .004, .007, .01, .00775, .00325])
+
+
+def test_warmup_cosine_boundaries_and_group_scaling():
+    model = _TransferModel()
+    optimizer = make_optimizer(model, lr=1e-5, lr_multipliers={'connector.ccdp.': 10})
+    options = dict(lr=1e-5, schedule_updates=30 * 100, warmup_updates=100,
+                   warmup_lr=1e-6, min_lr=1e-6)
+    for step, expected in ((0, 1e-6), (50, 5.5e-6), (100, 1e-5),
+                           (1550, 5.5e-6), (3000, 1e-6)):
+        actual = set_cosine_learning_rate(optimizer, step=step, **options)
+        assert actual == pytest.approx(expected)
+        assert [g['lr'] for g in optimizer.param_groups] == pytest.approx([expected, expected * 10])
+
+
+@pytest.mark.parametrize('invalid', [dict(warmup_updates=10), dict(warmup_updates=-1),
+    dict(warmup_updates=.5), dict(warmup_lr=.02), dict(min_lr=.02), dict(min_lr=-.001),
+    dict(lr=float('nan')), dict(lr=0)])
+def test_warmup_cosine_rejects_invalid_schedule(invalid):
+    from training.common.optimizers import cosine_learning_rate
+    options = dict(lr=.01, step=0, schedule_updates=10)
+    options.update(invalid)
+    with pytest.raises(ValueError):
+        cosine_learning_rate(**options)

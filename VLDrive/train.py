@@ -330,7 +330,8 @@ def run_vldrive(args):
                 log_path=output / 'training.jsonl', lr=settings.get('optimizer', {}).get('lr', 1e-5),
                 on_update=periodic, on_epoch=end_epoch, batch_size=batch_size,
                 telemetry_enabled=settings.get('logging', {}).get('telemetry_enabled', True),
-                gradient_log_interval=settings.get('logging', {}).get('gradient_interval', 100))
+                gradient_log_interval=settings.get('logging', {}).get('gradient_interval', 100),
+                **settings.get('lr_schedule', {}))
             report['after'] = {k: evaluate(model, datasets[k], indices[k], device,
                 save_predictions=output / (k + '_predictions.json')) for k in datasets}
             final_row = dict(epoch=updates // steps_per_epoch, updates=updates,

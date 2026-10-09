@@ -11,7 +11,7 @@
   "frame_sampling_interval": 2,
   "train_window_stride": 5,
   "val_window_stride": 5,
-  "epochs": 500,
+  "epochs": 30,
   "batch_size": 4,
   "warm_start_checkpoint": null,
   "validation_enabled": false,
@@ -327,5 +327,10 @@
       ]
     }
   },
-  "data_version": "data/processed/joint_v001/manifest.json"
+  "data_version": "data/processed/joint_v001/manifest.json",
+  "lr_schedule": {
+    "warmup_epochs": 1,
+    "warmup_lr": 1e-06,
+    "min_lr": 1e-06
+  }
 }

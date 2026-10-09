@@ -26,11 +26,26 @@ def _optimizer_parameter_groups(model, lr, lr_multipliers):
             for name, parameters in selected.items() if parameters]
 
 
-def set_cosine_learning_rate(optimizer, *, lr, step, schedule_updates):
-    """Keep explicit parameter-group multipliers throughout the cosine schedule."""
-    if not 0 <= step <= schedule_updates or schedule_updates < 1:
+def cosine_learning_rate(*, lr, step, schedule_updates, warmup_updates=0,
+                         warmup_lr=0., min_lr=0.):
+    """Global update-based linear warmup followed by cosine decay."""
+    if (any(type(value) is not int for value in (step, schedule_updates, warmup_updates))
+            or not 0 <= step <= schedule_updates or not 0 <= warmup_updates < schedule_updates):
         raise ValueError('Invalid cosine schedule position')
-    current_lr = float(lr) * .5 * (1. + math.cos(math.pi * step / schedule_updates))
+    if (any(not math.isfinite(value) for value in (lr, warmup_lr, min_lr))
+            or lr <= 0 or not 0 <= warmup_lr <= lr or not 0 <= min_lr <= lr):
+        raise ValueError('Invalid learning-rate bounds')
+    if step < warmup_updates:
+        return warmup_lr + (lr - warmup_lr) * step / warmup_updates
+    progress = (step - warmup_updates) / (schedule_updates - warmup_updates)
+    return min_lr + (lr - min_lr) * .5 * (1. + math.cos(math.pi * progress))
+
+
+def set_cosine_learning_rate(optimizer, *, lr, step, schedule_updates, warmup_updates=0,
+                             warmup_lr=0., min_lr=0.):
+    """Keep parameter-group multipliers and legacy no-warmup defaults intact."""
+    current_lr = cosine_learning_rate(lr=lr, step=step, schedule_updates=schedule_updates,
+        warmup_updates=warmup_updates, warmup_lr=warmup_lr, min_lr=min_lr)
     for group in optimizer.param_groups:
         group['lr'] = current_lr * float(group.get('base_lr_mult', 1.))
     return current_lr

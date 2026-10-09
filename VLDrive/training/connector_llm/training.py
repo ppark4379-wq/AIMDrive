@@ -166,7 +166,8 @@ def preflight(model, sample, device):
 
 def train(model, optimizer, dataset, indices, *, start_update, updates, schedule_updates,
           seed, device, log_path, lr=1e-5, on_update=None, on_epoch=None, sampling_step_offset=0,
-          telemetry_enabled=True, gradient_log_interval=100, batch_size=1):
+          telemetry_enabled=True, gradient_log_interval=100, batch_size=1,
+          warmup_epochs=0., warmup_lr=0., min_lr=0.):
     if (not indices or not 0 <= start_update <= updates <= schedule_updates
             or not isinstance(sampling_step_offset, int) or not 0 <= sampling_step_offset <= start_update):
         raise ValueError('Invalid update range or empty training split')
@@ -175,6 +176,13 @@ def train(model, optimizer, dataset, indices, *, start_update, updates, schedule
     if type(batch_size) is not int or batch_size < 1:
         raise ValueError("batch_size must be a positive integer")
     steps_per_epoch = math.ceil(len(indices) / batch_size)
+    if not math.isfinite(warmup_epochs) or warmup_epochs < 0:
+        raise ValueError('warmup_epochs must be finite and nonnegative')
+    schedule = dict(warmup_updates=math.ceil(warmup_epochs * steps_per_epoch),
+                    warmup_lr=warmup_lr, min_lr=min_lr)
+    # Validate before opening the log; resume uses the saved global update.
+    set_cosine_learning_rate(optimizer, lr=lr, step=start_update,
+                             schedule_updates=schedule_updates, **schedule)
     model.train()
     start = time.monotonic()
     with TrainingTelemetry(model, device, enabled=telemetry_enabled,
@@ -191,7 +199,8 @@ def train(model, optimizer, dataset, indices, *, start_update, updates, schedule
             order = torch.randperm(len(indices), generator=torch.Generator().manual_seed(seed + shuffle_epoch)).tolist()
             batch_indices = [indices[i] for i in order[offset * batch_size:(offset + 1) * batch_size]]
             index = batch_indices[0]
-            current_lr = set_cosine_learning_rate(optimizer, lr=lr, step=step, schedule_updates=schedule_updates)
+            current_lr = set_cosine_learning_rate(optimizer, lr=lr, step=step,
+                                                  schedule_updates=schedule_updates, **schedule)
             item = batch_samples([dataset[i] for i in batch_indices], device)
             optimizer.zero_grad(set_to_none=True)
             with autocast(model):

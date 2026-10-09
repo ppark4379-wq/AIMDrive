@@ -23,8 +23,11 @@ class ConfigFilesTest(unittest.TestCase):
         value = load_config(ROOT/'training/vldrive_train.json')
         self.assertNotIn('preprocessing', value)
         self.assertNotIn('vision_encoder_training', value)
-        self.assertEqual(value['epochs'], 500)
+        self.assertEqual(value['epochs'], 30)
         self.assertEqual(value['batch_size'], 4)
+        self.assertIsNone(value['warm_start_checkpoint'])
+        self.assertEqual(value['optimizer']['lr'], 1e-5)
+        self.assertEqual(value['lr_schedule'], dict(warmup_epochs=1, warmup_lr=1e-6, min_lr=1e-6))
 
     def test_standalone_configs_remain_supported(self):
         path = ROOT/'../AIM2026/Inference/vldrive_realtime.json'
