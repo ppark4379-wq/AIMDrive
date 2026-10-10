@@ -2,6 +2,7 @@
 import copy
 import hashlib
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -228,6 +229,106 @@ class InstallSituationLabelsTests(unittest.TestCase):
         self.seal_package()
         with self.assertRaisesRegex(ValueError, "source class fields changed"):
             self.call()
+        self.assertFalse((self.dataset / ".situation_label_installs").exists())
+
+    def test_asset_cache_uses_one_leaf_lstat_and_no_repeated_resolve(self):
+        paths = installer.SafeAssetPaths(self.dataset)
+        first = self.rows[0]["portable"]["assets"]["camera_1"]["dataset_relative_path"]
+        second = self.rows[1]["portable"]["assets"]["camera_1"]["dataset_relative_path"]
+        paths.file(first)
+        with mock.patch.object(installer.os, "lstat", wraps=installer.os.lstat) as lstat_call:
+            with mock.patch.object(Path, "resolve", side_effect=AssertionError("repeated resolve")):
+                path, info = paths.file(second)
+        self.assertEqual(lstat_call.call_count, 1)
+        self.assertEqual(str(path), self.rows[1]["assets"]["camera_1"]["path"])
+        self.assertEqual(info.st_size, len(b"a camera image"))
+        paths.revalidate()
+
+    def test_cached_ancestor_directory_and_symlink_replacements_fail_before_journal(self):
+        for replacement in ("symlink", "directory"):
+            with self.subTest(replacement=replacement):
+                camera = Path(self.rows[0]["assets"]["camera_1"]["path"]).parent
+                original = camera.with_name("CAMERA_1_saved")
+                revalidate = installer.SafeAssetPaths.revalidate
+                changed = [False]
+                def replace_then_revalidate(paths):
+                    if paths.root == self.dataset and not changed[0]:
+                        camera.rename(original)
+                        if replacement == "symlink":
+                            camera.symlink_to(original, target_is_directory=True)
+                        else:
+                            camera.mkdir()
+                            for source in original.iterdir():
+                                (camera / source.name).write_bytes(source.read_bytes())
+                        changed[0] = True
+                    return revalidate(paths)
+                try:
+                    with mock.patch.object(installer.SafeAssetPaths, "revalidate", new=replace_then_revalidate):
+                        with self.assertRaisesRegex(ValueError, "ancestor directory changed"):
+                            self.call(preflight_only=True)
+                    self.assertFalse((self.dataset / ".situation_label_installs").exists())
+                finally:
+                    if camera.is_symlink():
+                        camera.unlink()
+                    elif camera.exists():
+                        for path in camera.iterdir():
+                            path.unlink()
+                        camera.rmdir()
+                    if original.exists():
+                        original.rename(camera)
+
+    def test_initial_ancestor_symlink_and_nonregular_leaf_are_rejected(self):
+        camera = Path(self.rows[0]["assets"]["camera_1"]["path"]).parent
+        original = camera.with_name("original_camera")
+        camera.rename(original)
+        camera.symlink_to(original, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "Symlink.*ancestor"):
+            self.call(preflight_only=True)
+        camera.unlink()
+        original.rename(camera)
+        asset = camera / "0.png"
+        asset.unlink()
+        asset.mkdir()
+        with self.assertRaisesRegex(ValueError, "nonregular"):
+            self.call(preflight_only=True)
+        self.assertFalse((self.dataset / ".situation_label_installs").exists())
+
+    def test_sealed_inputs_hash_once_per_invocation_and_rehash_on_next_call(self):
+        hash_function = installer.sha256
+        for _ in range(2):
+            with mock.patch.object(installer, "sha256", wraps=hash_function) as hashes:
+                self.call(preflight_only=True)
+            for name in installer.FILES:
+                self.assertEqual(sum(Path(call.args[0]) == self.source / name for call in hashes.call_args_list), 1)
+        self.assertFalse((self.dataset / ".situation_label_installs").exists())
+
+    def test_hash_cache_detects_same_size_rewrite_with_restored_mtime(self):
+        path = self.source / "labeled_frames.jsonl"
+        cache = installer.InputVerificationCache(self.labels)
+        cache.digest(path)
+        original = path.stat()
+        content = path.read_bytes()
+        path.write_bytes(content.replace(b"Continue.", b"Changed!.", 1))
+        os.utime(str(path), ns=(original.st_atime_ns, original.st_mtime_ns))
+        self.assertEqual(path.stat().st_size, original.st_size)
+        with self.assertRaisesRegex(ValueError, "Sealed input changed"):
+            cache.digest(path)
+        with self.assertRaisesRegex(ValueError, "Sealed input changed"):
+            cache.revalidate()
+
+    def test_sealed_source_change_at_preflight_handoff_writes_no_journal(self):
+        revalidate = installer.InputVerificationCache.revalidate
+        calls = [0]
+        def mutate_at_handoff(cache):
+            calls[0] += 1
+            if calls[0] == 2:
+                path = self.source / "labeled_frames.jsonl"
+                content = path.read_bytes()
+                path.write_bytes(content.replace(b"Continue.", b"Changed!.", 1))
+            return revalidate(cache)
+        with mock.patch.object(installer.InputVerificationCache, "revalidate", new=mutate_at_handoff):
+            with self.assertRaisesRegex(ValueError, "Sealed input changed"):
+                self.call()
         self.assertFalse((self.dataset / ".situation_label_installs").exists())
 
     def test_resume_binds_native_episode_metadata(self):
