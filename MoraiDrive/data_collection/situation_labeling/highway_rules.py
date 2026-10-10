@@ -1,6 +1,34 @@
 """Highway primary maneuver and current response, with uncertain cases explicit."""
 import math
 
+from .highway_position import body_position
+from .highway_target_selection import select_current_highway_target
+
+
+def lane_dependent_action_reasons(frame, rule):
+    """Check final lane semantics after current alignment, before rendering.
+
+    Early raw CHANGE candidates can become a supported non-lane-specific
+    current observation. Rejecting those early would discard that evidence.
+    This predicate never replaces the final action with another sentence.
+    """
+    if (frame is None or frame.get("zone_id") != "highway"
+            or rule.get("zone_id") != "highway"
+            or frame.get("highway_lane_association_ambiguous") is not True):
+        return []
+    identifier = rule.get("instruction_id")
+    if identifier is not None:
+        dependent = identifier in {
+            "acc_follow", "acc_resume", "change_left", "change_right",
+            "change_left_return", "change_right_return"}
+    else:
+        state = rule.get("instruction_state") or rule.get("behavior_state")
+        label = rule.get("label_candidate")
+        dependent = ((label == "ACC_FOLLOW" and state in ("follow", "resume"))
+                     or (label in ("CHANGE_LEFT", "CHANGE_RIGHT")
+                         and state in ("lane_change", "return_to_source_lane")))
+    return ["current_highway_lane_association_ambiguous"] if dependent else []
+
 
 def _number(value):
     if value is None or isinstance(value, bool):
@@ -96,13 +124,13 @@ def highway_rule(frame, objects, config=None):
         if braking or stopped or decelerating:
             reasons.append("ego_response_cause_unverified")
             return result
-        candidates = [a for a in objects if a.get("kind") == "npc" and
-                      _number(a.get("distance_to_ego_m")) is not None and
-                      0 < a["distance_to_ego_m"] <= 35 and
-                      _number(a.get("forward_m")) is not None and a["forward_m"] > 0]
-        if candidates:
-            actor = min(candidates, key=lambda a:a["distance_to_ego_m"])
-            role, reason = "approaching_vehicle", "approaching_vehicle"
+        actor, role, selection_reasons, selection_receipt = select_current_highway_target(frame, objects)
+        result["evidence"]["current_highway_target_selection"] = selection_receipt
+        if selection_reasons:
+            reasons.extend(selection_reasons)
+            return result
+        if actor is not None:
+            reason = role
             state = "approach_keep"
         elif frame.get("lane_change_completed") is True:
             # The single frame a lane change (or its abort) actually finishes
@@ -121,15 +149,11 @@ def highway_rule(frame, objects, config=None):
         lane_change_direction=direction,
         target_actor_id=actor.get("actor_id") if actor else None,
         target_kind="vehicle" if actor else None,
-        target_position="front" if role == "lead_vehicle" else
-                        frame.get("merging_actor_side") if role == "merging_vehicle" else
-                        "front" if actor else None,
+        target_position=body_position(actor) if actor else None,
         target_distance_m=(frame.get("lead_distance_m") if role == "lead_vehicle" else
                            frame.get("merging_actor_distance_m") if role == "merging_vehicle" else
                            actor.get("distance_to_ego_m") if actor else None),
-        target_position_text="front" if role == "lead_vehicle" else
-                             frame.get("merging_actor_side") if role == "merging_vehicle" else
-                             "front" if actor else None,
+        target_position_text=body_position(actor) if actor else None,
         response_reason=reason)
     if actor:
         result["related_actors"].append({"actor_id": actor.get("actor_id"), "role": role})

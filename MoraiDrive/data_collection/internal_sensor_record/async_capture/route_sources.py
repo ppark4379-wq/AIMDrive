@@ -2,6 +2,8 @@
 
 Hashes are never overwritten. Existing capture content must still match its
 recorded digest (or an LF/CRLF-only representation) before any fallback is used.
+An explicit, capture-hash-verified route snapshot can replace only a changed
+route definition; map geometry and the global path remain strict.
 """
 import hashlib
 import json
@@ -30,7 +32,9 @@ def _archived_route_definition(path, expected):
 
 
 def resolve_route_sources(episode, contract, *, map_root=None, route_definition=None,
-                          route_key=None, scenario_root=None):
+                          route_key=None, scenario_root=None, verified_route_definition=None):
+    if route_definition is not None and verified_route_definition is not None:
+        raise ValueError("route_definition and verified_route_definition are mutually exclusive")
     episode = Path(episode)
     traffic = contract["capture"]["traffic_light_ground_truth"]
     recorded = traffic.get("map_root")
@@ -50,33 +54,49 @@ def resolve_route_sources(episode, contract, *, map_root=None, route_definition=
     expected["global_path"] = metadata.get("global_path_sha256")
     original = _paths(root)
     archived_definition = None
+    verified = None
+    if verified_route_definition is not None:
+        verified = Path(verified_route_definition).resolve()
+        if not expected.get("route_definition"):
+            raise ValueError("Missing capture hash: route_definition")
+        if not verified.is_file():
+            raise ValueError("Verified route snapshot unavailable: " + str(verified))
+        if expected["route_definition"] not in _representations(verified):
+            raise ValueError("Verified route snapshot differs from capture: route_definition")
     # Check ALL available originals before consulting any replacement.
     for name, path in original.items():
         if not expected.get(name):
             raise ValueError("Missing capture hash: " + name)
-        if path.exists() and (not path.is_file() or expected[name] not in _representations(path)):
-            archived = (_archived_route_definition(path, expected[name])
-                        if name == "route_definition" else None)
-            if archived is None:
+        if path.exists():
+            if not path.is_file():
                 raise ValueError("Route input differs from capture: " + name)
-            original[name] = archived
-            archived_definition = archived
-        elif not path.exists() and name == "route_definition":
+            if expected[name] not in _representations(path):
+                if name == "route_definition" and verified is not None:
+                    continue
+                archived = (_archived_route_definition(path, expected[name])
+                            if name == "route_definition" else None)
+                if archived is None:
+                    raise ValueError("Route input differs from capture: " + name)
+                original[name] = archived
+                archived_definition = archived
+        elif name == "route_definition" and verified is None:
             archived = _archived_route_definition(path, expected[name])
             if archived is not None:
                 original[name] = archived
                 archived_definition = archived
     selected_root = root
     selected = dict(original)
-    if route_definition is not None:
-        selected["route_definition"] = Path(route_definition).resolve()
+    selected_definition = (verified if verified is not None else
+                           Path(route_definition).resolve() if route_definition is not None else
+                           archived_definition)
+    if selected_definition is not None:
+        selected["route_definition"] = selected_definition
     relocated = not all(path.is_file() for path in selected.values())
     if relocated:
         scenario = (Path(scenario_root) if scenario_root is not None else
                     Path(__file__).resolve().parents[3]/"scenario_runner")
         selected_root = scenario/"data"/root.name
-        selected = _paths(selected_root,
-                          Path(route_definition).resolve() if route_definition is not None else archived_definition)
+        selected = _paths(selected_root, selected_definition)
     hashes = {}
     equivalence = {}
     for name, path in selected.items():
@@ -86,8 +106,9 @@ def resolve_route_sources(episode, contract, *, map_root=None, route_definition=
             raise ValueError("Route input differs from capture: " + name)
         hashes[name] = digest(path)
         equivalence[name] = hashes[name] != expected[name]
-    resolution = ("verified_relocated_copy" if relocated else "recorded_path")
-    if any(equivalence.values()):
+    resolution = ("explicit_verified_capture_snapshot" if verified is not None else
+                  "verified_relocated_copy" if relocated else "recorded_path")
+    if verified is None and any(equivalence.values()):
         resolution += "_lf_crlf_equivalent"
     if archived_definition is not None and selected["route_definition"] == archived_definition:
         resolution += "_exact_captured_route_archive"
@@ -95,6 +116,19 @@ def resolve_route_sources(episode, contract, *, map_root=None, route_definition=
                       selected_paths={k:str(v) for k,v in selected.items()},
                       recorded_sha256=expected, selected_sha256=hashes,
                       newline_equivalence=equivalence, resolution=resolution)
+    if verified is not None:
+        original_definition = original["route_definition"]
+        present = original_definition.is_file()
+        provenance.update(
+            original_route_definition=dict(
+                path=str(original_definition), exists=present,
+                sha256=digest(original_definition) if present else None,
+                matches_capture=(expected["route_definition"] in _representations(original_definition)
+                                 if present else False)),
+            verified_route_definition=dict(path=str(verified), sha256=hashes["route_definition"],
+                                           newline_equivalent=equivalence["route_definition"]),
+            map_inputs_relocated=relocated,
+        )
     return dict(map_root=selected_root, route_definition=selected["route_definition"],
                 global_path=selected["global_path"], route_key=key, hashes=hashes,
                 paths=selected, resolution=resolution, provenance=provenance,

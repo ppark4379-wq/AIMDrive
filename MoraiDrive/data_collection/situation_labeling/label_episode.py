@@ -5,6 +5,7 @@ not copied. Capture-time raw/quality records must already be complete.
 """
 import argparse
 from collections import Counter
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
@@ -218,11 +219,15 @@ def export_labeled_frames(episode, native_root, features, destination, admission
                 assets[role] = {**meta, "path": str(path)}
             instruction = rule.get("instruction")
             counts["labeled" if instruction else "unlabeled"] += 1
+            for mask in ("action_valid", "observation_valid"):
+                if mask in rule:
+                    counts[mask] += int(rule[mask] is True)
             row = {"episode_path": str(episode), "frame_id": index,
                    "sensor_time_ns": stamp, "assets": assets,
                    "zone": frame.get("zone_id"),
                    "zone_instruction": ZONE_INSTRUCTION.get(frame.get("zone_id"), 0),
                    "instruction": instruction,
+                   "instruction_label_valid": rule.get("action_valid") is True,
                    "labeling": rule,
                    # Persisted features omit these; the admission row is the source.
                    "dataset_build_candidate": admission.get("dataset_build_candidate"),
@@ -252,7 +257,18 @@ def main(argv=None):
     parser.add_argument("--native-root", type=Path,
                         help="sensor file root when the run was moved from its capture storage; "
                              "every referenced file is still checked")
+    parser.add_argument("--verified-route-definition", type=Path,
+                        help="explicit capture-time route snapshot; its bytes must match "
+                             "the recorded hash (LF/CRLF equivalence allowed)")
+    parser.add_argument("--derived-roundabout-topology", type=Path,
+                        help="explicit hash-bound instruction feature topology")
+    parser.add_argument("--existing-evidence-only", action="store_true",
+                        help="fail if any preprocessing stage is missing; never write source evidence")
+    parser.add_argument("--fullpose-gt-timeline-dir", type=Path)
+    parser.add_argument("--fullpose-object-geometry-dir", type=Path)
     args = parser.parse_args(argv)
+    if bool(args.fullpose_gt_timeline_dir) != bool(args.fullpose_object_geometry_dir):
+        raise ValueError("Provide both fullpose GT and geometry directories")
     evidence = evidence_dirs(args.geometry_tag)
     if args.catalog_report is not None and not evidence["generated"]:
         raise ValueError("--catalog-report only applies when generating V2 geometry")
@@ -262,6 +278,9 @@ def main(argv=None):
         args.static_supervisor_log = args.static_supervisor_log.expanduser().resolve()
     episode, run = resolve_episode(args.episode)
     output = (args.output or episode / "situation_labels").expanduser().resolve()
+    if args.existing_evidence_only or args.fullpose_gt_timeline_dir is not None:
+        if output == run or run in output.parents:
+            raise ValueError("Instruction-only outputs must be outside the native run")
     if output.exists():
         raise FileExistsError("Choose a new output directory: " + str(output))
     # Existing collector modules resolve recorded route/native identities and
@@ -278,7 +297,9 @@ def main(argv=None):
     probe_analysis_environment(python, env)
     # Also check dependencies used specifically by labeling before preprocessing.
     subprocess.run([str(python), "-c", "import yaml"], env=env, check=True)
-    sources = resolve_route_sources(episode, read_json(run / "sensor_contract.json"))
+    route_options = ({"verified_route_definition": args.verified_route_definition}
+                     if args.verified_route_definition is not None else {})
+    sources = resolve_route_sources(episode, read_json(run / "sensor_contract.json"), **route_options)
     if args.native_root is not None:
         native_root = args.native_root.expanduser().resolve()
         if not native_root.is_dir():
@@ -305,13 +326,17 @@ def main(argv=None):
     if args.catalog_report is not None and (episode / GEOMETRY).exists():
         raise ValueError("Geometry already exists; omit --catalog-report to reuse its sealed evidence")
     output.mkdir(parents=True, exist_ok=False)
+    from .instruction_quality import generation_contract
+    code_contract = generation_contract()
     report = {"schema": "morai_labeled_episode_v1", "status": "running",
               "episode": str(episode), "native_root": str(native_root),
               "route_provenance": sources["provenance"],
               "static_supervisor_log": str(static_log) if static_log else None,
               "roundabout_supervisor_log": str(roundabout_log) if roundabout_log else None,
               "evidence_dirs": {k: evidence[k] for k in ("geometry", "review", "admission")},
-              "sensor_files_copied": False}
+              "sensor_files_copied": False,
+              "generation_started_utc": datetime.now(timezone.utc).isoformat(),
+              "analysis_python": str(python), "labeling_provenance": code_contract}
     write_json(output / "report.json", report)
     try:
         with (output / "pipeline.log").open("w", encoding="utf-8") as log:
@@ -323,30 +348,70 @@ def main(argv=None):
                 subprocess.run(command, env=env, cwd=REPOSITORY,
                                stdout=log, stderr=subprocess.STDOUT, check=True)
 
-            report["preprocessing"] = run_stages(
-                preprocessing_stages(episode, run, args.catalog_report, evidence), execute)
+            stages = preprocessing_stages(episode, run, args.catalog_report, evidence)
+            if args.existing_evidence_only:
+                missing = [str(folder) for _, folder, _ in stages if not folder.exists()]
+                if missing:
+                    raise ValueError("Source preprocessing is forbidden; missing stages: " + repr(missing))
+            report["preprocessing"] = run_stages(stages, execute)
             verify_admission_inputs(episode, run, evidence)
+            gt_timeline_dir = "gt_timeline_v1"
+            resolution = None
+            if args.fullpose_gt_timeline_dir is not None:
+                from .instruction_source_resolution import derive_fullpose_instruction_admission
+                resolution = derive_fullpose_instruction_admission(
+                    episode, output / "instruction_sources",
+                    baseline_admission_dir=evidence["admission"],
+                    baseline_review_dir=evidence["review"],
+                    baseline_geometry_dir=evidence["geometry"],
+                    gt_timeline_dir=args.fullpose_gt_timeline_dir,
+                    geometry_dir=args.fullpose_object_geometry_dir)
+                gt_timeline_dir = resolution["gt_timeline_dir"]
+                evidence = dict(evidence, geometry=resolution["geometry_dir"],
+                                admission=resolution["admission_dir"], review=resolution["review_dir"])
+                report["instruction_source_resolution"] = resolution
+                report["evidence_dirs"] = {k: str(evidence[k]) for k in ("geometry", "review", "admission")}
+            report["gt_timeline_dir"] = str(gt_timeline_dir)
             features = output / "features"
             print("[LABEL] Generating frame instructions", flush=True)
             command = ["-m", "MoraiDrive.data_collection.situation_labeling.build_labels",
                        "--episode", episode, "--route-definition", sources["route_definition"],
                        "--global-path", sources["global_path"], "--route-key", sources["route_key"],
+                       "--map-root", sources["map_root"],
+                       "--gt-timeline-dir", gt_timeline_dir,
                        "--object-geometry-dir", evidence["geometry"],
                        "--admission-dir", evidence["admission"], "--output", features]
+            if args.derived_roundabout_topology is not None:
+                command += ["--derived-roundabout-topology", args.derived_roundabout_topology.resolve()]
             if static_log is not None:
                 command += ["--static-supervisor-log", static_log]
             if roundabout_log is not None:
                 command += ["--roundabout-supervisor-log", roundabout_log]
             execute(command)
+            if resolution is not None:
+                from .instruction_source_resolution import verify_derived_instruction_sources
+                verify_derived_instruction_sources(output / "instruction_sources")
+        if generation_contract() != code_contract:
+            raise ValueError("Labeling code/catalog changed during generation")
+        instruction_report = read_json(features / "report.json")
+        if instruction_report.get("labeling_provenance") != code_contract:
+            raise ValueError("Feature generator used a different labeling contract")
+        if instruction_report.get("instruction_quality", {}).get("schema") != "situation_instruction_quality_v1":
+            raise ValueError("Missing final instruction quality validation")
+        write_json(features / "COMPLETE.json", {"files": {
+            name: digest(features / name) for name in (
+                "frame_features.jsonl", "object_features.jsonl", "situation_rules.jsonl", "report.json")}})
         destination = output / "labeled_frames.jsonl"
         report["frame_counts"] = export_labeled_frames(episode, native_root, features, destination,
                                                        evidence["admission"])
         report["labeled_frames"] = str(destination)
-        report["instruction_report"] = read_json(features / "report.json")
+        report["instruction_report"] = instruction_report
+        report["generation_completed_utc"] = datetime.now(timezone.utc).isoformat()
         report["status"] = "completed"
         write_json(output / "report.json", report)
-        write_json(output / "COMPLETE.json", {"files": {
-            name: digest(output / name) for name in ("labeled_frames.jsonl", "report.json")}})
+        write_json(output / "COMPLETE.json", {"features_seal_sha256": digest(features / "COMPLETE.json"),
+            "labeling_code_sha256": code_contract["code_sha256"], "files": {
+                name: digest(output / name) for name in ("labeled_frames.jsonl", "report.json")}})
     except Exception as error:
         report.update(status="failed", error=str(error))
         write_json(output / "report.json", report)

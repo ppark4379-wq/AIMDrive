@@ -5,7 +5,10 @@ from MoraiDrive.data_collection.situation_labeling.attach_expert_instructions im
 from MoraiDrive.data_collection.situation_labeling.mapper import (
     attach_rule_instructions, load_label_instruction_map,
 )
-from MoraiDrive.data_collection.situation_labeling.renderer import load_catalog
+from MoraiDrive.data_collection.situation_labeling.renderer import (
+    actor_semantic_class, load_catalog, render_instruction,
+)
+import pytest
 
 
 def rule(zone, state, *, label=None, candidate=None, variables=None, status="matched"):
@@ -103,6 +106,42 @@ def test_dynamic_zone_has_no_expert_label_but_still_maps_rule_state():
     assert attach_rule_instructions([row]) == {"rendered": 1}
     assert row["instruction_id"] == "dynamic_yielding"
     assert row["label"] is None
+
+
+@pytest.mark.parametrize("model,semantic,noun", [
+    ("Woman8", "pedestrian", "a pedestrian"),
+    ("Deer1", "deer", "a deer"),
+    ("Dog1", "dog", "a dog"),
+    ("Dog2", "dog", "a dog"),
+    ("Dog10", "dog", "a dog"),
+    ("Ped_Pet1", "unknown", "an unidentified moving object"),
+])
+def test_dynamic_yield_noun_and_action_describe_same_semantic_target(model, semantic, noun):
+    assert actor_semantic_class("pedestrian", model, identity_verified=True)[0] == semantic
+    row = rule("dynamic_obstacle", "yielding", variables={
+        "target_kind": "pedestrian", "target_model_name": model,
+        "target_semantic_class": semantic, "target_side": "left"})
+    attach_rule_instructions([row])
+    assert row["instruction"] == (
+        f"There is {noun} to the left of the ego vehicle. Yield to {noun}.")
+    assert row["instruction_variables"] == {"position": "to the left of", "object": noun}
+    if semantic != "pedestrian":
+        assert "pedestrian" not in row["instruction"]
+
+
+@pytest.mark.parametrize("model", ["Man101", "Dog1_variant", "Ped_Pet1", "NCAP_EBT", "", None, {}])
+def test_model_semantics_never_guess_from_names_or_api_pedestrian_kind(model):
+    assert actor_semantic_class("pedestrian", model, identity_verified=True)[0] == "unknown"
+    assert actor_semantic_class("pedestrian", "Woman8", identity_verified=False) == (
+        "unknown", "model_identity_unverified")
+
+
+def test_legacy_renderer_without_model_metadata_keeps_text_compatibility_only():
+    text, values, missing = render_instruction(load_catalog(), "dynamic_obstacle", "dynamic_yielding", {
+        "target_kind": "pedestrian", "target_side": "left"})
+    assert text == "There is a pedestrian to the left of the ego vehicle. Yield to a pedestrian."
+    assert missing == []
+    assert values["object"] == "a pedestrian"
 
 
 def test_standalone_postprocess_works_without_expert_log(tmp_path):

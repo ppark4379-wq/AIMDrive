@@ -16,6 +16,11 @@ def apply_reviewed_overrides(rules, episode):
             continue
         if rule.get('zone_id') != 'static_obstacle':
             raise ValueError('Reviewed lap085 frame is outside static zone')
+        if (rule.get('status') != 'matched' or rule.get('observation_valid') is False
+                or rule.get('action_valid') is False or rule.get('unknown_reasons')
+                or str(rule.get('instruction_consistency', '')).startswith('dropped_')):
+            rule.setdefault('evidence', {})['reviewed_override_blocked'] = 'current_evidence_unverified'
+            continue
         evidence = rule.setdefault('evidence', {})
         evidence.setdefault('reviewed_override_previous', dict(
             state=rule.get('instruction_state'), instruction_id=rule.get('instruction_id'),
@@ -23,7 +28,7 @@ def apply_reviewed_overrides(rules, episode):
             instruction=rule.get('instruction') or rule.get('instruction_dropped')))
         evidence['reviewed_override'] = 'lap085_front_camera_last_visible_157_return_from_158'
         rule.update(instruction_state='return_to_path',instruction_id='recover_alignment',
-                    instruction_consistency='consistent',instruction_mapping_status='rendered')
+                    instruction_mapping_status='rendered')
         rule['variables'].pop('avoid_direction', None)
         text, values, missing = render_instruction(catalog,'static_obstacle','recover_alignment',rule['variables'])
         assert not missing

@@ -23,7 +23,25 @@ static_obstacle:
   - {label: follow, state: normal, instruction_id: normal}
   - {label: rejoined, state: return_to_path, instruction_id: rejoined_return_to_path}
   - {label: rejoined, state: normal, instruction_id: rejoined_normal}
+  - {label: null, state: static_signal_stop_plan, instruction_id: static_signal_stop_plan}
+  - {label: null, state: static_stop_plan, instruction_id: static_stop_plan}
+  - {label: null, state: static_prepare_resume_plan, instruction_id: static_prepare_resume_plan}
+  - {label: null, state: static_resume_plan, instruction_id: static_resume_plan}
+  - {label: follow, state: static_signal_stop_plan, instruction_id: follow_signal_stop_plan}
+  - {label: follow, state: static_stop_plan, instruction_id: follow_stop_plan}
+  - {label: follow, state: static_prepare_resume_plan, instruction_id: follow_prepare_resume_plan}
+  - {label: follow, state: static_resume_plan, instruction_id: follow_resume_plan}
 roundabout:
+  - {label: null, state: current_departure_plan, instruction_id: current_departure_plan}
+  - label: null
+    state: current_plan_drive
+    instruction_id: current_plan_drive
+  - label: null
+    state: current_plan_slowdown
+    instruction_id: current_plan_slowdown
+  - label: null
+    state: current_plan_stop
+    instruction_id: current_plan_stop
   - {label: null, state: normal, instruction_id: rule_normal}
   - {label: null, state: approach_entry, instruction_id: rule_approach_entry}
   - {label: null, state: merge, instruction_id: rule_merge}
@@ -67,6 +85,7 @@ highway:
   - {label: CHANGE_RIGHT, state: yielding, instruction_id: change_right_yield}
   - {label: CHANGE_RIGHT, state: return_to_source_lane, instruction_id: change_right_return}
 dynamic_obstacle:
+  - {label: null, state: current_departure_plan, instruction_id: current_departure_plan}
   - {label: null, state: approach, instruction_id: dynamic_approach}
   - {label: null, state: yield_start, instruction_id: dynamic_yield_start}
   - {label: null, state: yielding, instruction_id: dynamic_yielding}

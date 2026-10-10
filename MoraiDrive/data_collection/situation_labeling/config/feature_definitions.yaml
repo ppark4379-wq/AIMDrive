@@ -49,6 +49,17 @@ common:
         index: [integer, null, Matching sensor frame index]
         actor_id: [id, null, Actor identifier from sealed GT]
         kind: [string, null, GT actor class]
+    optional_model_semantics:
+      source: Sealed full gRPC inventory lifecycle model identity and exact reviewed model whitelist
+      evidence: observed
+      fields:
+        instance_key: [string, null, Native actor lifecycle identity; no actor ID reuse fallback]
+        model_name: [string, null, Native GT model name; never reconstructed from API kind]
+        model_identity_verified: [boolean, null, Full inventory and admission certify this lifecycle model identity]
+        model_identity_source: [string, null, Provenance of verified model identity]
+        semantic_class: [string, null, pedestrian/deer/dog/obstacle/vehicle/unknown; separate from API kind]
+        semantic_class_valid: [boolean, null, Exact verified model has reviewed semantic class]
+        semantic_class_reason: [string, null, Unknown or unverified model semantic reason]
     position_and_motion:
       source: GT position/velocity; geometry audit; official route projection
       evidence: derived
@@ -218,9 +229,9 @@ zones:
         source: Consecutive GT Ego motion against source/target MGeo lane centers
         evidence: candidate
         fields:
-          lane_change_active: [boolean, null, Inferred lane transition; not Expert state]
-          lane_change_direction: [string, null, Inferred left/right current direction]
-          lane_change_aborting: [boolean, null, Observed progress reversal]
+          lane_change_active: [boolean, null, Current selected Expert path transition when current plan verified; otherwise observed lane inference]
+          lane_change_direction: [string, null, Current selected path direction when current plan verified; otherwise observed lane inference]
+          lane_change_aborting: [boolean, null, Observed progress reversal; false for a verified selected adjacent-lane path]
       following:
         source: Same-lane GT actors and MGeo forward graph
         evidence: verified_geometry

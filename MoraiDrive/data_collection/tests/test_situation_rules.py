@@ -21,6 +21,40 @@ def actor(kind, identity, distance, **changes):
             "rule_geometry_usable": True, **changes}
 
 
+@pytest.mark.parametrize("model,semantic", [("Woman8", "pedestrian"), ("Deer1", "deer"),
+                                            ("Dog1", "dog"), ("Dog2", "dog"), ("Dog10", "dog")])
+def test_dynamic_rule_preserves_api_geometry_and_distinguishes_semantics(model, semantic):
+    target = actor("pedestrian", 7, 10, model_name=model, model_identity_verified=True,
+                   model_identity_source="sealed_grpc_inventory_lifecycle",
+                   semantic_class=semantic, semantic_class_valid=True,
+                   path_d_m=0.0, actor_width_m=.7, actor_length_m=.7,
+                   v_d_mps=-.5, target_side="left")
+    row = dynamic_obstacle_rule(frame("dynamic_obstacle", dynamic_in_yield_family=True), [target])
+    assert target["kind"] == row["variables"]["target_kind"] == "pedestrian"
+    assert row["instruction_state"] == "yielding"
+    assert row["evidence"]["pedestrian_on_conflict_path"] is True
+    assert row["variables"]["target_semantic_class"] == semantic
+    assert row["variables"]["target_semantic_valid"] is True
+    assert row.get("action_valid") is not False
+    assert row["evidence"]["target_semantics"]["identity_source"] == "sealed_grpc_inventory_lifecycle"
+
+
+@pytest.mark.parametrize("changes", [
+    {}, {"model_name": "Woman8"},
+    {"model_name": "Ped_Pet1", "model_identity_verified": True},
+    {"model_name": "Dog1_new", "model_identity_verified": True},
+    {"model_name": "Dog1", "model_identity_verified": True, "semantic_class": "pedestrian"},
+])
+def test_unknown_dynamic_semantics_mask_supervision_without_changing_collision_rule(changes):
+    target = actor("pedestrian", 7, 10, path_d_m=0.0, actor_width_m=.7,
+                   actor_length_m=.7, v_d_mps=-.5, target_side="left", **changes)
+    row = dynamic_obstacle_rule(frame("dynamic_obstacle", dynamic_in_yield_family=True), [target])
+    assert row["instruction_state"] == "yielding"
+    assert row["evidence"]["pedestrian_on_conflict_path"] is True
+    assert row["variables"]["target_semantic_class"] == "unknown"
+    assert row["action_valid"] is False and row["observation_valid"] is False
+
+
 def test_static_approach_and_return_require_different_current_motion():
     obstacle = actor("obstacle", 1, 10, delta_s_m=10, path_d_m=0.0,
                      actor_width_m=2.0, actor_length_m=2.0)
@@ -69,8 +103,7 @@ def test_static_obstacle_just_behind_stays_unresolved_on_its_own():
     # recovering (returning_to_reference_path False). static_obstacle_rule
     # alone cannot tell what maneuver was actually in progress (a one-sided
     # avoid, a pass_between, ...), so it stays unresolved here -- it is
-    # evaluate_frames' hold-forward step (tested below) that carries the
-    # last resolved instruction across this gap, not a guess made per-frame.
+    # evaluate_frames must keep this unknown rather than carry a stale action.
     behind = actor("obstacle", 1, 4, delta_s_m=-0.08, path_d_m=0.6,
                    actor_width_m=3.2, actor_length_m=0.6)
     row = static_obstacle_rule(frame("static_obstacle",
@@ -101,13 +134,13 @@ def _static_frames_and_objects(specs):
     return frames, objects
 
 
-def test_hold_forward_carries_the_last_resolved_instruction_across_the_gap():
+def test_unconfirmed_return_keeps_unknown_and_does_not_invent_a_held_maneuver():
     # Mirrors the real lap064 sequence that prompted this: an obstacle is
     # being avoided (avoid_continue), then two frames where the rule alone
     # can't resolve anything (the obstacle has left range and Ego's offset
     # hasn't been observed shrinking yet), then recovery is confirmed -- the
-    # two gap frames should keep saying "avoid_continue", not switch to an
-    # unrelated guess or go silent, until recovery is actually observed.
+    # two gap frames must remain unresolved. A previous maneuver cannot
+    # certify the current action or the prior actor after it leaves view.
     specs = [
         (0, {"expert_label": "follow", "avoidance_active": True,
              "returning_to_reference_path": False, "avoid_direction": "right",
@@ -142,12 +175,39 @@ def test_hold_forward_carries_the_last_resolved_instruction_across_the_gap():
     frames, objects = _static_frames_and_objects(specs)
     rows = evaluate_frames(frames, objects)
     assert rows[0]["instruction_state"] == "avoid_continue"
-    assert rows[1]["instruction_state"] == "avoid_continue"
-    assert rows[1]["evidence"]["instruction_held_from_index"] == 0
+    assert rows[1]["instruction_state"] is None
+    assert rows[1]["unknown_reasons"] == ["return_trajectory_unverified"]
+    assert rows[1]["evidence"]["instruction_hold_blocked"]["prior_index"] == 0
     assert rows[1]["label"] == "follow"
-    assert rows[2]["instruction_state"] == "avoid_continue"
-    assert rows[2]["evidence"]["instruction_held_from_index"] == 0
+    assert rows[1]["related_actors"] == []
+    assert "target_actor_ref" not in rows[1]["evidence"]
+    assert "avoid_direction" not in rows[1]["variables"]
+    assert rows[2]["instruction_state"] is None
+    assert "instruction_hold_blocked" not in rows[2]["evidence"]
     assert rows[3]["instruction_state"] == "return_to_path"
+
+
+@pytest.mark.parametrize("changes,object_changes,reason,status", [
+    ({"object_inventory_usable": False}, {}, "object_inventory_unusable", "unknown"),
+    ({"valid": False, "invalid_reasons": ["camera_missing"]}, {}, "camera_missing", "invalid_frame"),
+    ({}, {"rule_geometry_usable": False, "valid": False}, "relevant_obstacle_geometry_unverified", "unknown"),
+])
+def test_prior_static_maneuver_never_erases_current_invalid_evidence(changes, object_changes, reason, status):
+    obstacle = {"kind": "obstacle", "actor_id": 9, "instance_key": "obstacle:9",
+                "valid": True, "rule_geometry_usable": True, "distance_to_ego_m": 3,
+                "delta_s_m": 3, "path_d_m": 1.5, "actor_width_m": .5, "actor_length_m": .5}
+    frames, objects = _static_frames_and_objects([
+        (0, {"expert_label": "follow", "avoidance_active": True, "avoid_direction": "right"}, [obstacle]),
+        (1, {"expert_label": "follow", "avoidance_active": True,
+             "returning_to_reference_path": False, **changes}, [{**obstacle, **object_changes}]),
+    ])
+    rows = evaluate_frames(frames, objects)
+    assert rows[0]["instruction_state"] == "avoid_continue"
+    assert rows[1]["instruction_state"] is None and rows[1]["status"] == status
+    assert reason in rows[1]["unknown_reasons"]
+    assert rows[1]["evidence"]["instruction_hold_blocked"]["current_unknown_reasons"] == rows[1]["unknown_reasons"]
+    assert rows[1]["related_actors"] == [] and rows[1]["variables"] == {}
+    assert "target_actor_ref" not in rows[1]["evidence"]
 
 
 def test_hold_forward_does_not_cross_a_zone_change_or_index_gap():
@@ -176,6 +236,7 @@ def test_hold_forward_does_not_cross_a_zone_change_or_index_gap():
     assert rows[0]["instruction_state"] == "avoid_continue"
     assert rows[1]["instruction_state"] is None
     assert "instruction_held_from_index" not in rows[1]["evidence"]
+    assert "instruction_hold_blocked" not in rows[1]["evidence"]
 
 
 def test_static_gap_candidate_does_not_claim_safe_passage():

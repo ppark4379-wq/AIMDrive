@@ -208,6 +208,99 @@ class RouteSourcesTest(unittest.TestCase):
             resolve_route_sources(self.ep, self.contract,
                                   route_definition=scenario/"config/full_loop_links.yaml")
 
+    def captured_snapshot(self, crlf=False):
+        snapshot = self.root/"capture_snapshot/full_loop_links.yaml"
+        snapshot.parent.mkdir()
+        raw = self.definition.read_bytes()
+        snapshot.write_bytes(raw.replace(b"\n", b"\r\n") if crlf else raw)
+        return snapshot
+
+    def test_explicit_capture_snapshot_can_replace_only_changed_definition(self):
+        snapshot = self.captured_snapshot()
+        self.definition.write_text("new checkout route, unrelated to the captured run")
+        changed_digest = digest(self.definition)
+        sources = resolve_route_sources(self.ep, self.contract, verified_route_definition=snapshot)
+        self.assertEqual(sources["route_definition"], snapshot)
+        self.assertEqual(sources["map_root"], self.map)
+        self.assertEqual(sources["resolution"], "explicit_verified_capture_snapshot")
+        self.assertEqual(sources["hashes"]["route_definition"],
+                         self.contract["capture"]["traffic_light_ground_truth"]["source_sha256"]["route_definition"])
+        provenance = sources["provenance"]
+        self.assertEqual(provenance["original_route_definition"], {
+            "path": str(self.definition), "exists": True, "sha256": changed_digest, "matches_capture": False})
+        self.assertEqual(provenance["verified_route_definition"]["path"], str(snapshot))
+        self.assertEqual(provenance["verified_route_definition"]["sha256"], digest(snapshot))
+        self.assertEqual(digest(self.definition), changed_digest)
+        # The exception is opt-in; it does not weaken the default after use.
+        with self.assertRaisesRegex(ValueError, "route_definition"):
+            self.sources()
+
+    def test_wrong_explicit_snapshot_never_authorizes_definition_change(self):
+        snapshot = self.captured_snapshot()
+        snapshot.write_text("wrong snapshot")
+        self.definition.write_text("changed current route")
+        with self.assertRaisesRegex(ValueError, "Verified route snapshot differs"):
+            resolve_route_sources(self.ep, self.contract, verified_route_definition=snapshot)
+
+    def test_explicit_snapshot_preserves_strict_other_capture_inputs(self):
+        for name in ("link_set.json", "node_set.json", "2026_molit_comp_global_path.txt"):
+            with self.subTest(name=name):
+                snapshot = self.captured_snapshot()
+                self.definition.write_text("changed current definition")
+                path = self.map/name
+                saved = path.read_bytes()
+                path.write_text("changed geometry or global path")
+                with self.assertRaisesRegex(ValueError, name.split(".")[0] if name != "2026_molit_comp_global_path.txt" else "global_path"):
+                    resolve_route_sources(self.ep, self.contract, verified_route_definition=snapshot)
+                path.write_bytes(saved)
+                self.definition.write_bytes(snapshot.read_bytes())
+                snapshot.unlink()
+                snapshot.parent.rmdir()
+
+    def test_explicit_and_ordinary_route_overrides_conflict(self):
+        snapshot = self.captured_snapshot()
+        with self.assertRaisesRegex(ValueError, "mutually exclusive"):
+            resolve_route_sources(self.ep, self.contract, route_definition=snapshot,
+                                  verified_route_definition=snapshot)
+
+    def test_explicit_snapshot_requires_recorded_definition_identity(self):
+        snapshot = self.captured_snapshot()
+        del self.contract["capture"]["traffic_light_ground_truth"]["source_sha256"]["route_definition"]
+        with self.assertRaisesRegex(ValueError, "Missing capture hash: route_definition"):
+            resolve_route_sources(self.ep, self.contract, verified_route_definition=snapshot)
+
+    def test_explicit_lf_crlf_snapshot_records_actual_bytes_and_equivalence(self):
+        self.add_newlines()
+        snapshot = self.captured_snapshot(crlf=True)
+        self.definition.write_text("changed checkout definition")
+        sources = resolve_route_sources(self.ep, self.contract, verified_route_definition=snapshot)
+        self.assertEqual(sources["resolution"], "explicit_verified_capture_snapshot")
+        self.assertTrue(sources["line_endings_equivalence_verified"])
+        self.assertTrue(sources["provenance"]["verified_route_definition"]["newline_equivalent"])
+        self.assertNotEqual(sources["hashes"]["route_definition"],
+                            sources["provenance"]["recorded_sha256"]["route_definition"])
+        verify_route_report(sources, {
+            "route_definition_sha256": sources["provenance"]["recorded_sha256"]["route_definition"],
+            "global_path_sha256": sources["hashes"]["global_path"],
+        })
+
+    def test_explicit_snapshot_retained_when_missing_map_requires_relocation(self):
+        scenario, target = self.replica()
+        snapshot = self.captured_snapshot()
+        self.definition.write_text("changed original route")
+        (self.map/"node_set.json").unlink()
+        sources = resolve_route_sources(self.ep, self.contract, scenario_root=scenario,
+                                        verified_route_definition=snapshot)
+        self.assertEqual(sources["map_root"], target)
+        self.assertEqual(sources["route_definition"], snapshot)
+        self.assertEqual(sources["resolution"], "explicit_verified_capture_snapshot")
+        self.assertTrue(sources["provenance"]["map_inputs_relocated"])
+
+    def test_explicit_missing_snapshot_rejected(self):
+        with self.assertRaisesRegex(ValueError, "Verified route snapshot unavailable"):
+            resolve_route_sources(self.ep, self.contract,
+                                  verified_route_definition=self.root/"absent.yaml")
+
     def test_archive_keeps_bytes_and_raw(self):
         raw = self.ep/"raw"
         raw.mkdir()
