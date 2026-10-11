@@ -1,4 +1,4 @@
-"""Full and competition vehicle status packets."""
+"""Competition Vehicle Status only; full Ego Vehicle Status is rejected."""
 import ctypes
 import math
 from .Common import _Receiver, _Packet
@@ -76,21 +76,17 @@ class VehicleStatusReceiver(_Receiver):
         super().__init__(port, recv_bytes=1024, **kwargs)
 
     def _consume(self, payload):
-        """Accept either the full status or the shorter competition variant."""
-        if len(payload) >= VEHICLE_STATUS_BYTES:
-            packet = VehicleStatusPacket.from_buffer_copy(payload[:VEHICLE_STATUS_BYTES])
-            competition = False
-        elif len(payload) >= COMPETITION_STATUS_BYTES:
-            packet = CompetitionVehicleStatusPacket.from_buffer_copy(
-                payload[:COMPETITION_STATUS_BYTES])
-            competition = True
-        else:
+        if len(payload) != COMPETITION_STATUS_BYTES:
             return None
-        if not packet.header.startswith(b"#"):
+        packet = CompetitionVehicleStatusPacket.from_buffer_copy(payload)
+        if not packet.header.startswith(b"#MoraiInfo$") or packet.tail != b'\r\n':
             return None
-        self.layout_bytes = COMPETITION_STATUS_BYTES if competition else VEHICLE_STATUS_BYTES
+        if (not 0 <= packet.nsec < 1000000000 or packet.sec < 0
+                or not all(math.isfinite(v) for v in (packet.signed_vel, packet.yaw))):
+            return None
+        self.layout_bytes = COMPETITION_STATUS_BYTES
         return {
-            "competition_variant": competition,
+            "competition_variant": True,
             "layout_bytes": self.layout_bytes,
             # UDP signed velocity is km/h along the vehicle's direction.
             # PID/navigation consume m/s, not one velocity-vector component.

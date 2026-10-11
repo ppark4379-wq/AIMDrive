@@ -2,12 +2,25 @@ import ctypes
 import socket
 import threading
 import time
+from collections import deque
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class ReceivedSample:
+    value: object
+    received_at: float
+    sequence: int
+    source_time: object
 
 class _Packet(ctypes.Structure):
     _pack_ = 1
 
 class _Receiver:
-    def __init__(self, port, bind="0.0.0.0", recv_bytes=70000, name=None):
+    def __init__(self, port, bind="0.0.0.0", recv_bytes=70000, name=None, history_size=32):
+        if type(history_size) is not int or history_size < 1:
+            raise ValueError('history_size must be a positive integer')
+        self._history = deque(maxlen=history_size)
         self.port = int(port)
         self.name = name or self.__class__.__name__
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -51,6 +64,16 @@ class _Receiver:
                     self._stamp = time.time()
                     self._monotonic_stamp = time.monotonic()
                     self.samples += 1
+                    self._history.append(ReceivedSample(sample, self._monotonic_stamp,
+                                                        self.samples, self.source_time(sample)))
+
+    def source_time(self, sample):
+        return sample.get('sim_time') if isinstance(sample, dict) else None
+
+    def recent(self):
+        """Bounded immutable receipt records for causal sensor alignment."""
+        with self._lock:
+            return tuple(self._history)
 
     def _consume(self, payload):
         raise NotImplementedError
