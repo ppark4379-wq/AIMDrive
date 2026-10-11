@@ -16,6 +16,10 @@ class CameraReceiver(_Receiver):
         self.torn_images = 0
         super().__init__(port, recv_bytes=CAMERA_FRAGMENT_BYTES + 64, **kwargs)
 
+    def source_time(self, sample):
+        sec, nsec = self._frame_stamp
+        return sec + nsec / 1e9
+
     def _consume(self, payload):
         if len(payload) < CAMERA_PREFIX.size + 2:
             return None

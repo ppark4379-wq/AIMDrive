@@ -1,0 +1,415 @@
+{
+  "status": "selected",
+  "policy": "Whole drives, unique across categories; five static-source and five dynamic-source red-stop/green-departure drives; no model-score filtering.",
+  "traffic_criteria": {
+    "stopped_speed_max_mps": 0.5,
+    "red_stop_min_s": 1.0,
+    "departure_speed_min_mps": 1.0,
+    "departure_after_green_max_s": 3.0,
+    "stopline_max_m": 25.0,
+    "max_unknown_signal_gap_s": 0.5,
+    "same_route_bound_light": true
+  },
+  "episodes": [
+    {
+      "category": "traffic_light",
+      "episode_id": "static_obstacle/static_shapes_100_retry_20260926_112627_lap_003/episode_000",
+      "traffic_event": {
+        "light_id": "C1256W000091",
+        "stop_start_frame": 72,
+        "last_red_frame": 106,
+        "first_green_frame": 108,
+        "departure_frame": 112,
+        "stop_duration_s": 3.4,
+        "red_to_green_observation_gap_s": 0.2,
+        "stopline_distance_m": 12.483484073955537,
+        "departure_speed_mps": 1.1016998886796427,
+        "stop_time_ns": 230881000000,
+        "green_time_ns": 231081000000,
+        "departure_time_ns": 231481000000
+      },
+      "evidence": {
+        "path": "data/raw/static_obstacle/static_shapes_100_retry_20260926_112627_lap_003/episode_000/route_signal_audit_v1/frames.json",
+        "sha256": "c35ce84cf59780450ed36f332867df447ad2d1e30e7377b0632a70550cbce4fc"
+      }
+    },
+    {
+      "category": "traffic_light",
+      "episode_id": "static_obstacle/static_shapes_100_retry_20260926_112627_lap_029/episode_000",
+      "traffic_event": {
+        "light_id": "C1256W000091",
+        "stop_start_frame": 72,
+        "last_red_frame": 107,
+        "first_green_frame": 109,
+        "departure_frame": 113,
+        "stop_duration_s": 3.5,
+        "red_to_green_observation_gap_s": 0.2,
+        "stopline_distance_m": 12.483484073955537,
+        "departure_speed_mps": 1.1121626874200785,
+        "stop_time_ns": 1768581000000,
+        "green_time_ns": 1768781000000,
+        "departure_time_ns": 1769181000000
+      },
+      "evidence": {
+        "path": "data/raw/static_obstacle/static_shapes_100_retry_20260926_112627_lap_029/episode_000/route_signal_audit_v1/frames.json",
+        "sha256": "f0ede45de33002cbd7fe563e5f080c2c775bb1965ab952d0df8c47f41d1608b3"
+      }
+    },
+    {
+      "category": "traffic_light",
+      "episode_id": "static_obstacle/static_shapes_100_retry_20260926_112627_lap_054/episode_000",
+      "traffic_event": {
+        "light_id": "C1256W000091",
+        "stop_start_frame": 72,
+        "last_red_frame": 104,
+        "first_green_frame": 106,
+        "departure_frame": 110,
+        "stop_duration_s": 3.2,
+        "red_to_green_observation_gap_s": 0.2,
+        "stopline_distance_m": 12.483484073955537,
+        "departure_speed_mps": 1.0934210530080284,
+        "stop_time_ns": 3909181000000,
+        "green_time_ns": 3909381000000,
+        "departure_time_ns": 3909781000000
+      },
+      "evidence": {
+        "path": "data/raw/static_obstacle/static_shapes_100_retry_20260926_112627_lap_054/episode_000/route_signal_audit_v1/frames.json",
+        "sha256": "55ddc09f4c5b59c4f9bfe8d3dc61a6adfcb544e1728c7c70fedc47ad18481b9e"
+      }
+    },
+    {
+      "category": "traffic_light",
+      "episode_id": "static_obstacle/static_shapes_100_retry_20260926_112627_lap_077/episode_000",
+      "traffic_event": {
+        "light_id": "C1256W000091",
+        "stop_start_frame": 72,
+        "last_red_frame": 105,
+        "first_green_frame": 107,
+        "departure_frame": 114,
+        "stop_duration_s": 3.3,
+        "red_to_green_observation_gap_s": 0.2,
+        "stopline_distance_m": 12.483484073955537,
+        "departure_speed_mps": 1.1131188469612059,
+        "stop_time_ns": 5633981000000,
+        "green_time_ns": 5634181000000,
+        "departure_time_ns": 5634881000000
+      },
+      "evidence": {
+        "path": "data/raw/static_obstacle/static_shapes_100_retry_20260926_112627_lap_077/episode_000/route_signal_audit_v1/frames.json",
+        "sha256": "cb769286280f4f7c13d6319f65b0941df85fb47a11976df210e2e353b9395482"
+      }
+    },
+    {
+      "category": "traffic_light",
+      "episode_id": "static_obstacle/static_shapes_100_retry_20260926_112627_lap_099/episode_000",
+      "traffic_event": {
+        "light_id": "C1256W000091",
+        "stop_start_frame": 72,
+        "last_red_frame": 105,
+        "first_green_frame": 107,
+        "departure_frame": 114,
+        "stop_duration_s": 3.3,
+        "red_to_green_observation_gap_s": 0.2,
+        "stopline_distance_m": 12.483484073955537,
+        "departure_speed_mps": 1.0743459405007532,
+        "stop_time_ns": 6866881000000,
+        "green_time_ns": 6867081000000,
+        "departure_time_ns": 6867781000000
+      },
+      "evidence": {
+        "path": "data/raw/static_obstacle/static_shapes_100_retry_20260926_112627_lap_099/episode_000/route_signal_audit_v1/frames.json",
+        "sha256": "b58578b31ee8993a0a0178bcc41f56a2cdfea44d6f51769899179f199988c311"
+      }
+    },
+    {
+      "category": "traffic_light",
+      "episode_id": "dynamic_obstacle/dynamic_obstacle_lap100_20260922_231513_lap_015/episode_000",
+      "traffic_event": {
+        "light_id": "C1256W000016",
+        "stop_start_frame": 88,
+        "last_red_frame": 122,
+        "first_green_frame": 124,
+        "departure_frame": 130,
+        "stop_duration_s": 3.4,
+        "red_to_green_observation_gap_s": 0.2,
+        "stopline_distance_m": 12.52185645678503,
+        "departure_speed_mps": 1.093120262893599,
+        "stop_time_ns": 1598341000000,
+        "green_time_ns": 1598541000000,
+        "departure_time_ns": 1599141000000
+      },
+      "evidence": {
+        "path": "data/raw/dynamic_obstacle/dynamic_obstacle_lap100_20260922_231513_lap_015/episode_000/route_signal_audit_v1/frames.json",
+        "sha256": "656ad384633f86991692ef11f8d4d556d2d585cb561c846e3ceea1ec9b9935f7"
+      }
+    },
+    {
+      "category": "traffic_light",
+      "episode_id": "dynamic_obstacle/dynamic_obstacle_lap100_20260922_231513_lap_026/episode_000",
+      "traffic_event": {
+        "light_id": "C1256W000016",
+        "stop_start_frame": 78,
+        "last_red_frame": 112,
+        "first_green_frame": 114,
+        "departure_frame": 120,
+        "stop_duration_s": 3.4,
+        "red_to_green_observation_gap_s": 0.2,
+        "stopline_distance_m": 12.52185645678503,
+        "departure_speed_mps": 1.0426523668882837,
+        "stop_time_ns": 2277941000000,
+        "green_time_ns": 2278141000000,
+        "departure_time_ns": 2278741000000
+      },
+      "evidence": {
+        "path": "data/raw/dynamic_obstacle/dynamic_obstacle_lap100_20260922_231513_lap_026/episode_000/route_signal_audit_v1/frames.json",
+        "sha256": "127832a21cae8fed1d69c50f250af4f412a8d99764545eb5c93993256331d9e3"
+      }
+    },
+    {
+      "category": "traffic_light",
+      "episode_id": "dynamic_obstacle/dynamic_obstacle_lap100_20260922_231513_lap_049/episode_000",
+      "traffic_event": {
+        "light_id": "C1256W000016",
+        "stop_start_frame": 78,
+        "last_red_frame": 112,
+        "first_green_frame": 114,
+        "departure_frame": 120,
+        "stop_duration_s": 3.4,
+        "red_to_green_observation_gap_s": 0.2,
+        "stopline_distance_m": 12.52185645678503,
+        "departure_speed_mps": 1.0865811049861662,
+        "stop_time_ns": 3606641000000,
+        "green_time_ns": 3606841000000,
+        "departure_time_ns": 3607441000000
+      },
+      "evidence": {
+        "path": "data/raw/dynamic_obstacle/dynamic_obstacle_lap100_20260922_231513_lap_049/episode_000/route_signal_audit_v1/frames.json",
+        "sha256": "7ba67f7b606a5c681612890bbd30671cf74372bf76d9ff30a8dea632482af382"
+      }
+    },
+    {
+      "category": "traffic_light",
+      "episode_id": "dynamic_obstacle/dynamic_obstacle_lap100_20260922_231513_lap_087/episode_000",
+      "traffic_event": {
+        "light_id": "C1256W000016",
+        "stop_start_frame": 78,
+        "last_red_frame": 111,
+        "first_green_frame": 113,
+        "departure_frame": 119,
+        "stop_duration_s": 3.3,
+        "red_to_green_observation_gap_s": 0.2,
+        "stopline_distance_m": 12.52185645678503,
+        "departure_speed_mps": 1.1016058333562029,
+        "stop_time_ns": 5801741000000,
+        "green_time_ns": 5801941000000,
+        "departure_time_ns": 5802541000000
+      },
+      "evidence": {
+        "path": "data/raw/dynamic_obstacle/dynamic_obstacle_lap100_20260922_231513_lap_087/episode_000/route_signal_audit_v1/frames.json",
+        "sha256": "795f329cab8e22779f0b7bd9de04d1d3c52ae0e4141c546a9f5494d303fde4b3"
+      }
+    },
+    {
+      "category": "traffic_light",
+      "episode_id": "dynamic_obstacle/dynamic_obstacle_lap100_20260922_231513_lap_099/episode_000",
+      "traffic_event": {
+        "light_id": "C1256W000016",
+        "stop_start_frame": 88,
+        "last_red_frame": 121,
+        "first_green_frame": 123,
+        "departure_frame": 129,
+        "stop_duration_s": 3.3,
+        "red_to_green_observation_gap_s": 0.2,
+        "stopline_distance_m": 12.52185645678503,
+        "departure_speed_mps": 1.022972086787937,
+        "stop_time_ns": 6486341000000,
+        "green_time_ns": 6486541000000,
+        "departure_time_ns": 6487141000000
+      },
+      "evidence": {
+        "path": "data/raw/dynamic_obstacle/dynamic_obstacle_lap100_20260922_231513_lap_099/episode_000/route_signal_audit_v1/frames.json",
+        "sha256": "0e8088118671e219adfac4560a6aadb42fd31de460e8db3fd6b7432a43610270"
+      }
+    },
+    {
+      "category": "static_obstacle",
+      "episode_id": "static_obstacle/static_shapes_100_retry_20260926_112627_lap_001/episode_000"
+    },
+    {
+      "category": "static_obstacle",
+      "episode_id": "static_obstacle/static_shapes_100_retry_20260926_112627_lap_012/episode_000"
+    },
+    {
+      "category": "static_obstacle",
+      "episode_id": "static_obstacle/static_shapes_100_retry_20260926_112627_lap_022/episode_000"
+    },
+    {
+      "category": "static_obstacle",
+      "episode_id": "static_obstacle/static_shapes_100_retry_20260926_112627_lap_033/episode_000"
+    },
+    {
+      "category": "static_obstacle",
+      "episode_id": "static_obstacle/static_shapes_100_retry_20260926_112627_lap_044/episode_000"
+    },
+    {
+      "category": "static_obstacle",
+      "episode_id": "static_obstacle/static_shapes_100_retry_20260926_112627_lap_056/episode_000"
+    },
+    {
+      "category": "static_obstacle",
+      "episode_id": "static_obstacle/static_shapes_100_retry_20260926_112627_lap_067/episode_000"
+    },
+    {
+      "category": "static_obstacle",
+      "episode_id": "static_obstacle/static_shapes_100_retry_20260926_112627_lap_079/episode_000"
+    },
+    {
+      "category": "static_obstacle",
+      "episode_id": "static_obstacle/static_shapes_100_retry_20260926_112627_lap_089/episode_000"
+    },
+    {
+      "category": "static_obstacle",
+      "episode_id": "static_obstacle/static_shapes_100_retry_20260926_112627_lap_100/episode_000"
+    },
+    {
+      "category": "dynamic_obstacle",
+      "episode_id": "dynamic_obstacle/dynamic_obstacle_lap100_20260922_231513_lap_001/episode_000"
+    },
+    {
+      "category": "dynamic_obstacle",
+      "episode_id": "dynamic_obstacle/dynamic_obstacle_lap100_20260922_231513_lap_011/episode_000"
+    },
+    {
+      "category": "dynamic_obstacle",
+      "episode_id": "dynamic_obstacle/dynamic_obstacle_lap100_20260922_231513_lap_023/episode_000"
+    },
+    {
+      "category": "dynamic_obstacle",
+      "episode_id": "dynamic_obstacle/dynamic_obstacle_lap100_20260922_231513_lap_033/episode_000"
+    },
+    {
+      "category": "dynamic_obstacle",
+      "episode_id": "dynamic_obstacle/dynamic_obstacle_lap100_20260922_231513_lap_044/episode_000"
+    },
+    {
+      "category": "dynamic_obstacle",
+      "episode_id": "dynamic_obstacle/dynamic_obstacle_lap100_20260922_231513_lap_055/episode_000"
+    },
+    {
+      "category": "dynamic_obstacle",
+      "episode_id": "dynamic_obstacle/dynamic_obstacle_lap100_20260922_231513_lap_066/episode_000"
+    },
+    {
+      "category": "dynamic_obstacle",
+      "episode_id": "dynamic_obstacle/dynamic_obstacle_lap100_20260922_231513_lap_078/episode_000"
+    },
+    {
+      "category": "dynamic_obstacle",
+      "episode_id": "dynamic_obstacle/dynamic_obstacle_lap100_20260922_231513_lap_090/episode_000"
+    },
+    {
+      "category": "dynamic_obstacle",
+      "episode_id": "dynamic_obstacle/dynamic_obstacle_lap100_20260922_231513_lap_100/episode_000"
+    },
+    {
+      "category": "basic_driving",
+      "episode_id": "basic_driving/basic_driving_lap10_20260917_091633_lap_001/episode_000"
+    },
+    {
+      "category": "basic_driving",
+      "episode_id": "basic_driving/basic_driving_lap10_20260917_091633_lap_002/episode_000"
+    },
+    {
+      "category": "basic_driving",
+      "episode_id": "basic_driving/basic_driving_lap10_20260917_091633_lap_003/episode_000"
+    },
+    {
+      "category": "basic_driving",
+      "episode_id": "basic_driving/basic_driving_lap10_20260917_091633_lap_004/episode_000"
+    },
+    {
+      "category": "basic_driving",
+      "episode_id": "basic_driving/basic_driving_lap10_20260917_091633_lap_005/episode_000"
+    },
+    {
+      "category": "basic_driving",
+      "episode_id": "basic_driving/basic_driving_lap10_20260917_091633_lap_006/episode_000"
+    },
+    {
+      "category": "basic_driving",
+      "episode_id": "basic_driving/basic_driving_lap10_20260917_091633_lap_007/episode_000"
+    },
+    {
+      "category": "basic_driving",
+      "episode_id": "basic_driving/basic_driving_lap10_20260917_091633_lap_008/episode_000"
+    },
+    {
+      "category": "basic_driving",
+      "episode_id": "basic_driving/basic_driving_lap10_20260917_091633_lap_009/episode_000"
+    },
+    {
+      "category": "basic_driving",
+      "episode_id": "basic_driving/basic_driving_lap10_20260917_091633_lap_010/episode_000"
+    },
+    {
+      "category": "roundabout",
+      "episode_id": "roundabout/roundabout_extra20_20260927_215544_lap_001/episode_000"
+    },
+    {
+      "category": "roundabout",
+      "episode_id": "roundabout/roundabout_extra20_20260927_215544_lap_010/episode_000"
+    },
+    {
+      "category": "roundabout",
+      "episode_id": "roundabout/roundabout_extra20_20260927_215544_lap_019/episode_000"
+    },
+    {
+      "category": "roundabout",
+      "episode_id": "roundabout/roundabout_lap60_20260927_160557_lap_004/episode_000"
+    },
+    {
+      "category": "roundabout",
+      "episode_id": "roundabout/roundabout_lap60_20260927_160557_lap_013/episode_000"
+    },
+    {
+      "category": "roundabout",
+      "episode_id": "roundabout/roundabout_lap60_20260927_160557_lap_022/episode_000"
+    },
+    {
+      "category": "roundabout",
+      "episode_id": "roundabout/roundabout_lap60_20260927_160557_lap_031/episode_000"
+    },
+    {
+      "category": "roundabout",
+      "episode_id": "roundabout/roundabout_lap60_20260927_160557_lap_042/episode_000"
+    },
+    {
+      "category": "roundabout",
+      "episode_id": "roundabout/roundabout_lap60_20260927_160557_lap_051/episode_000"
+    },
+    {
+      "category": "roundabout",
+      "episode_id": "roundabout/roundabout_lap60_20260927_160557_lap_060/episode_000"
+    },
+    {
+      "category": "highway",
+      "episode_id": "highway/highway_lap48_resume2_20260928_0314_lap_001/episode_000"
+    },
+    {
+      "category": "highway",
+      "episode_id": "highway/highway_lap48_resume2_20260928_0314_lap_012/episode_000"
+    },
+    {
+      "category": "highway",
+      "episode_id": "highway/highway_lap48_resume2_20260928_0314_lap_024/episode_000"
+    },
+    {
+      "category": "highway",
+      "episode_id": "highway/highway_lap48_resume2_20260928_0314_lap_037/episode_000"
+    },
+    {
+      "category": "highway",
+      "episode_id": "highway/highway_lap48_resume2_20260928_0314_lap_048/episode_000"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "bundle": "data/processed/joint_v001",
+  "selection": "inference/selection.json",
+  "joint_checkpoint": "outputs/logs/vldrive_joint_optimized_20261009_041328/model-best.pt",
+  "situation_checkpoint": "outputs/checkpoints/situation/situation_20261004_212516_989373/best_train.pt",
+  "situation_renderer": "outputs/logs/joint_basic_pipeline_20261008_045825/resume_situation_assets/renderer.py",
+  "device": "cuda",
+  "cpu_threads": 2,
+  "sequence_length": 11,
+  "frame_interval": 2,
+  "situation_sequence_length": 11,
+  "scenario_counts": {
+    "traffic_light": 10,
+    "static_obstacle": 10,
+    "dynamic_obstacle": 10,
+    "basic_driving": 10,
+    "roundabout": 10,
+    "highway": 5
+  }
+}

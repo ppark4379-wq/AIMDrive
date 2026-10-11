@@ -4,6 +4,9 @@ Ego:
   ip:
   vehicle_status_port:
   cmd_port:
+  ctrl_mode: 2
+  cmd_type: 1
+  gear: 4
 
 Weight_Path:
   VE:
@@ -71,3 +74,32 @@ Camera:
     fov: 90
     pos: [-0.14, 0.0, 1.2]
     rot_deg: [0.0, 2.0, 180.0]
+
+# MORAI UDP sign confirmed by the user: positive steering turns left.
+Control:
+  positive_steer: left  # normalized command, not radians
+  max_speed_mps: null  # null retains LMDrive's waypoint-derived target speed
+
+Inference:
+  device: cuda
+  cpu_threads: 2
+  vision_checkpoint: VLDrive/outputs/checkpoints/vision_encoder/checkpoint-best-object.pth.tar
+  joint_checkpoint: VLDrive/outputs/logs/vldrive_joint_optimized_20261009_041328/model-best.pt
+  situation_checkpoint: VLDrive/outputs/checkpoints/situation/situation_20261004_212516_989373/best_train.pt
+  situation_renderer: VLDrive/outputs/logs/joint_basic_pipeline_20261008_045825/resume_situation_assets/renderer.py
+  status_file: AIM2026/outputs/live/status.json
+  encoder_hz: 10.0
+  prediction_hz: 5.0
+  max_prediction_age_s: 0.75
+  sensors:
+    max_age_s: 0.3
+    max_skew_s: 0.15
+  history:
+    capacity: 400
+    stride: 2
+    max_gap_s: 0.15
+    max_context_tokens: 2048
+  navigation:
+    global_path: MoraiDrive/scenario_runner/data/R_KR_PR_K-city_2025/2026_molit_comp_global_path.txt
+    zone_definition: MoraiDrive/scenario_runner/config/full_loop_links.yaml
+    route_key: full_loop

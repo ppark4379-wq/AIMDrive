@@ -23,6 +23,8 @@ class GpsReceiver(_Receiver):
             if len(parts) < 6:
                 continue
             if parts[0].endswith("GGA") and len(parts) > 9:
+                if len(parts) < 7 or parts[6] not in ('1', '2', '4', '5'):
+                    continue
                 latitude = self._degrees(parts[2], parts[3])
                 longitude = self._degrees(parts[4], parts[5])
                 if latitude is not None and longitude is not None:
@@ -33,6 +35,8 @@ class GpsReceiver(_Receiver):
                         pass
                     updated = True
             elif parts[0].endswith("RMC") and len(parts) > 6:
+                if parts[2] != 'A':
+                    continue
                 latitude = self._degrees(parts[3], parts[4])
                 longitude = self._degrees(parts[5], parts[6])
                 if latitude is not None and longitude is not None:

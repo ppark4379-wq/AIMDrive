@@ -18,7 +18,7 @@ class Command:
     steer: float = 0.0
 
     def pack(self):
-        for name, allowed in [('ctrl_mode', (1, 2)), ('gear', range(6)), ('cmd_type', (1, 2, 3))]:
+        for name, allowed in [('ctrl_mode', (2,)), ('gear', range(6)), ('cmd_type', (1,))]:
             value = getattr(self, name)
             if type(value) is not int or value not in allowed:
                 raise ValueError('Invalid ' + name)
@@ -36,17 +36,13 @@ class CmdSender:
         if not isinstance(host, str) or not host.strip() or type(port) is not int or not 1 <= port <= 65535:
             raise ValueError('Invalid command target')
         self.target = (host, port)
-        if protocol not in ('morai', 'manual_doubles'):
-            raise ValueError('Unknown command protocol')
+        if protocol != 'morai':
+            raise ValueError('Competition control requires MORAI Ego Ctrl Cmd')
         self.protocol = protocol
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     def send(self, command):
         payload = command.pack()
-        if self.protocol == 'manual_doubles':
-            if command.cmd_type != 1:
-                raise ValueError('manual_doubles only supports pedal commands')
-            payload = struct.pack('<ddd', command.accel, command.brake, command.steer)
         return self.socket.sendto(payload, self.target)
 
     def close(self):

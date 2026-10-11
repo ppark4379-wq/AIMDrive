@@ -64,6 +64,10 @@ class UDPManager:
                 errors.append('Ego.ip: required when cmd_port is set')
         if errors:
             raise ValueError('Missing/invalid UDP configuration: ' + '; '.join(errors))
+        if (self.cmd_config.get('ctrl_mode', 2) != 2
+                or self.cmd_config.get('cmd_type', 1) != 1
+                or self.cmd_config.get('protocol', 'morai') != 'morai'):
+            raise ValueError('Competition permits only MORAI cmd_type=1, ctrl_mode=2')
 
     def start(self):
         if self.running:
@@ -77,6 +81,7 @@ class UDPManager:
             for name, cfg in self.sensor_config.items():
                 options = {key: cfg[key] for key in ('elevations', 'distance_scale')
                            if name == 'lidar' and key in cfg}
+                options['history_size'] = 128 if name in ('vehicle_status', 'imu', 'gps') else 16
                 self.receivers[name] = factories[name](
                     cfg['dest_port'], bind=cfg.get('bind') or '0.0.0.0', name=name, **options)
             cfg = self.cmd_config
@@ -91,11 +96,14 @@ class UDPManager:
     def snapshot(self):
         return {name: receiver.snapshot() for name, receiver in self.receivers.items()}
 
+    def recent(self):
+        return {name: receiver.recent() for name, receiver in self.receivers.items()}
+
     def send_control(self, accel, brake, steer):
         if not self.running or self.cmd is None:
             raise RuntimeError('UDP manager is not running or Cmd is not configured')
         cfg = self.cmd_config
-        return self.cmd.send(Command(ctrl_mode=cfg.get('ctrl_mode', 2),
+        return self.cmd.send(Command(ctrl_mode=2,
                                      gear=cfg.get('gear', 4), cmd_type=1,
                                      accel=accel, brake=brake, steer=steer))
 
