@@ -47,7 +47,9 @@ class TrafficLightStopTest(unittest.TestCase):
     def test_stop_node_is_on_current_route(self):
         targets = self.controller.get_route_targets("C1256W000016")
         self.assertEqual(1, len(targets))
-        self.assertEqual(879, targets[0]["path_index"])
+        route_point = self.path[targets[0]["path_index"]]
+        self.assertAlmostEqual(-60.15604465093929, route_point.x)
+        self.assertAlmostEqual(-34.51018160348758, route_point.y)
         self.assertAlmostEqual(0.0, targets[0]["lateral_distance"], places=6)
 
     def test_red_slows_and_stops_while_green_releases(self):
@@ -59,9 +61,10 @@ class TrafficLightStopTest(unittest.TestCase):
         self.assertLess(approach_speed, 16.0)
         self.assertGreater(approach_speed, 0.0)
 
-        stop_speed = self.controller.get_target_velocity(red, 879, 16.0)
+        stop_index = self.controller.get_route_targets("C1256W000016")[0]["path_index"]
+        stop_speed = self.controller.get_target_velocity(red, stop_index, 16.0)
         self.assertEqual(0.0, stop_speed)
-        self.assertEqual(16.0, self.controller.get_target_velocity(green, 879, 16.0))
+        self.assertEqual(16.0, self.controller.get_target_velocity(green, stop_index, 16.0))
 
     def test_sync_signal_freshness_uses_simulation_time(self):
         # Wall time can advance much faster than simulation time in SyncMode.

@@ -3,8 +3,11 @@ import math
 import time
 
 
+LEFT_GREEN_BIT = 32
+
+
 class TrafficLightStopController(object):
-    """Compute a red-light speed cap from stop nodes projected on the route."""
+    """Apply signal rules using the same route stop nodes and braking profile."""
 
     def __init__(
         self,
@@ -18,6 +21,8 @@ class TrafficLightStopController(object):
         comfortable_deceleration=2.5,
         signal_timeout=2.0,
         hold_on_stale=True,
+        ignored_signal_ids=None,
+        left_arrow_only_signal_ids=None,
     ):
         self.path = list(path)
         self.stopline_mapper = stopline_mapper
@@ -29,6 +34,12 @@ class TrafficLightStopController(object):
         self.comfortable_deceleration = max(0.1, float(comfortable_deceleration))
         self.signal_timeout = max(0.0, float(signal_timeout))
         self.hold_on_stale = bool(hold_on_stale)
+        self.ignored_signal_ids = set(str(x) for x in (ignored_signal_ids or []))
+        self.left_arrow_only_signal_ids = set(
+            str(x) for x in (left_arrow_only_signal_ids or [])
+        )
+        if self.ignored_signal_ids & self.left_arrow_only_signal_ids:
+            raise ValueError("A signal cannot be both ignored and left-arrow-only")
 
         self._path_s = self._build_path_distances()
         self._loop_length = self._calculate_loop_length()
@@ -160,6 +171,23 @@ class TrafficLightStopController(object):
         self._last_log_key = key
         print(message)
 
+    def _signal_is_fresh(self, signal):
+        if signal is None:
+            return False
+        if (
+            signal["source_time"] is not None
+            and signal["reference_time"] is not None
+            and self.signal_timeout > 0.0
+        ):
+            return (
+                0.0
+                <= signal["reference_time"] - signal["source_time"]
+                <= self.signal_timeout
+            )
+        elif signal["received_at"] is not None and self.signal_timeout > 0.0:
+            return time.monotonic() - signal["received_at"] <= self.signal_timeout
+        return True
+
     def get_target_velocity(
         self,
         current_traffic_light,
@@ -169,55 +197,66 @@ class TrafficLightStopController(object):
         """Return a speed cap in m/s; planned speed is returned when unrestricted."""
         planned_velocity = float(planned_velocity)
         signal = self._parse_signal(current_traffic_light)
-        if signal is None:
-            self.last_decision = None
-            return planned_velocity
+        is_fresh = self._signal_is_fresh(signal)
+        stop_candidates = []
+        ordinary_stop = False
 
-        is_fresh = True
-        if (
-            signal["source_time"] is not None
-            and signal["reference_time"] is not None
-            and self.signal_timeout > 0.0
-        ):
-            is_fresh = (
-                0.0
-                <= signal["reference_time"] - signal["source_time"]
-                <= self.signal_timeout
-            )
-        elif signal["received_at"] is not None and self.signal_timeout > 0.0:
-            is_fresh = time.monotonic() - signal["received_at"] <= self.signal_timeout
-
-        is_red = signal["status"] in self.stop_statuses
-        if is_fresh:
-            if is_red:
-                self._active_red_signal_id = signal["id"]
-            else:
-                if self._active_red_signal_id == signal["id"]:
+        # All other lights retain their configured red/status and stale rules.
+        if (signal is not None
+                and signal["id"] not in self.ignored_signal_ids
+                and signal["id"] not in self.left_arrow_only_signal_ids):
+            if is_fresh:
+                ordinary_stop = signal["status"] in self.stop_statuses
+                if ordinary_stop:
+                    self._active_red_signal_id = signal["id"]
+                elif self._active_red_signal_id == signal["id"]:
                     self._active_red_signal_id = None
-                self.last_decision = None
-                self._log_once(
-                    ("go", signal["id"], signal["status"]),
-                    "[TrafficSignal] GO: id={} status={}".format(
-                        signal["id"], signal["status"]
-                    ),
+            else:
+                ordinary_stop = (
+                    self.hold_on_stale and self._active_red_signal_id == signal["id"]
                 )
-                return planned_velocity
-        elif not (self.hold_on_stale and self._active_red_signal_id == signal["id"]):
-            self.last_decision = None
-            return planned_velocity
+            if ordinary_stop:
+                distance, target = self._find_upcoming_target(signal["id"], current_waypoint)
+                if target is not None:
+                    stop_candidates.append((distance, target, signal["status"]))
 
-        signal_id = self._active_red_signal_id or signal["id"]
-        distance, target = self._find_upcoming_target(signal_id, current_waypoint)
-        if target is None:
-            self.last_decision = None
-            self._log_once(
-                ("unmapped", signal_id),
-                "[TrafficSignal] red signal has no upcoming route stop node: id={}".format(
-                    signal_id
-                ),
+        # A left-only approach needs positive permission for this exact ID.
+        # Missing/stale samples (including [] from SyncMode) cannot release it.
+        for signal_id in sorted(self.left_arrow_only_signal_ids):
+            left_is_green = (
+                is_fresh and signal["id"] == signal_id
+                and signal["status"] >= 0
+                and bool(signal["status"] & LEFT_GREEN_BIT)
             )
+            if left_is_green:
+                continue
+            distance, target = self._find_upcoming_target(signal_id, current_waypoint)
+            if target is not None:
+                status = signal["status"] if signal and signal["id"] == signal_id else None
+                stop_candidates.append((distance, target, status))
+
+        if not stop_candidates:
+            self.last_decision = None
+            if signal is not None:
+                if ordinary_stop:
+                    self._log_once(
+                        ("unmapped", signal["id"]),
+                        "[TrafficSignal] red signal has no upcoming route stop node: id={}".format(
+                            signal["id"]
+                        ),
+                    )
+                elif signal["id"] in self.ignored_signal_ids or is_fresh:
+                    state = "IGNORE" if signal["id"] in self.ignored_signal_ids else "GO"
+                    self._log_once(
+                        (state, signal["id"], signal["status"]),
+                        "[TrafficSignal] {}: id={} status={}".format(
+                            state, signal["id"], signal["status"]
+                        ),
+                    )
             return planned_velocity
 
+        distance, target, status = min(stop_candidates, key=lambda item: item[0])
+        signal_id = target["signal_id"]
         remaining_distance = max(0.0, distance - self.stop_margin)
         allowed_velocity = math.sqrt(
             2.0 * self.comfortable_deceleration * remaining_distance
@@ -225,7 +264,7 @@ class TrafficLightStopController(object):
         target_velocity = min(planned_velocity, allowed_velocity)
         self.last_decision = {
             "signal_id": signal_id,
-            "status": signal["status"],
+            "status": status,
             "node_id": target["node_id"],
             "path_index": target["path_index"],
             "distance": distance,

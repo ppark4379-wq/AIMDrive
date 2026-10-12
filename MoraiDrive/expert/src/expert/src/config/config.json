@@ -82,6 +82,8 @@
     },
     "traffic_light_stop": {
       "stop_statuses": [1],
+      "ignored_signal_ids": ["C1256W000123"],
+      "left_arrow_only_signal_ids": ["C1256W000052"],
       "route_lateral_threshold": 2.0,
       "max_lookahead": 150.0,
       "stop_margin": 13.0,
