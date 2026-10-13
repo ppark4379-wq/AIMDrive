@@ -3,6 +3,15 @@
 from ..localization.point import Point
 
 
+def is_ve_tracked_unknown(obj):
+    """Only the explicit VE transport opts into class-agnostic object handling."""
+    return (getattr(obj, 'type', None) == -1
+            and isinstance(getattr(obj, 'unique_id', None), int) and obj.unique_id > 0
+            and getattr(obj, 'name', '') in (
+                've_tracked_unknown:moving', 've_tracked_unknown:stationary',
+                've_tracked_unknown:uncertain'))
+
+
 class ObjectInfo:
     def __init__(
         self,

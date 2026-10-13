@@ -255,10 +255,22 @@ def spawn_highway_npcs(self):
                         lifecycle.get("disable_retry_delay_sec", 0.5)
                     ),
                 ):
-                    raise RuntimeError(
-                        "Cannot confirm initial SpawnPoint disable: "
-                        + str(spawn_point_id)
+                    # Creation can return an unusable runtime ID, just as it
+                    # can during activation below. This point was explicitly
+                    # created paused: never activate it after a failed probe.
+                    # Keep it recorded for run-owned cleanup and retry a new
+                    # paused point within the existing creation budget.
+                    created_point['retired'] = True
+                    created_point['initial_disable_failed'] = True
+                    created_point = None
+                    print(
+                        '[FullLoop] SpawnPoint initial disable recovery: '
+                        f'name={spawn_name}, unusable_id={spawn_point_id}, '
+                        f'attempt={create_attempt}/{create_attempts}'
                     )
+                    if create_attempt < create_attempts and recreate_delay_sec > 0.0:
+                        time.sleep(recreate_delay_sec)
+                    continue
                 break
 
             print(
@@ -270,12 +282,14 @@ def spawn_highway_npcs(self):
 
         if created_point is None:
             raise RuntimeError(
-                f"Failed to create native SpawnPoint {spawn_name} "
+                f"Failed to create and confirm disabled native SpawnPoint {spawn_name} "
                 f"after {create_attempts} attempts"
             )
 
     self.highway_spawn_points_active = False
-    self.highway_npc_planned_count = len(self.highway_spawn_points)
+    self.highway_npc_planned_count = sum(
+        not point.get('retired', False) for point in self.highway_spawn_points
+    )
     reference_safety = float(cfg.get("reference_safety_distance_m", 5.0))
     reference_ttc = float(cfg.get("reference_ttc_sec", 1.0))
     print(

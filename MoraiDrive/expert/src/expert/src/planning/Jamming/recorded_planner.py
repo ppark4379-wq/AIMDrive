@@ -12,6 +12,7 @@ import math
 import numpy as np
 
 from ...localization.point import Point
+from ...obstacle.object_info import is_ve_tracked_unknown
 from ..lattice_planning.lattice_planner import LatticePlanner
 from ..lattice_planning import parameters
 from ..lattice_planning.structures import CandidatePath, LatticePlanningResult
@@ -597,7 +598,7 @@ class JammingPlanner:
             self._global_path = list(global_path)
         self._scene_error = None
         states={motion_key(item['object_info']): moving(item['object_info']) for item in objects
-                if item['object_info'].type in (1,2)}
+                if item['object_info'].type in (1,2) or is_ve_tracked_unknown(item['object_info'])}
         relevant={motion_key(o) for o in self.local.known}
         if self.dynamic.active:
             relevant.update(motion_key(o) for o in self.dynamic.tracker.known)

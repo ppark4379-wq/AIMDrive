@@ -4,6 +4,7 @@
 
 import json
 import math
+from ...obstacle.object_info import is_ve_tracked_unknown
 
 from . import parameters
 from .lattice_planner import LatticePlanner
@@ -241,6 +242,7 @@ class LatticePlanningProcess:
             for item in object_info_list
             if getattr(item["object_info"], "is_static", False)
             or getattr(item["object_info"], "type", -1) in (1, 2)
+            or is_ve_tracked_unknown(item["object_info"])
         ]
         if self._is_inside_highway_right_turn_zone(vehicle_state):
             self._highway_acc_override = False
@@ -307,7 +309,7 @@ class LatticePlanningProcess:
         return (
             self.roundabout_planner.active
             and not getattr(object_info, "is_static", False)
-            and getattr(object_info, "type", -1) in (1, 2)
+            and (getattr(object_info, "type", -1) in (1, 2) or is_ve_tracked_unknown(object_info))
         )
 
     def _roundabout_entry_active(self, vehicle_state, reference_path):

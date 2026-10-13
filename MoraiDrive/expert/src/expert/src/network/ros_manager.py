@@ -16,10 +16,11 @@ from morai_msgs.msg import (
     SetTrafficLight,
 )
 from nav_msgs.msg import Odometry, Path
-from std_msgs.msg import Bool, Float32
+from std_msgs.msg import Bool, Float32, String
 
 from ..config.config import Config
 from ..obstacle.object_info import ObjectInfo
+from ..planning.ve_perception_planning import VeInputGate, perception_source
 from ..planning.lattice_planning import roundabout_debug
 from ..planning.lattice_planning.rviz_visualizer import LatticeRvizVisualizer
 from ..vehicle_state import VehicleState
@@ -58,6 +59,23 @@ class RosManager:
         self.global_path = self.convert_to_ros_path(config["map"]["path"], "/map")
 
         common_config = config["common"]
+        self._object_input_audit = None
+        if common_config.get("ve_input_audit_path"):
+            from .input_timing import ObjectInputAudit
+            self._object_input_audit = ObjectInputAudit(common_config["ve_input_audit_path"])
+            rospy.on_shutdown(self._object_input_audit.close)
+        self.perception_source = perception_source(common_config)
+        self._ve_input_gate = (
+            VeInputGate(common_config.get("ve_perception", {}))
+            if self.perception_source == "ve" else None
+        )
+        self._ve_selected_health = dict(ready=False, invalid_reason="not_started")
+        ve_config = common_config.get("ve_perception", {})
+        self.ve_object_topic = ve_config.get("object_topic", "/ve/Object_topic")
+        self.ve_health_topic = ve_config.get("health_topic", "/ve/perception_health")
+        if self.perception_source == "ve" and (
+                self.ve_object_topic != "/ve/Object_topic" or self.ve_health_topic != "/ve/perception_health"):
+            raise ValueError("VE trial requires dedicated /ve/Object_topic and /ve/perception_health")
         self.sampling_rate = float(common_config["sampling_rate"])
         self.realtime_sampling_rate = float(
             common_config.get("realtime_sampling_rate", self.sampling_rate)
@@ -150,20 +168,43 @@ class RosManager:
                 object_delta_s=object_delta, control_dt_s=control_dt, source=input_source,
                 sync_mode=sync_mode, grpc_tick=grpc_tick, grpc_tick_delta=grpc_tick_delta)
             control_started = time.monotonic()
-            control_input, local_path = self.autonomous_driving.execute(
-                vehicle_state,
-                object_info_list,
-                traffic_light,
-                sync_mode=sync_mode,
-                control_dt=control_dt,
-                ego_header_seq=ego_frame,
-                ego_source_ns=ego_source_ns,
-            )
+            used_ve_health = dict(self._ve_selected_health) if self.perception_source == "ve" else None
+            try:
+                control_input, local_path = self.autonomous_driving.execute(
+                    vehicle_state,
+                    object_info_list,
+                    traffic_light,
+                    sync_mode=sync_mode,
+                    control_dt=control_dt,
+                    ego_header_seq=ego_frame,
+                    ego_source_ns=ego_source_ns,
+                    **({"perception_health": used_ve_health}
+                       if self.perception_source == "ve" else {}),
+                )
+            except Exception:
+                if self.perception_source == "ve":
+                    self._publish_ve_brake()
+                raise
             control_elapsed = time.monotonic() - control_started
             if control_elapsed > 0.1:
                 rospy.logwarn_throttle(1.0,
                     "[ExpertTiming] planning/control took %.3fs; ego_seq=%s objects=%s",
                     control_elapsed, status_sequence, len(object_info_list))
+            if self.perception_source == "ve":
+                # Recheck after planning so a slow computation cannot issue a
+                # throttle command based on an input that has since expired.
+                with self._status_condition:
+                    now = time.monotonic()
+                    _, latest_health, _ = self._ve_input_gate.select(
+                        now, self._ego_source_ns, self._ego_arrival_time
+                    )
+                    used_valid = self._ve_input_gate.used_snapshot_valid(
+                        used_ve_health, now, self._ego_source_ns, self._ego_arrival_time
+                    )
+                if not latest_health.get("ready") or not used_valid:
+                    self.autonomous_driving.lattice_planning_process.stop("perception_expired_before_control")
+                    control_input = self.autonomous_driving.force_ve_brake()
+                    local_path = []
             self._send_data(
                 control_input, local_path, vehicle_state, object_info_list
             )
@@ -200,6 +241,10 @@ class RosManager:
                 ):
                     break
                 self._status_condition.wait(timeout=0.1)
+                if self.perception_source == "ve" and (
+                        self._ego_arrival_time is None
+                        or time.monotonic() - self._ego_arrival_time > self._ve_input_gate.max_age):
+                    self._publish_ve_brake()
                 if sync_mode != self._sync_mode_active():
                     return None
             if rospy.is_shutdown():
@@ -228,14 +273,20 @@ class RosManager:
                         break
                     self._status_condition.wait(timeout=remaining)
 
-            object_info_list, object_delta = self._select_objects(
-                sync_mode, ego_source_time
-            )
+            if self.perception_source == "ve":
+                object_info_list, self._ve_selected_health, object_delta = self._ve_input_gate.select(
+                    time.monotonic(), ego_source_ns, self._ego_arrival_time
+                )
+                if not self._ve_selected_health.get("ready"):
+                    rospy.logwarn_throttle(1.0, "[VEInput] braking: %s",
+                                          self._ve_selected_health.get("invalid_reason"))
+            else:
+                object_info_list, object_delta = self._select_objects(sync_mode, ego_source_time)
             traffic_light, traffic_age = self._select_traffic_light(
                 sync_mode, ego_source_time
             )
 
-        input_source = "ros"
+        input_source = "ve" if self.perception_source == "ve" else "ros"
         grpc_tick = None
         grpc_tick_delta = None
         if sync_mode and self._grpc_sync_inputs is not None:
@@ -413,9 +464,15 @@ class RosManager:
         rospy.Subscriber(
             "/Ego_topic", EgoVehicleStatus, self.vehicle_status_callback
         )
-        rospy.Subscriber(
-            "/Object_topic", ObjectStatusList, self.object_info_callback
-        )
+        if self.perception_source == "ve":
+            rospy.Subscriber(self.ve_object_topic, ObjectStatusList,
+                             self.ve_object_info_callback, queue_size=1)
+            rospy.Subscriber(self.ve_health_topic, String,
+                             self.ve_perception_health_callback, queue_size=1)
+            rospy.on_shutdown(self._publish_ve_brake)
+            self._publish_ve_brake()
+        else:
+            rospy.Subscriber("/Object_topic", ObjectStatusList, self.object_info_callback)
         rospy.Subscriber(
             "/GetTrafficLightStatus",
             GetTrafficLightStatus,
@@ -488,12 +545,18 @@ class RosManager:
         return odometry
 
     def vehicle_status_callback(self, data):
-        vehicle_state = VehicleState(
-            data.position.x,
-            data.position.y,
-            np.deg2rad(data.heading),
-            data.velocity.x,
-        )
+        yaw = np.deg2rad(data.heading)
+        velocity = data.velocity.x
+        if self.perception_source == "ve":
+            try:
+                if not np.isfinite((data.velocity.x, data.velocity.y)).all():
+                    raise ValueError("Finite Ego velocity required")
+                velocity = float(np.hypot(data.velocity.x, data.velocity.y))
+                yaw = self._ve_input_gate.yaw_converter(yaw, data.position.x, data.position.y)
+            except (ValueError, TypeError):
+                self._publish_ve_brake()
+                return
+        vehicle_state = VehicleState(data.position.x, data.position.y, yaw, velocity)
         br = tf.TransformBroadcaster()
         br.sendTransform(
             (vehicle_state.position.x, vehicle_state.position.y, 0),
@@ -519,7 +582,46 @@ class RosManager:
             self._status_sequence += 1
             self._status_condition.notify_all()
 
+    def _publish_ve_brake(self):
+        if getattr(self, "perception_source", "ros") != "ve" or not hasattr(self, "ctrl_pub"):
+            return
+        command = self.autonomous_driving.force_ve_brake()
+        self.ctrl_pub.publish(CtrlCmd(**command.__dict__))
+        if hasattr(self, "target_velocity_pub"):
+            self.target_velocity_pub.publish(Float32(data=0.))
+
+    def ve_perception_health_callback(self, message):
+        with self._status_condition:
+            self._ve_input_gate.accept_health(message.data, time.monotonic())
+            self._status_condition.notify_all()
+
+    def ve_object_info_callback(self, data):
+        # VE wire geometry is heading-forward length (size.x), lateral width
+        # (size.y). Frame-local IDs are deliberately not persistent tracks.
+        received = time.monotonic()
+        try:
+            if data.obstacle_list or data.pedestrian_list or any(item.type != -1 for item in data.npc_list):
+                raise ValueError("VE messages must contain unknown objects only in npc_list")
+            objects = [ObjectInfo(item.position.x, item.position.y, 0., -1,
+                                  name="ve_unknown", is_static=False, size_x=item.size.x,
+                                  size_y=item.size.y, heading_deg=item.heading, unique_id=None)
+                       for item in data.npc_list]
+            header = data.header
+            stamp_ns = int(header.stamp.secs) * 1_000_000_000 + int(header.stamp.nsecs)
+            sequence = int(header.seq)
+            frame_id = header.frame_id
+        except (AttributeError, TypeError, ValueError) as error:
+            with self._status_condition:
+                self._ve_input_gate.accept_health(dict(ready=False, invalid_reason="malformed_objects:" + str(error)), received)
+                self._status_condition.notify_all()
+            return
+        with self._status_condition:
+            self._ve_input_gate.accept_objects(objects, sequence, stamp_ns, received, frame_id)
+            self._object_message_count += 1
+            self._status_condition.notify_all()
+
     def object_info_callback(self, data):
+        received_ns = time.monotonic_ns()
         def convert_object(item, is_static=False):
             return ObjectInfo(
                 item.position.x,
@@ -552,6 +654,15 @@ class RosManager:
                 }
             )
             self._status_condition.notify_all()
+
+        audit = getattr(self, "_object_input_audit", None)
+        if audit is not None:
+            try:
+                audit.record(data, received_ns, len(object_info_list))
+            except Exception as exc:
+                # An audit disk error must not change the driving path.
+                self._object_input_audit = None
+                rospy.logwarn("Object receipt audit disabled: %s", exc)
 
     def traffic_light_callback(self, data):
         if self.traffic_light_control:

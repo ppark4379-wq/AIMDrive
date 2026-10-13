@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import math
+from ..obstacle.object_info import is_ve_tracked_unknown
 
 
 class AdaptiveCruiseControl:
@@ -46,6 +47,7 @@ class AdaptiveCruiseControl:
         self.object_time_gap = self.time_gap
 
         self.object_type = None
+        self.object_is_ve_unknown = False
         self.object_distance = 0
         self.object_velocity = 0
 
@@ -80,6 +82,7 @@ class AdaptiveCruiseControl:
                      *, pedestrian_conflict_check=None):
         was_pedestrian = self.object_type == 0
         self.object_type = None
+        self.object_is_ve_unknown = False
         self.object_time_gap = self.time_gap
         seen_pedestrians = set()
         min_relative_distance = float('inf')
@@ -88,7 +91,11 @@ class AdaptiveCruiseControl:
             local_position = object_info_dic['local_position']
 
             object_type = object_info.type
-            if object_type == 0:
+            if is_ve_tracked_unknown(object_info):
+                # Unknown does not mean irrelevant. The existing path-distance
+                # gate applies without inventing a vehicle/person class.
+                distance_threshold = self.vehicle_lateral_threshold
+            elif object_type == 0:
                 # A caller with a validated tunnel path may use matched-time
                 # body predictions instead of the legacy wide approach
                 # gate. Missing/uncertain checks retain the existing policy.
@@ -120,6 +127,7 @@ class AdaptiveCruiseControl:
                 if relative_distance < min_relative_distance:
                     min_relative_distance = relative_distance
                     self.object_type = object_type
+                    self.object_is_ve_unknown = is_ve_tracked_unknown(object_info)
                     self.object_distance = relative_distance - self.vehicle_length
                     self.object_velocity = object_info.velocity
                     self.object_time_gap = self._time_gap_for_object(object_info)
@@ -170,7 +178,7 @@ class AdaptiveCruiseControl:
 
     def _time_gap_for_object(self, obj):
         gap = self.time_gap
-        if obj.type not in (0, 1, 2):
+        if obj.type not in (0, 1, 2) and not is_ve_tracked_unknown(obj):
             return gap
         for sx, sy, ux, uy, length, lateral, zone_gap in self.time_gap_zones:
             dx, dy = obj.position.x-sx, obj.position.y-sy
@@ -183,7 +191,10 @@ class AdaptiveCruiseControl:
     def get_target_velocity(self, ego_vel, target_vel):
         out_vel = target_vel
 
-        if self.object_type == 0:
+        if self.object_is_ve_unknown:
+            print("ACC ON_VE_Unknown")
+            default_space = 5
+        elif self.object_type == 0:
             print("ACC ON_Person")
             default_space = 4
         elif self.object_type in [1, 2]:

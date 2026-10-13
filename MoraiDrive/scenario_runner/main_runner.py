@@ -199,6 +199,9 @@ def build_parser():
             "Runtime or sensor capture. Ego progress is read through gRPC."
         ),
     )
+    parser.add_argument('--ve-objects', action='store_true',
+                        help='기존 Expert 장애물 입력만 VE로 교체 (회전교차로/고주로, 비동기 실행)')
+    parser.add_argument('--ve-checkpoint', choices=('E3', 'E4'), default='E3')
     parser.add_argument(
         "--manual-ego",
         action="store_true",
@@ -388,6 +391,12 @@ def main():
         ]
     if args.no_sync_runtime:
         base_scenario_cfg.setdefault("sync_runtime", {})["enabled"] = False
+    if args.ve_objects:
+        from .adapters.ve_objects import configure
+        try:
+            configure(base_scenario_cfg, args.scenario, args.ve_checkpoint)
+        except ValueError as error:
+            parser.error(str(error))
     if args.manual_ego:
         base_scenario_cfg.setdefault("sync_runtime", {})["enabled"] = False
         base_scenario_cfg["drive_control_mode"] = "morai_keyboard"
@@ -467,6 +476,12 @@ def main():
             parser.exit(2, str(error) + "\n")
 
     if args.check:
+        if args.ve_objects:
+            from inference.realtime_ve_objects import CHECKPOINTS
+            selected = CHECKPOINTS[args.ve_checkpoint]
+            if not Path(selected['path']).is_file():
+                parser.error('VE 체크포인트 없음: '+selected['path'])
+            print('[VE 설정] 체크포인트={} · Expert 장애물=/ve/Object_topic · GT 장애물 입력 없음 · 자차/신호등=기존 ROS'.format(args.ve_checkpoint))
         run_offline_check(global_cfg, base_scenario_cfg, args.scenario)
         return
 

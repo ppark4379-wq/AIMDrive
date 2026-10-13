@@ -63,6 +63,10 @@ class LatticePlanner:
         if len(reference_path) < 2:
             return LatticePlanningResult(reference_path, reason="path_too_short")
 
+        # The GP filter decides when to start avoidance. It cannot define the
+        # collision set: a lateral candidate can enter an adjacent obstacle's
+        # footprint even though that obstacle is far from the original GP.
+        obstacles = list(obstacles)
         relevant_obstacles = self._find_relevant_obstacles(
             vehicle_state, reference_path, obstacles
         )
@@ -86,10 +90,10 @@ class LatticePlanner:
                 vehicle_state, reference_path, layer="short",
                 lookahead_distance=distance, offsets=offsets,
             ))
-        self._evaluate_candidates(long_candidates, relevant_obstacles, add_policy_cost=False)
+        self._evaluate_candidates(long_candidates, obstacles, add_policy_cost=False)
         self._evaluate_candidates(
             short_candidates,
-            relevant_obstacles,
+            obstacles,
             add_policy_cost=prefer_right,
         )
         candidates = long_candidates + short_candidates
@@ -242,25 +246,30 @@ class LatticePlanner:
         return points
 
     def _evaluate_candidates(self, candidates, obstacles, add_policy_cost):
+        obstacles = [
+            (obstacle, self._obstacle_radius(obstacle), self._collision_obstacle_radius(obstacle))
+            for obstacle in obstacles
+        ]
+        vehicle_radius = math.hypot(self.vehicle_length * 0.5, self.vehicle_half_width)
         for candidate in candidates:
             if not candidate.valid:
                 continue
 
             min_clearance = float("inf")
-            for point_index, point in enumerate(candidate.points):
-                path_heading = self._path_heading(candidate.points, point_index)
-                for obstacle in obstacles:
-                    vehicle_radius = math.hypot(
-                        self.vehicle_length * 0.5,
-                        self.vehicle_half_width,
-                    )
-                    clearance = (
-                        point.distance(obstacle.position)
-                        - vehicle_radius
-                        - self._obstacle_radius(obstacle)
-                    )
+            for point, path_heading, sweep_margin in self._collision_samples(candidate.points):
+                body_radius = self._swept_body_radius(sweep_margin)
+                for obstacle, cost_radius, collision_radius in obstacles:
+                    distance = point.distance(obstacle.position)
+                    clearance = distance - vehicle_radius - cost_radius
                     min_clearance = min(min_clearance, clearance)
-                    if self._obb_collision(point, path_heading, obstacle):
+                    # A circumscribed circle is only a broad-phase rejection.
+                    # Its radii include the clamped obstacle diagonal and the
+                    # entire rear-axle anchored vehicle, plus this sweep margin.
+                    if distance > body_radius + collision_radius:
+                        continue
+                    if self._obb_collision(
+                        point, path_heading, obstacle, extra_margin=sweep_margin
+                    ):
                         candidate.valid = False
                         candidate.cost = float("inf")
                         break
@@ -310,6 +319,81 @@ class LatticePlanner:
                 + 0.15 * candidate.offset_change_cost / max_offset_change
                 + self.right_preference_weight * candidate.right_preference_cost
             )
+
+    def path_has_collision(self, points, obstacles):
+        """Check the swept vehicle body against every supplied footprint.
+
+        This uses the same conservative checks as candidate rejection. An empty
+        or one-point path is not a driveable collision-free trajectory.
+        """
+        if len(points) < 2:
+            return True
+        obstacles = [(obstacle, self._collision_obstacle_radius(obstacle))
+                     for obstacle in obstacles]
+        for point, heading, margin in self._collision_samples(points):
+            body_radius = self._swept_body_radius(margin)
+            for obstacle, collision_radius in obstacles:
+                if point.distance(obstacle.position) > body_radius + collision_radius:
+                    continue
+                if self._obb_collision(point, heading, obstacle, extra_margin=margin):
+                    return True
+        return False
+
+    def _swept_body_radius(self, extra_margin):
+        return math.hypot(
+            self.vehicle_length + self.collision_margin + extra_margin,
+            self.vehicle_half_width + self.collision_margin + extra_margin,
+        )
+
+    @staticmethod
+    def _collision_obstacle_radius(obstacle):
+        # Match _obb_collision's existing 1 m minimum in both dimensions.
+        return 0.5 * math.hypot(
+            max(1.0, float(getattr(obstacle, "size_x", 0.0))),
+            max(1.0, float(getattr(obstacle, "size_y", 0.0))),
+        )
+
+    def _collision_samples(self, points):
+        """Cover translation between samples and rotation at polyline vertices.
+
+        Candidate generation retains its configured spacing. Collision checks
+        subdivide each segment to at most 0.25 m; half the actual subdivision
+        length covers translations between neighboring checks. At a vertex,
+        bounding corner displacement about the rear axle covers every heading
+        between the incoming and outgoing tangents, including a centered
+        tangent used by downstream path followers.
+        """
+        spacing = min(0.25, self.sample_spacing)
+        if spacing <= 0.0:
+            raise ValueError("sample_spacing must be positive")
+        rotation_radius = math.hypot(
+            self.vehicle_length + self.collision_margin,
+            self.vehicle_half_width + self.collision_margin,
+        )
+        previous_heading = None
+        for start, end in zip(points[:-1], points[1:]):
+            dx, dy = end.x - start.x, end.y - start.y
+            length = math.hypot(dx, dy)
+            if length < 1e-9:
+                continue
+            heading = math.atan2(dy, dx)
+            if previous_heading is not None:
+                change = self._normalize_angle(heading - previous_heading)
+                if abs(change) > 1e-9:
+                    # With a midpoint heading, the greatest rotation to either
+                    # endpoint is |change|/2. The corner displacement bound is
+                    # 2 R sin(|change|/4), added only for this swept check.
+                    yield (
+                        start,
+                        previous_heading + 0.5 * change,
+                        2.0 * rotation_radius * math.sin(abs(change) * 0.25),
+                    )
+            count = max(1, int(math.ceil(length / spacing)))
+            sweep_margin = length / (2.0 * count)
+            for index in range(count + 1):
+                ratio = float(index) / count
+                yield Point(start.x + ratio * dx, start.y + ratio * dy), heading, sweep_margin
+            previous_heading = heading
 
     @staticmethod
     def _max_curvature(points):

@@ -166,6 +166,10 @@ class FullLoopDriveBase(BaseScenario):
                 )
                 if str(self.cfg.get("drive_control_mode", "aimdrive_expert")).lower() != "morai_keyboard":
                     self.require_async_ros_control_path()
+            if self.cfg.get('ve_objects_checkpoint'):
+                from ..adapters.ve_objects import VeObjectInput
+                self.ve_object_input = VeObjectInput(self)
+                self.ve_object_input.start()
             self.setup()
             if editor_mode:
                 self.publish_static_editor_event("session_ready", trial=0)
@@ -355,7 +359,12 @@ class FullLoopDriveBase(BaseScenario):
         self.setup_expert_controller()
         if after_expert_setup is not None:
             after_expert_setup()
+        ve_input = getattr(self, 've_object_input', None)
+        if ve_input is not None:
+            ve_input.before_drive()
         self.expert_controller.start_process()
+        if ve_input is not None:
+            ve_input.after_start()
         if after_expert_start is not None:
             after_expert_start()
         self.route_configured = auto_ok
@@ -917,6 +926,9 @@ class FullLoopDriveBase(BaseScenario):
 
     def record_ego_trace(self, elapsed, ego_state):
         """Append the Ego pose of every control tick when --ego-trace is set."""
+        ve_input = getattr(self, 've_object_input', None)
+        if ve_input is not None:
+            ve_input.inspect()
         path = self.cfg.get("ego_trace_path")
         if not path:
             return
@@ -938,6 +950,10 @@ class FullLoopDriveBase(BaseScenario):
                 bridge.close()
         finally:
             self.stop_expert_controller()
+            ve_input = getattr(self, 've_object_input', None)
+            if ve_input is not None:
+                self.ve_object_input = None
+                ve_input.close()
             stream = getattr(self, "_ego_trace_stream", None)
             if stream is not None:
                 self._ego_trace_stream = None

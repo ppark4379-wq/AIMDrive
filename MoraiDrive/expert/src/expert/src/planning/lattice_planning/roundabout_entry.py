@@ -6,6 +6,7 @@ import os
 from types import SimpleNamespace
 
 from ...localization.point import Point
+from ...obstacle.object_info import is_ve_tracked_unknown
 from ..highway_lane_planning.lane_map import HighwayLaneMap
 from ..highway_lane_planning.planner import HighwayLanePlanner
 from ..highway_lane_planning.structures import HighwayLaneLink
@@ -173,7 +174,7 @@ class RoundaboutEntryPlanner:
         audit = self.diagnostics.tracks if self.diagnostics.checks is not None else None
         for entry in entries:
             obj = entry["object_info"]
-            if obj.is_static or obj.type not in (1, 2):
+            if not is_ve_tracked_unknown(obj) and (obj.is_static or obj.type not in (1, 2)):
                 if audit is not None:
                     audit.append((obj, 'static_or_non_vehicle', None))
                 continue

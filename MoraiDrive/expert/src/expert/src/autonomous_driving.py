@@ -1,10 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 from .obstacle.forward_object_detector import ForwardObjectDetector
+from .obstacle.object_info import is_ve_tracked_unknown
 from .localization.path_manager import PathManager
 from .planning.adaptive_cruise_control import AdaptiveCruiseControl
 from .planning.traffic_light_stop import TrafficLightStopController
 from .planning.lattice_planning import LatticePlanningProcess
+from .planning.ve_perception_planning import VePerceptionPlanningProcess, perception_source
 from .planning.lattice_planning import parameters as lattice_parameters
 from .planning.highway_lane_planning import parameters as highway_parameters
 from .control.path_controller import PathController
@@ -18,6 +20,7 @@ import numpy as np
 class AutonomousDriving(PathController):
     def __init__(self):
         config = Config()
+        self.perception_source = perception_source(config["common"])
 
         if config["map"]["use_mgeo_path"]:
             # pyproj를 포함한 MGeo loader는 내부 경로 생성 모드에서만 필요하다.
@@ -50,10 +53,17 @@ class AutonomousDriving(PathController):
             **config['planning']['adaptive_cruise_control']
         )
         # Uses the measured static-obstacle and highway section centerlines.
-        self.lattice_planning_process = LatticePlanningProcess(
-            map_data_dir=config["map"]["data_dir"],
-            jamming_enabled=config["planning"].get("jamming", {}).get("enabled", True),
-        )
+        if self.perception_source == "ve":
+            self.lattice_planning_process = VePerceptionPlanningProcess(
+                config["planning"].get("ve_perception", {}),
+                vehicle_length=config["common"]["vehicle_length"],
+                vehicle_width=config["common"].get("vehicle_width", 2.0),
+            )
+        else:
+            self.lattice_planning_process = LatticePlanningProcess(
+                map_data_dir=config["map"]["data_dir"],
+                jamming_enabled=config["planning"].get("jamming", {}).get("enabled", True),
+            )
         self._init_control(config)
         self._merge_curvature_floor_zone = None
         self._merge_curvature_floor_speed = None
@@ -69,8 +79,11 @@ class AutonomousDriving(PathController):
         control_dt=None,
         ego_header_seq=None,
         ego_source_ns=None,
+        perception_health=None,
     ):
         self._configure_runtime(sync_mode=sync_mode, control_dt=control_dt)
+        if getattr(self, "perception_source", "ros") == "ve":
+            return self._execute_ve(vehicle_state, dynamic_object_list, current_traffic_light, perception_health)
         # 현재 위치 기반으로 local path과 planned velocity 추출
         local_path, planned_velocity = self.path_manager.get_local_path(vehicle_state)
         profile_planned_velocity = planned_velocity
@@ -324,6 +337,33 @@ class AutonomousDriving(PathController):
 
 
 
+    def _execute_ve(self, vehicle_state, objects, traffic_light, health):
+        """Use fresh VE bbox geometry and the original route/signal/control stack."""
+        local_path, planned_velocity = self.path_manager.get_local_path(vehicle_state)
+        process = self.lattice_planning_process
+        planned_velocity = min(max(0., planned_velocity), process.max_speed)
+        result = process.run(vehicle_state, local_path, objects, planned_velocity, input_health=health)
+        signal_velocity = self.traffic_light_stop_controller.get_target_velocity(
+            current_traffic_light=traffic_light, current_waypoint=self.path_manager.current_waypoint,
+            planned_velocity=planned_velocity,
+        )
+        target_velocity = max(0., min(planned_velocity, signal_velocity, result.acc_target_velocity))
+        result.debug_details.setdefault("ve_perception", {}).update(
+            final_target_velocity=target_velocity, signal_target_velocity=signal_velocity,
+            signals_source="original_ros", objects_source="ve", ve_waypoints_used=False,
+        )
+        if len(result.path) < 2 or result.debug_details["ve_perception"].get("force_brake"):
+            return self.force_ve_brake(), []
+        acc, _, steer = self._calculate_control(vehicle_state, result.path, target_velocity, result)
+        return ControlInput(acc, steer), result.path
+
+    def force_ve_brake(self):
+        """No path is passed to the path follower on missing/blocked perception."""
+        self.pid.reset()
+        self.previous_target_velocity = 0.
+        self.previous_acc_cmd = -1.
+        return ControlInput(-1., getattr(self, "previous_front_steer_rad", 0.))
+
     def _smooth_static_target_speed(self, target_velocity, vehicle_state, lattice_result):
         """Carry a rise-only speed ramp through the recorded-to-global handoff."""
         target_velocity = max(0., target_velocity)
@@ -455,7 +495,8 @@ class AutonomousDriving(PathController):
             # The moving-object overlay evaluates the actually commanded path
             # and both target-side/front traffic. Keep people and signals in
             # legacy ACC; avoid a second vehicle stop on the old path.
-            return [entry for entry in forward_entries if entry['object_info'].type not in (1,2)]
+            return [entry for entry in forward_entries if entry['object_info'].type not in (1,2)
+                    and not is_ve_tracked_unknown(entry['object_info'])]
         if (getattr(lattice_result, "mode", "") == "static_obstacle"
                 and getattr(lattice_result, "active", False)
                 and static_details.get("path_validated", False)):
@@ -464,7 +505,8 @@ class AutonomousDriving(PathController):
             return [entry for entry in forward_entries if not (
                 (getattr(entry["object_info"], "is_static", False)
                  or (jamming_details.get('jamming') and jamming_stationary(entry['object_info'])))
-                and getattr(entry["object_info"], "type", -1) in (1, 2)
+                and (getattr(entry["object_info"], "type", -1) in (1, 2)
+                     or is_ve_tracked_unknown(entry["object_info"]))
                 and abs(getattr(entry["object_info"], "velocity", 0.0)) < 0.2
             )]
         if getattr(lattice_result, "mode", "") != "highway_lane":
@@ -479,4 +521,5 @@ class AutonomousDriving(PathController):
             entry
             for entry in forward_entries
             if getattr(entry["object_info"], "type", -1) not in (1, 2)
+            and not is_ve_tracked_unknown(entry["object_info"])
         ]

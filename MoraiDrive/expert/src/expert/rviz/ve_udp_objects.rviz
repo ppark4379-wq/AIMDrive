@@ -1,0 +1,89 @@
+Panels:
+  - Class: rviz/Displays
+    Name: Displays
+  - Class: rviz/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Alpha: 0.3
+      Cell Size: 1
+      Class: rviz/Grid
+      Color: 110; 110; 110
+      Enabled: true
+      Name: Grid (1 metre)
+      Plane: XY
+      Plane Cell Count: 100
+      Reference Frame: gps
+      Value: true
+    - Alpha: 0.5
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 180; 180; 180
+      Enabled: true
+      Line Style: Lines
+      Line Width: 0.05
+      Name: Reference Route
+      Topic: /global_path
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 0; 130; 255
+      Enabled: true
+      Line Style: Lines
+      Line Width: 0.15
+      Name: Expert Selected Path (not VE waypoints)
+      Topic: /local_path
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /ve/bev_markers
+      Name: VE Objects - Exact Size and Input Status
+      Queue Size: 1
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /lattice/paths
+      Name: Expert Candidates + Ego + Planner Status
+      Queue Size: 1
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /lattice/lanes
+      Name: Lane Sections
+      Queue Size: 1
+      Value: true
+  Enabled: true
+  Global Options:
+    Background Color: 25; 29; 35
+    Default Light: true
+    Fixed Frame: map
+    Frame Rate: 15
+  Name: root
+  Tools:
+    - Class: rviz/Interact
+    - Class: rviz/MoveCamera
+    - Class: rviz/Select
+    - Class: rviz/FocusCamera
+    - Class: rviz/Measure
+  Value: true
+  Views:
+    Current:
+      Class: rviz/XYOrbit
+      Distance: 55
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0
+      Name: BEV - Follow Ego
+      Pitch: 1.5708
+      Target Frame: gps
+      Value: XYOrbit (rviz)
+      Yaw: 0
+    Saved Views: {}
+Window Geometry:
+  Height: 900
+  Width: 1400
+  X: 50
+  Y: 50
