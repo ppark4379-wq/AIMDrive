@@ -1,0 +1,50 @@
+Panels:
+  - Class: rviz/Displays
+    Name: Displays
+  - Class: rviz/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz/Grid
+      Name: Grid (1 metre)
+      Enabled: true
+      Cell Size: 1
+      Plane Cell Count: 100
+      Color: 72; 82; 95
+      Alpha: 0.35
+      Reference Frame: base_link
+      Plane: XY
+      Value: true
+    - Class: rviz/MarkerArray
+      Name: VE ROI + planner objects + speed + timing
+      Enabled: true
+      Marker Topic: /ve/roi_markers
+      Queue Size: 1
+      Value: true
+  Enabled: true
+  Global Options:
+    Background Color: 19; 24; 33
+    Fixed Frame: base_link
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz/Interact
+    - Class: rviz/MoveCamera
+    - Class: rviz/Select
+    - Class: rviz/Measure
+  Views:
+    Current:
+      Class: rviz/TopDownOrtho
+      Name: Ego ROI - forward up
+      Target Frame: base_link
+      Angle: -1.57079632679
+      Scale: 11
+      X: 6
+      Y: 0
+    Saved Views: {}
+Window Geometry:
+  Height: 1000
+  Width: 1500
+  X: 40
+  Y: 40

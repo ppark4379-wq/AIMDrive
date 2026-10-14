@@ -1,0 +1,211 @@
+{
+  "objects": 86,
+  "diagnostics": 86,
+  "markers": 158,
+  "actual_control_messages": 0,
+  "frames": [
+    "base_link"
+  ],
+  "samples": [
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n35.0 km/h (9.7 m/s)\nx=+21.2 y=-0.2 m",
+        "LIVE: 1 current objects\nNEW 9.64 Hz | ROS recv 10.51 Hz | update age 37 ms\nGPU 54 ms | pipeline 87 ms | input->output 172 ms | sim lag 182 ms"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n35.0 km/h (9.7 m/s)\nx=+21.2 y=-0.2 m",
+        "LIVE: 1 current objects\nNEW 9.64 Hz | ROS recv 10.49 Hz | update age 88 ms\nGPU 54 ms | pipeline 87 ms | input->output 172 ms | sim lag 252 ms"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n34.8 km/h (9.7 m/s)\nx=+21.2 y=-0.2 m",
+        "LIVE: 1 current objects\nNEW 9.63 Hz | ROS recv 10.51 Hz | update age 48 ms\nGPU 62 ms | pipeline 100 ms | input->output 172 ms | sim lag 212 ms"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n34.6 km/h (9.6 m/s)\nx=+21.2 y=-0.2 m",
+        "LIVE: 1 current objects\nNEW 9.64 Hz | ROS recv 10.52 Hz | update age 12 ms\nGPU 64 ms | pipeline 95 ms | input->output 141 ms | sim lag 132 ms"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n34.6 km/h (9.6 m/s)\nx=+21.2 y=-0.2 m",
+        "LIVE: 1 current objects\nNEW 9.64 Hz | ROS recv 10.48 Hz | update age 63 ms\nGPU 64 ms | pipeline 95 ms | input->output 141 ms | sim lag 165 ms"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n34.6 km/h (9.6 m/s)\nx=+21.2 y=-0.2 m",
+        "LIVE: 1 current objects\nNEW 9.64 Hz | ROS recv 10.48 Hz | update age 113 ms\nGPU 64 ms | pipeline 95 ms | input->output 141 ms | sim lag 237 ms"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n34.8 km/h (9.7 m/s)\nx=+21.2 y=-0.2 m",
+        "LIVE: 1 current objects\nNEW 9.51 Hz | ROS recv 10.24 Hz | update age 19 ms\nGPU 54 ms | pipeline 89 ms | input->output 125 ms | sim lag 119 ms"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n34.8 km/h (9.7 m/s)\nx=+21.2 y=-0.2 m",
+        "LIVE: 1 current objects\nNEW 9.51 Hz | ROS recv 10.24 Hz | update age 70 ms\nGPU 54 ms | pipeline 89 ms | input->output 125 ms | sim lag 170 ms"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n34.4 km/h (9.6 m/s)\nx=+21.2 y=-0.2 m",
+        "LIVE: 1 current objects\nNEW 9.52 Hz | ROS recv 10.37 Hz | update age 39 ms\nGPU 53 ms | pipeline 90 ms | input->output 188 ms | sim lag 190 ms"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n34.9 km/h (9.7 m/s)\nx=+21.2 y=-0.2 m",
+        "LIVE: 1 current objects\nNEW 9.51 Hz | ROS recv 10.42 Hz | update age 5 ms\nGPU 55 ms | pipeline 93 ms | input->output 188 ms | sim lag 134 ms"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n34.9 km/h (9.7 m/s)\nx=+21.2 y=-0.2 m",
+        "LIVE: 1 current objects\nNEW 9.51 Hz | ROS recv 10.40 Hz | update age 56 ms\nGPU 55 ms | pipeline 93 ms | input->output 188 ms | sim lag 199 ms"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n34.8 km/h (9.7 m/s)\nx=+21.2 y=-0.2 m",
+        "LIVE: 1 current objects\nNEW 9.52 Hz | ROS recv 10.44 Hz | update age 19 ms\nGPU 56 ms | pipeline 96 ms | input->output 172 ms | sim lag 180 ms"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n34.8 km/h (9.7 m/s)\nx=+21.2 y=-0.2 m",
+        "LIVE: 1 current objects\nNEW 9.52 Hz | ROS recv 10.41 Hz | update age 70 ms\nGPU 56 ms | pipeline 96 ms | input->output 172 ms | sim lag 234 ms"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n35.0 km/h (9.7 m/s)\nx=+21.2 y=-0.2 m",
+        "LIVE: 1 current objects\nNEW 9.50 Hz | ROS recv 10.45 Hz | update age 37 ms\nGPU 58 ms | pipeline 91 ms | input->output 156 ms | sim lag 153 ms"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n34.9 km/h (9.7 m/s)\nx=+21.2 y=-0.2 m",
+        "LIVE: 1 current objects\nNEW 9.55 Hz | ROS recv 10.48 Hz | update age 1 ms\nGPU 64 ms | pipeline 95 ms | input->output 141 ms | sim lag 115 ms"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n34.9 km/h (9.7 m/s)\nx=+21.2 y=-0.2 m",
+        "LIVE: 1 current objects\nNEW 9.55 Hz | ROS recv 10.49 Hz | update age 52 ms\nGPU 64 ms | pipeline 95 ms | input->output 141 ms | sim lag 171 ms"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n35.0 km/h (9.7 m/s)\nx=+21.2 y=-0.2 m",
+        "LIVE: 1 current objects\nNEW 9.56 Hz | ROS recv 10.55 Hz | update age 25 ms\nGPU 56 ms | pipeline 86 ms | input->output 125 ms | sim lag 111 ms"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n35.0 km/h (9.7 m/s)\nx=+21.2 y=-0.2 m",
+        "LIVE: 1 current objects\nNEW 9.56 Hz | ROS recv 10.55 Hz | update age 76 ms\nGPU 56 ms | pipeline 86 ms | input->output 125 ms | sim lag 196 ms"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n35.0 km/h (9.7 m/s)\nx=+21.2 y=-0.2 m",
+        "LIVE: 1 current objects\nNEW 9.60 Hz | ROS recv 10.57 Hz | update age 37 ms\nGPU 66 ms | pipeline 97 ms | input->output 140 ms | sim lag 174 ms"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n35.1 km/h (9.8 m/s)\nx=+21.2 y=-0.2 m",
+        "LIVE: 1 current objects\nNEW 9.64 Hz | ROS recv 10.65 Hz | update age 8 ms\nGPU 57 ms | pipeline 88 ms | input->output 109 ms | sim lag 89 ms"
+      ]
+    }
+  ],
+  "last_objects": [
+    {
+      "id": 1,
+      "speed_kmh": 36.24031562805176,
+      "x": 62.416155140295054,
+      "y": 185.3363200474798
+    }
+  ],
+  "last_diagnostics": {
+    "kind": "ve_result",
+    "generation": "4f605c41-0cb4-47cc-a3a9-8caafb0a5894",
+    "checkpoint_sha256": "6824d3998ec4be85bf40f96de37a195d12ff00aa8181d6739ed75125a7bb5e5b",
+    "map_basis": {
+      "crs": "+proj=utm +zone=52 +datum=WGS84 +units=m +no_defs",
+      "orientation_frame": "projected_grid",
+      "origin_xyz": [
+        302595.0,
+        4124145.0,
+        0.0
+      ],
+      "position_frame": "projected_grid",
+      "schema": "morai_projected_grid_basis_v1",
+      "source_orientation_frame": "true_enu"
+    },
+    "roi_flu_m": {
+      "x_min": -20.0,
+      "x_max": 30.0,
+      "y_min": -25.0,
+      "y_max": 25.0
+    },
+    "ready": true,
+    "sequence": 332,
+    "source_stamp_ns": 1791978614250000000,
+    "source_stamps_ns": {
+      "rgb_front": 1791978614250000000,
+      "rgb_left": 1791978614248000000,
+      "rgb_right": 1791978614227000000,
+      "rgb_rear": 1791978614248000000,
+      "lidar": 1791978614260000000,
+      "ego": 1791978614242000000
+    },
+    "ego_pose": {
+      "x": 62.46516418457031,
+      "y": 206.49668884277344,
+      "yaw": -1.5642704611288079
+    },
+    "ego_speed_mps": 6.203985137133364e-07,
+    "metrics": {
+      "new_hz": 9.439526205156149,
+      "gpu_ms": 64.49517059326172,
+      "preprocess_ms": 37.076,
+      "pipeline_ms": 105.5771,
+      "input_receipt_age_ms": 235.0,
+      "sensor_skew_ms": 23.0
+    },
+    "wire_seq": 332,
+    "object_count": 1
+  },
+  "wall_seconds": 8.008158683776855,
+  "observed_object_hz": 10.61417528753461
+}
