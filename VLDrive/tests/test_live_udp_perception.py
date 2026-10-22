@@ -34,6 +34,16 @@ class Receiver:
 
 
 class UdpPerceptionTests(unittest.TestCase):
+    def test_camera_worker_closes_if_lidar_initialization_fails(self):
+        with patch('inference.sensors.camera_process.CameraProcessGroup') as group, \
+             patch('inference.sensors.live_frame.LidarReceiver', side_effect=OSError('occupied')):
+            group.return_value.cameras = {}
+            with self.assertRaisesRegex(OSError, 'occupied'):
+                LiveFrameSource(self.ports, encoder_contract=self.contract, lidar_frame='base_flu',
+                    velocity_source='vehicle_status', orientation_frame='true_enu',
+                    perception_only=True, camera_receiver_mode='process')
+            group.return_value.close.assert_called_once()
+
     def setUp(self):
         torch.set_num_threads(2)
         self.contract = sensor_record_encoder_contract(
@@ -102,7 +112,9 @@ class UdpPerceptionTests(unittest.TestCase):
         receiver.lock, receiver.value, receiver.received = threading.Lock(), None, 0.
         receiver.packets = receiver.samples = 0
         self.assertIsNone(receiver.latest()[0])
-        receiver.callback(NS(velocity=NS(x=3., y=4.), heading=90., position=NS(x=-60., y=-165.)))
+        receiver.callback(NS(velocity=NS(x=3., y=4.), heading=90., position=NS(x=-60., y=-165.),
+                             header=NS(stamp=NS(to_nsec=lambda: 123456789))))
+        self.assertEqual(receiver.latest_snapshot()[2]['source_stamp_ns'], 123456789)
         value, age = receiver.latest()
         self.assertEqual(value['speed'], 5.)
         self.assertEqual(value['yaw_degrees'], 90.)
@@ -129,6 +141,23 @@ class UdpPerceptionTests(unittest.TestCase):
             self.assertEqual(meta['pose_source'], 'ego_topic')
             self.assertTrue(np.isfinite(grid_yaw(0., (*meta['ego_local'], 0.), MAP_BASIS, source_frame='true_enu')))
         self.assertNotIn('gps', REQUIRED_STREAMS)
+
+    def test_ego_history_never_uses_future_pose_and_rejects_large_gap(self):
+        receiver = RosEgoStatusReceiver.__new__(RosEgoStatusReceiver)
+        receiver.lock = threading.Lock()
+        receiver.packets = receiver.samples = 0
+        for stamp, x in ((1_000_000_000, 10.), (1_020_000_000, 11.), (1_040_000_000, 12.)):
+            receiver.callback(NS(velocity=NS(x=3.,y=0.),heading=0.,position=NS(x=x,y=0.),
+                                 header=NS(stamp=NS(to_nsec=lambda: stamp))))
+        value, _, identity = receiver.at_source_stamp(1_030_000_000)
+        self.assertEqual(value['ego_local'], (11.,0.))
+        self.assertEqual(identity['source_stamp_ns'], 1_020_000_000)
+        self.assertIsNone(receiver.at_source_stamp(999_000_000)[0])
+        self.assertIsNone(receiver.at_source_stamp(1_091_000_000)[0])
+        self.assertEqual(receiver.at_source_stamp(1_090_000_000)[0]['ego_local'],(12.,0.))
+        receiver.callback(NS(velocity=NS(x=0.,y=0.),heading=0.,position=NS(x=0.,y=0.),
+                             header=NS(stamp=NS(to_nsec=lambda: 100_000_000))))
+        self.assertIsNone(receiver.at_source_stamp(1_030_000_000)[0])
 
     def test_ego_pose_never_falls_back_to_gps_or_accepts_stale_status(self):
         source = self.source()
@@ -186,6 +215,31 @@ class UdpPerceptionTests(unittest.TestCase):
         following, next_meta = source.build('cpu',utm_offsets=(302595.,4124145.),after_lidar_sample_id=10)
         self.assertEqual(next_meta['selected_samples']['lidar']['sample_id'],11)
         self.assertFalse(torch.equal(inputs['lidar'], following['lidar']))
+
+    def test_lidar_source_clock_is_resolved_against_sensor_header(self):
+        source = self.source()
+        self.populate(source)
+        reference = 5 * 3_600_000_000_000 + 10_000_000
+        lidar_snapshot = source.lidar.latest_snapshot
+        status_snapshot = source.status.latest_snapshot
+        def stamped_lidar():
+            value, age, identity = lidar_snapshot()
+            identity['source_stamp_us_within_hour'] = 3_599_990_000
+            return value, age, identity
+        def stamped_status():
+            value, age, identity = status_snapshot()
+            identity['source_stamp_ns'] = reference
+            return value, age, identity
+        source.lidar.latest_snapshot = stamped_lidar
+        source.status.latest_snapshot = stamped_status
+        inputs, meta = source.build('cpu')
+        self.assertIsNotNone(inputs)
+        self.assertEqual(meta['selected_samples']['lidar']['source_stamp_ns'], reference-20_000_000)
+        self.assertEqual(meta['source_spread_ms'], 20.)
+        source.status.latest_snapshot = status_snapshot
+        inputs, meta = source.build('cpu')
+        self.assertIsNone(inputs)
+        self.assertIn('lidar_source_clock', meta['missing'])
 
 
 if __name__ == '__main__':

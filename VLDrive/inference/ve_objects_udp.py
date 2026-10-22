@@ -5,6 +5,7 @@ The receiver and sender run in the same WSL instance (shared monotonic clock).
 The encoder emits class-agnostic boxes. The receiver adds local motion tracks.
 """
 import argparse
+from collections import deque
 import json
 import math
 from pathlib import Path
@@ -46,8 +47,15 @@ class RosEgoStatusReceiver:
                      yaw_degrees=heading, ego_local=(x, y))
         with self.lock:
             self.value, self.received = value, time.monotonic()
+            self.source_stamp_ns = message.header.stamp.to_nsec()
             self.packets += 1
             self.samples += 1
+            if not hasattr(self, 'history'):
+                self.history = deque(maxlen=100)
+            if self.history and self.source_stamp_ns < self.history[-1][2]['source_stamp_ns']:
+                self.history.clear()
+            self.history.append((value, self.received, dict(sample_id=self.samples,
+                received_ns=int(self.received*1e9), source_stamp_ns=self.source_stamp_ns)))
 
     def latest(self):
         with self.lock:
@@ -59,11 +67,24 @@ class RosEgoStatusReceiver:
     def latest_snapshot(self):
         with self.lock:
             return (self.value, time.monotonic() - self.received if self.value is not None else float('inf'),
-                    dict(sample_id=self.samples, received_ns=int(self.received * 1e9)))
+                    dict(sample_id=self.samples, received_ns=int(self.received * 1e9),
+                         source_stamp_ns=getattr(self, 'source_stamp_ns', 0)))
 
     def diagnostics(self):
         with self.lock:
             return dict(packets=self.packets, samples=self.samples, counters={})
+
+    def at_source_stamp(self, source_ns, max_delta_ns=50_000_000):
+        """Causal Ego sample within the trained 50ms contract, never a future pose."""
+        with self.lock:
+            candidates = [item for item in getattr(self, 'history', ())
+                          if 0 < item[2]['source_stamp_ns'] <= source_ns]
+            if not candidates:
+                return None, float('inf'), {}
+            value, receipt, identity = max(candidates, key=lambda item: item[2]['source_stamp_ns'])
+            if source_ns - identity['source_stamp_ns'] > max_delta_ns:
+                return None, float('inf'), {}
+            return value, time.monotonic()-receipt, dict(identity)
 
 
 def finite(value):
@@ -156,12 +177,18 @@ def main(argv=None):
     if not math.isfinite(args.seconds) or args.seconds < 0:
         parser.error('seconds must be finite and nonnegative; 0 means run until interrupted')
     config = json.loads(Path(args.config).read_text(encoding='utf-8'))
+    gps_mode = config.get('runtime', {}).get('ego_source', 'ros_ego') == 'gps_imu_udp'
+    control_pose_hz = config.get('runtime', {}).get('control_pose_hz')
+    if control_pose_hz is not None and (not gps_mode or not 1 <= float(control_pose_hz) <= 100):
+        raise ValueError('Control pose stream requires GPS mode and 1..100Hz')
+    if config.get('runtime', {}).get('ego_source', 'ros_ego') not in ('ros_ego', 'gps_imu_udp'):
+        raise ValueError('Unknown explicit ego source')
     # The older viewer uses reusable sockets. Refuse an existing UDP consumer
     # instead of silently stealing its sensor datagrams.
     probes = []
     try:
         for name, port in config['ports'].items():
-            if name == 'vehicle_status':
+            if name == 'vehicle_status' and not gps_mode:
                 continue  # Shared ROS Ego input, not a second vehicle UDP stream.
             probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             probes.append(probe)
@@ -189,18 +216,60 @@ def main(argv=None):
     device = config['runtime']['device']
     model, payload, digest = _load_model(Path(config['checkpoint']), config['checkpoint_sha256'], device)
     contract = validate_contract(checkpoint_encoder_contract(payload, digest), {'map_basis': MAP_BASIS})
+    signal_head = None
+    if config.get('signal_head'):
+        from models.ve.signal_state import decode_checkpoint, extract_signal_feature, decode_signal, decode_native_signal
+        signal_head = decode_checkpoint(torch.load(config['signal_head'], map_location='cpu'), digest).to(device)
+        model.eval()
     route, lidar = config['route'], config['lidar']
-    import rospy
-    rospy.init_node('ve_udp_sensor_encoder', anonymous=True, disable_signals=True)
-    status_receiver = RosEgoStatusReceiver()
-    source = LiveFrameSource(config['ports'], route_csv=route['csv'],
-        lidar_elevations=lidar.get('elevations'), lidar_axis_policy=lidar['axis_policy'],
-        bind=config['runtime']['bind'], encoder_contract=contract,
-        lidar_frame=lidar['frame'], lidar_to_base=lidar['lidar_to_base'],
-        velocity_source='ego_topic', route_map_root=route['map_root'],
-        route_definition=route['definition'], orientation_frame='true_enu',
-        perception_only=True, status_receiver=status_receiver, pose_source='ego_topic',
-        diagnostics=args.audit_dir is not None)
+    gps_receiver = None
+    source_ports = dict(config['ports'])
+    if gps_mode:
+        from inference.sensors.gps_imu_status import GpsImuStatusReceiver, ValidGpsReceiver
+        status_receiver = GpsImuStatusReceiver(source_ports, bind=config['runtime']['bind'])
+        try:
+            gps_receiver = ValidGpsReceiver(source_ports['gps'], bind=config['runtime']['bind'], name='gps')
+        except BaseException:
+            status_receiver.close()
+            raise
+        # The status adapter already owns IMU; no second socket may consume it.
+        source_ports.pop('imu')
+        hold = config['runtime'].get('gps_blackout_hold') or {}
+        if hold.get('enabled'):
+            from inference.sensors.gps_blackout_hold import GpsBlackoutHold, SectionZone
+            zone = hold.get('simulate_zone')
+            try:
+                gps_receiver = GpsBlackoutHold(gps_receiver, status_receiver, MAP_BASIS,
+                    max_hold_s=float(hold.get('max_hold_s', 120.)), max_distance_m=float(hold.get('max_distance_m', 250.)),
+                    latency_s=float(hold.get('latency_s', 0.)), lever_xy=tuple(hold.get('lever_xy', (0., 0.))),
+                    simulate_zone=SectionZone(zone['start_xy'], zone['end_xy'], zone.get('half_width_m', 15.))
+                    if zone else None)
+            except BaseException:
+                gps_receiver.close()
+                status_receiver.close()
+                raise
+            print('[VE UDP] GPS 음영 유지 켜짐: IMU 방향 + 상태 속도 적분{}'.format(
+                ' · 개발용 음영 주입 구간 사용' if zone else ''), flush=True)
+    else:
+        import rospy
+        rospy.init_node('ve_udp_sensor_encoder', anonymous=True, disable_signals=True)
+        status_receiver = RosEgoStatusReceiver()
+    try:
+        source = LiveFrameSource(source_ports, route_csv=route['csv'],
+            lidar_elevations=lidar.get('elevations'), lidar_axis_policy=lidar['axis_policy'],
+            bind=config['runtime']['bind'], encoder_contract=contract,
+            lidar_frame=lidar['frame'], lidar_to_base=lidar['lidar_to_base'],
+            velocity_source='vehicle_status' if gps_mode else 'ego_topic', route_map_root=route['map_root'],
+            route_definition=route['definition'], orientation_frame='true_enu',
+            perception_only=True, status_receiver=status_receiver, pose_source='gps' if gps_mode else 'ego_topic',
+            diagnostics=args.audit_dir is not None,
+            camera_receiver_mode=config['runtime'].get('camera_receiver_mode', 'process'), gps_receiver=gps_receiver,
+            lidar_frame_policy=config['runtime'].get('lidar_frame_policy', 'morai_frame_timestamp'))
+    except BaseException:
+        status_receiver.close()
+        if gps_receiver is not None:
+            gps_receiver.close()
+        raise
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     stopped = [False]
     for sig in (signal.SIGINT, signal.SIGTERM):
@@ -217,8 +286,15 @@ def main(argv=None):
         if audit is not None:
             audit.write(json.dumps(row, allow_nan=False) + '\n')
     print('[VE UDP] 센서 입력 대기. ROS 센서 브리지 9091은 사용하지 않습니다.', flush=True)
+    control_pose = None
     try:
+        if control_pose_hz is not None:
+            from utils.common.ve_control_pose import ControlPoseStream
+            control_pose = ControlPoseStream(status_receiver, gps_receiver, MAP_BASIS,
+                args.generation, digest, hz=float(control_pose_hz)).start()
         while not stopped[0] and (args.seconds == 0 or time.monotonic() - start < args.seconds):
+            if control_pose is not None and control_pose.error is not None:
+                raise RuntimeError('Control pose stream stopped: '+control_pose.error)
             begin = time.monotonic_ns()
             inputs, meta = source.build(device, utm_offsets=(route['utm_east_offset'], route['utm_north_offset']),
                                          max_age=MAX_AGE_S, after_lidar_sample_id=last_lidar)
@@ -236,12 +312,14 @@ def main(argv=None):
                 checkpoint_sha256=digest, output_frame='projected_grid', scene_assumption='unknown',
                 sensor_received_ns=0, ready=False, reason='missing:' + ','.join(meta['missing']),
                 boxes=[], ego_pose=None, training_updates=0,
-                timing_policy='latest_UDP_receipt_age; source_synchrony_unverified')
+                timing_policy=('lidar_source; causal_status_speed_50ms; GPS_receipt_freshness; IMU_alignment_in_audit; source_synchrony_unverified'
+                               if gps_mode else 'morai_lidar_source_timestamp; causal_ego_50ms; latest_cameras; source_synchrony_unverified'))
             if inputs is not None:
                 lidar_sequence = meta['selected_samples']['lidar']['sample_id']
                 last_lidar = lidar_sequence
+                required = (*REQUIRED_STREAMS, 'gps') if gps_mode else REQUIRED_STREAMS
                 packet['sensor_received_ns'] = min(meta['selected_samples'][key]['received_ns']
-                                                   for key in REQUIRED_STREAMS)
+                                                   for key in required)
                 x, y = meta['ego_local']
                 yaw = grid_yaw(math.radians(meta['yaw_degrees']), (x, y, 0.), MAP_BASIS, source_frame='true_enu')
                 forward_ns = time.monotonic_ns()
@@ -250,7 +328,21 @@ def main(argv=None):
                     cuda_events = (torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True))
                     cuda_events[0].record()
                 with torch.no_grad():
-                    detection, _light = forward_perception(model, inputs)
+                    if signal_head is None:
+                        detection, _light = forward_perception(model, inputs)
+                    else:
+                        token, (detection, _light) = extract_signal_feature(model, inputs, forward_perception)
+                        signal_logits = signal_head(token)
+                        packet['signal'] = decode_signal(signal_logits)[0]
+                        packet['native_signal'] = decode_native_signal(_light)[0]
+                        # Diagnostic only: preserve both heads on the same input,
+                        # including the raw class before confidence abstention.
+                        packet['signal_diagnostics'] = dict(
+                            native_class_order=['red', 'green'],
+                            native_probabilities=_light[0].softmax(0).cpu().tolist(),
+                            three_code_order=[1, 16, 33],
+                            three_probabilities=signal_logits[0].softmax(0).cpu().tolist())
+
                 if cuda_events is not None:
                     cuda_events[1].record()
                 decode_ns = time.monotonic_ns()
@@ -259,8 +351,13 @@ def main(argv=None):
                 count += 1
                 packet.update(ready=True, reason=None, boxes=[{k: box[k] for k in
                     ('center_world', 'heading_deg', 'width_m', 'length_m', 'speed_mps')} for box in boxes],
-                    ego_pose=dict(x=x, y=y, yaw_raw_deg=meta['yaw_degrees']),
-                    ego_status_source='/Ego_topic', ego_position_source='/Ego_topic',
+                    ego_pose=dict(x=x, y=y, yaw_raw_deg=meta['yaw_degrees'], yaw_grid_rad=yaw,
+                                  speed_mps=meta['speed']),
+                    ego_status_source='UDP_status_speed_IMU_heading' if gps_mode else '/Ego_topic',
+                    ego_position_source=('/Ego_topic' if not gps_mode else
+                        'GPS_dead_reckoning' if meta['selected_samples'].get('gps', {}).get('position_mode') == 'dead_reckoning'
+                        else 'GPS'),
+                    ego_control=meta.get('ego_control') if gps_mode else None,
                     model_inference_ms=(time.monotonic_ns() - begin) / 1e6)
                 if audit is not None:
                     selected = meta['selected_samples']
@@ -274,6 +371,9 @@ def main(argv=None):
                     packet['audit'] = dict(selected_samples=selected, gate_lidar_id=lidar_sequence,
                         stage_ms=stages, receipt_skew_ms=(max(receipts)-min(receipts))/1e6 if receipts else None,
                         oldest_selected_received_ns=min(receipts) if receipts else None,
+                        source_spread_ms=meta.get('source_spread_ms'),
+                        ego_alignment=meta.get('ego_alignment'),
+                        model_velocity_mps=meta['model_velocity'],
                         lidar_points=meta['lidar_points'])
                 if time.monotonic_ns() - packet['sensor_received_ns'] > MAX_AGE_S * 1e9:
                     packet.update(ready=False, reason='sensors_expired_during_inference')
@@ -293,17 +393,23 @@ def main(argv=None):
                 last_log = time.monotonic()
             time.sleep(.02 if inputs is not None else .1)
     finally:
-        sequence += 1
-        sock.sendto(encode_packet(dict(schema=SCHEMA, generation=args.generation, sequence=sequence,
-            checkpoint_sha256=digest, output_frame='projected_grid', scene_assumption='unknown',
-            ready=False, reason='sender_stopped', sent_ns=time.monotonic_ns(), sensor_received_ns=0)), ('127.0.0.1', PORT))
-        audit_write(dict(event='streams', monotonic_ns=time.monotonic_ns(), streams=source.diagnostics()))
-        audit_write(dict(event='stopped', monotonic_ns=time.monotonic_ns(), model_forwards=count,
-                         datagrams_journaled=datagram_sequence))
-        if audit is not None:
-            audit.close()
-        source.close()
-        sock.close()
+        try:
+            sequence += 1
+            sock.sendto(encode_packet(dict(schema=SCHEMA, generation=args.generation, sequence=sequence,
+                checkpoint_sha256=digest, output_frame='projected_grid', scene_assumption='unknown',
+                ready=False, reason='sender_stopped', sent_ns=time.monotonic_ns(), sensor_received_ns=0)), ('127.0.0.1', PORT))
+            audit_write(dict(event='streams', monotonic_ns=time.monotonic_ns(), streams=source.diagnostics()))
+            audit_write(dict(event='stopped', monotonic_ns=time.monotonic_ns(), model_forwards=count,
+                             datagrams_journaled=datagram_sequence))
+        finally:
+            if control_pose is not None:
+                control_pose.close()
+            if audit is not None:
+                audit.close()
+            try:
+                source.close()
+            finally:
+                sock.close()
         print(json.dumps(dict(status='STOPPED', model_forwards=count, training_updates=0)), flush=True)
     return 0
 

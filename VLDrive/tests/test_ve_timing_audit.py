@@ -58,9 +58,13 @@ class TimingTests(unittest.TestCase):
         receiver._lock = threading.Lock()
         receiver._latest, receiver.samples = b'first', 7
         receiver._stamp, receiver._received_ns = time.time(), 123
+        receiver._source_stamp_ns = 456
+        receiver._sample_metadata = dict(source_stamp_us_within_hour=789)
         sample, age, identity = receiver.latest_snapshot()
         receiver._latest, receiver.samples = b'second', 8
-        self.assertEqual((sample,identity), (b'first',dict(sample_id=7,received_ns=123)))
+        receiver._sample_metadata['source_stamp_us_within_hour'] = 999
+        self.assertEqual((sample,identity), (b'first',dict(sample_id=7,received_ns=123,
+            source_stamp_ns=456,source_stamp_us_within_hour=789)))
         self.assertGreaterEqual(age, 0.)
 
     def parser(self):

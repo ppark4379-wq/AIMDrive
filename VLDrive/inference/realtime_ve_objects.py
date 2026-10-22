@@ -26,6 +26,9 @@ CHECKPOINTS = {
     'E4': {
         'path': '/mnt/d/MoraiDrive/dataset/_training_runs/morai_transfer/continue_e4e5_20261004_050644/checkpoint-epoch-001.pth.tar',
         'sha256': '6a1de2df2cf08f169d86656f28d489263be54a0e649579300e92a74524d2cd27'},
+    'P1': {
+        'path': '/mnt/d/MoraiDrive/dataset/_training_runs/morai_transfer/perception_g2_tunnel_20261014_114540/checkpoint-epoch-001.pth.tar',
+        'sha256': '054769a5462cd9684f0de6ba80c7b7fc28b234051a7b0490020a45be050e59f7'},
 }
 HEALTH_SCHEMA = 'morai_ve_perception_health_v1'
 MAP_BASIS = {
@@ -54,8 +57,14 @@ def load_config(path, label=None):
     if selected_label not in CHECKPOINTS:
         raise ValueError('Unknown checkpoint label')
     selected = dict(CHECKPOINTS[selected_label])
-    if doc.get('checkpoints') != CHECKPOINTS:
-        raise ValueError('Checkpoint table differs from the reviewed E3/E4 identities')
+    catalog = doc.get('checkpoints')
+    # Existing E3/E4 configurations remain usable after a new opt-in label is
+    # registered. Every supplied identity must still match the reviewed table,
+    # and the selected checkpoint must be explicitly present in the config.
+    if (not isinstance(catalog, dict) or selected_label not in catalog
+            or any(key not in CHECKPOINTS or value != CHECKPOINTS[key]
+                   for key, value in catalog.items())):
+        raise ValueError('Checkpoint table differs from the reviewed checkpoint identities')
     if doc.get('map_basis') != MAP_BASIS:
         raise ValueError('Projected-grid basis differs from the checkpoint evidence')
     if doc.get('object_topic') != '/ve/Object_topic' or doc.get('health_topic') != '/ve/perception_health':
