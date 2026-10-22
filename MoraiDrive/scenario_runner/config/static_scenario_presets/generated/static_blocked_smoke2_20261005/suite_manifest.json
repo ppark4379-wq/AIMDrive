@@ -1,0 +1,540 @@
+{
+  "schema": "morai_static_obstacle_suite_v1",
+  "name": "static_blocked_smoke2_20261005",
+  "seed": 26100522,
+  "requested_attempts": 6,
+  "accepted_count": 6,
+  "attempted_model_counts": {
+    "WoodBox": 1,
+    "RedBarrel": 1,
+    "YellowBarrel": 0,
+    "TrafficBarrel": 0,
+    "PE_Firewall_Orange": 1,
+    "PE_Firewall_White": 1,
+    "Steel_Barricade": 1,
+    "Concrete_Barricade01": 1,
+    "Bollard01": 1,
+    "Bollard04": 2,
+    "Bicycle_city": 0,
+    "Bicycle_mountain": 1,
+    "Scooter_02": 1,
+    "Sportbike_01": 1,
+    "BabyStroller1": 1,
+    "BabyStroller2": 1,
+    "Bike1": 2,
+    "Bike2": 0,
+    "ElectricScooter1": 0,
+    "ElectricScooter2": 2,
+    "NCAP_GVT": 0,
+    "concrete-barrier": 0,
+    "Scooter1": 0,
+    "Scooter2": 0,
+    "Rockslide": 0
+  },
+  "accepted_model_counts": {
+    "WoodBox": 1,
+    "RedBarrel": 1,
+    "YellowBarrel": 0,
+    "TrafficBarrel": 0,
+    "PE_Firewall_Orange": 1,
+    "PE_Firewall_White": 1,
+    "Steel_Barricade": 1,
+    "Concrete_Barricade01": 1,
+    "Bollard01": 1,
+    "Bollard04": 2,
+    "Bicycle_city": 0,
+    "Bicycle_mountain": 1,
+    "Scooter_02": 1,
+    "Sportbike_01": 1,
+    "BabyStroller1": 1,
+    "BabyStroller2": 1,
+    "Bike1": 2,
+    "Bike2": 0,
+    "ElectricScooter1": 0,
+    "ElectricScooter2": 2,
+    "NCAP_GVT": 0,
+    "concrete-barrier": 0,
+    "Scooter1": 0,
+    "Scooter2": 0,
+    "Rockslide": 0
+  },
+  "accepted_model_minimum": 0,
+  "accepted_route_counts": {
+    "short": 6,
+    "alternate": 0,
+    "wide": 0
+  },
+  "rejected_count": 0,
+  "interrupted": false,
+  "created_at_unix": 1791193685.1617653,
+  "generation_policy": {
+    "min_obstacles": 1,
+    "max_obstacles": 3,
+    "lateral_margin_m": 0.6,
+    "yaw_margin_deg": 90.0,
+    "scale_jitter": 0.0,
+    "scale_policy": "morai_native_model_scale_v1",
+    "trial_timeout_sec": 240.0,
+    "invalid_plan_timeout_sec": 15.0,
+    "signal_stop_timeout_sec": 30.0,
+    "max_cross_track_error_m": 4.0,
+    "models": [
+      "WoodBox",
+      "RedBarrel",
+      "YellowBarrel",
+      "TrafficBarrel",
+      "PE_Firewall_Orange",
+      "PE_Firewall_White",
+      "Steel_Barricade",
+      "Concrete_Barricade01",
+      "Bollard01",
+      "Bollard04",
+      "Bicycle_city",
+      "Bicycle_mountain",
+      "Scooter_02",
+      "Sportbike_01",
+      "BabyStroller1",
+      "BabyStroller2",
+      "Bike1",
+      "Bike2",
+      "ElectricScooter1",
+      "ElectricScooter2",
+      "NCAP_GVT",
+      "concrete-barrier",
+      "Scooter1",
+      "Scooter2",
+      "Rockslide"
+    ],
+    "accepted_route_targets": null,
+    "placement": "lane_aware_right_edge_strata_v1",
+    "models_without_footprint": [
+      "CargoBox",
+      "Lane_Separation_Bar",
+      "PE_Drum",
+      "Concrete_Barricade02",
+      "BabyStroller3",
+      "SportBike",
+      "obj_obstacle_dog",
+      "Color_Cone",
+      "Rubber_Cone",
+      "Bike3",
+      "Barbed_Wirefence"
+    ],
+    "footprint_catalog": {
+      "path": "scenario_runner/config/static_obstacle_footprints_v1.json",
+      "sha256": "83e6ae9bab5d7a89e0958952181cbaf62c798036fc9c5b4aa94db5588f20416f",
+      "registry_sha256": "21f7927b6ea57c9299f3bf87546aba003cc1734c82589d5617a65682ea221b9e"
+    },
+    "lane_width_m": 3.34,
+    "lane_edge_margin_m": 0.1,
+    "lateral_strata": [
+      "right",
+      "centre",
+      "left"
+    ],
+    "route_clearance_m": {
+      "small_vs_right_02": 0.8,
+      "blocking_max_vs_right_02": 0.55,
+      "every_box_vs_right_03": 0.75
+    },
+    "expert_routes": {
+      "right_01.csv": {
+        "path": "expert/src/expert/src/planning/정적장애물/후보전역경로/right_01.csv",
+        "sha256": "f5d953afd6f69faef86ab6b9bebad57a82968f7710d503d3161ae58ff0039ba8"
+      },
+      "right_02.csv": {
+        "path": "expert/src/expert/src/planning/정적장애물/후보전역경로/right_02.csv",
+        "sha256": "161f44bcc465aed0b1035f334520bc02e85d8c336637cdb81f85a9a335e32447"
+      },
+      "right_03.csv": {
+        "path": "expert/src/expert/src/planning/정적장애물/후보전역경로/right_03.csv",
+        "sha256": "1d75957aeae4889c3aba073790301ea25541731eed83b401c7b563d068693fc3"
+      },
+      "right_04.csv": {
+        "path": "expert/src/expert/src/planning/정적장애물/후보전역경로/right_04.csv",
+        "sha256": "6272513f32c86460d16dd0a7fbe767c66ef1e1e18056751a404023728e929567"
+      },
+      "right_05.csv": {
+        "path": "expert/src/expert/src/planning/정적장애물/후보전역경로/right_05.csv",
+        "sha256": "5f4947458916bb05e5f8e2ec22691500d804760b57e262912904ed94ec952a91"
+      },
+      "right_06_retry.csv": {
+        "path": "expert/src/expert/src/planning/정적장애물/후보전역경로/right_06_retry.csv",
+        "sha256": "eb515cdc3c2c028aa5c26eb5877e99bdbbd9d02ae5ed8f5c8b9705dd8048d0eb"
+      }
+    },
+    "avoidance_weights": {
+      "straight": 20.0,
+      "small": 20.0,
+      "medium": 40.0,
+      "late": 20.0
+    },
+    "blocked_layouts": true,
+    "blockage_release": {
+      "wait_wall_sec": 6.0,
+      "stopped_speed_mps": 0.3,
+      "max_gap_m": 12.0
+    },
+    "lane_gate": {
+      "min_marking_clearance_m": 0.0,
+      "max_right_deviation_m": 4.0,
+      "max_sample_gap_m": 3.0,
+      "densify_step_m": 0.2
+    },
+    "lane_markings": {
+      "path": "scenario_runner/config/static_segment_lane_markings.json",
+      "sha256": "53a3e8a2d802c0c8b24817946e6cc4dfa5b367d82c703c5315e858a12ef51627"
+    },
+    "ego_body": {
+      "length_m": 4.635,
+      "width_m": 1.89,
+      "center_forward_m": 1.53,
+      "center_left_m": 0.0
+    }
+  },
+  "attempted_cell_counts": {
+    "3:blocked": 6
+  },
+  "accepted_cell_counts": {
+    "3:straight": 6
+  },
+  "attempted_lateral_strata": {
+    "blocked:right_wall": 6,
+    "blocked:right_block": 6,
+    "blocked:centre": 2,
+    "blocked:right": 4
+  },
+  "accepted_avoidance_counts": {
+    "straight": 6,
+    "small": 0,
+    "medium": 0,
+    "late": 0,
+    "large": 0
+  },
+  "attempts": [
+    {
+      "attempt": 1,
+      "accepted": true,
+      "obstacle_count": 3,
+      "models": [
+        "RedBarrel",
+        "BabyStroller2",
+        "PE_Firewall_White"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_blocked_smoke2_20261005/candidates/static_blocked_smoke2_20261005_attempt_001.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_blocked_smoke2_20261005/logs/static_blocked_smoke2_20261005_attempt_001.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 0,
+        "cross_track_samples": 42,
+        "max_cross_track_error_m": 0.33,
+        "selected_routes": []
+      },
+      "lane_compliance": {
+        "passed": true,
+        "reasons": [],
+        "raw_samples": 836,
+        "max_sample_gap_m": 1.095,
+        "route_index_span": [
+          487.1,
+          752.5
+        ],
+        "min_marking_clearance_m": 0.087,
+        "closest_marking": "B2256W000445:505:solid",
+        "touched_markings": [],
+        "max_right_deviation_m": 0.312,
+        "max_left_deviation_m": 0.035,
+        "avoidance_class": "small",
+        "trajectory_class": "straight",
+        "swing_onset_route_index": null,
+        "peak_route_index": 615.7,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "avoidance_target": "blocked",
+      "blockage_release_observed": true,
+      "rejection_reasons": [],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 50.58,
+      "accepted_preset": "scenario_runner/config/static_scenario_presets/generated/static_blocked_smoke2_20261005/static_blocked_smoke2_20261005_attempt_001.yaml",
+      "route_class": "short",
+      "sha256": "7d919adb62b1ad5f6a33bb6d60a84affb26ed9adfcd8c34fb05d7f58b676cb70",
+      "avoidance_class": "straight"
+    },
+    {
+      "attempt": 2,
+      "accepted": true,
+      "obstacle_count": 3,
+      "models": [
+        "Scooter_02",
+        "Bollard04",
+        "Bike1"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_blocked_smoke2_20261005/candidates/static_blocked_smoke2_20261005_attempt_002.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_blocked_smoke2_20261005/logs/static_blocked_smoke2_20261005_attempt_002.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 0,
+        "cross_track_samples": 41,
+        "max_cross_track_error_m": 0.27,
+        "selected_routes": []
+      },
+      "lane_compliance": {
+        "passed": true,
+        "reasons": [],
+        "raw_samples": 811,
+        "max_sample_gap_m": 1.065,
+        "route_index_span": [
+          487.1,
+          752.6
+        ],
+        "min_marking_clearance_m": 0.168,
+        "closest_marking": "B2256W000445:505:solid",
+        "touched_markings": [],
+        "max_right_deviation_m": 0.247,
+        "max_left_deviation_m": 0.035,
+        "avoidance_class": "small",
+        "trajectory_class": "straight",
+        "swing_onset_route_index": null,
+        "peak_route_index": 589.9,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "avoidance_target": "blocked",
+      "blockage_release_observed": true,
+      "rejection_reasons": [],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 49.075,
+      "accepted_preset": "scenario_runner/config/static_scenario_presets/generated/static_blocked_smoke2_20261005/static_blocked_smoke2_20261005_attempt_002.yaml",
+      "route_class": "short",
+      "sha256": "cf0903adb163024bdd1f6a8df6fcdfc61012f5b33010d78ea6cef414b5a7f083",
+      "avoidance_class": "straight"
+    },
+    {
+      "attempt": 3,
+      "accepted": true,
+      "obstacle_count": 3,
+      "models": [
+        "WoodBox",
+        "Bollard01",
+        "Bicycle_mountain"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_blocked_smoke2_20261005/candidates/static_blocked_smoke2_20261005_attempt_003.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_blocked_smoke2_20261005/logs/static_blocked_smoke2_20261005_attempt_003.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 0,
+        "cross_track_samples": 38,
+        "max_cross_track_error_m": 0.33,
+        "selected_routes": []
+      },
+      "lane_compliance": {
+        "passed": true,
+        "reasons": [],
+        "raw_samples": 751,
+        "max_sample_gap_m": 1.11,
+        "route_index_span": [
+          487.1,
+          752.5
+        ],
+        "min_marking_clearance_m": 0.08,
+        "closest_marking": "B2256W000445:505:solid",
+        "touched_markings": [],
+        "max_right_deviation_m": 0.312,
+        "max_left_deviation_m": 0.035,
+        "avoidance_class": "small",
+        "trajectory_class": "straight",
+        "swing_onset_route_index": null,
+        "peak_route_index": 604.6,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "avoidance_target": "blocked",
+      "blockage_release_observed": true,
+      "rejection_reasons": [],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 46.071,
+      "accepted_preset": "scenario_runner/config/static_scenario_presets/generated/static_blocked_smoke2_20261005/static_blocked_smoke2_20261005_attempt_003.yaml",
+      "route_class": "short",
+      "sha256": "2187225c3037ec65690948bdb656a39e37155b20d0f6b8adc262d77d5d5303e9",
+      "avoidance_class": "straight"
+    },
+    {
+      "attempt": 4,
+      "accepted": true,
+      "obstacle_count": 3,
+      "models": [
+        "ElectricScooter2",
+        "Bike1",
+        "PE_Firewall_Orange"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_blocked_smoke2_20261005/candidates/static_blocked_smoke2_20261005_attempt_004.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_blocked_smoke2_20261005/logs/static_blocked_smoke2_20261005_attempt_004.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 0,
+        "cross_track_samples": 38,
+        "max_cross_track_error_m": 0.26,
+        "selected_routes": []
+      },
+      "lane_compliance": {
+        "passed": true,
+        "reasons": [],
+        "raw_samples": 749,
+        "max_sample_gap_m": 0.898,
+        "route_index_span": [
+          487.1,
+          752.7
+        ],
+        "min_marking_clearance_m": 0.173,
+        "closest_marking": "B2256W000445:505:solid",
+        "touched_markings": [],
+        "max_right_deviation_m": 0.244,
+        "max_left_deviation_m": 0.035,
+        "avoidance_class": "small",
+        "trajectory_class": "straight",
+        "swing_onset_route_index": null,
+        "peak_route_index": 590.0,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "avoidance_target": "blocked",
+      "blockage_release_observed": true,
+      "rejection_reasons": [],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 46.071,
+      "accepted_preset": "scenario_runner/config/static_scenario_presets/generated/static_blocked_smoke2_20261005/static_blocked_smoke2_20261005_attempt_004.yaml",
+      "route_class": "short",
+      "sha256": "8f5e17f8c7f2032ffef4959915549309f9d43d1b0353a1101908cfa670900264",
+      "avoidance_class": "straight"
+    },
+    {
+      "attempt": 5,
+      "accepted": true,
+      "obstacle_count": 3,
+      "models": [
+        "BabyStroller1",
+        "Bollard04",
+        "Sportbike_01"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_blocked_smoke2_20261005/candidates/static_blocked_smoke2_20261005_attempt_005.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_blocked_smoke2_20261005/logs/static_blocked_smoke2_20261005_attempt_005.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 0,
+        "cross_track_samples": 38,
+        "max_cross_track_error_m": 0.27,
+        "selected_routes": []
+      },
+      "lane_compliance": {
+        "passed": true,
+        "reasons": [],
+        "raw_samples": 753,
+        "max_sample_gap_m": 1.067,
+        "route_index_span": [
+          487.1,
+          752.1
+        ],
+        "min_marking_clearance_m": 0.165,
+        "closest_marking": "B2256W000445:505:solid",
+        "touched_markings": [],
+        "max_right_deviation_m": 0.247,
+        "max_left_deviation_m": 0.035,
+        "avoidance_class": "small",
+        "trajectory_class": "straight",
+        "swing_onset_route_index": null,
+        "peak_route_index": 590.3,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "avoidance_target": "blocked",
+      "blockage_release_observed": true,
+      "rejection_reasons": [],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 45.569,
+      "accepted_preset": "scenario_runner/config/static_scenario_presets/generated/static_blocked_smoke2_20261005/static_blocked_smoke2_20261005_attempt_005.yaml",
+      "route_class": "short",
+      "sha256": "a33b25cb5fa2d7ae438f23575cba44ffd497a9678a2d09cf4f9dc7750f53c96c",
+      "avoidance_class": "straight"
+    },
+    {
+      "attempt": 6,
+      "accepted": true,
+      "obstacle_count": 3,
+      "models": [
+        "ElectricScooter2",
+        "Concrete_Barricade01",
+        "Steel_Barricade"
+      ],
+      "candidate": "scenario_runner/.runtime/static_scenario_batch/static_blocked_smoke2_20261005/candidates/static_blocked_smoke2_20261005_attempt_006.yaml",
+      "log": "scenario_runner/.runtime/static_scenario_batch/static_blocked_smoke2_20261005/logs/static_blocked_smoke2_20261005_attempt_006.log",
+      "closed_loop_evidence": {
+        "goal_reached": true,
+        "valid_plan_samples": 0,
+        "cross_track_samples": 37,
+        "max_cross_track_error_m": 0.27,
+        "selected_routes": []
+      },
+      "lane_compliance": {
+        "passed": true,
+        "reasons": [],
+        "raw_samples": 729,
+        "max_sample_gap_m": 1.114,
+        "route_index_span": [
+          487.1,
+          752.3
+        ],
+        "min_marking_clearance_m": 0.167,
+        "closest_marking": "B2256W000445:505:solid",
+        "touched_markings": [],
+        "max_right_deviation_m": 0.245,
+        "max_left_deviation_m": 0.035,
+        "avoidance_class": "small",
+        "trajectory_class": "straight",
+        "swing_onset_route_index": null,
+        "peak_route_index": 590.1,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "avoidance_target": "blocked",
+      "blockage_release_observed": true,
+      "rejection_reasons": [],
+      "return_code": 0,
+      "timed_out": false,
+      "early_invalid_plan": false,
+      "early_signal_stop": false,
+      "watchdog_evidence": null,
+      "duration_sec": 45.07,
+      "accepted_preset": "scenario_runner/config/static_scenario_presets/generated/static_blocked_smoke2_20261005/static_blocked_smoke2_20261005_attempt_006.yaml",
+      "route_class": "short",
+      "sha256": "73e253d0667002cd04d9e2f1321dd2240b485ba0cd4a6ba9738187a392cd110a",
+      "avoidance_class": "straight"
+    }
+  ],
+  "accepted_presets": [
+    "scenario_runner/config/static_scenario_presets/generated/static_blocked_smoke2_20261005/static_blocked_smoke2_20261005_attempt_001.yaml",
+    "scenario_runner/config/static_scenario_presets/generated/static_blocked_smoke2_20261005/static_blocked_smoke2_20261005_attempt_002.yaml",
+    "scenario_runner/config/static_scenario_presets/generated/static_blocked_smoke2_20261005/static_blocked_smoke2_20261005_attempt_003.yaml",
+    "scenario_runner/config/static_scenario_presets/generated/static_blocked_smoke2_20261005/static_blocked_smoke2_20261005_attempt_004.yaml",
+    "scenario_runner/config/static_scenario_presets/generated/static_blocked_smoke2_20261005/static_blocked_smoke2_20261005_attempt_005.yaml",
+    "scenario_runner/config/static_scenario_presets/generated/static_blocked_smoke2_20261005/static_blocked_smoke2_20261005_attempt_006.yaml"
+  ],
+  "completed_attempts": 6,
+  "accepted_model_minimum_met": true,
+  "finished_at_unix": 1791193971.1546772,
+  "accepted_route_targets_met": null
+}

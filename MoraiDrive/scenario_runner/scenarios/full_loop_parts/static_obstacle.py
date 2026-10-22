@@ -262,10 +262,14 @@ def load_static_obstacle_preset(path, expected_map_name, route_points,
             "route_distance_m": route_distance,
             "source_actor_id": str(entry.get("source_actor_id", "")),
         })
+    from .static_blockage_release import validate_policy
+
     return {
         "path": str(path),
         "name": str(document.get("name") or path.stem),
         "placements": placements,
+        # Opt-in: only a deliberately blocking layout declares a release.
+        "blockage_release": validate_policy(document.get("blockage_release")),
     }
 
 
@@ -444,9 +448,36 @@ def _spawn_one_static_obstacle(
     return actor, expected
 
 
+def verified_pair_presets(directory=None):
+    """Return historically GT-verified pairs; never turn candidates into approvals."""
+    if directory is None:
+        directory = Path(__file__).resolve().parents[2] / "config/static_scenario_presets/generated/static_rot90_20261005"
+    approved = []
+    for path in sorted(Path(directory).glob("*.yaml")):
+        document = yaml.safe_load(path.read_text(encoding="utf-8"))
+        verification = document.get("verification", {})
+        if (document.get("schema") == "morai_static_obstacle_preset_v1"
+                and document.get("source") == "automated_static_expert_verified"
+                and len(document.get("obstacles", [])) == 2
+                and document.get("generation", {}).get("candidate_only_until_expert_passes") is False
+                and verification.get("expert_completed") is True
+                and verification.get("collision_free") is True
+                and verification.get("runner_return_code") == 0
+                and verification.get("lane_compliance", {}).get("passed") is True
+                and not document.get("blockage_release")):
+            approved.append(path)
+    return approved
+
+
 def spawn_static_obstacle(self):
     spec = self.route_definition["zones"]["static_obstacle"]
     preset_path = self.cfg.get("static_obstacle_preset")
+    if self.cfg.get("static_verified_pair"):
+        pool = verified_pair_presets()
+        if not pool:
+            raise RuntimeError("No GT-verified static pair presets available")
+        preset_path = str(self.random.choice(pool))
+        print("[정적 배치] GT 통과 배치 선택: {}".format(preset_path))
     if preset_path:
         # In a mission mode route_points is only the segment window, while
         # path_s_at_index() takes a full-route index.
@@ -458,6 +489,7 @@ def spawn_static_obstacle(self):
             route_index_offset=window.first_index if window is not None else 0,
         )
         placements = preset["placements"]
+        self.static_blockage_release_policy = preset["blockage_release"]
         count = len(placements)
         print(
             "[FullLoop] static editor preset loaded: name={} count={} path={}".format(
@@ -583,6 +615,9 @@ def verify_static_obstacle(self, elapsed, current_s):
     """Fail closed if a supposedly static obstacle falls or vanishes."""
     if bool(self.cfg.get("static_obstacle_editor_mode", False)):
         # Live editor mode is intentionally mutable and never used by capture.
+        return
+    if getattr(self, "static_blockage_released", False):
+        # A disclosed blockage release removed the layout on purpose.
         return
     expectations = list(
         getattr(self, "static_obstacle_expectations", [])

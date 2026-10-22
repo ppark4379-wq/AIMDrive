@@ -1,0 +1,142 @@
+schema: morai_static_obstacle_preset_v1
+name: static_rot2obs_train_20261018_attempt_075
+map_name: R_KR_PR_K-city_2025
+scenario: full_loop_static
+source: automated_static_expert_verified
+generation:
+  batch_seed: 26101801
+  attempt: 75
+  candidate_only_until_expert_passes: false
+  scale_policy: morai_native_model_scale_v1
+  placement_policy: lane_aware_right_edge_strata_v1
+  avoidance_target: straight
+  footprint_catalog_sha256: 83e6ae9bab5d7a89e0958952181cbaf62c798036fc9c5b4aa94db5588f20416f
+obstacles:
+- model: Bike2
+  position:
+    x: -56.832475
+    y: -143.492862
+    z: 28.378027
+  yaw_deg: -54.356556
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 666
+  generation:
+    longitudinal_fraction: 0.28953824
+    lateral_offset_m: -3.772385
+    route_lateral_m: -3.020421
+    right_edge_route_lateral_m: -3.7906
+    left_edge_route_lateral_m: -2.2502
+    placement_role: clear_01
+    lateral_stratum: right_near
+    lane_fit: right_of_path
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+    blocks_routes:
+    - right_02.csv
+    - right_03.csv
+    - right_04.csv
+    right_01_right_clearance_m: 1.1607
+    right_02_right_clearance_m: 0.0114
+    right_03_right_clearance_m: -2.0324
+    right_04_right_clearance_m: -3.6249
+    right_05_right_clearance_m: -6.0186
+    right_06_retry_right_clearance_m: -8.6653
+- model: Scooter1
+  position:
+    x: -56.366056
+    y: -140.962229
+    z: 28.379798
+  yaw_deg: -82.710791
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 671
+  generation:
+    longitudinal_fraction: 0.54252306
+    lateral_offset_m: -4.243048
+    route_lateral_m: -3.491085
+    right_edge_route_lateral_m: -4.0594
+    left_edge_route_lateral_m: -2.9228
+    placement_role: clear_01
+    lateral_stratum: right_far
+    lane_fit: right_of_path
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+    blocks_routes:
+    - right_03.csv
+    - right_04.csv
+    right_01_right_clearance_m: 1.8145
+    right_02_right_clearance_m: 0.5653
+    right_03_right_clearance_m: -1.7628
+    right_04_right_clearance_m: -3.3986
+    right_05_right_clearance_m: -5.4938
+    right_06_retry_right_clearance_m: -8.051
+- model: concrete-barrier
+  position:
+    x: -56.240435
+    y: -137.356353
+    z: 28.382322
+  yaw_deg: -43.436867
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 678
+  generation:
+    longitudinal_fraction: 0.90309219
+    lateral_offset_m: -4.374718
+    route_lateral_m: -3.622755
+    right_edge_route_lateral_m: -4.9258
+    left_edge_route_lateral_m: -2.3197
+    placement_role: clear_01
+    lateral_stratum: right_far
+    lane_fit: right_of_path
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+    blocks_routes:
+    - right_02.csv
+    - right_03.csv
+    - right_04.csv
+    - right_05.csv
+    right_01_right_clearance_m: 1.1863
+    right_02_right_clearance_m: 0.0142
+    right_03_right_clearance_m: -2.4142
+    right_04_right_clearance_m: -4.1658
+    right_05_right_clearance_m: -5.8136
+    right_06_retry_right_clearance_m: -9.0174
+verification:
+  expert_completed: true
+  collision_free: true
+  runner_return_code: 0
+  max_cross_track_error_m: 0.31
+  cross_track_limit_m: 4.0
+  valid_plan_samples: 15
+  selected_routes:
+  - right_01.csv
+  blockage_release_observed: null
+  lane_compliance:
+    passed: true
+    reasons: []
+    raw_samples: 655
+    max_sample_gap_m: 1.022
+    route_index_span:
+    - 487.1
+    - 752.2
+    min_marking_clearance_m: 0.112
+    closest_marking: B2256W000445:505:solid
+    touched_markings: []
+    max_right_deviation_m: 0.283
+    max_left_deviation_m: 0.035
+    avoidance_class: small
+    trajectory_class: straight
+    swing_onset_route_index: null
+    peak_route_index: 605.5
+    markings_source_sha256: f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb
+  verified_at_unix: 1792175605.545517
+  log: scenario_runner/.runtime/static_scenario_batch/static_rot2obs_train_20261018/logs/static_rot2obs_train_20261018_attempt_075.log
+  ego_trace: scenario_runner/.runtime/static_scenario_batch/static_rot2obs_train_20261018/traces/static_rot2obs_train_20261018_attempt_075.csv
+  ego_trace_sha256: e267d9d3a73acad1019201b45d0cf274e359f938f27d63b924cd578d365d92ea

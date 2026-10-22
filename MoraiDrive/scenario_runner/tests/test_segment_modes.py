@@ -190,12 +190,12 @@ class MissionModesTest(unittest.TestCase):
             scenario.verify_static_obstacle(1.0, 0.0)
 
     def test_primary_modes_plus_legacy_commands(self):
-        self.assertEqual(len(PRIMARY_SCENARIOS), 12)
+        self.assertEqual(len(PRIMARY_SCENARIOS), 13)
         for name in PRIMARY_SCENARIOS:
             self.assertEqual(build_parser().parse_args(["--scenario", name]).scenario, name)
             self.assertEqual(
                 automatic_repeat_enabled(name, self.base_cfg),
-                name != "full_loop_tunnel_normal",
+                name not in ("full_loop_tunnel_normal", "full_loop_traffic_light"),
             )
             self.assertFalse(automatic_repeat_enabled(name, self.base_cfg, once=True))
         self.assertFalse(automatic_repeat_enabled("full_loop_highway_tunnel_test", self.base_cfg))
@@ -224,6 +224,7 @@ class MissionModesTest(unittest.TestCase):
             count = sum(asdict(mode.zones).values())
             self.assertEqual(count, 0 if name in (
                 "full_loop_normal", "full_loop_tunnel_normal",
+                "full_loop_traffic_light",
             ) else 1)
             self.assertEqual(mode.zones.tunnel, name in (
                 "full_loop_tunnel_dynamic", "full_loop_tunnel_vehicle"))
@@ -3952,7 +3953,7 @@ class MissionModesTest(unittest.TestCase):
                 "sys.argv", ["runner", "--scenario", name, "--max-runs", "3"],
             ), redirect_stdout(io.StringIO()):
                 main_runner.main()
-            expected_runs = 1 if name == "full_loop_tunnel_normal" else 3
+            expected_runs = 1 if name in ("full_loop_tunnel_normal", "full_loop_traffic_light") else 3
             self.assertEqual(factory.call_count, expected_runs)
             self.assertEqual(factory.return_value.run.call_count, expected_runs)
             self.assertEqual(factory.call_args.kwargs["scenario_cfg"]["mission_mode"], name)

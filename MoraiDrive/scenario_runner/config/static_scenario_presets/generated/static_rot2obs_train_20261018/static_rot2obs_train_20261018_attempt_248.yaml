@@ -1,0 +1,135 @@
+schema: morai_static_obstacle_preset_v1
+name: static_rot2obs_train_20261018_attempt_248
+map_name: R_KR_PR_K-city_2025
+scenario: full_loop_static
+source: automated_static_expert_verified
+generation:
+  batch_seed: 26101801
+  attempt: 248
+  candidate_only_until_expert_passes: false
+  scale_policy: morai_native_model_scale_v1
+  placement_policy: lane_aware_right_edge_strata_v1
+  avoidance_target: small
+  footprint_catalog_sha256: 83e6ae9bab5d7a89e0958952181cbaf62c798036fc9c5b4aa94db5588f20416f
+obstacles:
+- model: PE_Firewall_Orange
+  position:
+    x: -55.881193
+    y: -146.053558
+    z: 28.376233
+  yaw_deg: 2.257383
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 661
+  generation:
+    longitudinal_fraction: 0.03330847
+    lateral_offset_m: -4.71937
+    route_lateral_m: -3.967406
+    right_edge_route_lateral_m: -4.3081
+    left_edge_route_lateral_m: -3.6267
+    placement_role: clear_02
+    lateral_stratum: right_far
+    lane_fit: right_of_path
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+    blocks_routes:
+    - right_03.csv
+    - right_04.csv
+    - right_05.csv
+    - right_06_retry.csv
+    right_01_right_clearance_m: 2.5561
+    right_02_right_clearance_m: 1.592
+    right_03_right_clearance_m: 0.009
+    right_04_right_clearance_m: -1.6579
+    right_05_right_clearance_m: -3.4516
+    right_06_retry_right_clearance_m: -5.8671
+- model: Scooter2
+  position:
+    x: -56.207473
+    y: -141.464231
+    z: 28.379446
+  yaw_deg: -86.334749
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 670
+  generation:
+    longitudinal_fraction: 0.49229627
+    lateral_offset_m: -4.40079
+    route_lateral_m: -3.648826
+    right_edge_route_lateral_m: -4.1596
+    left_edge_route_lateral_m: -3.138
+    placement_role: clear_02
+    lateral_stratum: right_near
+    lane_fit: right_of_path
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+    blocks_routes:
+    - right_03.csv
+    - right_04.csv
+    right_01_right_clearance_m: 2.0348
+    right_02_right_clearance_m: 0.7806
+    right_03_right_clearance_m: -1.4493
+    right_04_right_clearance_m: -3.018
+    right_05_right_clearance_m: -5.2786
+    right_06_retry_right_clearance_m: -7.8358
+- model: Bollard04
+  position:
+    x: -61.153033
+    y: -138.607302
+    z: 28.381452
+  yaw_deg: -12.887366
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 676
+  generation:
+    longitudinal_fraction: 0.77882003
+    lateral_offset_m: 0.539971
+    route_lateral_m: 1.291934
+    right_edge_route_lateral_m: 1.0758
+    left_edge_route_lateral_m: 1.5081
+    placement_role: lane_small
+    lateral_stratum: left
+    lane_fit: inside
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+    lane_left_bound_m: 1.7387
+    right_02_clearance_m: 1.1961
+    right_03_clearance_m: 3.2766
+verification:
+  expert_completed: true
+  collision_free: true
+  runner_return_code: 0
+  max_cross_track_error_m: 1.24
+  cross_track_limit_m: 4.0
+  valid_plan_samples: 16
+  selected_routes:
+  - right_02.csv
+  blockage_release_observed: null
+  lane_compliance:
+    passed: true
+    reasons: []
+    raw_samples: 412
+    max_sample_gap_m: 0.841
+    route_index_span:
+    - 487.1
+    - 752.5
+    min_marking_clearance_m: 0.101
+    closest_marking: B2256W000445:505:solid
+    touched_markings: []
+    max_right_deviation_m: 1.256
+    max_left_deviation_m: 0.035
+    avoidance_class: small
+    trajectory_class: small
+    swing_onset_route_index: 654.0
+    peak_route_index: 672.9
+    markings_source_sha256: f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb
+  verified_at_unix: 1792183797.3723419
+  log: scenario_runner/.runtime/static_scenario_batch/static_rot2obs_train_20261018/logs/static_rot2obs_train_20261018_attempt_248.log
+  ego_trace: scenario_runner/.runtime/static_scenario_batch/static_rot2obs_train_20261018/traces/static_rot2obs_train_20261018_attempt_248.csv
+  ego_trace_sha256: 2b91843a6c3684e73b9befbb95c3ff2c170390634aa3bd5806decec6bb9a646e

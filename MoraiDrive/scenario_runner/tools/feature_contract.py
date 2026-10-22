@@ -85,27 +85,41 @@ def verify_feature_contract(package_root, scenario_cfg):
         "Dynamic-obstacle model pool is missing",
     )
 
-    traffic_override = scenario_cfg.get("traffic_light_wait_override", {})
-    require(
-        bool(traffic_override.get("enabled")),
-        "Traffic-light wait override must remain enabled",
-    )
-    require(
-        float(traffic_override.get("wait_wall_sec", -1.0)) == 10.0,
-        "Traffic-light override must wait 10 host-monotonic seconds",
-    )
-    require(
-        float(traffic_override.get("stopped_speed_mps", -1.0)) == 0.5
-        and float(traffic_override.get("minimum_stopline_distance_m", -1.0)) == 0.0
-        and float(traffic_override.get("maximum_stopline_distance_m", -1.0)) == 25.0,
-        "Traffic-light stop and distance thresholds changed",
-    )
-    require(
-        int(traffic_override.get("target_color", -1)) == 16
-        and bool(traffic_override.get("impulse"))
-        and bool(traffic_override.get("set_sibling")),
-        "Traffic-light override command contract changed",
-    )
+    if scenario_cfg.get("mission_mode") == "full_loop_traffic_light":
+        from ..scenarios.segment_modes.traffic_light import default_contract
+        contract = scenario_cfg.get("_traffic_light_collection", {})
+        require(scenario_cfg.get("traffic_light_wait_override", {}).get("enabled") is False,
+                "좌회전 신호 수집에서는 기존 10초 뒤 직진 초록 override를 꺼야 합니다")
+        expected = default_contract()
+        require(all(contract.get(key) == value for key, value in expected.items()
+                    if key != "source_sha256"), "좌회전 신호 수집 행동 계약이 다릅니다")
+        pins = contract.get("source_sha256", {})
+        require(all(pins.get(name) == sha for name, sha in expected["source_sha256"].items()),
+                "좌회전 신호 수집 소스 버전이 다릅니다")
+    else:
+        traffic_override = scenario_cfg.get("traffic_light_wait_override", {})
+        require(
+            (traffic_override.get("enabled") is False
+             if scenario_cfg.get("ve_full_route_signals") and scenario_cfg.get("ve_signal_head")
+             else bool(traffic_override.get("enabled"))),
+            "VE full-route signals require natural phases; other runs retain the wait override",
+        )
+        require(
+            float(traffic_override.get("wait_wall_sec", -1.0)) == 10.0,
+            "Traffic-light override must wait 10 host-monotonic seconds",
+        )
+        require(
+            float(traffic_override.get("stopped_speed_mps", -1.0)) == 0.5
+            and float(traffic_override.get("minimum_stopline_distance_m", -1.0)) == 0.0
+            and float(traffic_override.get("maximum_stopline_distance_m", -1.0)) == 25.0,
+            "Traffic-light stop and distance thresholds changed",
+        )
+        require(
+            int(traffic_override.get("target_color", -1)) == 16
+            and bool(traffic_override.get("impulse"))
+            and bool(traffic_override.get("set_sibling")),
+            "Traffic-light override command contract changed",
+        )
 
     roundabout = scenario_cfg.get("roundabout_npc", {})
     require(
@@ -262,7 +276,9 @@ def verify_feature_contract(package_root, scenario_cfg):
         "2021_Hyundai_G80",
     ]
     require(
-        bool(merge_static.get("enabled"))
+        (bool(merge_static.get("enabled")) or (
+            scenario_cfg.get("highway_merge_static_vehicle_explicitly_disabled") is True
+            and merge_static.get("enabled") is False))
         and merge_static.get("models") == merge_static_models
         and merge_static.get("route_link") == "A2256W000411"
         and float(merge_static.get("distance_from_link_start_m", -1.0)) == 70.0,
@@ -276,18 +292,25 @@ def verify_feature_contract(package_root, scenario_cfg):
         int(scenario_cfg.get("route_setup_attempts", -1)) == 1,
         "Route setup must remain a single attempt during collection",
     )
-    require(
-        float(scenario_cfg.get("timeout_sec", -1.0)) == 0.0,
-        "Scenario-internal overall timeout must remain disabled",
-    )
-    require(
-        not bool(scenario_cfg.get("progress_watchdog", {}).get("enabled", True)),
-        "Scenario progress watchdog must remain disabled",
-    )
-    require(
-        float(scenario_cfg.get("off_route_timeout_sec", 0.0)) == 1000000000000.0,
-        "Off-route timeout must remain effectively disabled",
-    )
+    if scenario_cfg.get("mission_mode") == "full_loop_traffic_light":
+        require(float(scenario_cfg.get("timeout_sec", 0)) == 180.0
+                and float(scenario_cfg.get("off_route_timeout_sec", 0)) == 3.0
+                and scenario_cfg.get("progress_watchdog", {}).get("enabled") is True
+                and float(scenario_cfg.get("expert_max_velocity_kmh", 0)) == 30.0,
+                "신호 수집 구간의 시간/이탈/속도 제한이 다릅니다")
+    else:
+        require(
+            float(scenario_cfg.get("timeout_sec", -1.0)) == 0.0,
+            "Scenario-internal overall timeout must remain disabled",
+        )
+        require(
+            not bool(scenario_cfg.get("progress_watchdog", {}).get("enabled", True)),
+            "Scenario progress watchdog must remain disabled",
+        )
+        require(
+            float(scenario_cfg.get("off_route_timeout_sec", 0.0)) == 1000000000000.0,
+            "Off-route timeout must remain effectively disabled",
+        )
     require(
         int(scenario_cfg.get("after_static_start_path_index", -1)) >= 0,
         "After-static START index is missing",
@@ -296,7 +319,11 @@ def verify_feature_contract(package_root, scenario_cfg):
         int(scenario_cfg.get("highway_tunnel_test_start_path_index", -1)) >= 0,
         "Highway/tunnel test START index is missing",
     )
-    require(
-        bool(scenario_cfg.get("auto_repeat")),
-        "Automatic next-scenario execution must remain enabled",
-    )
+    if scenario_cfg.get("mission_mode") == "full_loop_traffic_light":
+        require(scenario_cfg.get("auto_repeat") is False,
+                "신호 파일럿은 한 회차 종료 후 자동 반복하지 않습니다")
+    else:
+        require(
+            bool(scenario_cfg.get("auto_repeat")),
+            "Automatic next-scenario execution must remain enabled",
+        )

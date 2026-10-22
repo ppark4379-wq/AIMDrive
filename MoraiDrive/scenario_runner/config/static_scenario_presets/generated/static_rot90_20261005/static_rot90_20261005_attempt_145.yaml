@@ -1,0 +1,70 @@
+schema: morai_static_obstacle_preset_v1
+name: static_rot90_20261005_attempt_145
+map_name: R_KR_PR_K-city_2025
+scenario: full_loop_static
+source: automated_static_expert_verified
+generation:
+  batch_seed: 26100501
+  attempt: 145
+  candidate_only_until_expert_passes: false
+  scale_policy: morai_native_model_scale_v1
+  placement_policy: lane_aware_right_edge_strata_v1
+  avoidance_target: small
+  footprint_catalog_sha256: 83e6ae9bab5d7a89e0958952181cbaf62c798036fc9c5b4aa94db5588f20416f
+obstacles:
+- model: BabyStroller1
+  position:
+    x: -61.152663
+    y: -142.254802
+    z: 28.378898
+  yaw_deg: -91.504707
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 668
+  generation:
+    longitudinal_fraction: 0.41406882
+    lateral_offset_m: 0.54572
+    route_lateral_m: 1.297684
+    right_edge_route_lateral_m: 0.9883
+    left_edge_route_lateral_m: 1.5937
+    placement_role: lane_small
+    lateral_stratum: left
+    lane_fit: inside
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+    lane_left_bound_m: 1.7011
+    right_02_clearance_m: 1.0603
+    right_03_clearance_m: 2.8478
+verification:
+  expert_completed: true
+  collision_free: true
+  runner_return_code: 0
+  max_cross_track_error_m: 1.35
+  cross_track_limit_m: 4.0
+  valid_plan_samples: 17
+  selected_routes:
+  - right_02.csv
+  lane_compliance:
+    passed: true
+    reasons: []
+    raw_samples: 652
+    max_sample_gap_m: 0.76
+    route_index_span:
+    - 487.1
+    - 752.2
+    min_marking_clearance_m: 0.142
+    closest_marking: B2256W000445:505:solid
+    touched_markings: []
+    max_right_deviation_m: 1.344
+    max_left_deviation_m: 0.035
+    avoidance_class: small
+    trajectory_class: small
+    swing_onset_route_index: 653.3
+    peak_route_index: 675.5
+    markings_source_sha256: f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb
+  verified_at_unix: 1791191305.2633932
+  log: scenario_runner/.runtime/static_scenario_batch/static_rot90_20261005/logs/static_rot90_20261005_attempt_145.log
+  ego_trace: scenario_runner/.runtime/static_scenario_batch/static_rot90_20261005/traces/static_rot90_20261005_attempt_145.csv
+  ego_trace_sha256: f2a6bbda5a200e8f0fda674a25757c3cce56adb598334daa0a63d0e72a4c7c0e

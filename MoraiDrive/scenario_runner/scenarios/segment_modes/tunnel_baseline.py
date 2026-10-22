@@ -4,9 +4,11 @@ Map link bounds and widths are nominal: passing this test does not survey the
 physical portals or walls. Foreign actors and SpawnPoints are never mutated.
 """
 
+import copy
 import json
 import math
 import os
+import time
 from pathlib import Path
 
 from ...utils.transform_utils import polyline_length
@@ -316,22 +318,122 @@ def finish(context, status, error=""):
     _persist(context)
 
 
-def park(context):
-    """Stop the baseline Ego after the Expert exits, including failure paths."""
+class _ParkingPending(RuntimeError):
+    def __init__(self, reason, readback):
+        super().__init__(reason)
+        self.readback = readback
+
+
+def _wait_parking_stage(record, phase, read, *, now, sleep, timeout_sec,
+                        minimum_seconds=0., minimum_stable_seconds=.2):
+    started = now()
+    deadline = started + timeout_sec
+    since, count = None, 0
+    record["phase"] = phase
+    while now() <= deadline:
+        try:
+            observed = read()
+        except RuntimeError as error:
+            observed = getattr(error, "readback", None)
+            if observed is None:
+                raise
+            record["checks"].append(dict(phase=phase, status="pending", reason=str(error),
+                                         readback=copy.deepcopy(observed)))
+            record["last_readback"] = copy.deepcopy(observed)
+            since, count = None, 0
+        else:
+            record["checks"].append(dict(phase=phase, status="observed", readback=copy.deepcopy(observed)))
+            record["last_readback"] = copy.deepcopy(observed)
+            since = now() if since is None else since
+            count += 1
+            # Require both repeated fresh reads and a continuous observation
+            # window, including the longer window after releasing our publisher.
+            if (now() <= deadline and now()-started >= minimum_seconds
+                    and count >= 3 and now()-since >= minimum_stable_seconds-1e-8):
+                return observed
+        if now() >= deadline:
+            break
+        sleep(min(.1, max(0., deadline-now())))
+    raise RuntimeError("Tunnel baseline " + phase + " did not settle within "
+                       + str(timeout_sec) + " wall seconds; last_readback="
+                       + repr(record.get("last_readback")))
+
+
+def park(context, *, now=None, sleep=None):
+    """Verify the shared AUTO/D brake stop after the native recording closes.
+
+    P is a separate actuator setting and is not required for a completed native
+    demonstration. Observe physical stopping with the owned Expert stopped and
+    an exclusive ROS brake owner, then release that owner and verify the same
+    AUTO/D, brake, speed and pose for a continuous half-second window. No motion
+    reset or KEYBOARD/P request may conceal an unsuccessful physical stop.
+    """
     if not _enabled(context) or getattr(context.grpc, "world", None) is None:
         return
-    from proto.morai.actor.actor_enum_pb2 import GEAR_MODE_P
+    from . import tunnel_static_startup as startup
 
-    context.stop_drive_control()
-    ego = context.grpc.get_ego()
-    velocity_ok = bool(ego.set_velocity(0.0))
-    gear_ok = bool(ego.set_vehicle_gear(GEAR_MODE_P))
-    state = ego.get_actor_state()
-    velocity = _xyz(state.global_velocity, "parked Ego velocity")
-    stopped = math.sqrt(sum(value * value for value in velocity)) <= 0.1
-    parked = int(state.vehicle_state.gear_mode) == int(GEAR_MODE_P)
-    if not (velocity_ok and gear_ok and stopped and parked):
-        raise RuntimeError("Tunnel baseline Ego stop/parking verification failed")
-    if hasattr(context, "tunnel_baseline_report"):
-        context.tunnel_baseline_report["ego_stopped_and_parked"] = True
-        _persist(context)
+    now, sleep = now or time.monotonic, sleep or time.sleep
+    started = now()
+    record = dict(status="stopping", phase="stop_owned_expert", checks=[],
+                  stop_policy="common_auto_d_ros_brake", stop_timeout_wall_seconds=20.,
+                  post_release_timeout_wall_seconds=3., physical_stop_verified=False,
+                  owned_expert_stopped=False, controller_publishers_absent=False,
+                  publisher_released_after_verified=False, post_release_verified=False,
+                  external_input_disabled=False, final_verified=False,
+                  gear_p_verified=False, velocity_reset_used=False)
+    report = getattr(context, "tunnel_baseline_report", None)
+    if report is not None:
+        report["ego_stopped_and_parked"] = False
+        report["final_stop_verified"] = False
+        report["stop_policy"] = record["stop_policy"]
+        report["final_parking"] = record
+    try:
+        controller = getattr(context, "expert_controller", None)
+        process = getattr(controller, "process", None)
+        context.stop_drive_control()
+        if process is not None and process.poll() is None:
+            raise RuntimeError("Owned Expert did not stop before final tunnel braking")
+        record["owned_expert_stopped"] = True
+        startup.hold_common_brake(context.grpc)
+
+        def stopped_readback(reference=None):
+            try:
+                return startup.common_stopped_readback(context.grpc, reference)[1]
+            except RuntimeError as error:
+                observed = getattr(error, "readback", None)
+                if observed is not None and (observed.get("brake") is None or observed.get("throttle") is None):
+                    raise RuntimeError("Nonfinite tunnel final actuator observation") from error
+                raise
+
+        stopped = _wait_parking_stage(
+            record, "physical_stop", stopped_readback,
+            now=now, sleep=sleep, timeout_sec=20., minimum_seconds=1.5,
+        )
+        record.update(physical_stop_verified=True, actual_stop=copy.deepcopy(stopped))
+        startup.release_common_brake(context.grpc)
+        record["publisher_released_after_verified"] = True
+        startup._require_no_controller()
+        stopped_final = _wait_parking_stage(
+            record, "post_release", lambda: stopped_readback(stopped),
+            now=now, sleep=sleep, timeout_sec=3., minimum_stable_seconds=.5,
+        )
+        record.update(status="verified", final_verified=True, post_release_verified=True,
+                      controller_publishers_absent=True, actual_final=copy.deepcopy(stopped_final))
+        if report is not None:
+            report["final_stop_verified"] = True
+    except BaseException as error:
+        record.update(status="failed", failure_reason=str(error) or type(error).__name__)
+        raise
+    finally:
+        try:
+            startup.release_common_brake(context.grpc)
+        except BaseException as error:
+            record.update(status="failed", final_verified=False,
+                          failure_reason="Brake publisher cleanup failed: " + (str(error) or type(error).__name__))
+            if report is not None:
+                report["final_stop_verified"] = False
+            raise
+        finally:
+            record["elapsed_wall_seconds"] = now()-started
+            if report is not None:
+                _persist(context)

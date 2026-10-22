@@ -1,5 +1,6 @@
 """Offline tests of the tunnel's global inventory and empty-road contract."""
 
+import copy
 import json
 from pathlib import Path
 import sys
@@ -9,6 +10,8 @@ import unittest
 from unittest.mock import Mock, patch
 
 from ..scenarios.segment_modes import tunnel_baseline as baseline
+from ..scenarios.segment_modes import tunnel_static_startup as startup
+from ..scenarios.full_loop_parts.tunnel_static_parts import live
 
 
 def xyz(x, y, z=28.0):
@@ -24,6 +27,17 @@ def actor(identity, x, y, *, client_key="", center=None, extent=(1.0, 2.0, 1.0))
             extent=xyz(*extent),
         ),
     )
+
+
+class Clock:
+    def __init__(self):
+        self.value = 100.
+
+    def now(self):
+        return self.value
+
+    def sleep(self, seconds):
+        self.value += seconds
 
 
 class TunnelBaselineTest(unittest.TestCase):
@@ -43,15 +57,34 @@ class TunnelBaselineTest(unittest.TestCase):
         }
         grpc = Mock()
         grpc.get_ego.return_value = Mock(spec=(
-            "get_id", "set_velocity", "set_vehicle_gear", "get_actor_state",
+            "get_id", "get_object_info", "set_velocity", "set_vehicle_gear", "get_actor_state",
         ))
         grpc.get_ego.return_value.get_id.return_value = "Ego"
         grpc.get_ego.return_value.set_velocity.return_value = True
         grpc.get_ego.return_value.set_vehicle_gear.return_value = True
-        grpc.get_ego.return_value.get_actor_state.return_value = SimpleNamespace(
-            global_velocity=xyz(0.0, 0.0, 0.0),
-            vehicle_state=SimpleNamespace(gear_mode=1),
-        )
+        self.ego_state = actor("Ego", -40., 0.)
+        self.ego_state.transform.rotation = xyz(0., 0., 0.)
+        self.ego_state.bounding_box.rotation = xyz(0., 0., 0.)
+        self.ego_state.global_velocity = xyz(0., 0., 0.)
+        self.ego_state.angular_velocity = xyz(0., 0., 0.)
+        self.ego_state.vehicle_state = SimpleNamespace(gear_mode=4, brake=1., throttle=0.)
+        grpc.get_ego.return_value.get_actor_state.return_value = self.ego_state
+        self.stub = grpc.world._sim_adapter._actor_stub
+        self.stub.GetActorState.return_value = self.ego_state
+        self.stub.GetVehicleControlMode.return_value = SimpleNamespace(mode=3)
+        self.stub.SetVehicleControlMode.return_value = SimpleNamespace(status=0)
+        self.stub.SetVehicleGear.return_value = SimpleNamespace(status=0)
+        self.stopped = dict(live._observation(self.ego_state), brake=1., throttle=0.,
+                            control_mode=3, gear_mode=4)
+        self.clock = Clock()
+        self.real_stopped_readback = startup.common_stopped_readback
+        for name, options in (
+                ("hold_common_brake", {}), ("release_common_brake", {}),
+                ("_require_no_controller", {}),
+                ("common_stopped_readback", {"wraps": self.real_stopped_readback})):
+            mocked = patch.object(startup, name, **options)
+            setattr(self, name, mocked.start())
+            self.addCleanup(mocked.stop)
         grpc.world._sim_adapter._actor_stub.GetAllActorsState.return_value = SimpleNamespace(
             states=[actor("Ego", -40.0, 0.0)],
         )
@@ -66,7 +99,10 @@ class TunnelBaselineTest(unittest.TestCase):
             stop_drive_control=Mock(),
         )
         self.fake_proto = patch.dict(sys.modules, {
-            "proto.morai.actor.actor_enum_pb2": SimpleNamespace(GEAR_MODE_P=1),
+            "proto.morai.actor.actor_enum_pb2": SimpleNamespace(
+                GEAR_MODE_P=1, GEAR_MODE_D=4, VEHICLE_CONTROL_KEYBOARD=1, VEHICLE_CONTROL_AUTO_MODE=3),
+            "proto.morai.actor.actor_set_pb2": SimpleNamespace(VehicleControlModeParam=SimpleNamespace, VehicleGear=SimpleNamespace),
+            "proto.morai.common.enum_pb2": SimpleNamespace(STATUS_CODE_SUCCESS=0),
             "proto.morai.actor.actor_get_pb2": SimpleNamespace(
                 GetAllActorsFilter=lambda **fields: SimpleNamespace(**fields),
             ),
@@ -83,6 +119,9 @@ class TunnelBaselineTest(unittest.TestCase):
 
     def saved(self):
         return json.loads((self.runtime / "tunnel_baseline/unit-test/baseline.json").read_text())
+
+    def park(self):
+        baseline.park(self.context, now=self.clock.now, sleep=self.clock.sleep)
 
     def test_prepare_reports_nominal_geometry_without_claiming_physical_validation(self):
         report = self.prepare()
@@ -103,13 +142,137 @@ class TunnelBaselineTest(unittest.TestCase):
                 baseline.before_drive(self.context)
         self.context.stop_drive_control.assert_called_once()
 
-    def test_final_parking_checks_observed_motion_and_gear(self):
+    def test_final_stop_records_actual_d_without_claiming_p_or_input_block(self):
         self.prepare()
-        baseline.park(self.context)
-        self.assertTrue(self.saved()["ego_stopped_and_parked"])
-        self.context.grpc.get_ego.return_value.get_actor_state.return_value.global_velocity.x = 2.0
-        with self.assertRaisesRegex(RuntimeError, "stop/parking verification failed"):
-            baseline.park(self.context)
+        self.park()
+        report = self.saved()
+        self.assertTrue(report["final_stop_verified"])
+        self.assertFalse(report["ego_stopped_and_parked"])
+        self.assertEqual(report["stop_policy"], "common_auto_d_ros_brake")
+        record = report["final_parking"]
+        for field in ("physical_stop_verified", "owned_expert_stopped", "controller_publishers_absent",
+                      "publisher_released_after_verified", "post_release_verified", "final_verified"):
+            self.assertTrue(record[field], field)
+        for field in ("external_input_disabled", "gear_p_verified", "velocity_reset_used"):
+            self.assertFalse(record[field], field)
+        self.assertEqual(record["actual_final"]["gear_mode"], 4)
+        self.assertEqual(record["actual_final"]["control_mode"], 3)
+        self.stub.SetVehicleGear.assert_not_called()
+        self.stub.SetVehicleControlMode.assert_not_called()
+        self.context.grpc.get_ego.return_value.set_velocity.assert_not_called()
+
+    def test_actual_physical_stop_precedes_publisher_release(self):
+        self.prepare()
+        release_times = []
+        self.release_common_brake.side_effect = lambda *a: release_times.append(self.clock.now())
+        def readback(grpc, reference=None):
+            self.ego_state.global_velocity.x = 2. if self.clock.now() < 110. else 0.
+            return self.real_stopped_readback(grpc, reference)
+        self.common_stopped_readback.side_effect = readback
+        self.park()
+        self.assertGreaterEqual(release_times[0], 110.)
+        self.assertGreaterEqual(self.clock.now()-release_times[0], .5-1e-8)
+        self.assertTrue(self.saved()["final_stop_verified"])
+        self.context.grpc.get_ego.return_value.set_velocity.assert_not_called()
+
+    def test_physical_stop_timeout_never_certifies_command_ack(self):
+        self.prepare()
+        self.ego_state.global_velocity.x = 2.
+        with self.assertRaisesRegex(RuntimeError, "physical_stop did not settle"):
+            self.park()
+        self.assertLessEqual(self.clock.now(), 120.01)
+        report = self.saved()
+        self.assertFalse(report["final_stop_verified"])
+        self.assertFalse(report["final_parking"]["physical_stop_verified"])
+        self.assertFalse(report["final_parking"]["publisher_released_after_verified"])
+        self.release_common_brake.assert_called()
+
+    def test_post_release_brake_throttle_mode_and_gear_are_observed(self):
+        for field, value in (("brake", 0.), ("throttle", .1), ("gear_mode", 1), ("control_mode", 1)):
+            with self.subTest(field=field):
+                self.prepare()
+                self.release_common_brake.reset_mock()
+                self.ego_state.vehicle_state = SimpleNamespace(gear_mode=4, brake=1., throttle=0.)
+                self.stub.GetVehicleControlMode.return_value = SimpleNamespace(mode=3)
+                def release(*args):
+                    if field == "control_mode":
+                        self.stub.GetVehicleControlMode.return_value.mode = value
+                    else:
+                        setattr(self.ego_state.vehicle_state, field, value)
+                self.release_common_brake.side_effect = release
+                with self.assertRaisesRegex(RuntimeError, "post_release did not settle"):
+                    self.park()
+                report = self.saved()
+                self.assertFalse(report["final_stop_verified"])
+                self.assertTrue(report["final_parking"]["physical_stop_verified"])
+                self.assertTrue(report["final_parking"]["publisher_released_after_verified"])
+                self.assertFalse(report["final_parking"]["post_release_verified"])
+
+    def test_post_release_motion_or_pose_drift_resets_final_stop_verification(self):
+        self.prepare()
+        self.park()
+        self.assertTrue(self.saved()["final_stop_verified"])
+        self.release_common_brake.side_effect = lambda *a: setattr(self.ego_state.global_velocity, "x", 2.)
+        with self.assertRaisesRegex(RuntimeError, "post_release did not settle"):
+            self.park()
+        self.assertFalse(self.saved()["final_stop_verified"])
+        self.ego_state.global_velocity.x = 0.
+        def release_drift(*args):
+            self.ego_state.transform.location.x += .25
+        self.release_common_brake.side_effect = release_drift
+        with self.assertRaisesRegex(RuntimeError, "post_release did not settle"):
+            self.park()
+        self.assertFalse(self.saved()["final_parking"]["final_verified"])
+
+    def test_post_release_observations_require_half_second_and_reject_foreign_controller(self):
+        self.prepare()
+        self.park()
+        record = self.saved()["final_parking"]
+        post_release = [row for row in record["checks"] if row["phase"] == "post_release"]
+        self.assertGreaterEqual(len(post_release), 3)
+        self.assertGreaterEqual(record["elapsed_wall_seconds"], 2.-1e-8)
+        def exclusive():
+            if self.release_common_brake.call_count >= 3:
+                raise RuntimeError("foreign controller")
+        self._require_no_controller.side_effect = exclusive
+        with self.assertRaisesRegex(RuntimeError, "foreign controller"):
+            self.park()
+        self.assertFalse(self.saved()["final_stop_verified"])
+        self.assertFalse(self.saved()["final_parking"]["controller_publishers_absent"])
+
+    def test_nonfinite_actuator_or_unavailable_readback_fails_without_retry(self):
+        for error in (baseline._ParkingPending("invalid pedals", dict(self.stopped, brake=None)), RuntimeError("RPC unavailable")):
+            with self.subTest(error=str(error)):
+                self.prepare()
+                self.common_stopped_readback.reset_mock()
+                self.common_stopped_readback.side_effect = error
+                with self.assertRaises(RuntimeError):
+                    self.park()
+                self.assertEqual(self.common_stopped_readback.call_count, 1)
+                self.assertFalse(self.saved()["final_stop_verified"])
+
+    def test_rejected_brake_command_or_live_owned_expert_cannot_be_verified(self):
+        self.prepare()
+        self.hold_common_brake.side_effect = RuntimeError("command was rejected")
+        with self.assertRaisesRegex(RuntimeError, "command was rejected"):
+            self.park()
+        self.stub.GetActorState.assert_not_called()
+        self.assertFalse(self.saved()["final_stop_verified"])
+        self.hold_common_brake.side_effect = None
+        self.context.expert_controller = SimpleNamespace(process=SimpleNamespace(poll=lambda: None))
+        with self.assertRaisesRegex(RuntimeError, "Owned Expert did not stop"):
+            self.park()
+        self.assertFalse(self.saved()["final_parking"]["owned_expert_stopped"])
+
+    def test_final_publisher_cleanup_failure_revokes_verified_stop(self):
+        self.prepare()
+        self.release_common_brake.side_effect = [None, RuntimeError("publisher unregister failed")]
+        with self.assertRaisesRegex(RuntimeError, "publisher unregister failed"):
+            self.park()
+        report = self.saved()
+        self.assertFalse(report["final_stop_verified"])
+        self.assertFalse(report["final_parking"]["final_verified"])
+        self.assertEqual(report["final_parking"]["status"], "failed")
 
     def test_run_failure_after_setup_or_cleanup_cannot_leave_a_passed_report(self):
         from ..scenarios.full_loop_scenario import FullLoopScenario

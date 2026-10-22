@@ -44,6 +44,95 @@ def make_context(color=1):
 
 
 class TrafficLightOverrideTests(unittest.TestCase):
+    def test_protected_left_waits_on_straight_green_then_requests_left_green(self):
+        context = make_context(color=16)
+        context.traffic_light_stops[0].update(
+            signal_movement="left", signal_route_link_id="LEFT-EXIT",
+        )
+        context.grpc.get_traffic_light_state_by_id.side_effect = [
+            {"id": "C-test", "color": 16},
+            {"id": "C-test", "color": 16},
+            {"id": "C-test", "color": 33},
+        ]
+        with patch.object(traffic_light_override.time, "monotonic", side_effect=[100, 111, 112]):
+            traffic_light_override.update(context, 0, {"speed": 0}, 90)
+            traffic_light_override.update(context, 11, {"speed": 0}, 90)
+            self.assertEqual(context.traffic_override_verified, 0)
+            traffic_light_override.update(context, 12, {"speed": 1}, 91)
+        context.grpc.set_traffic_light_color_verified.assert_called_once_with(
+            "C-test", 32, impulse=True, set_sibling=True,
+        )
+        self.assertEqual(context.traffic_override_verified, 1)
+        verified = context.event.call_args_list[-1]
+        self.assertEqual(verified.kwargs["signal_movement"], "left")
+        self.assertEqual(verified.kwargs["verification_semantics"], "protected_left_green_bit")
+
+    def test_same_signal_phase_depends_on_ordered_route_movement(self):
+        for movement, color, expected in (
+            ("left", 1, 32), ("left", 16, 32),
+            ("left", 32, None), ("left", 33, None), ("left", 48, None),
+            ("straight", 1, 16), ("straight", 32, 16), ("straight", 33, 16),
+            ("straight", 16, None), ("straight", 48, None),
+        ):
+            with self.subTest(movement=movement, color=color):
+                context = make_context(color=color)
+                context.traffic_light_stops[0]["signal_movement"] = movement
+                with patch.object(traffic_light_override.time, "monotonic", side_effect=[100, 111]):
+                    traffic_light_override.update(context, 0, {"speed": 0}, 90)
+                    traffic_light_override.update(context, 11, {"speed": 0}, 90)
+                if expected is None:
+                    context.grpc.set_traffic_light_color_verified.assert_not_called()
+                else:
+                    self.assertEqual(context.grpc.set_traffic_light_color_verified.call_args.args,
+                                     ("C-test", expected))
+
+    def test_unknown_route_movement_or_signal_color_never_forces_straight_release(self):
+        for movement, color in ((None, 1), ("right_unprotected", 1), ("left", 0), ("left", 17)):
+            with self.subTest(movement=movement, color=color):
+                context = make_context(color=color)
+                context.traffic_light_stops[0]["signal_movement"] = movement
+                with patch.object(traffic_light_override.time, "monotonic", side_effect=[100, 111]):
+                    traffic_light_override.update(context, 0, {"speed": 0}, 90)
+                    traffic_light_override.update(context, 11, {"speed": 0}, 90)
+                context.grpc.set_traffic_light_color_verified.assert_not_called()
+
+    def test_verified_flag_needs_correct_exact_id_movement_readback(self):
+        for after in ({"id": "OTHER", "color": 32}, {"id": "C-test", "color": 16},
+                      {"id": "C-test", "color": None}, None):
+            with self.subTest(after=after):
+                context = make_context(color=16)
+                context.traffic_light_stops[0]["signal_movement"] = "left"
+                result = context.grpc.set_traffic_light_color_verified.return_value
+                result.update(verified=True, after=after)
+                with patch.object(traffic_light_override.time, "monotonic", side_effect=[100, 111]):
+                    traffic_light_override.update(context, 0, {"speed": 0}, 90)
+                    traffic_light_override.update(context, 11, {"speed": 0}, 90)
+                self.assertEqual(context.traffic_override_verified, 0)
+                self.assertEqual(context.traffic_override_completed, set())
+
+    def test_verified_result_for_different_requested_color_is_not_used(self):
+        context = make_context(color=16)
+        context.traffic_light_stops[0]["signal_movement"] = "left"
+        context.grpc.set_traffic_light_color_verified.return_value.update(
+            verified=True, after={"id": "C-test", "color": 32}, target_color=16,
+        )
+        with patch.object(traffic_light_override.time, "monotonic", side_effect=[100, 111]):
+            traffic_light_override.update(context, 0, {"speed": 0}, 90)
+            traffic_light_override.update(context, 11, {"speed": 0}, 90)
+        self.assertEqual(context.traffic_override_verified, 0)
+
+    def test_exact_left_readback_can_verify_immediately(self):
+        context = make_context(color=16)
+        context.traffic_light_stops[0]["signal_movement"] = "left"
+        context.grpc.set_traffic_light_color_verified.return_value.update(
+            verified=True, after={"id": "C-test", "color": 32}, target_color=32,
+        )
+        with patch.object(traffic_light_override.time, "monotonic", side_effect=[100, 111]):
+            traffic_light_override.update(context, 0, {"speed": 0}, 90)
+            traffic_light_override.update(context, 11, {"speed": 0}, 90)
+        self.assertEqual(context.traffic_override_verified, 1)
+        self.assertIsNone(context.traffic_wait_state)
+
     def test_dynamic_releases_repeated_red_just_past_stop_projection(self):
         context = make_context()
         context.dynamic_obstacle_events = [{"id": "active"}]
@@ -194,12 +283,51 @@ class TrafficLightOverrideTests(unittest.TestCase):
         self.assertEqual(context.traffic_light_stops[0]["light_id"], "C-test")
         self.assertEqual(context.traffic_light_stops[0]["route_s"], 10.0)
 
+        context.cfg['traffic_light_wait_override']['enabled'] = False
+        context.cfg['dynamic_obstacle'] = {'pre_signal_guard': {'enabled': True}}
+        context.grpc = Mock()
+        traffic_light_override.prepare(context)
+        self.assertEqual(context.traffic_light_stops[0]['light_id'], 'C-test')
+        traffic_light_override.update(context, 0.0, {}, 0.0)
+        self.assertEqual(context.grpc.mock_calls, [])
+
         context._full_route_points = list(context.route_points)
         context._route_prefix_s = 10.0
         context.route_points = context.route_points[1:]
         context.route_length_m = 10.0
         traffic_light_override.prepare(context)
         self.assertEqual(context.traffic_light_stops[0]["route_s"], 0.0)
+
+    def test_prepare_uses_connected_following_link_and_does_not_guess_by_geometry(self):
+        links = {
+            "APPROACH": {"points": [(0, 0), (10, 0)], "to_node_idx": "STOP",
+                         "related_signal": "straight"},
+            "EXIT": {"points": [(10, 0), (20, 0)], "from_node_idx": "STOP",
+                     "to_node_idx": "END", "related_signal": "left"},
+        }
+        context = SimpleNamespace(
+            cfg={"traffic_light_wait_override": {"enabled": True}},
+            route_definition={"route_links": ["APPROACH", "EXIT"]},
+            map_loader=SimpleNamespace(get_link=lambda i: links[i], node_set={
+                "STOP": {"on_stop_line": True, "traffic_light_id": "C-test"},
+                "END": {"on_stop_line": False},
+            }),
+            route_points=[(0, 0), (10, 0), (20, 0)], route_length_m=20,
+        )
+        traffic_light_override.initialize(context)
+        traffic_light_override.prepare(context)
+        stop = context.traffic_light_stops[0]
+        self.assertEqual(stop["signal_movement"], "left")
+        self.assertEqual(stop["signal_route_link_id"], "EXIT")
+        self.assertEqual(stop["signal_movement_binding"], "connected_ordered_route_link")
+        links["EXIT"]["related_signal"] = "straight"
+        traffic_light_override.prepare(context)
+        self.assertEqual(context.traffic_light_stops[0]["signal_movement"], "straight")
+        links["EXIT"]["from_node_idx"] = "OTHER-NODE"
+        traffic_light_override.prepare(context)
+        stop = context.traffic_light_stops[0]
+        self.assertIsNone(stop["signal_movement"])
+        self.assertEqual(stop["signal_movement_binding"], "following_link_not_connected")
 
 
 if __name__ == "__main__":

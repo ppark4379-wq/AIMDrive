@@ -266,6 +266,21 @@ class TunnelVehicleHandler:
         try:
             available = sorted(set(context.vehicle_models()))
             configured = cfg.get("models") or available
+            geometry_selection = cfg.get("collection_geometry_selection")
+            unavailable_reviewed = []
+            if geometry_selection is not None:
+                # Collection intersects reviewed geometry with this simulator's
+                # model inventory. Ordinary CLI trials keep their old policy.
+                approved = geometry_selection.get("approved_models")
+                if (geometry_selection.get("schema") != "morai_tunnel_collection_vehicle_geometry_v1"
+                        or geometry_selection.get("policy") != "approved_default3d_geometry_intersect_live_available_models"
+                        or not isinstance(approved, list) or not approved
+                        or not isinstance(configured, list)
+                        or set(configured) != set(approved)
+                        or set(geometry_selection.get("sources", {})) != set(approved)):
+                    raise RuntimeError("Invalid tunnel collection geometry model policy")
+                unavailable_reviewed = sorted(set(approved) - set(available))
+                configured = sorted(set(approved) & set(available))
             if not configured or any(m not in available for m in configured):
                 raise RuntimeError(
                     "Tunnel vehicle model unavailable in configured pool"
@@ -283,6 +298,13 @@ class TunnelVehicleHandler:
                 "candidates": list(configured),
                 "excluded": excluded,
             }
+            if geometry_selection is not None:
+                context.tunnel_vehicle_result["model_pool"].update(
+                    selection_policy=geometry_selection["policy"],
+                    unavailable_reviewed_models=unavailable_reviewed,
+                    unreviewed_available_models=sorted(set(available) - set(approved)),
+                    geometry_sources={name: geometry_selection["sources"][name] for name in configured},
+                )
             if excluded:
                 print(f"[TunnelVehicle] excluded non-road models={excluded}")
             if not configured:
@@ -300,6 +322,8 @@ class TunnelVehicleHandler:
                 raise RuntimeError(f"Tunnel vehicle model excluded: {model}")
             if model not in available:
                 raise RuntimeError(f"Tunnel vehicle model unavailable: {model}")
+            if geometry_selection is not None and model not in configured:
+                raise RuntimeError(f"Tunnel collection vehicle has no approved geometry: {model}")
             plan["model"] = model
             context.tunnel_vehicle_result["selection"] = {
                 "behavior": plan["behavior"],

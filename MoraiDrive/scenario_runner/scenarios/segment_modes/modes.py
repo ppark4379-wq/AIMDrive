@@ -68,6 +68,16 @@ TUNNEL_START = RouteBoundary(
     3768, (43.761510782991536, -476.41094469698146, 28.294397987369784),
     -137.400207519, "A2256W000448",
 )
+TRAFFIC_LIGHT_END = RouteBoundary(
+    1348, (-1.0994553030436016, 139.5186873916506, 28.45548454327689),
+    110.0079494363, "A2256W000304",
+)
+# 신호 시험만 기존 동적 종료점보다 약 25m 뒤의 원본 직선 포인트에서 시작한다.
+# 기존 full_loop_dynamic의 종료점과 NPC 구간은 변경하지 않는다.
+TRAFFIC_LIGHT_START = RouteBoundary(
+    1031, (-60.53983283180065, 33.51020694520611, 28.393797372640986),
+    90.04537629099724, "A2256W000315",
+)
 TUNNEL_END = RouteBoundary(
     4045, (-74.86074459552765, -544.5780326710083, 28.429146234972457),
     -153.528732299, "A2256W000126",
@@ -80,6 +90,9 @@ MISSION_MODES = {
     ),
     "full_loop_dynamic": MissionMode(
         "full_loop_dynamic", ZoneSelection(dynamic=True), STATIC_END, DYNAMIC_END,
+    ),
+    "full_loop_traffic_light": MissionMode(
+        "full_loop_traffic_light", ZoneSelection(), TRAFFIC_LIGHT_START, TRAFFIC_LIGHT_END,
     ),
     "full_loop_roundabout": MissionMode(
         "full_loop_roundabout", ZoneSelection(roundabout=True),
@@ -144,7 +157,7 @@ def get_scenario_zones(name):
 
 def automatic_repeat_enabled(name, configuration, once=False, highway_audit=False):
     """Keep legacy repeat semantics; the tunnel baseline runs once."""
-    if name in ("full_loop_tunnel_normal", "full_loop_tunnel_static"):
+    if name in ("full_loop_tunnel_normal", "full_loop_tunnel_static", "full_loop_traffic_light"):
         return False
     eligible = (
         name in PRIMARY_SCENARIOS

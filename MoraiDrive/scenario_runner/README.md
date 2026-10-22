@@ -32,7 +32,7 @@ python3 -m scenario_runner.main_runner \
   --no-sync-runtime
 ```
 
-시나리오 내부 전체 제한은 0으로 비활성화했고, 진행 watchdog도 비활성화했습니다. 경로 이탈 타임아웃은 1e12초로 사실상 비활성입니다. 데이터 수집 명령의 별도 wall-time 제한은 그대로 적용됩니다.
+기존 전체 주행 설정은 내부 전체 제한과 진행 watchdog을 비활성화하고 경로 이탈 타임아웃을 1e12초로 설정합니다. 신호 파일럿은 별도 180초 제한·45초 진행 watchdog·3초 이탈 검사를 사용합니다. 데이터 수집 명령의 별도 wall-time 제한은 그대로 적용됩니다.
 
 ## 전체 폐루프 실행
 
@@ -58,6 +58,7 @@ python3 -m scenario_runner.main_runner \
 | `full_loop_normal` | 기존 전체 START → END | 러너 생성 장애물·NPC 없음 |
 | `full_loop_static` | 인덱스 483 → 753 (132.4m) | 정적 장애물만 랜덤 생성 |
 | `full_loop_dynamic` | 인덱스 753 → 1081 (160.0m) | 좁힌 NPC 배치 영역에서 승인된 동적 횡단을 1~2개 순차 실행 |
+| `full_loop_traffic_light` | 인덱스 1031 → 1348 (155.3m), 기존 동적 종료점 약 25m 전 직선 → 우회전 → 좌회전 완료 후 약 25m | 장애물·NPC 없음, 빨강·직진 초록 대기 후 좌회전 화살표 출발 |
 | `full_loop_roundabout` | 인덱스 1668 → 1975 (150.0m) | NPC 3대, 진입 100m 전 생성, 출구 30m 후 제거 |
 | `full_loop_highway` | 인덱스 1975 → 3638 (825.0m) | 기존 SpawnPoint 3개(각 4대, 총 12대, 5초 주기) 활성화 시점에 합류 링크 시작 70m 지점에 실주행 확인된 승용차 13종 중 정지 차량 1대를 시드 기반 랜덤 생성 |
 | `full_loop_tunnel_normal` | 인덱스 3723 → 4107 (189.7m), 터널 진입 40.2m 전 → 이탈 30.5m 후 | 장애물·NPC·급제동 이벤트 없음, 도로 비움 검사, 단회 검증 |
@@ -122,6 +123,59 @@ cd ~/AIMDrive/MoraiDrive
 
 오프라인 확인: 원하는 명령에 `--check`를 붙이면 접속 없이 경계 좌표·길이·이벤트 ON/OFF를 출력합니다.
 이 검사는 실제 AI 주행, 신호 준수, 무충돌 또는 MORAI RPC 성공을 보장하지 않습니다.
+
+## 좌회전 신호 Expert 확인·수집
+
+`full_loop_traffic_light`는 `C1256W000052` 한 신호만 제어한다. 실제 정지선
+접근·정지를 관측한 뒤 빨강 3초, 직진 초록 4초를 유지하고 좌회전 화살표로
+바꾼다. 대기 시간은 각 실행의 scenario clock 기준이며, 수집에서는 관측한
+시뮬레이터 시계를 사용한다. 기존 10초 뒤 직진 초록을 주는 override는 꺼진다.
+현재 Expert 정책에서 우회전 신호 `C1256W000123`는 ignore이고, C052는
+좌회전 화살표 전용이다. 이 파일럿은 다른 차량·보행자가 없는 경로에서 실행한다.
+
+단계 제어는 `impulse=False`로 해당 색을 유지한다. 명령 ACK와 실제 적용을
+구분해 최대 3초 동안 조회하며, 연속 3회·0.2초 안정된 색이 관측돼야 인정한다.
+주행 중 전환은 pending 단계에서 처리하므로 차량 관측을 멈추지 않는다.
+MORAI 신호 조회가 일시적으로 누락되면 이전 색을 채우지 않고 null로 기록한다.
+누락은 정지 대기 시간을 늘려주지 않으며, 연속 누락이 0.75초를 넘으면 종료한다.
+
+신호 시험의 START는 원본 경로 인덱스 1031, ENU
+`(-60.53983283180065, 33.51020694520611, 28.393797372640986)`,
+yaw `90.04537629099724°`다. 기존 동적 종료점 1081에서 경로상 약 25m 뒤로
+이동해 우회전 정지선까지 45.8m, 좌회전 정지선까지 105.1m의 접근 구간을 둔다.
+기존 동적 시나리오의 종료점은 그대로 유지한다. END 1348과 Expert 전용
+35m lookahead tail도 유지하며, mission은 318포인트·155.3m, Expert 경로는
+389포인트다. crop의 신호 정지선은 C123 local index 92와 C052 local index 214
+두 개뿐이며, 기존 속도 제한 zone은 모두 이 구간 밖이다.
+
+```bash
+cd ~/AIMDrive/MoraiDrive
+# MORAI/ROS에 연결하지 않는 실제 Expert 경로·신호 판정 검사
+bash scenario_runner/tools/run_traffic_light_signal.sh --check
+# 기존 01번 연결 preflight가 PASS인 상태에서 센서 없이 Expert 1회 확인
+bash scenario_runner/tools/run_traffic_light_signal.sh
+# 같은 구간을 Sensor Record로 3회 수집
+bash data_collection/tools/02_collect_internal_sensor_record_laps.sh \
+  3 traffic_light_pilot3_20261013 --scenario full_loop_traffic_light
+# 수집 후 byte/GT/행동 검증 및 학습 manifest 생성
+bash data_collection/tools/03_validate_internal_sensor_record.sh traffic_light_pilot3_20261013
+```
+
+Expert 속도 상한은 30km/h다. 실제 출발점 정지, 연속 이동, 우회전 통과,
+빨강·직진 초록 대기, 화살표 출발·좌회전 완료를 관측하지 못하면 회차가 실패한다.
+경로에 외부 객체가 있거나 충돌·관측 끊김·위치 점프가 있으면 통과하지 않는다.
+수집 종료 후 소유 Expert를 종료하고 실제 정지를 확인한 뒤 원래 신호 색을
+복원한다. cleanup 오류가 나더라도 복원을 시도한다.
+복원 범위는 정확한 신호 ID의 원래 **색상**이다. SDK에서 기존 자동 신호 주기
+정책을 조회·복원하는 정보는 제공되지 않아 자동 주기 복원을 검증했다고 표시하지 않는다.
+
+색상 head GT는 기존처럼 순수 빨강=0/순수 초록=1이고, 화살표·혼합 위상은
+색상 학습에서 제외한다. 별도 `route_permission` GT로 C052 좌회전의
+빨강·직진 초록=불허, 좌회전 화살표=허용을 기록한다. future waypoint는
+실제 Ego 주행에서 생성하며 정답 좌표를 강제로 정지/출발로 바꾸지 않는다.
+저장 폴더는 `dataset/.collecting/traffic_light/<campaign>`이며, 회차별
+`episode_000/traffic_light/COLLECTION_TRAFFIC_LIGHT_COMPLETE.json`에 행동과
+복원 근거를 저장한다. 오프라인 PASS는 실제 MORAI 주행 통과를 의미하지 않는다.
 
 ## 터널 정적 장애물 후보와 실주행 검증
 

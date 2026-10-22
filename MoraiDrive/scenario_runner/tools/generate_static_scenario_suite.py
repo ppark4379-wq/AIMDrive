@@ -98,6 +98,16 @@ LATE_LANE_RIGHT_EDGE_MIN_M = 0.1
 # Fourteen verified models cannot sit in the left stratum and appear in medium
 # layouts only, so a plan that covers every model needs more medium runs.
 DEFAULT_AVOIDANCE_WEIGHTS = "20,20,40,20"
+# --blocked-layouts: a lane box at the zone start covers right_01 while the two
+# right-side boxes cover right_02 to right_06, so no recorded route stays open
+# and the Expert stops behind the layout.  The scenario releases the layout
+# after the declared stop (static_blockage_release) and the attempt is kept
+# only when that stop and release are proven in its log.
+BLOCKED_TARGET = "blocked"
+BLOCKAGE_RELEASE_POLICY = {"wait_wall_sec": 6.0, "wait_scenario_sec": 6.0, "stopped_speed_mps": 0.3,
+                           "max_gap_m": 12.0}
+BLOCKED_INVALID_PLAN_TIMEOUT_SEC = 60.0  # the Expert stays blocked until the release
+BLOCKAGE_RELEASED_MARKER = "[STATIC BLOCKAGE] static_blockage_released"
 
 
 def portable_path(path):
@@ -180,6 +190,11 @@ def parse_args(argv=None):
         default=None,
         metavar="ACCEPTED",
         help="Stop early after this many accepted layouts",
+    )
+    parser.add_argument(
+        "--blocked-layouts", action="store_true",
+        help=("Every attempt blocks all recorded routes (3+ boxes); keep it only when the "
+              "Expert stopped behind it and the declared release let it finish"),
     )
     parser.add_argument(
         "--accepted-model-minimum", type=int, default=0,
@@ -503,6 +518,12 @@ def layout_roles(target, count, rng):
         roles = ["lane_block"] + ["lane_any"] * (count - 1)
         rng.shuffle(roles)
         return roles, None
+    if target == BLOCKED_TARGET:
+        if count < 3:
+            raise ValueError("A blocked layout needs two right-side boxes and a lane box")
+        # Every box at the zone start, so right_01 cannot join a later bypass.
+        roles = ["block_far", "block_02", "lane_block"] + ["lane_any"] * (count - 3)
+        return roles, [rng.uniform(0.0, 0.12) for _ in roles]
     if count < 2:
         raise ValueError("A late layout needs a right-side box and a later lane box")
     # Right-side boxes at the zone start, the lane box at index 677-680.
@@ -514,7 +535,8 @@ def layout_roles(target, count, rng):
 def target_models_for(policy, target, yaw_deg):
     """Models that can take at least one role of the target inside the zone."""
     roles = {"straight": ("clear_01",), "small": ("lane_small",),
-             "medium": ("lane_block",), "late": ("block_far", "block_02", "lane_late")}[target]
+             "medium": ("lane_block",), "late": ("block_far", "block_02", "lane_late"),
+             BLOCKED_TARGET: ("block_far", "block_02", "lane_block")}[target]
     middle = [662.0, 670.0, 678.0]
     return [m for m in policy["models"]
             if any(role_ranges(policy, role, m, k, yaw_deg)[0] for role in roles for k in middle)]
@@ -539,7 +561,7 @@ def generate_lane_layout(policy, rng, count, target, required_model,
     covers the centre line.  Other slots take their stratum first, then the
     least used model that fits it.
     """
-    if target not in AVOIDANCE_TARGETS:
+    if target not in AVOIDANCE_TARGETS + (BLOCKED_TARGET,):
         raise ValueError("Unknown avoidance target: {}".format(target))
     first, last = policy["anchor_start"], policy["anchor_end"]
     route_start = float(first["route_path_index"])
@@ -648,6 +670,8 @@ def generate_lane_layout(policy, rng, count, target, required_model,
             })
         if target == "late" and not set(BLOCKED_ROUTES[:3]) <= blocked:
             continue  # an open right_02-04 lets the Expert swing around the right boxes
+        if target == BLOCKED_TARGET and not set(BLOCKED_ROUTES) <= blocked:
+            continue  # one open bypass and the Expert would not stop
         if _boxes_separated(boxes):
             for item in obstacles:
                 key = "{}:{}".format(target, item["generation"]["lateral_stratum"])
@@ -886,6 +910,15 @@ def run_candidate(
     }
 
 
+def blockage_release_observed(log_path):
+    """The scenario disclosed a stop-triggered release of the blocking layout."""
+    try:
+        text = Path(log_path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return BLOCKAGE_RELEASED_MARKER in text
+
+
 def _failure_tail(log_path, limit=18):
     try:
         lines = Path(log_path).read_text(
@@ -1097,6 +1130,8 @@ def main(argv=None):
                                   "every_box_vs_right_03": MEDIUM_CLEARANCE_M},
             "expert_routes": policy.get("expert_routes"),
             "avoidance_weights": avoidance_weights,
+            "blocked_layouts": bool(args.blocked_layouts),
+            "blockage_release": dict(BLOCKAGE_RELEASE_POLICY) if args.blocked_layouts else None,
             "lane_gate": dict(lane.DEFAULT_POLICY, **lane_gate_policy),
             "lane_markings": {"path": portable_path(lane.DEFAULT_MARKINGS),
                               "sha256": sha256_file(lane.DEFAULT_MARKINGS)},
@@ -1125,7 +1160,7 @@ def main(argv=None):
         yaw = 0.5 * (float(policy["anchor_start"].get("yaw_deg", 0.0))
                      + float(policy["anchor_end"].get("yaw_deg", 0.0)))
         target_models = {target: target_models_for(policy, target, yaw)
-                         for target in AVOIDANCE_TARGETS}
+                         for target in AVOIDANCE_TARGETS + (BLOCKED_TARGET,)}
         for target, models in target_models.items():
             print("[STATIC BATCH] {} models: {}".format(target, ",".join(models)))
     print("[STATIC BATCH] suite={} seed={} attempts={}".format(
@@ -1139,7 +1174,24 @@ def main(argv=None):
         for attempt in range(1, args.attempts + 1):
             target = None
             for _ in range(1000):
-                if args.placement == "lane":
+                if args.placement == "lane" and args.blocked_layouts:
+                    count = rng.randint(max(3, args.min_obstacles), max(3, args.max_obstacles))
+                    target = BLOCKED_TARGET
+                    pool = [m for m in target_models[target]
+                            if (count, target, m) not in unplaceable]
+                    if not pool:
+                        raise RuntimeError("No model can be placed in a {}-box blocked layout".format(count))
+                    required_model = min(pool, key=lambda m: (required_counts[m], rng.random()))
+                    try:
+                        obstacles = generate_lane_layout(
+                            policy, rng, count, target, required_model,
+                            manifest["attempted_lateral_strata"], args.yaw_margin_deg,
+                            model_counts=manifest["attempted_model_counts"],
+                        )
+                    except RuntimeError:
+                        unplaceable.add((count, target, required_model))
+                        continue
+                elif args.placement == "lane":
                     count, target = choose_attempt_cell(
                         manifest, range(args.min_obstacles, args.max_obstacles + 1), rng,
                         avoidance_weights)
@@ -1197,6 +1249,8 @@ def main(argv=None):
                 document["generation"]["avoidance_target"] = target
                 document["generation"]["footprint_catalog_sha256"] = (
                     policy["footprint_catalog"]["sha256"])
+            if target == BLOCKED_TARGET:
+                document["blockage_release"] = dict(BLOCKAGE_RELEASE_POLICY)
             write_yaml_atomic(candidate_path, document)
             command = [
                 sys.executable, "-m", "scenario_runner.main_runner",
@@ -1217,7 +1271,8 @@ def main(argv=None):
                 command,
                 log_path,
                 args.trial_timeout_sec,
-                args.invalid_plan_timeout_sec,
+                (max(args.invalid_plan_timeout_sec, BLOCKED_INVALID_PLAN_TIMEOUT_SEC)
+                 if target == BLOCKED_TARGET else args.invalid_plan_timeout_sec),
                 args.signal_stop_timeout_sec,
             )
             evidence = read_closed_loop_evidence(log_path)
@@ -1233,9 +1288,11 @@ def main(argv=None):
                 rejection_reasons.append("persistent_signal_stop")
             if not evidence["goal_reached"]:
                 rejection_reasons.append("goal_not_proven")
-            if evidence["valid_plan_samples"] < 1:
+            # A released blockage leaves nothing to plan around, so the Expert logs
+            # no static plan; its evidence is the disclosed stop and release below.
+            if evidence["valid_plan_samples"] < 1 and target != BLOCKED_TARGET:
                 rejection_reasons.append("no_valid_expert_plan_sample")
-            if not evidence["selected_routes"]:
+            if not evidence["selected_routes"] and target != BLOCKED_TARGET:
                 rejection_reasons.append("selected_route_evidence_missing")
             max_cte = evidence["max_cross_track_error_m"]
             if max_cte is None:
@@ -1243,6 +1300,11 @@ def main(argv=None):
             elif max_cte > args.max_cross_track_error_m:
                 rejection_reasons.append("cross_track_limit_exceeded")
             rejection_reasons.extend(lane_result["reasons"])
+            blockage_released = None
+            if target == BLOCKED_TARGET:
+                blockage_released = blockage_release_observed(log_path)
+                if not blockage_released:
+                    rejection_reasons.append("blockage_stop_release_not_observed")
             accepted = not rejection_reasons
             row = {
                 "attempt": attempt,
@@ -1254,6 +1316,7 @@ def main(argv=None):
                 "closed_loop_evidence": evidence,
                 "lane_compliance": lane_summary(lane_result),
                 "avoidance_target": target,
+                "blockage_release_observed": blockage_released,
                 "rejection_reasons": rejection_reasons,
                 **result,
             }
@@ -1275,6 +1338,7 @@ def main(argv=None):
                     ),
                     "valid_plan_samples": evidence["valid_plan_samples"],
                     "selected_routes": evidence["selected_routes"],
+                    "blockage_release_observed": blockage_released,
                     "lane_compliance": lane_summary(lane_result),
                     "verified_at_unix": time.time(),
                     "log": portable_path(log_path),

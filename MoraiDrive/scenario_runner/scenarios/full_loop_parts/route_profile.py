@@ -162,6 +162,9 @@ def prepare_full_loop_route(self):
         f"points={len(self.route_points)}, length={self.route_length_m:.1f}m, "
         f"closure={closure:.6f}m"
     )
+    if self.cfg.get('ve_stop_before_tunnel', False):
+        from .before_tunnel import apply
+        apply(self)
     if self.cfg.get("route_debug_enabled", False):
         self.dump_route_debug()
 

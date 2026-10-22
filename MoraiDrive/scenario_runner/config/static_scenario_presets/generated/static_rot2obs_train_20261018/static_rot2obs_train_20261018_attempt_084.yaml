@@ -1,0 +1,110 @@
+schema: morai_static_obstacle_preset_v1
+name: static_rot2obs_train_20261018_attempt_084
+map_name: R_KR_PR_K-city_2025
+scenario: full_loop_static
+source: automated_static_expert_verified
+generation:
+  batch_seed: 26101801
+  attempt: 84
+  candidate_only_until_expert_passes: false
+  scale_policy: morai_native_model_scale_v1
+  placement_policy: lane_aware_right_edge_strata_v1
+  avoidance_target: straight
+  footprint_catalog_sha256: 83e6ae9bab5d7a89e0958952181cbaf62c798036fc9c5b4aa94db5588f20416f
+obstacles:
+- model: Bicycle_mountain
+  position:
+    x: -56.093922
+    y: -142.828288
+    z: 28.378491
+  yaw_deg: -134.389256
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 667
+  generation:
+    longitudinal_fraction: 0.35587161
+    lateral_offset_m: -4.512052
+    route_lateral_m: -3.760089
+    right_edge_route_lateral_m: -4.2505
+    left_edge_route_lateral_m: -2.6138
+    placement_role: clear_01
+    lateral_stratum: right_far
+    lane_fit: right_of_path
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+    blocks_routes:
+    - right_02.csv
+    - right_03.csv
+    - right_04.csv
+    right_01_right_clearance_m: 1.5222
+    right_02_right_clearance_m: 0.3565
+    right_03_right_clearance_m: -1.7182
+    right_04_right_clearance_m: -3.2676
+    right_05_right_clearance_m: -5.7047
+    right_06_retry_right_clearance_m: -8.3467
+- model: PE_Firewall_White
+  position:
+    x: -56.435486
+    y: -139.108545
+    z: 28.381095
+  yaw_deg: -130.912166
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 675
+  generation:
+    longitudinal_fraction: 0.72790381
+    lateral_offset_m: -4.176728
+    route_lateral_m: -3.424765
+    right_edge_route_lateral_m: -4.1359
+    left_edge_route_lateral_m: -2.7137
+    placement_role: clear_01
+    lateral_stratum: right_near
+    lane_fit: right_of_path
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+    blocks_routes:
+    - right_02.csv
+    - right_03.csv
+    - right_04.csv
+    right_01_right_clearance_m: 1.597
+    right_02_right_clearance_m: 0.3923
+    right_03_right_clearance_m: -2.0203
+    right_04_right_clearance_m: -3.7718
+    right_05_right_clearance_m: -5.6581
+    right_06_retry_right_clearance_m: -8.5391
+verification:
+  expert_completed: true
+  collision_free: true
+  runner_return_code: 0
+  max_cross_track_error_m: 0.27
+  cross_track_limit_m: 4.0
+  valid_plan_samples: 13
+  selected_routes:
+  - right_01.csv
+  blockage_release_observed: null
+  lane_compliance:
+    passed: true
+    reasons: []
+    raw_samples: 660
+    max_sample_gap_m: 0.968
+    route_index_span:
+    - 487.1
+    - 752.4
+    min_marking_clearance_m: 0.168
+    closest_marking: B2256W000445:505:solid
+    touched_markings: []
+    max_right_deviation_m: 0.247
+    max_left_deviation_m: 0.035
+    avoidance_class: small
+    trajectory_class: straight
+    swing_onset_route_index: null
+    peak_route_index: 590.2
+    markings_source_sha256: f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb
+  verified_at_unix: 1792176015.0569916
+  log: scenario_runner/.runtime/static_scenario_batch/static_rot2obs_train_20261018/logs/static_rot2obs_train_20261018_attempt_084.log
+  ego_trace: scenario_runner/.runtime/static_scenario_batch/static_rot2obs_train_20261018/traces/static_rot2obs_train_20261018_attempt_084.csv
+  ego_trace_sha256: 9eb071d7867454daba09b660e486efd1cc64e47eec70ff5d44114f2e5637d82d

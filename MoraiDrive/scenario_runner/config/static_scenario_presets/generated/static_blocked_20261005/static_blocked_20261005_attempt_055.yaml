@@ -1,0 +1,139 @@
+schema: morai_static_obstacle_preset_v1
+name: static_blocked_20261005_attempt_055
+map_name: R_KR_PR_K-city_2025
+scenario: full_loop_static
+source: automated_static_expert_verified
+generation:
+  batch_seed: 26100523
+  attempt: 55
+  candidate_only_until_expert_passes: false
+  scale_policy: morai_native_model_scale_v1
+  placement_policy: lane_aware_right_edge_strata_v1
+  avoidance_target: blocked
+  footprint_catalog_sha256: 83e6ae9bab5d7a89e0958952181cbaf62c798036fc9c5b4aa94db5588f20416f
+obstacles:
+- model: ElectricScooter2
+  position:
+    x: -55.360986
+    y: -145.326826
+    z: 28.376741
+  yaw_deg: -104.086301
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 662
+  generation:
+    longitudinal_fraction: 0.10589512
+    lateral_offset_m: -5.240795
+    route_lateral_m: -4.488832
+    right_edge_route_lateral_m: -4.8962
+    left_edge_route_lateral_m: -4.0814
+    placement_role: block_far
+    lateral_stratum: right_wall
+    lane_fit: right_of_path
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+    blocks_routes:
+    - right_03.csv
+    - right_04.csv
+    - right_05.csv
+    - right_06_retry.csv
+    right_01_right_clearance_m: 3.0069
+    right_02_right_clearance_m: 1.9906
+    right_03_right_clearance_m: 0.3535
+    right_04_right_clearance_m: -1.3725
+    right_05_right_clearance_m: -3.2831
+    right_06_retry_right_clearance_m: -5.8479
+- model: ElectricScooter1
+  position:
+    x: -57.330116
+    y: -145.655215
+    z: 28.376514
+  yaw_deg: -108.233357
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 661
+  generation:
+    longitudinal_fraction: 0.07338632
+    lateral_offset_m: -3.271117
+    route_lateral_m: -2.519153
+    right_edge_route_lateral_m: -3.1796
+    left_edge_route_lateral_m: -1.8588
+    placement_role: block_02
+    lateral_stratum: right_block
+    lane_fit: right_of_path
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+    blocks_routes:
+    - right_02.csv
+    - right_03.csv
+    - right_04.csv
+    right_01_right_clearance_m: 0.7882
+    right_02_right_clearance_m: -0.1759
+    right_03_right_clearance_m: -1.7589
+    right_04_right_clearance_m: -3.4258
+    right_05_right_clearance_m: -5.2195
+    right_06_retry_right_clearance_m: -7.635
+- model: Sportbike_01
+  position:
+    x: -61.190665
+    y: -145.709909
+    z: 28.37648
+  yaw_deg: -23.893792
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 661
+  generation:
+    longitudinal_fraction: 0.06856442
+    lateral_offset_m: 0.589518
+    route_lateral_m: 1.341481
+    right_edge_route_lateral_m: -0.1747
+    left_edge_route_lateral_m: 1.6277
+    placement_role: lane_block
+    lateral_stratum: right
+    lane_fit: covers_centre_line
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+    lane_left_bound_m: 1.6964
+    right_02_clearance_m: -0.3491
+    right_03_clearance_m: 0.9325
+blockage_release:
+  wait_wall_sec: 6.0
+  stopped_speed_mps: 0.3
+  max_gap_m: 12.0
+verification:
+  expert_completed: true
+  collision_free: true
+  runner_return_code: 0
+  max_cross_track_error_m: 0.26
+  cross_track_limit_m: 4.0
+  valid_plan_samples: 0
+  selected_routes: []
+  blockage_release_observed: true
+  lane_compliance:
+    passed: true
+    reasons: []
+    raw_samples: 752
+    max_sample_gap_m: 0.962
+    route_index_span:
+    - 487.1
+    - 753.0
+    min_marking_clearance_m: 0.168
+    closest_marking: B2256W000445:505:solid
+    touched_markings: []
+    max_right_deviation_m: 0.246
+    max_left_deviation_m: 0.035
+    avoidance_class: small
+    trajectory_class: straight
+    swing_onset_route_index: null
+    peak_route_index: 589.7
+    markings_source_sha256: f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb
+  verified_at_unix: 1791199242.3024542
+  log: scenario_runner/.runtime/static_scenario_batch/static_blocked_20261005/logs/static_blocked_20261005_attempt_055.log
+  ego_trace: scenario_runner/.runtime/static_scenario_batch/static_blocked_20261005/traces/static_blocked_20261005_attempt_055.csv
+  ego_trace_sha256: ff14989c1ba28cef24741af334e37e91cf18da56e907ffea6da66d238244b0ec

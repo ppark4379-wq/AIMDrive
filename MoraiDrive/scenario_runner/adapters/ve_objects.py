@@ -1,15 +1,17 @@
 """Optional VE object input for the ordinary scenario runner's own Expert."""
 import json
+import subprocess
+import sys
 import time
 from pathlib import Path
 
-SUPPORTED = ('full_loop_roundabout', 'full_loop_highway')
+SUPPORTED = ('full_loop_roundabout', 'full_loop_highway', 'full_loop_traffic_light', 'full_loop')
 OBJECT_REMAP = '/Object_topic:=/ve/Object_topic'
 
 
 def configure(cfg, scenario, checkpoint):
     if scenario not in SUPPORTED or cfg.get('sync_runtime', {}).get('enabled', True):
-        raise ValueError('--ve-objects requires roundabout/highway and --no-sync-runtime')
+        raise ValueError('--ve-objects requires roundabout/highway/traffic_light and --no-sync-runtime')
     cfg['ve_objects_checkpoint'] = checkpoint
     cfg['expert_ros_remaps'] = [OBJECT_REMAP]
 
@@ -48,10 +50,13 @@ class VeObjectInput:
         self.context = context
         self.output = REPO/'MoraiDrive/scenario_runner/.runtime/ve_objects'/str(time.time_ns())
         self.output.mkdir(parents=True)
-        self.session = PerceptionSession(self.output, context.cfg['ve_objects_checkpoint'], observe_gt=False)
+        self.session = PerceptionSession(self.output, context.cfg['ve_objects_checkpoint'], observe_gt=False,
+                                         signal_head=context.cfg.get('ve_signal_head'))
+        self.signal = None
         self.unhealthy_since = None
         self.last_log = self.last_topology = 0.
         self.driving_started = False
+        self.gt_observer = self.gt_log = None
 
     def start(self):
         ros = self.session.ros
@@ -61,17 +66,74 @@ class VeObjectInput:
         if code != 1:
             raise RuntimeError(reason)
         pubs = dict(state[0])
-        if pubs.get('/ctrl_cmd') or pubs.get('/ve/Object_topic'):
+        if pubs.get('/ctrl_cmd') or pubs.get('/ve/Object_topic') or pubs.get('/ve/GetTrafficLightStatus'):
             raise RuntimeError('기존 Expert/VE 실행을 Ctrl+C로 종료한 뒤 실행하세요')
         if any(ros.get_param(k, False) for k in ('/morai_drive/sync_runtime_active', '/morai_drive/data_collector_ready')):
             raise RuntimeError('센서 수집/Sync Runtime이 실행 중입니다')
         print('[VE] 모델 준비 중. 로그: '+str(self.output/'publisher.log'), flush=True)
+        if self.context.cfg.get('ve_signal_head'):
+            from .ve_signal import SignalPublisher
+            self.signal = SignalPublisher(self.context, self.session, self.output)
+            self.session.signal_sink = self.signal
         self.session.start()
         self.session.await_ready()
+        if self.context.cfg.get('ve_compare_gt'):
+            self.start_gt_observer()
         print('[VE] 준비 완료. 기존 러너의 NPC·경로 사용; Expert 장애물 입력=/ve/Object_topic', flush=True)
+
+    def start_gt_observer(self):
+        from MoraiDrive.expert.tools.ve_udp_session import REPO
+        script = REPO/'MoraiDrive/expert/tools/ve_gt_comparison.py'
+        self.gt_log = (self.output/'gt_observer.log').open('w', buffering=1)
+        self.gt_observer = subprocess.Popen([sys.executable, '-u', '-B', str(script),
+            '--record', str(self.output), '--geometry-target', '{}:{}'.format(
+                self.context.grpc.host, self.context.grpc.port)], stdout=self.gt_log, stderr=subprocess.STDOUT,
+            start_new_session=True)
+        deadline = time.monotonic()+10.
+        while time.monotonic() < deadline:
+            if self.gt_observer.poll() is not None:
+                raise RuntimeError('GT 비교 기록기 시작 실패: '+str(self.output/'gt_observer.log'))
+            if (self.output/'gt_observer_ready.json').is_file():
+                print('[GT 비교] 별도 프로세스가 /Object_topic을 기록합니다. Expert 입력은 VE만 사용.', flush=True)
+                return
+            time.sleep(.05)
+        raise RuntimeError('GT 비교 기록기 시작 시간 초과')
+
+    def finish_gt_comparison(self):
+        from MoraiDrive.expert.tools.ve_udp_session import (REPO, ANALYSIS_PYTHON,
+                                                           build_analysis_environment, stop_child)
+        if self.gt_observer is None:
+            return
+        stop_child(self.gt_observer)
+        self.gt_log.close()
+        try:
+            result = subprocess.run([str(ANALYSIS_PYTHON), '-B',
+                str(REPO/'MoraiDrive/expert/tools/ve_gt_comparison.py'), '--analyze', str(self.output)],
+                env=build_analysis_environment(ANALYSIS_PYTHON), timeout=120)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            print('[GT 비교] 분석 실행 실패. 원본 기록 보존: '+str(exc), flush=True)
+            return
+        if result.returncode:
+            print('[GT 비교] 분석 실패. gt_objects.jsonl과 adapter.jsonl은 보존했습니다.', flush=True)
+        else:
+            print('[GT 비교 보고서] '+str(self.output/'gt_comparison_report.json'), flush=True)
+            if (self.output/'gt_geometry.jsonl').is_file():
+                try:
+                    audit = subprocess.run([str(ANALYSIS_PYTHON), '-B',
+                        str(REPO/'MoraiDrive/expert/tools/ve_gt_geometry_audit.py'), str(self.output)],
+                        env=build_analysis_environment(ANALYSIS_PYTHON), timeout=120,
+                        stdout=subprocess.DEVNULL)
+                    if audit.returncode:
+                        print('[GT 기준점 감사] 분석 실패. 원본 기록은 보존했습니다.', flush=True)
+                    else:
+                        print('[GT 기준점 감사] '+str(self.output/'gt_geometry_audit_report.json'), flush=True)
+                except (OSError, subprocess.TimeoutExpired) as exc:
+                    print('[GT 기준점 감사] 실행 실패: '+str(exc), flush=True)
 
     def before_drive(self):
         from ..scenarios.segment_modes import tunnel_static_startup as stopping
+        if self.signal is not None:
+            self.signal.validate_route()
         configure_expert(self.context.expert_controller.runtime_config_path,
                          self.output/'expert_input.jsonl')
         stopping.hold_common_brake(self.context.grpc)
@@ -88,6 +150,8 @@ class VeObjectInput:
         while time.monotonic() < deadline:
             if self.check_topology(allow_starting=True):
                 print('[PASS] Expert → VE 장애물 입력 연결 확인. GT 장애물 구독 없음.', flush=True)
+                if self.signal is not None:
+                    print('[PASS] Expert 신호 입력=/ve/GetTrafficLightStatus. GT 신호 구독 없음.', flush=True)
                 return
             time.sleep(.05)
         raise RuntimeError('Expert의 VE 토픽 연결 시간 초과')
@@ -100,7 +164,11 @@ class VeObjectInput:
         code, reason, state = ros.get_master().getSystemState()
         if code != 1:
             raise RuntimeError(reason)
-        return verify_topology(state, ros.get_name(), controller.process.pid, allow_starting)
+        ready = verify_topology(state, ros.get_name(), controller.process.pid, allow_starting)
+        if self.signal is not None:
+            from .ve_signal import verify_signal_topology
+            ready = verify_signal_topology(state, ros.get_name(), controller.process.pid, allow_starting) and ready
+        return ready
 
     def inspect(self):
         now = time.monotonic()
@@ -139,7 +207,12 @@ class VeObjectInput:
             try:
                 stopping.release_common_brake(self.context.grpc)
             finally:
-                self.session.close()
+                try:
+                    self.session.close()
+                    if self.signal is not None:
+                        self.signal.close()
+                finally:
+                    self.finish_gt_comparison()
                 from inference.ve_timing_audit import write_report
                 try:
                     path = write_report(self.output)

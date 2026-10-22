@@ -405,9 +405,11 @@ class FullLoopDriveBase(BaseScenario):
             ),
             mgeo_root=paths["mgeo_root"],
             route_points=self.route_points,
+            route_signal_route_links=getattr(self, "route_definition", {}).get("route_links"),
             start_link=self.start_link,
             end_link=self.end_link,
             max_velocity_kmh=None if tunnel_static and velocity is None else float(velocity),
+            speed_cap_kmh=self.cfg.get("expert_speed_cap_kmh"),
             traffic_light_control=bool(
                 self.cfg.get("expert_traffic_light_control", False)
             ),

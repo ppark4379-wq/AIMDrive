@@ -14,6 +14,8 @@ from .full_loop_parts import (
     highway,
     roundabout,
     route_profile,
+    static_blockage_release,
+    signal_truth_log,
     static_obstacle,
     traffic_light_override,
     tunnel,
@@ -80,6 +82,8 @@ class FullLoopScenario(FullLoopDriveBase):
         self.static_obstacle_last_verify_elapsed = float("-inf")
         self.static_obstacle_pass_verified = False
         traffic_light_override.initialize(self)
+        static_blockage_release.initialize(self)
+        signal_truth_log.initialize(self)
         actor_lifecycle.initialize(self)
 
         configured_seed = self.cfg.get("random_seed")
@@ -252,6 +256,8 @@ class FullLoopScenario(FullLoopDriveBase):
             traffic_light_override.update(self, elapsed, ego_state, current_s)
             return
         self.verify_static_obstacle(elapsed, current_s)
+        static_blockage_release.update(self, elapsed, ego_state, current_s)
+        signal_truth_log.update(self, elapsed, ego_state)
         self.update_dynamic_obstacle(ego_state, current_s)
         traffic_light_override.update(self, elapsed, ego_state, current_s)
         self.activate_highway_spawn_points(elapsed, current_s)

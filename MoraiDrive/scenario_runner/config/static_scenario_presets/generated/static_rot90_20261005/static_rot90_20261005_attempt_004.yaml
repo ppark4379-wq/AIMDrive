@@ -1,0 +1,141 @@
+schema: morai_static_obstacle_preset_v1
+name: static_rot90_20261005_attempt_004
+map_name: R_KR_PR_K-city_2025
+scenario: full_loop_static
+source: automated_static_expert_verified
+generation:
+  batch_seed: 26100501
+  attempt: 4
+  candidate_only_until_expert_passes: false
+  scale_policy: morai_native_model_scale_v1
+  placement_policy: lane_aware_right_edge_strata_v1
+  avoidance_target: straight
+  footprint_catalog_sha256: 83e6ae9bab5d7a89e0958952181cbaf62c798036fc9c5b4aa94db5588f20416f
+obstacles:
+- model: PE_Firewall_White
+  position:
+    x: -55.916447
+    y: -144.152427
+    z: 28.377564
+  yaw_deg: -5.255664
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 664
+  generation:
+    longitudinal_fraction: 0.22342806
+    lateral_offset_m: -4.687306
+    route_lateral_m: -3.935342
+    right_edge_route_lateral_m: -4.2818
+    left_edge_route_lateral_m: -3.5889
+    placement_role: clear_01
+    lateral_stratum: right_far
+    lane_fit: right_of_path
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+    blocks_routes:
+    - right_03.csv
+    - right_04.csv
+    - right_05.csv
+    right_01_right_clearance_m: 2.5058
+    right_02_right_clearance_m: 1.3886
+    right_03_right_clearance_m: -0.4791
+    right_04_right_clearance_m: -2.1834
+    right_05_right_clearance_m: -4.3793
+    right_06_retry_right_clearance_m: -7.0846
+- model: BabyStroller1
+  position:
+    x: -57.168225
+    y: -140.86818
+    z: 28.379864
+  yaw_deg: -46.557222
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 671
+  generation:
+    longitudinal_fraction: 0.55206246
+    lateral_offset_m: -3.441039
+    route_lateral_m: -2.689075
+    right_edge_route_lateral_m: -3.6506
+    left_edge_route_lateral_m: -2.366
+    placement_role: clear_01
+    lateral_stratum: right_near
+    lane_fit: right_of_path
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+    blocks_routes:
+    - right_02.csv
+    - right_03.csv
+    - right_04.csv
+    right_01_right_clearance_m: 1.2628
+    right_02_right_clearance_m: 0.0085
+    right_03_right_clearance_m: -2.2214
+    right_04_right_clearance_m: -3.79
+    right_05_right_clearance_m: -6.0506
+    right_06_retry_right_clearance_m: -8.6078
+- model: Scooter2
+  position:
+    x: -57.052166
+    y: -139.279097
+    z: 28.380977
+  yaw_deg: -53.483501
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 674
+  generation:
+    longitudinal_fraction: 0.71095192
+    lateral_offset_m: -3.559763
+    route_lateral_m: -2.8078
+    right_edge_route_lateral_m: -3.6731
+    left_edge_route_lateral_m: -1.9425
+    placement_role: clear_01
+    lateral_stratum: right_near
+    lane_fit: right_of_path
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+    blocks_routes:
+    - right_02.csv
+    - right_03.csv
+    - right_04.csv
+    right_01_right_clearance_m: 0.8241
+    right_02_right_clearance_m: -0.3886
+    right_03_right_clearance_m: -2.7915
+    right_04_right_clearance_m: -4.543
+    right_05_right_clearance_m: -6.4738
+    right_06_retry_right_clearance_m: -9.357
+verification:
+  expert_completed: true
+  collision_free: true
+  runner_return_code: 0
+  max_cross_track_error_m: 0.3
+  cross_track_limit_m: 4.0
+  valid_plan_samples: 15
+  selected_routes:
+  - right_01.csv
+  lane_compliance:
+    passed: true
+    reasons: []
+    raw_samples: 409
+    max_sample_gap_m: 0.811
+    route_index_span:
+    - 487.1
+    - 752.7
+    min_marking_clearance_m: 0.121
+    closest_marking: B2256W000445:505:solid
+    touched_markings: []
+    max_right_deviation_m: 0.281
+    max_left_deviation_m: 0.035
+    avoidance_class: small
+    trajectory_class: straight
+    swing_onset_route_index: null
+    peak_route_index: 601.1
+    markings_source_sha256: f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb
+  verified_at_unix: 1791184954.5740507
+  log: scenario_runner/.runtime/static_scenario_batch/static_rot90_20261005/logs/static_rot90_20261005_attempt_004.log
+  ego_trace: scenario_runner/.runtime/static_scenario_batch/static_rot90_20261005/traces/static_rot90_20261005_attempt_004.csv
+  ego_trace_sha256: f72cca0a9e2529e572f0008ea01ae4b1d6233086b3050a424741dbc0c358ca39
