@@ -53,3 +53,4 @@ MoraiDrive/data_collection/internal_sensor_record/proven_three_lap_runtime/scena
 # Local MORAI GT projection investigation
 /docs/reports/MORAI_GT_CAMERA_PROJECTION_20260928.md
 /docs/reports/morai_gt_camera_projection_20260928/evidence.json
+/MoraiDrive/.runtime/
