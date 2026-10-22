@@ -71,17 +71,34 @@ def make_model(checkpoint, expected_sha256, device, initialization='lmdrive_base
     return model.to(device)
 
 
+# Partial scopes for geometry-only fine-tuning; the RGB backbone, encoder,
+# native traffic-light head and waypoint generator stay at the reference weights.
+PARTIAL_SCOPES = {
+    'lidar_head': ('lidar_backbone.', 'traffic_pred_head.'),
+    'decoder_head': ('lidar_backbone.', 'decoder.', 'traffic_pred_head.'),
+}
+
+
 def configure_trainable_scope(model, scope):
     if scope == 'full':
         model.requires_grad_(True)
         model.stop_sign_head.requires_grad_(False)
         return tuple(GROUPS)
+    if scope in PARTIAL_SCOPES:
+        model.requires_grad_(False)
+        for name, parameter in model.named_parameters():
+            if name.startswith(PARTIAL_SCOPES[scope]):
+                parameter.requires_grad_(True)
+        return PARTIAL_SCOPES[scope]
     model.requires_grad_(False)
     model.traffic_pred_head.requires_grad_(True)
     return ('traffic_pred_head.',)
 
 
 def train_mode(model, scope='full'):
+    if scope in PARTIAL_SCOPES:
+        model.eval()  # BN running statistics stay frozen in every scope; no dropout
+        return
     if scope == 'object_head':
         model.eval()
         model.traffic_pred_head.train()

@@ -15,11 +15,12 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, Subset
 from models.ve.vision_encoder import create_vision_encoder
-from training.vision_encoder.setup import make_model, configure_trainable_scope, train_mode
+from training.vision_encoder.setup import make_model, configure_trainable_scope, train_mode, PARTIAL_SCOPES
 from data.src.loaders.morai_sensor_record_dataset import (
     PathResolver, load_publications, SensorRecordDataset, digest)
 from data.src.loaders.morai_encoder_contract import sensor_record_encoder_contract
 from data.src.loaders.morai_encoder_contract import navigation_recipe, world_target_to_local
+from data.src.loaders.morai_transfer_adapter import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from data.src.loaders.morai_transfer_targets import OBJECT_TARGET_POLICIES
 from training.vision_encoder.losses.morai_transfer import multitask_loss, DETECTION_LOSS_POLICIES
 from training.vision_encoder.utils.morai_transfer_metrics import evaluate, to_device
@@ -61,12 +62,49 @@ def add_arguments(parser):
     parser.add_argument('--log-interval', type=int, default=50)
     parser.add_argument('--diagnostic-limit', type=int, default=0, help='Explicit bounded diagnostic only; 0 uses all frames')
     parser.add_argument('--initialization', choices=('lmdrive_base','morai_checkpoint'), default='lmdrive_base')
-    parser.add_argument('--trainable-scope', choices=('full','object_head'), default='full')
-    parser.add_argument('--frame-sampling', choices=('all','object_balanced','static_avoidance'), default='all')
+    parser.add_argument('--trainable-scope', choices=('full','object_head')+tuple(PARTIAL_SCOPES), default='full')
+    parser.add_argument('--corner-aux-weight', type=float, default=0.0,
+                        help='Physical-corner auxiliary (symmetric under 180-degree heading and L/W swap); needs LAV losses')
+    parser.add_argument('--distill-geometry', action='store_true',
+                        help='With --distill-weight: also hold box geometry on the reference for frames outside static-obstacle scenes')
+    parser.add_argument('--distill-weight', type=float, default=0.0,
+                        help='Keep detection confidence, object speed and native light logits on the frozen --checkpoint model')
+    parser.add_argument('--distill-speed-all-frames', action='store_true',
+                        help='With --distill-weight: hold the speed channel on every object-valid frame, including frames '
+                             '--distill-skip-model frees (weighted by the reference detection probability)')
+    parser.add_argument('--distill-geometry-weight', type=float, default=1.0,
+                        help='With --distill-geometry: multiplier of the geometry distillation term (it is only centimetres)')
+    parser.add_argument('--distill-geometry-skip-path', action='append', default=[],
+                        help='With --distill-geometry: frames whose manifest path contains this text keep free geometry (repeatable)')
+    parser.add_argument('--negative-speed-weight', type=float, default=0.0,
+                        help='With --distill-weight: penalty on negative raw speed where the student is confident')
+    parser.add_argument('--validation-interval-updates', type=int, default=0,
+                        help='Guarded selection only: also validate/gate every N updates inside an epoch and keep the best '
+                             'eligible checkpoint (0 = only at epoch end)')
+    parser.add_argument('--distill-skip-model', action='append', default=[],
+                        help='With --distill-weight: frames containing this model name anywhere are not held on the reference '
+                             '(the reference misses it, so its detections must be free to change)')
+    parser.add_argument('--frame-sampling', choices=('all','object_balanced','static_avoidance','situation_weighted','static_object'), default='all')
+    parser.add_argument('--rotated-extra-repeat', type=int, default=2,
+                        help='static_object sampling: extra presentations of frames with an obstacle rotated >= 20 degrees off the ego axis')
+    parser.add_argument('--object-repeat-model', action='append', default=[],
+                        help='all-frame sampling: repeat valid forward-BEV positives of these model names')
+    parser.add_argument('--object-model-repeat', type=int, default=1,
+                        help='Total copies of eligible frames; retains every other train frame once')
     parser.add_argument('--avoidance-repeat', type=int, default=4,
                         help='static_avoidance: copies of each static-obstacle avoidance frame')
     parser.add_argument('--avoidance-other-frames', type=int, default=10000,
                         help='static_avoidance: random non-avoidance frames kept alongside')
+    parser.add_argument('--situation-hard-repeat', type=int, default=2,
+                        help='situation_weighted: copies of each stop/decel/launch/avoid/object-ahead frame')
+    parser.add_argument('--situation-curve-fraction', type=float, default=1.0,
+                        help='situation_weighted: share of curve frames kept')
+    parser.add_argument('--situation-cruise-fraction', type=float, default=0.25,
+                        help='situation_weighted: share of plain cruise frames kept')
+    parser.add_argument('--photometric-augmentation', type=float, default=0.0,
+                        help='Training only: probability of one brightness/contrast/colour jitter shared by all cameras of a frame')
+    parser.add_argument('--target-point-dropout', type=float, default=0.0,
+                        help='Training only: probability of zeroing the route target so waypoint tokens must carry lane geometry')
     parser.add_argument('--object-negative-ratio', type=float, default=1.0,
                         help='Verified empty object-valid frames per object-positive frame')
     parser.add_argument('--detection-loss-policy', choices=DETECTION_LOSS_POLICIES,
@@ -75,7 +113,9 @@ def add_arguments(parser):
                         help='Training objectness support only; validation and physical bbox dimensions remain unchanged')
     parser.add_argument('--geometry-aux-weight', type=float, default=0.0,
                         help='Opt-in instance-balanced relative center/size loss added to the original multitask loss')
-    parser.add_argument('--checkpoint-selection', choices=('pooled_object', 'scenario_guarded'), default='pooled_object')
+    parser.add_argument('--waypoint-loss-weight', type=float, default=0.5,
+                        help='Waypoint L1 coefficient; 0 disables waypoint supervision and freezes its generator')
+    parser.add_argument('--checkpoint-selection', choices=('pooled_object', 'scenario_guarded', 'perception_guarded'), default='pooled_object')
     parser.add_argument('--early-stop-patience', type=int, default=0, help='Stop after N epochs without an eligible improvement; 0 disables')
     parser.add_argument('--preflight-scope', choices=('episodes','scenarios'), default='episodes')
     parser.add_argument('--allow-legacy-map-basis', action='store_true',
@@ -131,14 +171,52 @@ def resolve_args(args):
             or args.prefetch_factor<1 or args.resume_wait_seconds<1 or args.stop_after_updates<0
             or not math.isfinite(args.learning_rate) or args.learning_rate<=0
             or not math.isfinite(args.object_negative_ratio) or args.object_negative_ratio<=0
-            or args.avoidance_repeat<1 or args.avoidance_other_frames<0
-            or not math.isfinite(args.geometry_aux_weight) or args.geometry_aux_weight<0):
+            or args.avoidance_repeat<1 or args.avoidance_other_frames<0 or args.situation_hard_repeat<1
+            or not 0<=args.situation_curve_fraction<=1 or not 0<=args.situation_cruise_fraction<=1
+            or not 0<=args.target_point_dropout<1 or not 0<=args.photometric_augmentation<=1
+            or not math.isfinite(args.geometry_aux_weight) or args.geometry_aux_weight<0
+            or not math.isfinite(args.corner_aux_weight) or args.corner_aux_weight<0
+            or not math.isfinite(args.distill_weight) or args.distill_weight<0
+            or not math.isfinite(args.waypoint_loss_weight) or args.waypoint_loss_weight<0):
         raise ValueError('Invalid epoch/thread/worker/LR/limit settings')
-    if (args.object_target_policy != 'footprint_v1' or args.geometry_aux_weight) and args.detection_loss_policy != 'lmdrive_lav_v1':
+    if args.distill_geometry and not args.distill_weight:
+        raise ValueError('--distill-geometry requires --distill-weight')
+    if args.distill_skip_model and not args.distill_weight:
+        raise ValueError('--distill-skip-model requires --distill-weight')
+    if (args.distill_speed_all_frames or args.negative_speed_weight) and not args.distill_weight:
+        raise ValueError('--distill-speed-all-frames/--negative-speed-weight require --distill-weight')
+    if (not math.isfinite(args.distill_geometry_weight) or args.distill_geometry_weight <= 0
+            or not math.isfinite(args.negative_speed_weight) or args.negative_speed_weight < 0
+            or args.validation_interval_updates < 0):
+        raise ValueError('Invalid distillation weights or validation interval')
+    if args.distill_geometry_skip_path and not args.distill_geometry:
+        raise ValueError('--distill-geometry-skip-path requires --distill-geometry')
+    if args.distill_geometry_weight != 1.0 and not args.distill_geometry:
+        raise ValueError('--distill-geometry-weight requires --distill-geometry')
+    if args.validation_interval_updates and args.checkpoint_selection not in ('scenario_guarded', 'perception_guarded'):
+        raise ValueError('--validation-interval-updates requires guarded checkpoint selection')
+    if (args.object_target_policy != 'footprint_v1' or args.geometry_aux_weight or args.corner_aux_weight) and args.detection_loss_policy != 'lmdrive_lav_v1':
         raise ValueError('BBox improvement policies require LAV detection semantics')
-    if args.checkpoint_selection == 'scenario_guarded' and (args.skip_baseline or args.diagnostic_limit or args.detection_loss_policy != 'lmdrive_lav_v1'):
+    if args.checkpoint_selection in ('scenario_guarded', 'perception_guarded') and (args.skip_baseline or args.diagnostic_limit or args.detection_loss_policy != 'lmdrive_lav_v1'):
         raise ValueError('Scenario-guarded selection requires a full baseline and LAV losses')
+    if args.checkpoint_selection == 'perception_guarded' and args.waypoint_loss_weight != 0:
+        raise ValueError('Perception-guarded selection requires --waypoint-loss-weight 0')
+    if args.waypoint_loss_weight == 0 and args.target_point_dropout:
+        raise ValueError('Disabled waypoint supervision requires --target-point-dropout 0')
+    if (args.object_model_repeat < 1 or
+            (args.object_model_repeat != 1 and not args.object_repeat_model) or
+            (args.object_repeat_model and args.frame_sampling != 'all')):
+        raise ValueError('Object model repeats require all-frame sampling and explicit model names')
     return PathResolver(cfg.get('path_mappings', []))
+
+
+def configure_transfer_scope(model, scope, waypoint_loss_weight):
+    """Keep native decoder queries, but exclude the unused waypoint generator."""
+    expected = configure_trainable_scope(model, scope)
+    if waypoint_loss_weight == 0:
+        model.waypoints_generator.requires_grad_(False)
+        expected = tuple(name for name in expected if name != 'waypoints_generator.')
+    return expected
 
 
 def is_static_avoidance(entry, manifest_path):
@@ -164,6 +242,157 @@ def is_static_avoidance(entry, manifest_path):
     return False
 
 
+CAMERA_KEYS = ('rgb_front', 'rgb_left', 'rgb_right', 'rgb_rear', 'rgb_center')
+
+
+def photometric_jitter(inputs, generator, probability, mean, std):
+    """One brightness/contrast/colour change per frame, shared by all its cameras.
+
+    Tensors are ImageNet-normalised [B,3,H,W]; the jitter is applied in [0,1] space
+    and renormalised.  Geometry is untouched, so every BEV/waypoint target stays valid.
+    """
+    first = inputs[CAMERA_KEYS[0]]
+    batch = first.shape[0]
+    apply = torch.rand(batch, generator=generator) < probability
+    if not bool(apply.any()):
+        return inputs
+    brightness = torch.empty(batch).uniform_(0.7, 1.3, generator=generator)
+    contrast = torch.empty(batch).uniform_(0.7, 1.3, generator=generator)
+    tint = torch.empty(batch, 3).uniform_(-0.04, 0.04, generator=generator)
+    device = first.device
+    brightness, contrast, tint, apply = (t.to(device) for t in (brightness, contrast, tint, apply))
+    mean = torch.as_tensor(mean, device=device, dtype=first.dtype).view(1, 3, 1, 1)
+    std = torch.as_tensor(std, device=device, dtype=first.dtype).view(1, 3, 1, 1)
+    out = dict(inputs)
+    for key in CAMERA_KEYS:
+        if key not in inputs:
+            continue
+        x = inputs[key] * std + mean
+        level = x.mean(dim=(1, 2, 3), keepdim=True)
+        y = ((x - level) * contrast.view(-1, 1, 1, 1) + level) * brightness.view(-1, 1, 1, 1)
+        y = (y + tint.view(-1, 3, 1, 1)).clamp(0., 1.)
+        y = (y - mean) / std
+        out[key] = torch.where(apply.view(-1, 1, 1, 1), y, inputs[key])
+    return out
+
+
+HARD_SITUATIONS = ('hold', 'hold_object', 'launch', 'decel', 'avoid', 'object_ahead')
+
+
+def classify_situation(entry):
+    """Driving situation from the expert future and GT objects only (never from a prediction).
+
+    hold/hold_object  GT stays within 0.5 m (object in the corridor or not)
+    launch            starts from < 1 m/s (first 0.5 s offset)
+    decel             2.5 s travel < 60% of the 0.5 s pace
+    avoid             2.5 s point leaves the ego->route-target line by > 0.5 m with an object ahead
+    object_ahead      object within 25 m and 3 m sideways
+    curve             2.5 s point > 2 m sideways
+    cruise            everything else
+    """
+    ego, nav = entry['ego_pose'], entry['navigation']
+    origin = (ego['x'], ego['y'])
+    waypoints = np.asarray(entry['waypoints'], dtype=np.float64)
+    travel = -waypoints[4, 1]
+    pace = float(np.linalg.norm(waypoints[0])) / .5
+    target = np.asarray(world_target_to_local((nav['target_x'], nav['target_y']), origin, ego['yaw']), dtype=np.float64)
+    direction = target / (np.linalg.norm(target) + 1e-9)
+    deviation = direction[0] * waypoints[4, 1] - direction[1] * waypoints[4, 0]
+    corridor = False
+    for o in entry.get('objects') or []:
+        right, back = world_target_to_local((o['x'], o['y']), origin, ego['yaw'])
+        if abs(right) < 3. and 0. < -back < 25.:
+            corridor = True
+            break
+    if travel < .5:
+        return 'hold_object' if corridor else 'hold'
+    if pace < 1.:
+        return 'launch'
+    if travel < .6 * pace * 2.5:
+        return 'decel'
+    if abs(deviation) > .5 and corridor:
+        return 'avoid'
+    if corridor:
+        return 'object_ahead'
+    if abs(waypoints[4, 0]) > 2.:
+        return 'curve'
+    return 'cruise'
+
+
+def repeat_model_positive(entry, names):
+    """Conservative eligibility within the forward part of the supervised BEV."""
+    if not entry.get('object_valid') or not entry.get('object_positive'):
+        return False
+    pose = entry['ego_pose']
+    for obj in entry.get('objects', []):
+        if obj.get('model_name') not in names or obj.get('geometry_valid') is not True:
+            continue
+        dx, dy = obj['x'] - pose['x'], obj['y'] - pose['y']
+        forward = math.cos(pose['yaw']) * dx + math.sin(pose['yaw']) * dy
+        left = -math.sin(pose['yaw']) * dx + math.cos(pose['yaw']) * dy
+        if 0. < forward < 30. and abs(left) < 25.:
+            return True
+    return False
+
+
+ROTATED_DEGREES = 20.
+STATIC_PATH_MARKERS = ('static_obstacle', 'tunnel_static')
+
+
+def is_static_scene(manifest_path):
+    return any(m in str(manifest_path) for m in STATIC_PATH_MARKERS)
+
+
+class GeometryAnchorDataset(torch.utils.data.Dataset):
+    """Adds ``geometry_anchor`` (bool): frames whose boxes stay on the reference model.
+
+    ``skip_markers``: manifest-path substrings whose frames are also left free (e.g. the
+    highway index, so long trucks and the cars sharing the head can re-fit their boxes)."""
+    def __init__(self, base, skip_markers=()):
+        self.base = base
+        self.anchor = [not is_static_scene(p) and not any(m in str(p) for m in skip_markers)
+                       for p in base.row_manifest_paths]
+
+    def __len__(self):
+        return len(self.base)
+
+    def __getitem__(self, index):
+        inputs, targets = self.base[index]
+        return inputs, dict(targets, geometry_anchor=torch.tensor(self.anchor[index]))
+
+
+def contains_model(entry, names):
+    """Any labelled object of these model names in the frame, regardless of position or geometry validity."""
+    return any(o.get('model_name') in names for o in entry.get('objects') or [])
+
+
+class DistillMaskDataset(torch.utils.data.Dataset):
+    """Adds ``distill_keep`` (bool): frames whose detections stay on the reference model."""
+    def __init__(self, base, keep):
+        if len(keep) != len(base):
+            raise ValueError('distillation mask does not match the dataset')
+        self.base, self.keep = base, keep
+
+    def __len__(self):
+        return len(self.base)
+
+    def __getitem__(self, index):
+        inputs, targets = self.base[index]
+        return inputs, dict(targets, distill_keep=torch.tensor(self.keep[index]))
+
+
+def max_obstacle_rotation_deg(entry, radius_m=30.):
+    """Largest angle (0..45) between a nearby obstacle's axes and the ego axes."""
+    ego = entry['ego_pose']
+    yaw_deg = math.degrees(ego['yaw'])
+    worst = 0.
+    for o in entry.get('objects') or []:
+        if 'heading_deg' not in o or math.hypot(o['x'] - ego['x'], o['y'] - ego['y']) > radius_m:
+            continue
+        worst = max(worst, abs((o['heading_deg'] - yaw_deg + 45.) % 90. - 45.))
+    return worst
+
+
 def selected_training_indices(dataset, args):
     indices = list(range(len(dataset)))
     selection = {'policy': args.frame_sampling, 'available_frames': len(indices)}
@@ -180,6 +409,46 @@ def selected_training_indices(dataset, args):
         rng.shuffle(indices)
         selection.update(avoidance_frames=len(avoidance), avoidance_repeat=args.avoidance_repeat,
                          other_frames=min(len(others), args.avoidance_other_frames))
+    if args.frame_sampling == 'static_object':
+        # Static-scene frames with a verified positive object label are repeated
+        # (--avoidance-repeat) and rotated obstacles get extra presentations;
+        # --avoidance-other-frames random frames from all other scenes act as
+        # replay so detection / signals / other categories keep being trained.
+        static = [i for i, row in enumerate(dataset.rows)
+                  if is_static_scene(dataset.row_manifest_paths[i])
+                  and row[1]['object_valid'] and row[1]['object_positive']]
+        if not static:
+            raise ValueError('static_object sampling found no static object frames')
+        chosen = set(static)
+        rotated = [i for i in static if max_obstacle_rotation_deg(dataset.rows[i][1]) >= ROTATED_DEGREES]
+        others = [i for i in indices if i not in chosen]
+        rng = random.Random(args.seed + 7321)
+        rng.shuffle(others)
+        indices = (static * args.avoidance_repeat + rotated * args.rotated_extra_repeat
+                   + others[:args.avoidance_other_frames])
+        rng.shuffle(indices)
+        selection.update(static_object_frames=len(static), rotated_frames=len(rotated),
+                         static_repeat=args.avoidance_repeat, rotated_extra_repeat=args.rotated_extra_repeat,
+                         replay_frames=min(len(others), args.avoidance_other_frames))
+    if args.frame_sampling == 'situation_weighted':
+        groups = {}
+        for i, row in enumerate(dataset.rows):
+            groups.setdefault(classify_situation(row[1]), []).append(i)
+        rng = random.Random(args.seed + 7311)
+        indices = []
+        for name in sorted(groups):
+            members = groups[name]
+            if name in HARD_SITUATIONS:
+                indices += members * args.situation_hard_repeat
+            else:
+                fraction = args.situation_curve_fraction if name == 'curve' else args.situation_cruise_fraction
+                members = list(members)
+                rng.shuffle(members)
+                indices += members[:int(round(len(members) * fraction))]
+        rng.shuffle(indices)
+        selection.update(situation_frames={k: len(v) for k, v in sorted(groups.items())},
+                         hard_repeat=args.situation_hard_repeat, curve_fraction=args.situation_curve_fraction,
+                         cruise_fraction=args.situation_cruise_fraction)
     if args.frame_sampling == 'object_balanced':
         positives = [i for i, row in enumerate(dataset.rows)
                      if row[1]['object_valid'] and row[1]['object_positive']]
@@ -195,6 +464,16 @@ def selected_training_indices(dataset, args):
         selection.update(object_positive_frames=len(positives),
                          selected_verified_empty_frames=negative_count,
                          object_negative_ratio=args.object_negative_ratio)
+    models = set(getattr(args, 'object_repeat_model', []))
+    repeat = getattr(args, 'object_model_repeat', 1)
+    if models:
+        if args.frame_sampling != 'all' or repeat < 1:
+            raise ValueError('Object repeats require all-frame sampling')
+        eligible = [i for i, row in enumerate(dataset.rows)
+                    if repeat_model_positive(row[1], models)]
+        indices += eligible * (repeat - 1)
+        selection.update(object_repeat_models=sorted(models), object_model_repeat=repeat,
+                         repeated_positive_frames=len(eligible), extra_presentations=len(eligible)*(repeat-1))
     if args.diagnostic_limit:
         indices = indices[:min(len(indices), args.diagnostic_limit)]
     selection['selected_frames'] = len(indices)
@@ -307,8 +586,9 @@ def run(args):
     datasets={}
     for key, rows in dataset_manifests.items():
         # Keep the historical validation targets fixed across training policies.
-        kwargs = (dict(object_target_policy=args.object_target_policy, include_object_instance_ids=bool(args.geometry_aux_weight))
-                  if key == 'train' and (args.object_target_policy != 'footprint_v1' or args.geometry_aux_weight) else {})
+        kwargs = (dict(object_target_policy=args.object_target_policy,
+                       include_object_instance_ids=bool(args.geometry_aux_weight or args.corner_aux_weight))
+                  if key == 'train' and (args.object_target_policy != 'footprint_v1' or args.geometry_aux_weight or args.corner_aux_weight) else {})
         datasets[key] = SensorRecordDataset(rows,resolver,args.velocity_source,**kwargs)
     encoder_contract = sensor_record_encoder_contract(
         (row[2].config for dataset in datasets.values() for row in dataset.rows), args.velocity_source, map_basis=map_basis)
@@ -321,17 +601,25 @@ def run(args):
             recipe = navigation_recipe(doc['navigation_contract'])
             if recipe not in encoder_contract['navigation_recipes']:
                 encoder_contract['navigation_recipes'].append(recipe)
-    from training.vision_encoder.utils.morai_scenario_validation import (
-        scenario_groups, scenario_loaders, evaluate_scenarios, selection_decision, DEFAULT_LIMITS)
+    guarded_selection = args.checkpoint_selection in ('scenario_guarded', 'perception_guarded')
+    if args.checkpoint_selection == 'perception_guarded':
+        from training.vision_encoder.utils.morai_perception_validation import (
+            scenario_groups, scenario_loaders, evaluate_scenarios, selection_decision, DEFAULT_LIMITS)
+    else:
+        from training.vision_encoder.utils.morai_scenario_validation import (
+            scenario_groups, scenario_loaders, evaluate_scenarios, selection_decision, DEFAULT_LIMITS)
+    evaluation_kwargs = dict(waypoint_loss_weight=args.waypoint_loss_weight)
     groups = ({split:scenario_groups(ds,index['manifest_scenarios']) for split,ds in datasets.items()}
-              if args.checkpoint_selection == 'scenario_guarded' or args.preflight_scope == 'scenarios' else None)
+              if guarded_selection or args.preflight_scope == 'scenarios' else None)
     coverage={key:{'usable':dict(ds.coverage),'excluded':dict(ds.excluded)} for key,ds in datasets.items()}
     print(json.dumps(coverage),flush=True)
     for split,ds in datasets.items():
         if not all(ds.coverage[k]>0 for k in ('object_positive','traffic_light_0','traffic_light_1')):
             raise ValueError('Insufficient multitask coverage in '+split)
     model=make_model(args.checkpoint,args.checkpoint_sha256,args.device,args.initialization)
-    expected_gradient_groups=configure_trainable_scope(model,args.trainable_scope)
+    expected_gradient_groups=configure_transfer_scope(model,args.trainable_scope,args.waypoint_loss_weight)
+    waypoint_before=(frozen_state_digest(model.waypoints_generator)
+                     if args.waypoint_loss_weight == 0 else None)
     frozen_before=(frozen_state_digest(model,('traffic_pred_head.',))
                    if args.trainable_scope=='object_head' else None)
     train_indices,sampling=selected_training_indices(datasets['train'],args)
@@ -355,6 +643,9 @@ def run(args):
                      ROOT/'training/vision_encoder/utils/morai_runtime_state.py',
                      ROOT/'data/src/loaders/morai_dataloader.py',
                      ROOT/'data/src/loaders/morai_native_asset_io.py']}
+    if args.checkpoint_selection == 'perception_guarded':
+        metric_path=ROOT/'training/vision_encoder/utils/morai_perception_validation.py'
+        implementation[str(metric_path.relative_to(ROOT))]=digest(metric_path)
     provenance=dict(schema='morai_visual_transfer_v1',args=vars(args),coverage=coverage,
         publications=index['publications'],
         initial_checkpoint_sha256=args.checkpoint_sha256,
@@ -362,21 +653,30 @@ def run(args):
         initialization=args.initialization,
         encoder_contract=encoder_contract,
         trainable_scope=args.trainable_scope,
-        loss=('0.5*detection+0.5*waypoint_L1+0.05*object_speed_L1+0.1*light_CE; '
+        loss=('0.5*detection+'+str(args.waypoint_loss_weight)+'*waypoint_L1+0.05*object_speed_L1+0.1*light_CE; '
               'detection_policy='+args.detection_loss_policy
               +'; training_target_policy='+args.object_target_policy
-              +'; geometry_aux_weight='+str(args.geometry_aux_weight)),
+              +'; geometry_aux_weight='+str(args.geometry_aux_weight)
+              +'; corner_aux_weight='+str(args.corner_aux_weight)+'; distill_weight='+str(args.distill_weight)
+              +('; distill_skip_models='+','.join(sorted(args.distill_skip_model)) if args.distill_skip_model else '')),
         bbox_training=dict(target_policy=args.object_target_policy,
                            validation_target_policy='footprint_v1',
                            geometry_aux_policy='instance_relative_center_size_v1',
                            geometry_aux_weight=args.geometry_aux_weight,
                            physical_gt_dimensions_modified=False),
         optimizer=dict(name='AdamW', learning_rate=args.learning_rate, weight_decay=.01, schedule='constant', restored=False),
-        checkpoint_selection=args.checkpoint_selection, regression_limits=DEFAULT_LIMITS if args.checkpoint_selection == 'scenario_guarded' else None,
-        batch_size=1,frame_sampling=sampling,augmentation='none',
+        checkpoint_selection=args.checkpoint_selection, regression_limits=DEFAULT_LIMITS if guarded_selection else None,
+        waypoint_supervision=dict(weight=args.waypoint_loss_weight,
+                                  enabled=args.waypoint_loss_weight > 0,
+                                  generator_frozen=args.waypoint_loss_weight == 0,
+                                  decoder_queries_preserved=True),
+        batch_size=1,frame_sampling=sampling,
+        augmentation=('photometric_shared_per_frame p=%g' % args.photometric_augmentation
+                      if args.photometric_augmentation else 'none'),
         velocity_source=args.velocity_source,velocity_contract='causal consecutive GPS fixes, dt<=0.25s; no Ego fallback' if args.velocity_source=='gps' else ('causal /Ego_topic hypot(velocity.x, velocity.y) in m/s, source age <=50ms; no GPS fallback' if args.velocity_source=='ego_topic' else 'legacy constant zero'),
         waypoint_source='sealed future Ego positions at 0.5/1/1.5/2/2.5s',
-        target_point='official global path 25m lookahead; prediction head only',
+        target_point='official global path 25m lookahead; prediction head only'
+                     +('; training-only dropout to zero p=%g' % args.target_point_dropout if args.target_point_dropout else ''),
         batchnorm='running statistics frozen; affine parameters trainable',
         stop_sign='frozen_without_verified_GT',physical_simultaneity_verified=False,
         validation_scope=index.get('validation_scope'),diagnostic=bool(args.preflight or args.diagnostic_limit or args.stop_after_updates),
@@ -385,6 +685,12 @@ def run(args):
                           prefetch_factor=args.prefetch_factor),
         resume_requested=str(args.resume_from) if args.resume_from else None)
     provenance=json.loads(json.dumps(provenance,default=str))
+    if args.photometric_augmentation or (args.target_point_dropout and args.waypoint_loss_weight):
+        provenance['augmentation_rng_contract']=dict(
+            policy='main_process_torch_generators_v1',
+            generator_names=['photometric','target_point_dropout'],
+            photometric_probability=args.photometric_augmentation,
+            target_point_dropout_probability=args.target_point_dropout if args.waypoint_loss_weight else 0.)
     write_json(args.output/'config.json',provenance)
     if args.preflight:
         # Default checks every episode; explicit scenario scope is a bounded
@@ -406,7 +712,8 @@ def run(args):
             model.zero_grad(set_to_none=True);train_mode(model,args.trainable_scope)
             inputs,targets=to_device(next(iter(DataLoader(Subset(datasets['train'],[i]),batch_size=1))),args.device)
             loss,_=multitask_loss(model(inputs),targets,detection_loss_policy=args.detection_loss_policy,
-                                  geometry_aux_weight=args.geometry_aux_weight)
+                                  geometry_aux_weight=args.geometry_aux_weight,
+                                  waypoint_loss_weight=args.waypoint_loss_weight)
             if not torch.isfinite(loss):raise ValueError('Nonfinite loss')
             loss.backward()
             seen={k:seen[k] or v for k,v in gradients(model).items()}
@@ -424,7 +731,7 @@ def run(args):
             with torch.no_grad():predictions=model(val_inputs)
             if not all(torch.isfinite(t).all() for t in predictions):raise ValueError('Invalid validation episode output')
         diagnostic_metrics=None
-        if args.checkpoint_selection == 'scenario_guarded':
+        if guarded_selection:
             probe_groups={}
             for name,members in groups['val'].items():
                 positives=[i for i in members if datasets['val'].rows[i][1]['object_positive']]
@@ -435,7 +742,8 @@ def run(args):
                 if empty is not None:probes.append(empty)
                 probe_groups[name]=list(dict.fromkeys(probes))
             diagnostic_metrics=evaluate_scenarios(model,scenario_loaders(datasets['val'],probe_groups),
-                args.device,progress_phase='preflight_objects',detection_loss_policy=args.detection_loss_policy)
+                args.device,progress_phase='preflight_objects',detection_loss_policy=args.detection_loss_policy,
+                **evaluation_kwargs)
             if not selection_decision(diagnostic_metrics,diagnostic_metrics)['eligible']:
                 raise ValueError('Preflight baseline must be eligible against itself')
             write_json(args.output/'preflight_object_metrics.json',
@@ -444,6 +752,7 @@ def run(args):
         with torch.no_grad():features=model(inputs)
         if tuple(features.shape)!=(1,106,256) or not torch.isfinite(features).all():raise ValueError('Invalid feature output')
         report=dict(preflight_passed=True,optimizer_updates=0,gradient_groups=seen,feature_shape=list(features.shape),coverage=coverage,
+                    waypoint_supervision=provenance['waypoint_supervision'],
                     checked_train_samples=len(set(indices)),checked_validation_groups=len(checked_val),
                     scope=args.preflight_scope, full_publication_manifest_counts=publication_coverage,
                     checked_native_episodes={split:len(rows) for split,rows in dataset_manifests.items()},
@@ -455,7 +764,8 @@ def run(args):
         return report
     from data.src.loaders.morai_dataloader import make_morai_loader
     from training.vision_encoder.utils.morai_resume_state import (
-        epoch_order, capture_progress, restore_progress, apply_rng_state)
+        epoch_order, capture_progress, restore_progress, apply_rng_state,
+        apply_augmentation_rng_state)
     from training.vision_encoder.utils.morai_runtime_state import (
         EpochOrderSampler, nested_state_digest, install_stop_handlers)
     val_indices=list(range(min(len(datasets['val']),args.diagnostic_limit))) if args.diagnostic_limit else list(range(len(datasets['val'])))
@@ -464,18 +774,27 @@ def run(args):
                                   generator=val_generator,pin_memory=args.pin_memory,
                                   prefetch_factor=args.prefetch_factor)}
     validation_fn=evaluate
-    if args.checkpoint_selection == 'scenario_guarded':
+    if guarded_selection:
         loaders['val']=scenario_loaders(datasets['val'],groups['val'],args.validation_workers,
                                         pin_memory=args.pin_memory,prefetch_factor=args.prefetch_factor)
         validation_fn=evaluate_scenarios
     optimizer=torch.optim.AdamW([p for p in model.parameters() if p.requires_grad],lr=args.learning_rate,weight_decay=0.01)
+    reference_model=None
+    if args.distill_weight:
+        reference_model=make_model(args.checkpoint,args.checkpoint_sha256,args.device,args.initialization).eval()
+        reference_model.requires_grad_(False)
+    target_dropout_generator=torch.Generator().manual_seed(args.seed+13001)
+    photometric_generator=torch.Generator().manual_seed(args.seed+13003)
+    augmentation_generators=({'photometric':photometric_generator,
+                              'target_point_dropout':target_dropout_generator}
+                             if 'augmentation_rng_contract' in provenance else None)
     best_checkpoint=args.output/'checkpoint-best-object.pth.tar'
     best_object=None
 
     def consider_object_checkpoint(metrics, epoch, steps):
         nonlocal best_object
         decision=None
-        if args.checkpoint_selection == 'scenario_guarded':
+        if guarded_selection:
             decision=selection_decision(metrics, metrics if epoch == 0 else before)
             write_json(args.output/('selection_%03d.json'%epoch), decision)
             if not decision['eligible']:
@@ -489,14 +808,15 @@ def run(args):
                      morai_encoder_contract=encoder_contract,
                      pretraining=provenance,metrics=metrics,validation_completed=True,token_shape=[106,256],
                      feature_model_name='memfuser_baseline_e1d3_return_feature')
-        if args.checkpoint_selection == 'scenario_guarded' and epoch == 0:
+        if guarded_selection and epoch == 0:
             import shutil
             shutil.copyfile(args.checkpoint, best_checkpoint)
         else:
             if epoch>0 and args.frame_sampling=='all' and not args.diagnostic_limit:
                 payload['training_state']=capture_progress(model,optimizer,provenance,encoder_contract,
                     epoch_index=epoch-1,order=current_order,cursor=cursor,global_step=steps,
-                    include_cuda=args.device=='cuda',continuity=continuity)
+                    include_cuda=args.device=='cuda',continuity=continuity,
+                    augmentation_generators=augmentation_generators)
             save(best_checkpoint,payload)
         best_object=dict(epoch=epoch,steps=steps,selection_score=list(score),
                          detection_cell_average_precision=metrics.get('detection_cell_average_precision'),
@@ -504,22 +824,48 @@ def run(args):
                          detection_cell_best_threshold=metrics.get('detection_cell_best_threshold'),
                          checkpoint=str(best_checkpoint),
                          selection_policy=args.checkpoint_selection,
-                         baseline_weights_preserved=epoch==0 and args.checkpoint_selection=='scenario_guarded', decision=decision)
+                         baseline_weights_preserved=epoch==0 and guarded_selection, decision=decision)
         write_json(args.output/'best_object.json',best_object)
         return True
+
+    def validate_mid_epoch(epoch, steps):
+        """Gate a checkpoint inside the epoch; keep it as the selection if eligible and better than the best so far."""
+        nonlocal best_object
+        metrics=validation_fn(model,loaders['val'],args.device,progress_phase='validation_step_%d'%steps,
+                              detection_loss_policy=args.detection_loss_policy,**evaluation_kwargs)
+        train_mode(model,args.trainable_scope)
+        decision=selection_decision(metrics,before)
+        write_json(args.output/('validation_step_%07d.json'%steps),metrics)
+        write_json(args.output/('selection_step_%07d.json'%steps),decision)
+        payload=training_payload(epoch,steps);payload.update(metrics=metrics,validation_completed=True)
+        checkpoint=args.output/('checkpoint-step-%07d.pth.tar'%steps);save(checkpoint,payload)
+        score=tuple(decision['score']) if decision.get('eligible') else None
+        promoted=score is not None and (best_object is None or score>tuple(best_object['selection_score']))
+        if promoted:
+            import shutil
+            shutil.copyfile(checkpoint,best_checkpoint)
+            best_object=dict(epoch=epoch,steps=steps,selection_score=list(score),
+                             detection_cell_average_precision=metrics.get('detection_cell_average_precision'),
+                             checkpoint=str(best_checkpoint),selection_policy=args.checkpoint_selection,
+                             mid_epoch=True,baseline_weights_preserved=False,decision=decision)
+            write_json(args.output/'best_object.json',best_object)
+        print(json.dumps(dict(event='mid_epoch_selection',step=steps,eligible=bool(decision.get('eligible')),
+                              violations=len(decision.get('violations',[])),promoted=promoted)),flush=True)
+        return decision
 
     # Always recompute with this process's corrected metric implementation and
     # the ORIGINAL recovered anchor, before loading the continuation weights.
     before=None
     if not args.skip_baseline:
-        before=validation_fn(model,loaders['val'],args.device,progress_phase='baseline',detection_loss_policy=args.detection_loss_policy)
+        before=validation_fn(model,loaders['val'],args.device,progress_phase='baseline',detection_loss_policy=args.detection_loss_policy,
+                             **evaluation_kwargs)
         before['evaluation_provenance']=dict(checkpoint_sha256=args.checkpoint_sha256,
             publications=index['publications'],manifest_sha256=datasets['val'].manifest_hashes,
             implementation_sha256=implementation)
         write_json(args.output/'baseline.json',before)
         consider_object_checkpoint(before,0,0)
     start_epoch=0;step=0;cursor=0;current_order=epoch_order(len(train_indices),args.seed,0)
-    pending_rng_state=None;resume_report=None;continuity=None
+    pending_rng_state=None;pending_augmentation_rng_state=None;resume_report=None;continuity=None
     if args.resume_from:
         if args.wait_for_resume:
             write_json(args.output/'ready_for_resume.json',dict(
@@ -539,6 +885,7 @@ def run(args):
             dataset_size=len(train_indices),seed=args.seed,allow_legacy_sampler_reset=args.allow_legacy_sampler_reset)
         start_epoch=restored['epoch_index'];current_order=restored['order'];cursor=restored['cursor']
         step=restored['global_step'];pending_rng_state=restored['pending_rng_state'];continuity=restored['continuity']
+        pending_augmentation_rng_state=restored['pending_augmentation_rng_state']
         if start_epoch>=args.epochs:
             raise ValueError('Resume checkpoint already reached requested total epochs')
         model_same=nested_state_digest(model.state_dict())==nested_state_digest(payload['state_dict'])
@@ -562,7 +909,18 @@ def run(args):
     initial_step=step
     order_sampler=EpochOrderSampler(current_order,cursor)
     train_generator=torch.Generator().manual_seed(args.seed+12001)
-    loaders['train']=make_morai_loader(Subset(datasets['train'],train_indices),workers=args.workers,
+    train_source=(GeometryAnchorDataset(datasets['train'],args.distill_geometry_skip_path)
+                  if args.distill_geometry else datasets['train'])
+    if args.distill_geometry:
+        print(json.dumps(dict(event='geometry_anchor',skip_path_markers=args.distill_geometry_skip_path,
+                              anchored_frames=int(sum(train_source.anchor)),free_frames=int(len(train_source.anchor)-sum(train_source.anchor)))),flush=True)
+    if args.distill_skip_model:
+        skip=set(args.distill_skip_model)
+        keep=[not contains_model(row[1],skip) for row in datasets['train'].rows]
+        train_source=DistillMaskDataset(train_source,keep)
+        print(json.dumps(dict(event='distillation_mask',skip_models=sorted(skip),
+                              excluded_frames=keep.count(False),held_frames=keep.count(True))),flush=True)
+    loaders['train']=make_morai_loader(Subset(train_source,train_indices),workers=args.workers,
         sampler=order_sampler,generator=train_generator,pin_memory=args.pin_memory,
         prefetch_factor=args.prefetch_factor)
     stop_request=install_stop_handlers()
@@ -574,7 +932,8 @@ def run(args):
         if args.frame_sampling=='all' and not args.diagnostic_limit:
             result['training_state']=capture_progress(model,optimizer,provenance,encoder_contract,
                 epoch_index=epoch-1,order=current_order,cursor=cursor,global_step=steps,
-                include_cuda=args.device=='cuda',continuity=continuity)
+                include_cuda=args.device=='cuda',continuity=continuity,
+                augmentation_generators=augmentation_generators)
         return result
 
     observed={k:False for k in GROUPS};no_improvement=0;stopped_early=False;inputs=None
@@ -588,12 +947,41 @@ def run(args):
             iterator=iter(loaders['train'])
             if pending_rng_state is not None:
                 apply_rng_state(pending_rng_state);pending_rng_state=None
+            if pending_augmentation_rng_state is not None:
+                apply_augmentation_rng_state(pending_augmentation_rng_state,augmentation_generators)
+                pending_augmentation_rng_state=None
             previous_batch_end=time.monotonic()
             for batch in iterator:
                 loaded_at=time.monotonic();data_wait=loaded_at-previous_batch_end
                 inputs,targets=to_device(batch,args.device);optimizer.zero_grad(set_to_none=True)
-                loss,tasks=multitask_loss(model(inputs),targets,detection_loss_policy=args.detection_loss_policy,
-                                          geometry_aux_weight=args.geometry_aux_weight)
+                if args.photometric_augmentation:
+                    inputs=photometric_jitter(inputs,photometric_generator,args.photometric_augmentation,
+                                              IMAGENET_DEFAULT_MEAN,IMAGENET_DEFAULT_STD)
+                if args.target_point_dropout and args.waypoint_loss_weight:
+                    dropped=torch.rand(inputs['target_point'].shape[0],generator=target_dropout_generator)<args.target_point_dropout
+                    inputs['target_point']=inputs['target_point'].masked_fill(dropped.to(inputs['target_point'].device)[:,None],0.)
+                outputs=model(inputs)
+                loss,tasks=multitask_loss(outputs,targets,detection_loss_policy=args.detection_loss_policy,
+                                          geometry_aux_weight=args.geometry_aux_weight,
+                                          waypoint_loss_weight=args.waypoint_loss_weight)
+                if args.corner_aux_weight:
+                    from training.vision_encoder.losses.morai_bbox_corner import corner_bbox_loss
+                    corner,corner_terms=corner_bbox_loss(outputs[0],targets['detection'],targets['object_instance_ids'],
+                                                         valid_mask=targets['object_valid'].bool())
+                    loss=loss+args.corner_aux_weight*corner
+                    tasks=dict(tasks,bbox_corner=corner,**{k:v for k,v in corner_terms.items() if k=='bbox_corner_geometry'})
+                if reference_model is not None:
+                    from training.vision_encoder.losses.morai_distill import distillation_loss
+                    with torch.no_grad():reference=reference_model(inputs)
+                    held=targets['object_valid'].bool()
+                    if 'distill_keep' in targets:held=held&targets['distill_keep'].bool()
+                    distill,distill_terms=distillation_loss(outputs,reference,held,
+                        targets['geometry_anchor'].bool()&held if args.distill_geometry else None,
+                        speed_frames=targets['object_valid'].bool() if args.distill_speed_all_frames else None,
+                        geometry_weight=args.distill_geometry_weight,
+                        negative_speed_weight=args.negative_speed_weight)
+                    loss=loss+args.distill_weight*distill
+                    tasks=dict(tasks,distill=distill.detach(),**distill_terms)
                 if not torch.isfinite(loss):raise ValueError('Nonfinite loss')
                 loss.backward()
                 if not all(observed[k] for k in expected_gradient_groups):
@@ -617,6 +1005,8 @@ def run(args):
                         write_json(args.output/'handoff_confirmed.json',dict(
                             resumed=True,from_step=initial_step,step=step,checkpoint=str(args.output/'checkpoint-progress.pth.tar'),
                             checkpoint_sha256=digest(args.output/'checkpoint-progress.pth.tar')))
+                if args.validation_interval_updates and step%args.validation_interval_updates==0:
+                    validate_mid_epoch(epoch+1,step)
                 if stop_request['requested'] or (args.stop_after_updates and step-initial_step>=args.stop_after_updates):
                     checkpoint=args.output/'checkpoint-interrupted.pth.tar'
                     save(checkpoint,training_payload(epoch+1,step));log.flush()
@@ -630,8 +1020,9 @@ def run(args):
             after=evaluate_and_checkpoint(
                 args.output/'checkpoint-last.pth.tar',training_payload(epoch+1,step),
                 model,loaders['val'],args.device,progress_phase='validation',
-                detection_loss_policy=args.detection_loss_policy,evaluation_fn=validation_fn)
-            if args.checkpoint_selection=='scenario_guarded':
+                detection_loss_policy=args.detection_loss_policy,evaluation_fn=validation_fn,
+                **evaluation_kwargs)
+            if guarded_selection:
                 retain_checkpoint(args.output/'checkpoint-last.pth.tar',args.output/('checkpoint-epoch-%03d.pth.tar'%(epoch+1)))
             write_json(args.output/('epoch_%03d.json'%(epoch+1)),after)
             promoted=consider_object_checkpoint(after,epoch+1,step)
@@ -655,16 +1046,22 @@ def run(args):
                       if frozen_before is not None else None)
     if frozen_unchanged is False:
         raise RuntimeError('Frozen shared encoder or waypoint/light parameters changed')
+    waypoint_unchanged=(frozen_state_digest(model.waypoints_generator)==waypoint_before
+                        if waypoint_before is not None else None)
+    if waypoint_unchanged is False:
+        raise RuntimeError('Disabled waypoint generator changed during perception training')
     report=dict(before=before,after=after,feature_shape=list(features.shape),nonzero_finite_gradient_groups=observed,
                 checkpoint_sha256=digest(best_checkpoint),checkpoint_selection=args.checkpoint_selection, stopped_early=stopped_early, completed_epochs=epoch+1,
                 selected_checkpoint=str(best_checkpoint),best_object=best_object,
                 last_checkpoint=str(checkpoint),last_checkpoint_sha256=digest(checkpoint),optimizer_updates=step,
                 optimizer_updates_this_run=step-initial_step,resume=resume_report,
                 retained_epoch_checkpoints=([str(args.output/('checkpoint-epoch-%03d.pth.tar'%i)) for i in range(start_epoch+1,epoch+2)]
-                                            if args.checkpoint_selection == 'scenario_guarded' else []),
+                                            if guarded_selection else []),
                 frame_sampling=sampling,trainable_scope=args.trainable_scope,
                 detection_loss_policy=args.detection_loss_policy,
                 bbox_training=provenance['bbox_training'],
+                waypoint_supervision=provenance['waypoint_supervision'],
+                frozen_waypoint_generator_unchanged=waypoint_unchanged,
                 frozen_non_object_state_unchanged=frozen_unchanged,
                 velocity_source=args.velocity_source,validation_scope=index.get('validation_scope'),
                 downstream_connected=False)

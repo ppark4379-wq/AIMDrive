@@ -42,9 +42,13 @@ def _occupancy_metrics(positive_histogram, negative_histogram, bins):
 
 def evaluate(model, loader, device, include_traffic_light=True, include_objects=True,
              progress_phase=None, progress_every=50,
-             detection_loss_policy="mvt_l1_v1", object_entries=None):
+             detection_loss_policy="mvt_l1_v1", object_entries=None,
+             waypoint_loss_weight=0.5, perception_metrics=False):
     model.eval()
     object_accumulator = None
+    speed_accumulator = None
+    if perception_metrics and object_entries is None:
+        raise ValueError('Perception speed metrics require sealed object metadata')
     if object_entries is not None:
         if not include_objects:
             raise ValueError('Object metadata diagnostics require enabled object evaluation')
@@ -52,6 +56,9 @@ def evaluate(model, loader, device, include_traffic_light=True, include_objects=
             raise ValueError('Object decoding requires explicit LAV logits')
         from utils.evaluation.morai_object_metrics import ObjectMetricsAccumulator
         object_accumulator = ObjectMetricsAccumulator()
+        if perception_metrics:
+            from .morai_perception_validation import MatchedSpeedAccumulator
+            speed_accumulator = MatchedSpeedAccumulator()
     loss_sum, ade_sum, fde_sum, n, waypoint_n = 0., 0., 0., 0, 0
     light_correct, light_n, object_n, tp, fp, fn = 0, 0, 0, 0, 0, 0
     light_counts, light_hits = [0, 0], [0, 0]
@@ -79,7 +86,9 @@ def evaluate(model, loader, device, include_traffic_light=True, include_objects=
                         raise ValueError('Object entry frame/time differs from batch')
                     if bool(targets['object_valid'][j]) != bool(entry['object_valid']):
                         raise ValueError('Object entry supervision differs from batch')
-                    object_accumulator.update(outputs[0][j], entry)
+                    object_row = object_accumulator.update(outputs[0][j], entry)
+                    if speed_accumulator is not None:
+                        speed_accumulator.update(outputs[0][j], entry, object_row)
             n += b
             # Per-frame reporting is invariant to batching and sparse masks.
             # Keep historical frame-averaged losses, also report the losses
@@ -88,7 +97,8 @@ def evaluate(model, loader, device, include_traffic_light=True, include_objects=
                 yt = {k: v[i:i+1] for k,v in targets.items()}
                 loss, tasks = multitask_loss(
                     [v[i:i+1] for v in outputs[:3]], yt,
-                    include_traffic_light, include_objects, detection_loss_policy)
+                    include_traffic_light, include_objects, detection_loss_policy,
+                    waypoint_loss_weight=waypoint_loss_weight)
                 loss_sum += float(loss)
                 observed = dict(detection=include_objects and bool(yt['object_valid']),
                     object_speed=include_objects and bool(yt['object_valid']) and bool((yt['detection'][:,:,0]>=.01).any()),
@@ -161,4 +171,6 @@ def evaluate(model, loader, device, include_traffic_light=True, include_objects=
 
     if object_accumulator is not None:
         result["object_detection"] = object_accumulator.compute()
+    if speed_accumulator is not None:
+        result["object_speed_decoded"] = speed_accumulator.compute()
     return result

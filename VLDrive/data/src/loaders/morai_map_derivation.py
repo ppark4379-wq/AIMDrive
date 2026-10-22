@@ -1,4 +1,4 @@
-"""Reproducible, additive map-basis correction of sealed full-pose manifests.
+"""Additive map-basis correction of sealed full-pose or actor-free manifests.
 
 This corrects reference frames, not timestamps, dimensions, or exposure timing.
 Unsupported geometry and actors newly touching the BEV fail closed.
@@ -11,6 +11,84 @@ from .morai_map_geometry import validate_map_basis
 from .morai_transfer_targets import local_flu, render_object_target
 
 SCHEMA = 'morai_map_basis_derivation_v1'
+MANIFEST_PATH_FIELDS = ('episode', 'native_root', 'route')
+
+
+def _indexed_frames(rows):
+    indexed = {}
+    for row in rows:
+        key = row.get('index')
+        if (not isinstance(key, int) or isinstance(key, bool)
+                or key < 0 or key in indexed):
+            raise ValueError('Invalid or duplicate map derivation evidence frame')
+        indexed[key] = row
+    return indexed
+
+
+def load_map_derivation_inputs(source, resolver, parent, episode):
+    """Load the sealed geometry evidence shared by the writer and verifier.
+
+    An actor-free direct recording needs no fitted actor poses or pivots. That
+    branch is admitted only by a complete, timely, empty inventory and the
+    original geometry audit for every selected frame.
+    """
+    from .morai_sensor_record_dataset import (
+        digest, read_json, verify_geometry_derivation, verify_seal)
+    verify_geometry_derivation(source, resolver, parent, episode)
+    ev = source.get('geometry_reprocessing')
+    if ev is not None:
+        timeline_dir = resolver(ev['timeline_directory'], parent)
+        geometry_dir = resolver(ev['geometry_directory'], parent)
+        return (_indexed_frames(read_json(timeline_dir/'frames.json')),
+                _indexed_frames(read_json(geometry_dir/'frames.json')),
+                read_json(geometry_dir/'pivot_evidence.json')['instances'],
+                'sealed_fullpose_geometry_v1')
+
+    timeline_dir = episode/'gt_timeline_v1'
+    geometry_dir = episode/'object_geometry_audit_v1'
+    timeline_seal = verify_seal(timeline_dir)
+    geometry_seal = verify_seal(geometry_dir)
+    timeline_hash = digest(timeline_dir/'COMPLETE.json')
+    geometry_hash = digest(geometry_dir/'COMPLETE.json')
+    raw_hash = digest(episode/'raw/raw_manifest.json')
+    evidence = source.get('evidence_seal_sha256', {})
+    report = read_json(geometry_dir/'report.json')
+    if (evidence.get('gt_timeline') != timeline_hash
+            or evidence.get('object_geometry') != geometry_hash
+            or timeline_seal.get('raw_manifest_sha256') != raw_hash
+            or geometry_seal.get('gt_timeline_seal_sha256') != timeline_hash
+            or report.get('raw_manifest_sha256') != raw_hash
+            or geometry_seal.get('schema') != 'morai_sensor_record_object_geometry_audit_v1'
+            or report.get('schema') != 'morai_sensor_record_object_geometry_audit_v1'
+            or report.get('structural_valid') is not True
+            or report.get('complete_observed_geometry_scope') is not True):
+        raise ValueError('Changed or incomplete direct empty-inventory evidence')
+    timeline = _indexed_frames(read_json(timeline_dir/'frames.json'))
+    geometry = _indexed_frames(read_json(geometry_dir/'frames.json'))
+    selected = set()
+    if not source['entries']:
+        raise ValueError('Direct map correction requires selected frames')
+    for before in source['entries']:
+        key = before['frame_id']
+        if not isinstance(key, int) or isinstance(key, bool) or key < 0 or key in selected:
+            raise ValueError('Invalid or duplicate selected map derivation frame')
+        selected.add(key)
+        frame, audit = timeline.get(key, {}), geometry.get(key, {})
+        inventory = frame.get('object_gt', {})
+        if (before.get('object_valid') is not True
+                or before.get('object_positive') is not False
+                or before.get('objects') != []
+                or frame.get('lidar_source_ns') != before['sensor_time_ns']
+                or audit.get('lidar_source_ns') != before['sensor_time_ns']
+                or inventory.get('objects') != []
+                or inventory.get('source') != 'grpc_full_inventory'
+                or inventory.get('complete_inventory') is not True
+                or inventory.get('transport_timing_candidate') is not True
+                or audit.get('objects') != []
+                or audit.get('object_count') != 0
+                or audit.get('api_box_geometry_candidate') is not True):
+            raise ValueError('Direct map correction requires sealed complete timely empty inventories')
+    return timeline, geometry, {}, 'sealed_complete_empty_inventory_v1'
 
 
 def rotate_waypoints(waypoints, angle_degrees):
@@ -122,8 +200,7 @@ def correct_entry(before, timeline, geometry, basis, signal, pivots=None):
 
 
 def verify_map_derivation(doc, resolver, parent, episode):
-    from .morai_sensor_record_dataset import (digest, read_json, verify_seal,
-                                               verify_geometry_derivation)
+    from .morai_sensor_record_dataset import digest, read_json, verify_seal
     evidence = doc['map_basis_reprocessing']
     if evidence.get('schema') != SCHEMA:
         raise ValueError('Unsupported map basis derivation')
@@ -136,10 +213,18 @@ def verify_map_derivation(doc, resolver, parent, episode):
         raise ValueError('Cannot apply map correction twice')
     if resolver(source['episode'], source_path.parent) != episode:
         raise ValueError('Changed source episode')
-    verify_geometry_derivation(source, resolver, source_path.parent, episode)
+    timeline, geometry, pivots, policy = load_map_derivation_inputs(
+        source, resolver, source_path.parent, episode)
+    if evidence.get('geometry_input_policy', policy) != policy:
+        raise ValueError('Changed map derivation geometry input policy')
     # Only these document-level fields may differ; immutable sensor contracts,
     # split, timing and all evidence references remain exactly as recorded.
-    allowed = {'entries', 'map_basis', 'map_basis_reprocessing'}
+    allowed = {'entries', 'map_basis', 'map_basis_reprocessing', *MANIFEST_PATH_FIELDS}
+    for key in MANIFEST_PATH_FIELDS:
+        if (key in doc) != (key in source):
+            raise ValueError('Map correction changed manifest path membership')
+        if key in source and resolver(doc[key], parent) != resolver(source[key], source_path.parent):
+            raise ValueError('Map correction redirected manifest path: ' + key)
     if {k:v for k,v in doc.items() if k not in allowed} != {k:v for k,v in source.items() if k not in allowed}:
         raise ValueError('Map correction changed unrelated document fields')
     map_path = resolver(evidence['map_metadata'], parent)
@@ -161,10 +246,6 @@ def verify_map_derivation(doc, resolver, parent, episode):
               (line.split(':',1) for line in gps.decode('utf-8-sig').splitlines() if ':' in line)}
     if [fields['eastoffset'], fields['northoffset']] != doc['map_basis']['origin_xyz'][:2]:
         raise ValueError('Map origin disagrees with recorded GPS offsets')
-    ev = source['geometry_reprocessing']
-    timeline = {r['index']:r for r in read_json(resolver(ev['timeline_directory'])/'frames.json')}
-    geometry = {r['index']:r for r in read_json(resolver(ev['geometry_directory'])/'frames.json')}
-    pivots = read_json(resolver(ev['geometry_directory'])/'pivot_evidence.json')['instances']
     verify_seal(episode/'route_signal_audit_v1')
     if digest(episode/'route_signal_audit_v1/COMPLETE.json') != source['evidence_seal_sha256']['route_signal']:
         raise ValueError('Changed route signal evidence')

@@ -11,7 +11,7 @@ from data.src.loaders.morai_sensor_record_dataset import (
     verify_admission_recovery, verify_subset_selection,
 )
 from training.vision_encoder.losses.morai_transfer import multitask_loss
-from training.vision_encoder.recipes.transfer import object_selection_score, selected_training_indices, is_static_avoidance
+from training.vision_encoder.recipes.transfer import object_selection_score, selected_training_indices, is_static_avoidance, classify_situation, photometric_jitter
 
 class TransferTests(unittest.TestCase):
     def test_subset_loader_accepts_only_admitted_whole_laps(self):
@@ -129,6 +129,204 @@ class TransferTests(unittest.TestCase):
         self.assertEqual(indices.count(0),3)
         self.assertEqual(len(indices),4)
         self.assertEqual((summary['avoidance_frames'],summary['other_frames']),(1,1))
+
+    def test_photometric_jitter_is_shared_by_cameras_and_keeps_shapes(self):
+        mean, std = (0.485, 0.456, 0.406), (0.229, 0.224, 0.225)
+        torch.manual_seed(0)
+        inputs = {'rgb_front': torch.randn(4, 3, 8, 8), 'rgb_left': torch.randn(4, 3, 4, 4),
+                  'lidar': torch.randn(4, 10, 4), 'target_point': torch.zeros(4, 2)}
+        same = photometric_jitter(inputs, torch.Generator().manual_seed(1), 0.0, mean, std)
+        self.assertIs(same, inputs)
+        out = photometric_jitter(inputs, torch.Generator().manual_seed(1), 1.0, mean, std)
+        self.assertEqual(out['rgb_front'].shape, inputs['rgb_front'].shape)
+        self.assertIs(out['lidar'], inputs['lidar'])
+        self.assertFalse(torch.equal(out['rgb_front'], inputs['rgb_front']))
+        m = torch.tensor(mean).view(1, 3, 1, 1); sd = torch.tensor(std).view(1, 3, 1, 1)
+        for key in ('rgb_front', 'rgb_left'):
+            image = out[key] * sd + m
+            self.assertGreaterEqual(float(image.min()), -1e-5)
+            self.assertLessEqual(float(image.max()), 1 + 1e-5)
+        # Deterministic for a seed.
+        again = photometric_jitter(inputs, torch.Generator().manual_seed(1), 1.0, mean, std)
+        self.assertTrue(torch.equal(out['rgb_left'], again['rgb_left']))
+
+    def test_situation_weighted_repeats_hard_frames_and_thins_cruise(self):
+        import math
+        def entry(waypoints, obstacle_y=None):
+            # Ego faces +y, so world +x is the ego's right; route target straight ahead.
+            return dict(ego_pose=dict(x=0., y=0., yaw=math.pi/2), navigation=dict(target_x=0., target_y=25.),
+                        waypoints=waypoints, objects=[] if obstacle_y is None else [dict(x=.5, y=obstacle_y)])
+        cruise=[[0., -2.*k] for k in range(1, 6)]
+        rows={'cruise': entry(cruise), 'curve': entry([[0., -2.], [.3, -4.], [.8, -6.], [1.6, -8.], [2.6, -10.]]),
+              'decel': entry([[0., -2.], [0., -3.], [0., -3.5], [0., -3.8], [0., -4.]]),
+              'hold_object': entry([[0., 0.]]*5, obstacle_y=6.), 'launch': entry([[0., -.2], [0., -.8], [0., -1.6], [0., -2.6], [0., -4.]]),
+              'avoid': entry(cruise[:4]+[[1.2, -10.]], obstacle_y=8.), 'object_ahead': entry(cruise, obstacle_y=15.)}
+        for name, e in rows.items():
+            self.assertEqual(classify_situation(e), name)
+        names=list(rows)+['cruise']*3
+        class Dataset:
+            rows=[(None,rows[n],None,0.) for n in names]
+            def __len__(self): return len(self.rows)
+        args=type('Args',(),dict(frame_sampling='situation_weighted',seed=42,situation_hard_repeat=2,
+                                 situation_curve_fraction=1.,situation_cruise_fraction=.5,diagnostic_limit=0))()
+        indices,summary=selected_training_indices(Dataset(),args)
+        self.assertEqual(indices.count(names.index('decel')),2)
+        self.assertEqual(indices.count(names.index('curve')),1)
+        self.assertEqual(sum(names[i]=='cruise' for i in indices),2)
+        self.assertEqual(summary['situation_frames']['cruise'],4)
+
+    def test_static_object_sampling_repeats_rotated_frames_and_keeps_replay(self):
+        import math
+        def entry(heading_deg, positive=True):
+            return dict(ego_pose=dict(x=0., y=0., yaw=math.pi/2), object_valid=True, object_positive=positive,
+                        objects=[dict(x=0., y=10., heading_deg=heading_deg)])
+        # (manifest path, entry): ego axis is 90 deg, so heading 90/0/180 are aligned and 60 is rotated 30 deg.
+        listing = [('static_obstacle/a', entry(90.)), ('static_obstacle/b', entry(60.)),
+                ('static_obstacle/c', entry(0., positive=False)), ('highway/h', entry(90.)),
+                ('highway/i', entry(90.)), ('roundabout/r', entry(90.))]
+        class Dataset:
+            rows = [(None, e, None, 0.) for _, e in listing]
+            row_manifest_paths = [p for p, _ in listing]
+            def __len__(self): return len(self.rows)
+        args = type('Args', (), dict(frame_sampling='static_object', seed=42, avoidance_repeat=3,
+                                     rotated_extra_repeat=2, avoidance_other_frames=2, diagnostic_limit=0))()
+        indices, summary = selected_training_indices(Dataset(), args)
+        self.assertEqual(indices.count(0), 3)            # aligned static frame
+        self.assertEqual(indices.count(1), 3 + 2)        # rotated static frame
+        replay = [i for i in indices if i not in (0, 1)]
+        self.assertEqual(len(replay), 2)
+        self.assertTrue(set(replay) <= {2, 3, 4, 5})
+        self.assertEqual(summary['rotated_frames'], 1)
+
+    def test_partial_scopes_train_only_selected_groups(self):
+        from training.vision_encoder.setup import configure_trainable_scope, train_mode
+        import torch.nn as nn
+        class Tiny(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.rgb_backbone = nn.Linear(2, 2); self.lidar_backbone = nn.Linear(2, 2)
+                self.decoder = nn.Linear(2, 2); self.traffic_pred_head = nn.Linear(2, 2)
+                self.traffic_light_pred_head = nn.Linear(2, 2); self.stop_sign_head = nn.Linear(2, 2)
+        for scope, expected in (('lidar_head', {'lidar_backbone', 'traffic_pred_head'}),
+                                ('decoder_head', {'lidar_backbone', 'decoder', 'traffic_pred_head'})):
+            model = Tiny()
+            configure_trainable_scope(model, scope)
+            trainable = {n.split('.')[0] for n, p in model.named_parameters() if p.requires_grad}
+            self.assertEqual(trainable, expected)
+            model.train(); train_mode(model, scope)
+            self.assertFalse(model.training)
+
+    def test_distillation_is_zero_on_reference_and_ignores_geometry_channels(self):
+        import torch
+        from training.vision_encoder.losses.morai_distill import distillation_loss
+        det = torch.randn(2, 2500, 8); light = torch.randn(2, 2)
+        reference = (det, None, light)
+        loss, _ = distillation_loss((det.clone(), None, light.clone()), reference)
+        self.assertAlmostEqual(float(loss), 0., places=6)
+        moved = det.clone(); moved[..., 1:7] += 5.      # geometry may change freely
+        loss, _ = distillation_loss((moved, None, light.clone()), reference)
+        self.assertAlmostEqual(float(loss), 0., places=6)
+        moved = det.clone(); moved[..., 0] += 1.        # confidence logits may not
+        loss, terms = distillation_loss((moved, None, light.clone()), reference, torch.tensor([True, False]))
+        self.assertAlmostEqual(float(terms['distill_logit']), 1., places=5)
+
+    def test_geometry_distillation_only_on_anchored_frames_weighted_by_reference(self):
+        import torch
+        from training.vision_encoder.losses.morai_distill import distillation_loss
+        det = torch.zeros(2, 2500, 8); det[..., 0] = -20.; det[:, 7, 0] = 20.   # reference sees one object
+        light = torch.zeros(2, 2)
+        moved = det.clone(); moved[:, 7, 1:7] += 1.; moved[:, 9, 1:7] += 9.    # cell 9 is background
+        _, terms = distillation_loss((moved, None, light), (det, None, light), None, torch.tensor([True, False]))
+        self.assertAlmostEqual(float(terms['distill_geometry']), 1., places=4)
+        _, terms = distillation_loss((moved, None, light), (det, None, light), None, torch.tensor([False, False]))
+        self.assertEqual(float(terms['distill_geometry']), 0.)
+        _, terms = distillation_loss((moved, None, light), (det, None, light))
+        self.assertNotIn('distill_geometry', terms)
+
+    def test_speed_frames_hold_speed_where_logits_are_freed(self):
+        import torch
+        from training.vision_encoder.losses.morai_distill import distillation_loss
+        det = torch.zeros(2, 2500, 8); det[..., 0] = -20.; det[:, 7, 0] = 20.   # reference detects one object
+        light = torch.zeros(2, 2)
+        moved = det.clone(); moved[:, 7, 7] += .5                              # speed of that object drifts
+        freed = torch.tensor([False, True])                                     # frame 0 holds a skipped (new) model
+        _, terms = distillation_loss((moved, None, light), (det, None, light), freed)
+        self.assertAlmostEqual(float(terms['distill_speed']), .5, places=4)     # legacy: only frame 1 holds speed
+        _, terms = distillation_loss((moved, None, light), (det, None, light), freed,
+                                     speed_frames=torch.tensor([True, True]))
+        self.assertAlmostEqual(float(terms['distill_speed']), .5, places=4)     # both frames now hold it
+        moved[0, 7, 7] += 1.                                                     # drift only on the freed frame
+        _, legacy = distillation_loss((moved, None, light), (det, None, light), freed)
+        _, held = distillation_loss((moved, None, light), (det, None, light), freed,
+                                    speed_frames=torch.tensor([True, True]))
+        self.assertAlmostEqual(float(legacy['distill_speed']), .5, places=4)    # invisible to the legacy mask
+        self.assertAlmostEqual(float(held['distill_speed']), 1., places=4)      # (1.5 + .5) / 2
+
+    def test_negative_speed_penalty_only_where_confident(self):
+        import torch
+        from training.vision_encoder.losses.morai_distill import distillation_loss
+        det = torch.zeros(1, 2500, 8); det[..., 0] = -30.; det[0, 3, 0] = 30.
+        light = torch.zeros(1, 2)
+        student = det.clone(); student[0, 3, 7] = -.25; student[0, 9, 7] = -5.  # cell 9 is not confident
+        loss0, terms0 = distillation_loss((student, None, light), (student, None, light))
+        self.assertNotIn('distill_negative_speed', terms0)
+        loss1, terms1 = distillation_loss((student, None, light), (student, None, light), negative_speed_weight=2.)
+        self.assertAlmostEqual(float(terms1['distill_negative_speed']), .25, places=3)
+        self.assertAlmostEqual(float(loss1 - loss0), .5, places=3)
+        student[0, 3, 7].requires_grad_(False)
+        grad_input = student.clone().requires_grad_(True)
+        loss, _ = distillation_loss((grad_input, None, light), (det, None, light), negative_speed_weight=1.)
+        loss.backward()
+        self.assertLess(float(grad_input.grad[0, 3, 7]), 0.)                    # pushes the negative speed up
+
+    def test_geometry_weight_scales_only_the_geometry_term(self):
+        import torch
+        from training.vision_encoder.losses.morai_distill import distillation_loss
+        det = torch.zeros(1, 2500, 8); det[..., 0] = -20.; det[0, 7, 0] = 20.
+        light = torch.zeros(1, 2)
+        moved = det.clone(); moved[0, 7, 1:7] += 1.
+        loss1, terms1 = distillation_loss((moved, None, light), (det, None, light), None, torch.tensor([True]))
+        loss10, terms10 = distillation_loss((moved, None, light), (det, None, light), None, torch.tensor([True]),
+                                            geometry_weight=10.)
+        self.assertAlmostEqual(float(terms1['distill_geometry']), float(terms10['distill_geometry']), places=6)
+        self.assertAlmostEqual(float(loss10), 10. * float(loss1), places=3)
+
+    def test_geometry_anchor_skips_static_scenes_and_listed_paths(self):
+        from training.vision_encoder.recipes.transfer import GeometryAnchorDataset
+        class Base:
+            row_manifest_paths = ['/x/heavy_vehicle_bbox_20261015/training_map/lap_001_train_manifest.json',
+                                  '/x/static_obstacle__static_shapes/lap_002.json',
+                                  '/x/dynamic_obstacle__lap100/lap_003.json']
+            def __len__(self): return 3
+            def __getitem__(self, i): return {}, {}
+        self.assertEqual(GeometryAnchorDataset(Base()).anchor, [True, False, True])
+        self.assertEqual(GeometryAnchorDataset(Base(), ('heavy_vehicle_bbox',)).anchor, [False, False, True])
+
+    def test_distill_mask_frees_frames_with_skipped_models_anywhere(self):
+        from training.vision_encoder.recipes.transfer import DistillMaskDataset, contains_model
+        truck = {'model_name': '2013_Hyundai_Xcient(P520)', 'x': -12., 'y': 0., 'geometry_valid': False}
+        car = {'model_name': '2014_Kia_K7', 'x': 10., 'y': 0., 'geometry_valid': True}
+        names = {'2013_Hyundai_Xcient(P520)'}
+        self.assertTrue(contains_model({'objects': [car, truck]}, names))   # behind ego, invalid geometry: still freed
+        self.assertFalse(contains_model({'objects': [car]}, names))
+        self.assertFalse(contains_model({'objects': None}, names))
+        class Base:
+            def __len__(self): return 2
+            def __getitem__(self, i): return i, {'object_valid': torch.tensor(1.)}
+        data = DistillMaskDataset(Base(), [True, False])
+        self.assertTrue(bool(data[0][1]['distill_keep'])); self.assertFalse(bool(data[1][1]['distill_keep']))
+        self.assertEqual(data[1][0], 1)
+        with self.assertRaises(ValueError):
+            DistillMaskDataset(Base(), [True])
+
+    def test_geometry_anchor_marks_non_static_scenes(self):
+        from training.vision_encoder.recipes.transfer import GeometryAnchorDataset
+        class Base:
+            row_manifest_paths = ['x/static_obstacle__a/m.json', 'x/highway__b/m.json', 'x/tunnel_static__c/m.json']
+            def __len__(self): return 3
+            def __getitem__(self, i): return {}, {}
+        ds = GeometryAnchorDataset(Base())
+        self.assertEqual([bool(ds[i][1]['geometry_anchor']) for i in range(3)], [False, True, False])
 
     def test_gps_speed_is_causal_interval(self):
         a=(1000000000,37.,127.)

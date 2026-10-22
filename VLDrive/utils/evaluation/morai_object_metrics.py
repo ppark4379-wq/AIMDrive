@@ -137,20 +137,27 @@ def _partial(box):
     return bool(x0 < -25. or x1 > 25. or y0 < -20. or y1 > 30.)
 
 
-def decode_object_boxes(prediction):
+def decode_object_boxes(prediction, *, score_threshold=CONFIDENCE, nms_iou=NMS_IOU):
     """Raw (2500,8) LAV outputs -> NMS boxes and rejection counts.
 
     Each box contains numpy arrays for internal geometry. Use the frame helper
     for a JSON-safe result. Heading channels [right,-forward] are converted to
     [right,forward]; offsets *3.5, full length *7, full width *4.
+    Defaults are the frozen evaluation policy. Diagnostic callers may disable
+    NMS with None or explicitly sweep thresholds; live callers are unchanged.
     """
+    if not 0. < score_threshold < 1.:
+        raise ValueError('score_threshold must be between zero and one')
+    if nms_iou is not None and not 0. <= nms_iou <= 1.:
+        raise ValueError('nms_iou must be None or between zero and one')
     if hasattr(prediction, 'detach'):
         prediction = prediction.detach().cpu().numpy()
     values = np.asarray(prediction, dtype=np.float64)
     if values.shape != (2500, 8):
         raise ValueError('Expected a raw (2500, 8) LAV detection head')
     finite_scores = np.isfinite(values[:, 0])
-    selected = np.flatnonzero(finite_scores & (values[:, 0] >= 0.))
+    logit_threshold = math.log(score_threshold / (1. - score_threshold))
+    selected = np.flatnonzero(finite_scores & (values[:, 0] >= logit_threshold))
     counts = {'candidate_cells': int(len(selected)),
               'nonfinite_logits': int((~finite_scores).sum()),
               'invalid_geometry': 0, 'outside_bev': 0, 'nms_suppressed': 0}
@@ -176,7 +183,7 @@ def decode_object_boxes(prediction):
     candidates.sort(key=lambda b: (-b['score'], b['cell_index']))
     kept = []
     for candidate in candidates:
-        if any(oriented_iou(candidate, earlier) > NMS_IOU for earlier in kept):
+        if nms_iou is not None and any(oriented_iou(candidate, earlier) > nms_iou for earlier in kept):
             counts['nms_suppressed'] += 1
         else:
             kept.append(candidate)
@@ -256,6 +263,7 @@ def evaluate_object_frame(prediction, entry):
                      'partial_box': truth['partial'],
                      'best_prediction_iou': max((oriented_iou(p, truth) for p in predictions), default=0.),
                      'matches': {k: (dict(prediction_index=m[gi][0], iou=m[gi][1],
+                                          prediction_cell_index=predictions[m[gi][0]]['cell_index'],
                                           **_geometry_error(predictions[m[gi][0]], truth))
                                       if gi in m else None) for k, m in matchings.items()}})
     return {'supervised': True, 'gt_boxes': len(truths), 'gt_outside_bev': outside,
