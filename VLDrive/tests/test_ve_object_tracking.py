@@ -1,3 +1,4 @@
+import math
 import unittest
 from inference.ve_object_tracking import VeObjectTracker
 
@@ -12,6 +13,53 @@ def packet(t, boxes, generation='test'):
 
 
 class VeTrackingTests(unittest.TestCase):
+    def test_small_box_size_jitter_preserves_identity_and_raw_geometry(self):
+        tracker = VeObjectTracker()
+        identity = None
+        for i, length in enumerate((.67, .28, .65, .31, .68, .29)):
+            raw = box(.03 * (-1)**i, speed=0., length=length, width=.8)
+            result = tracker.update(packet(i*.1, [raw]))['boxes'][0]
+            if identity is None:
+                identity = result['track_id']
+            self.assertEqual(identity, result['track_id'])
+            for key in raw:
+                self.assertEqual(raw[key], result[key])
+
+    def test_adjacent_small_objects_stay_distinct_when_sizes_change(self):
+        tracker = VeObjectTracker()
+        initial = tracker.update(packet(0., [box(0., speed=0., length=.28, width=.3),
+                                             box(.65, speed=0., length=.67, width=.3)]))['boxes']
+        ids = [b['track_id'] for b in initial]
+        for i in range(1, 8):
+            rows = [box(.65, speed=0., length=.28 if i%2 else .67, width=.3),
+                    box(0., speed=0., length=.67 if i%2 else .28, width=.3)]
+            observed = tracker.update(packet(i*.1, rows))['boxes']
+            self.assertEqual([ids[1], ids[0]], [b['track_id'] for b in observed])
+            self.assertEqual(2, len(observed))
+
+    def test_short_occlusion_keeps_id_but_incompatible_size_does_not(self):
+        tracker = VeObjectTracker()
+        small = box(0., speed=0., length=.3, width=.3)
+        identity = tracker.update(packet(0., [small]))['boxes'][0]['track_id']
+        tracker.update(packet(.1, []))
+        result = tracker.update(packet(.4, [small]))['boxes'][0]
+        self.assertEqual(identity, result['track_id'])
+        large = tracker.update(packet(.5, [box(0., length=5., width=2.)]))['boxes'][0]
+        self.assertNotEqual(identity, large['track_id'])
+
+    def test_stale_duplicate_does_not_steal_continuously_observed_track(self):
+        tracker = VeObjectTracker()
+        def small(x):
+            return box(x, speed=0., length=.4, width=.4)
+        initial = tracker.update(packet(0., [small(0.), small(.1)]))['boxes']
+        identity = initial[0]['track_id']
+        for i in range(1, 5):
+            result = tracker.update(packet(i*.1, [small(0.)]))['boxes'][0]
+            self.assertEqual(identity, result['track_id'])
+        # Slightly closer to the old duplicate, but continuous evidence wins.
+        result = tracker.update(packet(.5, [small(.06)]))['boxes'][0]
+        self.assertEqual(identity, result['track_id'])
+
     def test_reordered_boxes_get_distinct_stable_ids_and_motion_states(self):
         tracker = VeObjectTracker()
         first = tracker.update(packet(0., [box(0.), box(10., speed=0.)]))['boxes']
@@ -69,6 +117,249 @@ class VeTrackingTests(unittest.TestCase):
             row = tracker.update(packet(i * .1, [box(i * .2, speed=None)]))['boxes'][0]
         self.assertEqual('moving', row['motion_state'])
         self.assertAlmostEqual(2., row['planning_speed_mps'])
+
+    def test_high_model_speed_cannot_move_a_stationary_track(self):
+        tracker = VeObjectTracker()
+        rows = [tracker.update(packet(i*.1, [box(20., speed=14.)]))['boxes'][0]
+                for i in range(10)]
+        self.assertEqual({1}, {r['track_id'] for r in rows})
+        self.assertEqual('uncertain', rows[0]['motion_state'])
+        self.assertEqual('stationary', rows[-1]['motion_state'])
+        self.assertTrue(all(r['planning_speed_mps'] == 0. for r in rows))
+        self.assertTrue(all(r['speed_mps'] == 14. for r in rows))
+
+    def test_large_oscillation_is_uncertain_not_a_fast_moving_vehicle(self):
+        tracker = VeObjectTracker()
+        # Alternating metre-scale bbox error: stable identity, no fabricated
+        # motion speed, and no falsely precise stationary declaration.
+        for i in range(14):
+            raw = box(20. + .7*(-1)**i, speed=13.)
+            row = tracker.update(packet(i*.12, [raw]))['boxes'][0]
+            self.assertEqual(1, row['track_id'])
+            self.assertEqual('uncertain', row['motion_state'])
+            self.assertEqual(0., row['planning_speed_mps'])
+            self.assertEqual(raw['center_world'], row['center_world'])
+
+    def test_actual_fast_motion_is_recovered_despite_zero_or_missing_raw_speed(self):
+        for raw_speed in (0., None):
+            with self.subTest(raw_speed=raw_speed):
+                tracker = VeObjectTracker()
+                for i in range(10):
+                    row = tracker.update(packet(i*.1, [box(i*1.5, speed=raw_speed)]))['boxes'][0]
+                self.assertEqual(1, row['track_id'])
+                self.assertEqual('moving', row['motion_state'])
+                self.assertAlmostEqual(15., row['planning_speed_mps'])
+                self.assertEqual('position_history', row['planning_speed_source'])
+
+    def test_inconsistent_high_speed_uses_observed_motion(self):
+        tracker = VeObjectTracker()
+        for i in range(10):
+            row = tracker.update(packet(i*.1, [box(i*.3, speed=15.)]))['boxes'][0]
+        self.assertEqual('moving', row['motion_state'])
+        self.assertAlmostEqual(3., row['planning_speed_mps'])
+        self.assertEqual(15., row['speed_mps'])
+
+    def test_gap_discards_confirmed_motion_and_does_not_reuse_raw_speed(self):
+        tracker = VeObjectTracker()
+        for i in range(8):
+            row = tracker.update(packet(i*.1, [box(i*.3)]))['boxes'][0]
+        self.assertEqual('moving', row['motion_state'])
+        row = tracker.update(packet(1.1, [box(3.3)]))['boxes'][0]
+        self.assertEqual('uncertain', row['motion_state'])
+        self.assertEqual(0., row['planning_speed_mps'])
+        self.assertEqual(0., row['track_span_s'])
+
+    def test_small_jitter_does_not_interrupt_supported_moving_track(self):
+        tracker = VeObjectTracker()
+        for i in range(20):
+            # Establish motion before adding lateral noise with a path/net
+            # ratio in the hysteresis band.
+            y = 0. if i < 8 else .16*(-1)**i
+            row = tracker.update(packet(i*.1, [box(i*.3, y=y)]))['boxes'][0]
+            if i >= 4:
+                self.assertEqual('moving', row['motion_state'])
+                self.assertAlmostEqual(3., row['planning_speed_mps'])
+
+
+class MovingCarryTests(unittest.TestCase):
+    """A slow vehicle that briefly loses its motion evidence must not turn into a phantom stop."""
+
+    @staticmethod
+    def feed(tracker, positions, speed=1.6):
+        out = None
+        for i, x in enumerate(positions):
+            out = tracker.update(packet(i * .1, [box(x, speed=speed, length=4.5, width=1.9)]))['boxes'][0]
+        return out
+
+    def test_off_by_default(self):
+        tracker = VeObjectTracker()
+        xs = [.16 * i for i in range(12)]
+        self.feed(tracker, xs)
+        # box centre jumps back and forth: evidence breaks down
+        jitter = [xs[-1] + d for d in (.9, -.5, .8, -.6)]
+        self.assertEqual(self.feed(tracker, jitter)['planning_speed_mps'], 0.)
+
+    def test_carry_keeps_last_speed_then_expires(self):
+        tracker = VeObjectTracker(moving_carry_s=1.0)
+        xs = [.16 * i for i in range(14)]
+        moving = self.feed(tracker, xs)
+        self.assertEqual(moving['motion_state'], 'moving')
+        speed = moving['planning_speed_mps']
+        t = len(xs) * .1
+        # evidence lost: the box centre scatters by decimetres around the old position
+        scatter = []
+        for k, d in enumerate((.9, -.5, .8, -.6, .7)):
+            scatter.append(tracker.update(packet(t + k * .1, [box(xs[-1] + d, speed=speed, length=4.5, width=1.9)]))['boxes'][0])
+        carried = [b for b in scatter if b['planning_speed_source'] == 'carry_over']
+        self.assertTrue(carried)
+        self.assertAlmostEqual(carried[0]['planning_speed_mps'], speed, places=6)
+        self.assertEqual(carried[0]['motion_state'], 'uncertain')       # label stays honest
+        # after the carry window the speed drops back to zero
+        later = None
+        for k in range(14):
+            later = tracker.update(packet(t + .5 + k * .1, [box(xs[-1] + (.9, -.5)[k % 2], speed=speed, length=4.5, width=1.9)]))['boxes'][0]
+        self.assertEqual(later['planning_speed_mps'], 0.)
+
+    def test_a_stopped_vehicle_is_not_carried(self):
+        tracker = VeObjectTracker(moving_carry_s=1.0)
+        self.feed(tracker, [.16 * i for i in range(14)])
+        final = None
+        for k in range(10):                                            # stops dead: clean stationary evidence
+            final = tracker.update(packet(1.4 + k * .1, [box(2.1, speed=0., length=4.5, width=1.9)]))['boxes'][0]
+        self.assertEqual(final['motion_state'], 'stationary')
+        self.assertEqual(final['planning_speed_mps'], 0.)
+
+    def test_invalid_window_rejected(self):
+        with self.assertRaises(ValueError):
+            VeObjectTracker(moving_carry_s=3.)
+
+
+class StaticGeometryFusionTests(unittest.TestCase):
+    @staticmethod
+    def moving_ego_packets(boxes_at, steps=30, start=-30., speed=5.):
+        for i in range(steps):
+            t = i * .1
+            ego_y = start + speed * t
+            pkt = packet(t, boxes_at(i))
+            pkt['ego_pose'] = dict(x=0., y=ego_y)
+            yield pkt
+
+    def test_disabled_by_default_and_fusion_reduces_static_jitter(self):
+        import random
+        rng = random.Random(3)
+        jitter = [(rng.gauss(0, .08), rng.gauss(0, .08)) for _ in range(30)]
+        def boxes_at(i):
+            return [box(3. + jitter[i][0], 10. + jitter[i][1], speed=0., heading=30., length=1.8, width=.8)]
+        plain, fused = VeObjectTracker(), VeObjectTracker(static_geometry_fusion=True)
+        raw_err, fused_err = [], []
+        for pkt in self.moving_ego_packets(boxes_at):
+            a = plain.update(dict(pkt))['boxes'][0]
+            b = fused.update(dict(pkt))['boxes'][0]
+            self.assertNotIn('raw_center_world', a)
+            if b['motion_state'] == 'stationary' and 'raw_center_world' in b:
+                self.assertEqual(a['center_world'], b['raw_center_world'])
+                raw_err.append(math.dist(a['center_world'], (3., 10.)))
+                fused_err.append(math.dist(b['center_world'], (3., 10.)))
+                self.assertEqual(a['track_id'], b['track_id'])
+        self.assertGreater(len(fused_err), 5)
+        self.assertLess(sum(fused_err) / len(fused_err), .6 * sum(raw_err) / len(raw_err))
+
+    def test_canonical_footprint_and_stopped_ego_adds_no_samples(self):
+        tracker = VeObjectTracker(static_geometry_fusion=True)
+        result = None
+        for i in range(12):
+            pkt = packet(i * .1, [box(0., 20., speed=0., heading=10. if i % 2 else 100.,
+                                      length=.8 if i % 2 else 1.8, width=1.8 if i % 2 else .8)])
+            pkt['ego_pose'] = dict(x=0., y=min(i, 5) * 1.)   # moves 5 m, then stops
+            result = tracker.update(pkt)['boxes'][0]
+        self.assertEqual('stationary', result['motion_state'])
+        self.assertEqual(6, result['geometry_samples'])
+        self.assertAlmostEqual(1.8, result['length_m'])
+        self.assertAlmostEqual(.8, result['width_m'])
+        self.assertAlmostEqual(100., result['heading_deg'] % 180., places=5)
+
+    def test_near_range_freezes_samples(self):
+        tracker = VeObjectTracker(static_geometry_fusion=True)
+        for i in range(20):
+            pkt = packet(i * .1, [box(0., 15. if i < 10 else 15.3, speed=0., length=1., width=1.)])
+            pkt['ego_pose'] = dict(x=0., y=i * 1.)   # within 8 m from i = 8
+            result = tracker.update(pkt)['boxes'][0]
+        self.assertTrue(all(s[0][1] == 15. for s in tracker.tracks[result['track_id']]['static_geometry'].samples))
+
+    def test_moving_track_keeps_raw_geometry(self):
+        tracker = VeObjectTracker(static_geometry_fusion=True)
+        for i in range(12):
+            pkt = packet(i * .1, [box(i * .5, speed=5.)])
+            pkt['ego_pose'] = dict(x=0., y=-20. + i)
+            result = tracker.update(pkt)['boxes'][0]
+        self.assertEqual('moving', result['motion_state'])
+        self.assertNotIn('raw_center_world', result)
+        self.assertEqual([5.5, 0.], result['center_world'])
+
+
+class StationaryHoldTests(unittest.TestCase):
+    def settle(self, tracker, seconds=4.):
+        """A parked box seen long enough to be a confirmed stationary track."""
+        t = 0.
+        while t <= seconds:
+            result = tracker.update(packet(t, [box(10., speed=0., length=1.4, width=.6)]))['boxes'][0]
+            t += .1
+        self.assertEqual('stationary', result['motion_state'])
+        return t, result['track_id']
+
+    def test_off_by_default_so_a_jittery_frame_is_uncertain(self):
+        tracker = VeObjectTracker()
+        t, _ = self.settle(tracker)
+        states = {tracker.update(packet(t + i*.1, [box(10.3 + .5*(-1)**i, speed=0., length=1.4, width=.6)]))['boxes'][0]['motion_state']
+                  for i in range(6)}
+        self.assertIn('uncertain', states)
+
+    def test_established_stationary_track_survives_box_jitter(self):
+        tracker = VeObjectTracker(stationary_hold_s=3.)
+        t, identity = self.settle(tracker)
+        for i in range(12):
+            result = tracker.update(packet(t + i*.1, [box(10. + .35*(-1)**i, speed=0., length=1.4, width=.6)]))['boxes'][0]
+            self.assertEqual('stationary', result['motion_state'])
+            self.assertEqual(identity, result['track_id'])
+            self.assertEqual(0., result['planning_speed_mps'])
+
+    def test_short_lived_stationary_evidence_is_not_held(self):
+        tracker = VeObjectTracker(stationary_hold_s=3.)
+        t = 0.
+        while t <= 1.2:
+            result = tracker.update(packet(t, [box(10., speed=0., length=1.4, width=.6)]))['boxes'][0]
+            t += .1
+        states = {tracker.update(packet(t + i*.1, [box(10. + .35*(-1)**i, speed=0., length=1.4, width=.6)]))['boxes'][0]['motion_state']
+                  for i in range(6)}
+        self.assertNotEqual({'stationary'}, states)
+
+    def test_real_motion_ends_the_hold_and_is_reported_as_moving(self):
+        tracker = VeObjectTracker(stationary_hold_s=3.)
+        t, _ = self.settle(tracker)
+        state = None
+        for i in range(25):
+            result = tracker.update(packet(t + i*.1, [box(10. + .3*i, speed=3., length=1.4, width=.6)]))['boxes'][0]
+            state = result['motion_state']
+        self.assertEqual('moving', state)
+        self.assertGreater(result['planning_speed_mps'], 1.)
+
+    def test_hold_never_extends_past_its_radius(self):
+        tracker = VeObjectTracker(stationary_hold_s=3.)
+        t, _ = self.settle(tracker)
+        result = tracker.update(packet(t, [box(11.5, speed=0., length=1.4, width=.6)]))['boxes'][0]
+        self.assertNotEqual('stationary_hold', result['planning_speed_source'])
+
+    def test_recreated_track_at_the_same_place_keeps_identity_and_state(self):
+        tracker = VeObjectTracker(stationary_hold_s=3.)
+        t, identity = self.settle(tracker)
+        tracker.update(packet(t, []))
+        result = tracker.update(packet(t + 1.2, [box(10.1, speed=0., length=1.4, width=.6)]))['boxes'][0]
+        self.assertEqual(identity, result['track_id'])
+        self.assertEqual('stationary', result['motion_state'])
+
+    def test_stationary_hold_is_bounded(self):
+        with self.assertRaises(ValueError):
+            VeObjectTracker(stationary_hold_s=7.)
 
 
 if __name__ == '__main__':
