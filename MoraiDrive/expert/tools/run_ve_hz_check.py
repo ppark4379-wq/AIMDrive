@@ -178,6 +178,8 @@ def main():
     parser.add_argument('--background', action='store_true', help='터미널과 분리해 실행하고 로그 경로 출력')
     parser.add_argument('--output', type=Path)
     parser.add_argument('--checkpoint', choices=('E3', 'E4'), default='E3')
+    parser.add_argument('--camera-receiver-mode', choices=('thread', 'process'), default='process',
+                        help='카메라 수신 위치: process(기본), thread(비교용)')
     args = parser.parse_args()
     seconds = args.seconds if args.seconds is not None else (1800. if args.overnight else 60.)
     repeat = args.repeat if args.repeat is not None else (8 if args.overnight else 1)
@@ -189,7 +191,8 @@ def main():
     output.mkdir(parents=True,exist_ok=True)
     if args.background:
         command = [sys.executable,'-u','-B',str(Path(__file__).resolve()),'--seconds',str(seconds),
-            '--repeat',str(repeat),'--checkpoint',args.checkpoint,'--output',str(output)]
+            '--repeat',str(repeat),'--checkpoint',args.checkpoint,'--output',str(output),
+            '--camera-receiver-mode',args.camera_receiver_mode]
         with (output/'console.log').open('x') as log:
             child = subprocess.Popen(command,stdin=subprocess.DEVNULL,stdout=log,stderr=subprocess.STDOUT,
                                      start_new_session=True)
@@ -231,12 +234,15 @@ def main():
         print('[실패] '+str(exc),flush=True)
         return 1
     files = ['VLDrive/inference/sensors/morai_udp.py','VLDrive/inference/sensors/live_frame.py',
+             'VLDrive/inference/sensors/camera_process.py',
              'VLDrive/inference/ve_objects_udp.py','VLDrive/inference/ve_timing_audit.py']
     save(output/'code_identity.json',{p:hashlib.sha256((REPO/p).read_bytes()).hexdigest() for p in files})
     print('[계측] 차량 제어 없이 센서→VE→UDP→ROS 발행을 측정합니다.', flush=True)
     print('[로그] '+str(output), flush=True)
     print('[참고] Expert 콜백은 기존 시나리오 주행 시 별도로 자동 기록됩니다.', flush=True)
-    return campaign(output,args.checkpoint,seconds,repeat,PerceptionSession,check_topics,
+    from functools import partial
+    session_factory = partial(PerceptionSession, camera_receiver_mode=args.camera_receiver_mode)
+    return campaign(output,args.checkpoint,seconds,repeat,session_factory,check_topics,
                     rospy.is_shutdown,write_report)
 
 

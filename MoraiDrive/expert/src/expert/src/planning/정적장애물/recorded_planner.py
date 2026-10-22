@@ -45,6 +45,9 @@ ALIGNMENT_HEADING_ERROR = math.radians(2.0) # 방향 오차에 따른 감속 시
 ALIGNMENT_FULL_HEADING_ERROR = math.radians(4.0) # 방향 오차에 따른 최대 감속 기준; 4도 [rad]
 ALIGNMENT_CROSS_TRACK_ERROR = .12      # 경로 횡오차에 따른 감속 시작 기준 [m]
 ALIGNMENT_FULL_CROSS_TRACK_ERROR = .25 # 경로 횡오차에 따른 최대 감속 기준 [m]
+REPLAN_AFTER_BLOCKED_S = 1.0         # 남은 경로 충돌로 정지한 뒤 이 시간 동안 계속 막혀 있으면 현재 자세에서 재계획 [s]
+RUNTIME_ENVELOPE_TOLERANCE = 0.1     # 주행 중 자차 자세의 기록 통로 검사에 주는 추종 여유; 계획 시 검사(여유 0)보다 느슨하게 [m]
+REPLAN_STOPPED_SPEED = 0.3           # 재계획 조건의 정지 판정 속도; 주행 중에는 즉시 정지만 하고 경로를 바꾸지 않음 [m/s]
 ALIGNMENT_PREVIEW = 3.0               # 추종 제어에 전달할 전방 최대 곡률을 조회하는 경로 길이 [m]
 
 
@@ -185,6 +188,7 @@ class RecordedStaticPlanner:
         self._center_bounds_cache = {}
         self.recovery_until_y = None
         self.recovery_count = 0
+        self.blocked_since = None
         self.heading_error = 0.
         self.tracking_error = 0.
         self.cross_track_error = 0.
@@ -502,6 +506,16 @@ class RecordedStaticPlanner:
         valid = np.isfinite(low)
         self.envelope_low = np.interp(self.envelope_y, self.envelope_y[valid], low[valid])
         self.envelope_high = np.interp(self.envelope_y, self.envelope_y[valid], high[valid])
+
+    def _log_adopted_path(self, ego):
+        """One line per adopted plan so live failures can be replayed against the exact path."""
+        xy = np.array(self.path) if self.path else np.zeros((0, 2))
+        step = max(1, len(xy)//60)
+        print('[STATIC_PATH] ego=({:.2f},{:.2f},{:.1f}deg) routes={} known={} points={}'.format(
+            ego.position.x, ego.position.y, math.degrees(ego.yaw), list(self.selected_names),
+            [(round(o.position.x, 2), round(o.position.y, 2), round(o.size_x, 2), round(o.size_y, 2), round(o.heading_deg, 1))
+             for o in self.known],
+            [(round(float(x), 2), round(float(y), 2)) for x, y in xy[::step]]), flush=True)
 
     def _envelope_clear(self, xy, yaw, body_margin=0.):
         return bool(np.all(self._envelope_mask(xy, yaw, body_margin)))
@@ -900,6 +914,7 @@ class RecordedStaticPlanner:
                 for name, value in vars(worker).items():
                     if name not in ('executor', 'pending', 'pending_key', 'preplanned', 'last_attempt'):
                         setattr(self, name, value)
+                self._log_adopted_path(ego)
             elif self.executor is not None:
                 if time.monotonic()-self.last_attempt >= 1.:
                     route = list(prediction_path if prediction_path is not None else reference_path)
@@ -916,6 +931,7 @@ class RecordedStaticPlanner:
             if complete is None:
                 return self._result(reference_path, False, "no_complete_route")
             self.path = [Point(x,y) for x,y in complete]
+            self._log_adopted_path(ego)
         if self.interactive_preview and self.active:
             # Do not advance progress or reject a useful full-route preview
             # because the editor's stationary Ego was moved off the route.
@@ -953,7 +969,8 @@ class RecordedStaticPlanner:
         failure = None
         if len(points) < 3 or error >= .75:
             failure = 'tracking_error'
-        elif not self._envelope_clear(np.array([ego.position]), np.array([ego.yaw])):
+        elif not self._envelope_clear(np.array([ego.position]), np.array([ego.yaw]),
+                                      body_margin=-RUNTIME_ENVELOPE_TOLERANCE):
             failure = 'recorded_envelope'
         elif not self.collision_free(pose, heading, self.known, tracking_reserve=False):
             failure = 'ego_collision'
@@ -965,6 +982,21 @@ class RecordedStaticPlanner:
                 failure = 'alignment_recovery_unavailable'
             else:
                 points = self.path
+        if failure == 'remaining_path_collision' and abs(ego.velocity) < REPLAN_STOPPED_SPEED:
+            # A new/moved obstacle first stops the vehicle on the committed path (above). If the
+            # path stays blocked while stopped, plan again from the measured pose and current
+            # obstacles instead of holding the obsolete path forever.
+            now = time.monotonic()
+            if self.blocked_since is None:
+                self.blocked_since = now
+            elif now - self.blocked_since >= REPLAN_AFTER_BLOCKED_S:
+                print('[STATIC_REPLAN] committed path blocked for {:.1f}s while stopped; replanning from '
+                      'pose ({:.2f}, {:.2f}) with {} obstacles'.format(
+                          now - self.blocked_since, ego.position.x, ego.position.y, len(self.known)), flush=True)
+                self.reset()
+                return self._result(reference_path, False, 'blocked', 'replanning_after_block')
+        else:
+            self.blocked_since = None
         phase = 'recover_alignment' if self.recovery_until_y is not None else 'follow'
         return self._result(points, failure is None, phase if failure is None else 'blocked', failure)
 

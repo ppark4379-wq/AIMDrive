@@ -207,6 +207,72 @@ class RecordedStaticTests(unittest.TestCase):
         self.assertEqual(result.acc_target_velocity, 0.)
         np.testing.assert_array_equal(original, self.planner.path)
 
+    def _block_committed_path(self, velocity):
+        self.start()
+        original = np.array(self.planner.path)
+        point = self.planner.path[160]      # 16 m ahead: other recorded routes can pass it
+        obj = ObjectInfo(point.x, point.y, 0., 2, is_static=True, size_x=1., size_y=1.)
+        ego = VehicleState(self.ego.position.x, self.ego.position.y, self.ego.yaw, velocity)
+        return original, obj, ego
+
+    def test_stopped_and_still_blocked_replans_from_measured_pose(self):
+        from unittest.mock import patch
+        import expert.src.planning.정적장애물.recorded_planner as module
+        original, obj, ego = self._block_committed_path(0.)
+        clock = [1000.]
+        with patch.object(module.time, 'monotonic', lambda: clock[0]):
+            result = self.planner.plan(ego, self.route[:80], [obj], self.route)
+            self.assertEqual(result.acc_target_velocity, 0.)                 # immediate stop, same path
+            np.testing.assert_array_equal(original, self.planner.path)
+            clock[0] += module.REPLAN_AFTER_BLOCKED_S + .1
+            result = self.planner.plan(ego, self.route[:80], [obj], self.route)
+            self.assertEqual(result.debug_details['static_avoidance']['error'], 'replanning_after_block')
+            self.assertFalse(self.planner.active)
+            clock[0] += 1.1
+            result = self.planner.plan(ego, self.route[:80], [obj], self.route)
+        self.assertTrue(self.planner.active, result.reason)
+        xy = np.array(self.planner.path)
+        yaw = np.array([self.planner.planner._path_heading(self.planner.path, i) for i in range(len(xy))])
+        self.assertTrue(self.planner.collision_free(xy, yaw, [obj]))
+        self.assertFalse(np.array_equal(original, xy))
+
+    def test_moving_vehicle_does_not_replan_a_blocked_path(self):
+        from unittest.mock import patch
+        import expert.src.planning.정적장애물.recorded_planner as module
+        original, obj, ego = self._block_committed_path(2.)
+        clock = [1000.]
+        with patch.object(module.time, 'monotonic', lambda: clock[0]):
+            for _ in range(4):
+                result = self.planner.plan(ego, self.route[:80], [obj], self.route)
+                clock[0] += 1.
+        self.assertEqual(result.acc_target_velocity, 0.)
+        np.testing.assert_array_equal(original, self.planner.path)
+
+    def test_runtime_envelope_check_tolerates_small_tracking_error(self):
+        import expert.src.planning.정적장애물.recorded_planner as module
+        self.start()
+        point = self.planner.path[20]
+        base = np.array([[point.x, point.y]]); yaw = np.array([self.ego.yaw])
+        tol = module.RUNTIME_ENVELOPE_TOLERANCE
+        clear = lambda d, margin=0.: self.planner._envelope_clear(base + [[d, 0.]], yaw, body_margin=margin)
+        # Footprint-limited side: the first zero-margin failure is still inside the tolerance.
+        shift = next(d for step in (-.005, .005) for d in np.arange(step, 1.5*np.sign(step), step)
+                     if not clear(d) and clear(d, -tol))
+        self.assertFalse(clear(shift))
+        ego = VehicleState(point.x + shift, point.y, self.ego.yaw, 0.)
+        result = self.planner.plan(ego, self.route[:80], [], self.route)
+        self.assertNotEqual(result.debug_details['static_avoidance']['error'], 'recorded_envelope')
+        self.assertFalse(clear(shift + np.sign(shift)*(tol + .3), -tol))     # a real departure is still blocked
+
+    def test_adopted_plan_is_logged_with_route_and_points(self):
+        import contextlib, io
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.start()
+        line = [l for l in out.getvalue().splitlines() if l.startswith('[STATIC_PATH]')]
+        self.assertEqual(1, len(line))
+        self.assertIn('routes=', line[0]); self.assertIn('points=[(', line[0])
+
     def test_editor_preview_replans_after_obstacle_or_ego_move(self):
         self.planner.set_live_preview(True)
         self.assertFalse(self.planner.refresh_live_preview(self.ego, []))

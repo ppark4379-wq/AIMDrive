@@ -40,12 +40,15 @@ def object_rows(message):
 
 
 class PerceptionSession:
-    def __init__(self, output, label, observe_gt=True):
+    def __init__(self, output, label, observe_gt=True, camera_receiver_mode=None, signal_head=None):
         import rospy
         from morai_msgs.msg import EgoVehicleStatus, ObjectStatusList, ObjectStatus
         self.ros, self.message_type, self.object_type = rospy, ObjectStatusList, ObjectStatus
         self.output, self.checkpoint = output, CHECKPOINTS[label]
+        self.signal_head = signal_head
+        self.signal_sink = None
         self.observe_gt = observe_gt
+        self.camera_receiver_mode = camera_receiver_mode
         self.lock, self.stop = threading.Lock(), threading.Event()
         self.packet, self.gt, self.ego = None, None, None
         self.gt_time = self.ego_time = 0.
@@ -68,6 +71,10 @@ class PerceptionSession:
             self.subs.append(self.ros.Subscriber('/Object_topic',ObjectStatusList,self.on_gt,queue_size=1))
         config=json.loads((REPO/'VLDrive/configs/vision_encoder_realtime_best_20261003.json').read_text())
         config.update(checkpoint=self.checkpoint['path'],checkpoint_sha256=self.checkpoint['sha256'])
+        if self.camera_receiver_mode is not None:
+            config['runtime']['camera_receiver_mode'] = self.camera_receiver_mode
+        if getattr(self, 'signal_head', None):
+            config['signal_head'] = str(self.signal_head)
         write(self.output/'publisher_config.json', config)
         self.log=(self.output/'publisher.log').open('w',buffering=1)
         self.trace=(self.output/'adapter.jsonl').open('w',buffering=1)
@@ -115,6 +122,8 @@ class PerceptionSession:
                 with self.lock:
                     packet=self.tracker.update(packet)
                     self.packet=packet
+                if getattr(self, 'signal_sink', None) is not None:
+                    self.signal_sink.accept(packet)
                 tracked_ns = time.monotonic_ns()
                 stamp = self.ros.Time.now()
                 self.publisher.publish(make_object_message(packet,self.message_type,self.object_type,stamp))
@@ -127,6 +136,8 @@ class PerceptionSession:
                 self.transport_event(raw, received_ns, 'published')
             except (ValueError,TypeError,KeyError,OverflowError) as exc:
                 self.transport_event(raw, received_ns, 'rejected', str(exc))
+                if getattr(self, 'signal_sink', None) is not None:
+                    self.signal_sink.invalidate()
                 self.rejected+=1
                 with self.lock:
                     self.packet=None
@@ -208,6 +219,8 @@ class PerceptionSession:
         raise RuntimeError('센서 준비 시간 초과: '+reason)
 
     def reset_tracks(self):
+        if getattr(self, 'signal_sink', None) is not None:
+            self.signal_sink.invalidate()
         with self.lock:
             self.tracker=VeObjectTracker()
             self.packet=None

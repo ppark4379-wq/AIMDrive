@@ -127,7 +127,7 @@ def main(argv=None):
     parser.add_argument('--check', action='store_true', help='메타데이터만 확인; 센서/ROS/모델 실행 없음')
     parser.add_argument('--seconds', type=float, default=180.,
                         help='Expert 실행 시간(초), 0이면 Ctrl+C까지 계속 실행 (기본: 180)')
-    parser.add_argument('--checkpoint-label', choices=('E3', 'E4'), default='E3')
+    parser.add_argument('--checkpoint-label', choices=sorted(CHECKPOINTS), default='E3')
     args = parser.parse_args(argv)
     if not math.isfinite(args.seconds) or not 0 <= args.seconds <= 1800:
         parser.error('seconds must be in [0,1800]; 0 means run until interrupted')
