@@ -42,6 +42,7 @@ class AutonomousDriving(PathController):
             path=self.path,
             stopline_mapper=config["map"]["stopline_mapper"],
             is_closed_path=config["map"]["is_closed_path"],
+            route_signal_targets=config["map"].get("route_signal_targets"),
             **config['planning'].get('traffic_light_stop', {})
         )
 
