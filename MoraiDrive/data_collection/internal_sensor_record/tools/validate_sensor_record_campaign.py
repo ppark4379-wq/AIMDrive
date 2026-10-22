@@ -26,7 +26,10 @@ from async_capture.route_sources import resolve_route_sources, verify_route_repo
 from async_capture.route_review_rebuild import archive_route_review
 from cleanup_failed_sensor_record_attempt import cleanup_failed_attempt
 from ssd_storage import SSD_ROOT, require_ssd, windows_path
+from traffic_light_collection_plan import load_plan as load_signal_plan, plan_runs as signal_plan_runs
 from async_capture.scenario_catalog import COLLECTION_SCENARIOS, TUNNEL_STATIC_SCENARIO, validate_tunnel_static_collection
+from async_capture.tunnel_normal_collection import validate_normal_collection
+from async_capture.traffic_light_collection import validate_traffic_light_collection
 from scenario_runner.tools import static_lane_compliance
 from python_environment import (
     build_analysis_environment,
@@ -411,9 +414,106 @@ def configured_environment(setup):
     return (weathers or {"SUNNY", "FOGGY"}), (hours or {11, 13, 15})
 
 
+def sealed_signal_collection_plan(campaign, campaign_plan, requested):
+    """Use only the exact signal plan snapshot bound by the campaign metadata."""
+    name = campaign_plan.get("signal_collection_plan_evidence")
+    expected_sha = campaign_plan.get("signal_collection_plan_sha256")
+    if not name:
+        if expected_sha:
+            raise ValueError("signal collection plan hash has no snapshot path")
+        return {}, None
+    if campaign_plan.get("static_collection_plan_evidence"):
+        raise ValueError("static and signal collection plans cannot be combined")
+    if campaign_plan.get("scenario_name") != "full_loop_traffic_light":
+        raise ValueError("signal collection plan requires full_loop_traffic_light")
+    relative = Path(str(name))
+    if relative.is_absolute():
+        raise ValueError("signal collection plan snapshot must be campaign-relative")
+    campaign = Path(campaign).resolve()
+    snapshot = (campaign / relative).resolve()
+    if campaign not in snapshot.parents:
+        raise ValueError("signal collection plan snapshot escapes its campaign")
+    if not snapshot.is_file():
+        raise ValueError("sealed signal collection plan is missing")
+    if not expected_sha or digest(snapshot) != expected_sha:
+        raise ValueError("sealed signal collection plan SHA-256 mismatch")
+    signal_plan = load_signal_plan(snapshot, expected_laps=requested)
+    return signal_plan_runs(signal_plan), snapshot
+
+
+def signal_plan_environment_matches(row, setup, profile_state, planned):
+    """Compare the ledger and both actual environment receipts to the pinned run."""
+    if planned is None:
+        return True
+    try:
+        expected = (planned["weather"], int(planned["time_hour"]))
+        actual = (
+            (row.get("weather"), int(row.get("time_hour", -1))),
+            (setup.get("profile", {}).get("weather"),
+             int(setup.get("time_hour", -1))),
+            (profile_state.get("weather"), int(profile_state.get("time_hour", -1))),
+        )
+        return int(row["lap"]) == int(planned["lap"]) and all(
+            item == expected for item in actual)
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def signal_plan_coverage(planned_rows, laps):
+    """Record exact environment/split coverage; a failed planned lap stays missing."""
+    if not planned_rows:
+        return None
+    valid_rows = {int(row["lap"]): row for row in laps
+                  if row.get("valid") is True}
+    groups = {}
+    mismatched_laps = []
+    for number, planned in sorted(planned_rows.items()):
+        key = (planned["split"], planned["weather"], int(planned["time_hour"]))
+        group = groups.setdefault(key, {
+            "split": key[0], "weather": key[1], "time_hour": key[2],
+            "planned_laps": [], "validated_laps": [], "frames": 0,
+        })
+        group["planned_laps"].append(number)
+        actual = valid_rows.get(number)
+        if actual is not None:
+            if (actual.get("weather"), actual.get("time_hour")) != (key[1], key[2]):
+                mismatched_laps.append(number)
+            elif actual.get("checks", {}).get("signal_collection_plan_environment") is True:
+                group["validated_laps"].append(number)
+                group["frames"] += int(actual.get("frames", 0))
+            else:
+                mismatched_laps.append(number)
+    ordered_groups = []
+    missing_laps = []
+    for key in sorted(groups):
+        group = groups[key]
+        group["planned_count"] = len(group["planned_laps"])
+        group["validated_count"] = len(group["validated_laps"])
+        group["complete"] = group["planned_count"] == group["validated_count"]
+        missing_laps.extend(sorted(set(group["planned_laps"]) - set(group["validated_laps"])))
+        ordered_groups.append(group)
+    return {
+        "policy": "exact_sealed_environment_and_whole_lap_split_v1",
+        "train_laps": sorted(number for number, row in planned_rows.items()
+                             if row["split"] == "train"),
+        "val_laps": sorted(number for number, row in planned_rows.items()
+                           if row["split"] == "val"),
+        "groups": ordered_groups,
+        "missing_or_invalid_laps": sorted(missing_laps),
+        "environment_mismatched_laps": sorted(mismatched_laps),
+        "complete": not missing_laps and not mismatched_laps,
+    }
+
+
+def signal_plan_split_arguments(planned_rows):
+    """Pass every planned held-out lap; the builder trains only on the remaining laps."""
+    return [part for number, row in sorted(planned_rows.items())
+            if row["split"] == "val" for part in ("--val-lap", str(number))]
+
+
 def validate_lap(
     row, expected_scenario="full_loop", campaign=None,
-    planned_static_run=None,
+    planned_static_run=None, planned_signal_run=None,
 ):
     run = campaign_run(campaign, row["run_name"]) if campaign else BASE / row["run_name"]
     episode = run / "episode_000"
@@ -539,9 +639,18 @@ def validate_lap(
         checks["all_seals_readable"] = False
     else:
         checks["all_seals_readable"] = True
+    if planned_signal_run is not None:
+        checks["signal_collection_plan_environment"] = signal_plan_environment_matches(
+            row, setup, profile_state, planned_signal_run)
     tunnel_guard = validate_tunnel_static_collection(episode, expected_scenario, map_root=sources["map_root"] if sources else None) if expected_scenario == TUNNEL_STATIC_SCENARIO else None
     if tunnel_guard is not None:
         checks["tunnel_static_guarded_collection"] = tunnel_guard["valid"]
+    normal_guard = validate_normal_collection(episode, expected_scenario)
+    if normal_guard["required"]:
+        checks["tunnel_normal_empty_road_collection"] = normal_guard["valid"]
+    signal_guard = validate_traffic_light_collection(episode, expected_scenario)
+    if signal_guard["required"]:
+        checks["traffic_light_guarded_collection"] = signal_guard["valid"]
     return {
         "lap": int(row["lap"]),
         "seed": int(row["seed"]),
@@ -562,6 +671,8 @@ def validate_lap(
         "collision": collision,
         "static_lane_compliance": lane_markings,
         "tunnel_static_guarded_collection": tunnel_guard,
+        "tunnel_normal_empty_road_collection": normal_guard if normal_guard["required"] else None,
+        "traffic_light_guarded_collection": signal_guard if signal_guard["required"] else None,
         "checks": checks,
         "errors": errors,
         "input_seals": seals,
@@ -630,10 +741,13 @@ def _main():
     analysis_environment_report = probe_analysis_environment(
         analysis_python, review_env)
     plan = load(campaign / "campaign_plan.json")
-    if args.val_lap and (args.no_prepare_training or plan.get("static_collection_plan_evidence")):
-        parser.error("--val-lap requires training preparation and no pinned static split plan")
+    if args.val_lap and (args.no_prepare_training or plan.get("static_collection_plan_evidence")
+                         or plan.get("signal_collection_plan_evidence")):
+        parser.error("--val-lap requires training preparation and no pinned static/signal split plan")
     rows = completed_rows(campaign / "runs.tsv")
     requested = int(plan["requested_laps"])
+    signal_plan_rows, _ = sealed_signal_collection_plan(
+        campaign, plan, requested)
     static_plan_rows = {}
     static_plan_name = plan.get("static_collection_plan_evidence")
     if static_plan_name:
@@ -673,7 +787,7 @@ def _main():
         elif row.get("status", "").startswith("failed_"):
             run = campaign_run(campaign, row["run_name"])
             marker = _failed_attempt_marker(run, "capture")
-            if marker is None:
+            if marker is None and not signal_plan_rows:
                 cleanup_evidence_ok = False
             laps.append({
                 "lap": index,
@@ -685,13 +799,17 @@ def _main():
                 "training_usable": False,
                 "valid": False,
                 "errors": [row["status"]] + (
-                    [] if marker is not None
+                    [] if marker is not None or signal_plan_rows
                     else ["capture failure cleanup evidence is missing"]
                 ),
                 "checks": {},
                 "payload_cleanup": (
                     _cleanup_summary(marker) if marker is not None
-                    else {"status": "missing", "failure_kind": "capture"}
+                    else ({"status": "retained", "failure_kind": "capture",
+                           "reason": "sealed signal plan preserves failed sensor payload; "
+                                     "no automatic deletion is authorized"}
+                          if signal_plan_rows else
+                          {"status": "missing", "failure_kind": "capture"})
                 ),
             })
         elif row.get("status") in ("captured", "completed"):
@@ -734,21 +852,26 @@ def _main():
                 lap = validate_lap(
                     row, scenario_name, campaign,
                     planned_static_run=static_plan_rows.get(index),
+                    planned_signal_run=signal_plan_rows.get(index),
                 )
                 lap.update({
                     "capture_status": "succeeded",
                     "validation_status": "passed" if lap["valid"] else "failed",
                     "training_usable": bool(lap["valid"]),
                 })
-                if not lap["valid"] and not args.delete_invalid_payload:
+                if not lap["valid"] and (not args.delete_invalid_payload or signal_plan_rows):
                     # A failed check is a judgement that may itself be wrong
                     # (policy, environment, a clock gate); never destroy the
                     # only copy of a captured lap without an explicit request.
                     lap["payload_cleanup"] = {
                         "status": "retained",
                         "failure_kind": "validation",
-                        "reason": "validation failure keeps the payload; "
-                                  "rerun with --delete-invalid-payload to reclaim space",
+                        "reason": (
+                            "sealed signal plan preserves failed sensor payload; "
+                            "no automatic deletion is authorized"
+                            if signal_plan_rows else
+                            "validation failure keeps the payload; "
+                            "rerun with --delete-invalid-payload to reclaim space"),
                     }
                 elif not lap["valid"]:
                     try:
@@ -839,6 +962,7 @@ def _main():
         "dynamic_obstacle": sorted({row.get("dynamic_obstacle") for row in valid_laps
                                     if row.get("dynamic_obstacle")}),
     }
+    signal_coverage = signal_plan_coverage(signal_plan_rows, laps)
     completion = campaign / "COLLECTION_COMPLETE.json"
     completion_payload = load(completion) if completion.is_file() else {}
     completion_scenario = completion_payload.get("scenario_name", "full_loop")
@@ -870,6 +994,7 @@ def _main():
         and not validation_infrastructure_errors
         and len(valid_laps) >= minimum_valid_laps
         and variation_valid
+        and (signal_coverage is None or signal_coverage["complete"])
     )
     full_variation_coverage = {
         "weather": sorted({row.get("weather") for row in laps if row.get("weather")}),
@@ -903,6 +1028,9 @@ def _main():
         "static_collection_plan_sha256": plan.get(
             "static_collection_plan_sha256"
         ),
+        "signal_collection_plan_sha256": plan.get("signal_collection_plan_sha256"),
+        "signal_collection_plan_evidence": plan.get("signal_collection_plan_evidence"),
+        "signal_collection_plan_coverage": signal_coverage,
         "runs_ledger_sha256": digest(campaign / "runs.tsv"),
         "collection_completion_present": completion.is_file(),
         "collection_completion_scenario_matches": completion_scenario == scenario_name,
@@ -956,6 +1084,8 @@ def _main():
             "PASS proves sealed native inputs, 10Hz cadence, ROS/native LiDAR identity, "
             "teacher continuity, actor/light transport, selected-scenario completion, and per-lap "
             "environment contract (including sealed static-plan weather/time when present). "
+            "A sealed signal plan additionally requires exact per-lap weather/hour "
+            "receipts and complete planned train/validation coverage. "
             "It does not create MORAI's missing official "
             "millisecond physical-exposure guarantee."
         ),
@@ -999,6 +1129,7 @@ def _main():
         if args.val_lap:
             for lap_number in args.val_lap:
                 build_command.extend(["--val-lap", str(lap_number)])
+        build_command.extend(signal_plan_split_arguments(signal_plan_rows))
         split_plan_name = plan.get("static_collection_plan_evidence")
         if split_plan_name:
             split_plan_path = campaign / split_plan_name

@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT),str(ROOT/'tools'),str(ROOT.parents[1])]
 from async_capture.scenario_simulation import wait_for_native_capture_armed
 from async_capture.scenario_catalog import COLLECTION_SCENARIOS, TUNNEL_STATIC_SCENARIO
+from scenario_collection import tunnel_collection_evidence
 
 
 class NativeArmedBarrierTests(unittest.TestCase):
@@ -106,7 +107,8 @@ class SharedRecorderHookTests(unittest.TestCase):
         namespace=dict(FullLoopScenario=Base,Path=Path,json=json,ROOT=ROOT,os=__import__('os'),
                        time=__import__('time'),subprocess=SimpleNamespace(Popen=start,STDOUT=-2),
                        digest=lambda path:hashlib.sha256(Path(path).read_bytes()).hexdigest(),
-                       write_json=write,wait_for_native_capture_armed=barrier)
+                       write_json=write,wait_for_native_capture_armed=barrier,
+                       tunnel_collection_evidence=tunnel_collection_evidence)
         exec(compile(ast.Module(body=[cls],type_ignores=[]),str(source),'exec'),namespace)
         scenario=namespace['RawScenario']()
         scenario.collector=None
@@ -142,7 +144,9 @@ class SharedRecorderHookTests(unittest.TestCase):
 
     def test_regular_static_capture_keeps_its_original_ready_and_time_budget(self):
         scenario,commands,events,barrier,episode,runtime=self.exercise_setup(False)
-        barrier.assert_not_called()
+        # Any coordinated Sensor Record capture waits for the UI owner,
+        # including the regular static mode exercised by this fixture.
+        barrier.assert_called_once_with(scenario.sensor_record_coordination,scenario.collector,timeout=65.)
         self.assertEqual(commands[0][commands[0].index('--seconds')+1],'160.0')
         self.assertNotIn('tunnel_static_trial',episode)
         self.assertEqual(runtime['planning']['velocity_profile']['max_velocity'],20.)

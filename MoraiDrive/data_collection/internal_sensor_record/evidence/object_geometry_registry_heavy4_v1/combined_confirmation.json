@@ -1,0 +1,392 @@
+{
+  "schema": "morai_dynamic65_independent_confirmation_v1",
+  "profile_sha256": "88f5126d6863f2211f0d9bd521ec1e24412d926b59b07704af318cefb1b9ba4a",
+  "inputs": [
+    {
+      "capture": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road/report.json",
+      "capture_sha256": "b031bbd5654ca90bb0cf31b9264f0f104738362208cddec527fb988e31bcca37",
+      "evaluation": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road_review/report.json",
+      "evaluation_sha256": "aa44dff66917640ea13093eb8aadc709df1eaa53c23e4edc6db54c1045825993",
+      "integrity": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road_integrity.json",
+      "integrity_sha256": "6a13c82328f3a7a57655975b97fd7cb68faf2b552ec59c076573d657253aef8b"
+    }
+  ],
+  "scope": "Default-scale visible 3D surfaces in held moving poses; exposure synchronization during translation is separately audited",
+  "physical_simultaneity_verified": false,
+  "models": {
+    "2012_Hyundai_HD65": {
+      "model": "2012_Hyundai_HD65",
+      "kind": "vehicle",
+      "metrics": [
+        {
+          "directory": "000_vehicle_2012_Hyundai_HD65_e31d52d0/d1900_l+0000_v0",
+          "distance_m": 19.0,
+          "view": 0,
+          "points": 187,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        },
+        {
+          "directory": "000_vehicle_2012_Hyundai_HD65_e31d52d0/d1900_l+0000_v1",
+          "distance_m": 19.0,
+          "view": 1,
+          "points": 371,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        },
+        {
+          "directory": "000_vehicle_2012_Hyundai_HD65_e31d52d0/d1900_l+0000_v2",
+          "distance_m": 19.0,
+          "view": 2,
+          "points": 319,
+          "containment": 1.0,
+          "outside_p95_m": 0.008465437117505062,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        },
+        {
+          "directory": "000_vehicle_2012_Hyundai_HD65_e31d52d0/d1900_l+0000_v3",
+          "distance_m": 19.0,
+          "view": 3,
+          "points": 300,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        },
+        {
+          "directory": "000_vehicle_2012_Hyundai_HD65_e31d52d0/d2500_l+0000_v0",
+          "distance_m": 25.0,
+          "view": 0,
+          "points": 125,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        },
+        {
+          "directory": "000_vehicle_2012_Hyundai_HD65_e31d52d0/d2500_l+0000_v1",
+          "distance_m": 25.0,
+          "view": 1,
+          "points": 191,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        },
+        {
+          "directory": "000_vehicle_2012_Hyundai_HD65_e31d52d0/d2500_l+0000_v2",
+          "distance_m": 25.0,
+          "view": 2,
+          "points": 165,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        },
+        {
+          "directory": "000_vehicle_2012_Hyundai_HD65_e31d52d0/d2500_l+0000_v3",
+          "distance_m": 25.0,
+          "view": 3,
+          "points": 192,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        }
+      ],
+      "motion_speeds_kmh": [
+        3.6
+      ],
+      "images": [
+        {
+          "path": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road_review/2012_Hyundai_HD65.jpg",
+          "sha256": "2be1a9dd63df0159fd5971caae983cd17ef6e0aff29e33e3d7e218772522a79a"
+        }
+      ],
+      "usable_views": 8,
+      "min_containment": 1.0,
+      "lidar_pass": true,
+      "configured_speed_coverage_pass": true,
+      "camera_review": "pending",
+      "approved": false
+    },
+    "2013_Hyundai_Xcient(P520)": {
+      "model": "2013_Hyundai_Xcient(P520)",
+      "kind": "vehicle",
+      "metrics": [
+        {
+          "directory": "001_vehicle_2013_Hyundai_Xcient_P520__236a5223/d1900_l+0000_v0",
+          "distance_m": 19.0,
+          "view": 0,
+          "points": 235,
+          "containment": 1.0,
+          "outside_p95_m": 0.018850268864914428,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        },
+        {
+          "directory": "001_vehicle_2013_Hyundai_Xcient_P520__236a5223/d1900_l+0000_v1",
+          "distance_m": 19.0,
+          "view": 1,
+          "points": 422,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        },
+        {
+          "directory": "001_vehicle_2013_Hyundai_Xcient_P520__236a5223/d1900_l+0000_v2",
+          "distance_m": 19.0,
+          "view": 2,
+          "points": 582,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        },
+        {
+          "directory": "001_vehicle_2013_Hyundai_Xcient_P520__236a5223/d1900_l+0000_v3",
+          "distance_m": 19.0,
+          "view": 3,
+          "points": 323,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        },
+        {
+          "directory": "001_vehicle_2013_Hyundai_Xcient_P520__236a5223/d2500_l+0000_v0",
+          "distance_m": 25.0,
+          "view": 0,
+          "points": 133,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        },
+        {
+          "directory": "001_vehicle_2013_Hyundai_Xcient_P520__236a5223/d2500_l+0000_v1",
+          "distance_m": 25.0,
+          "view": 1,
+          "points": 200,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        },
+        {
+          "directory": "001_vehicle_2013_Hyundai_Xcient_P520__236a5223/d2500_l+0000_v2",
+          "distance_m": 25.0,
+          "view": 2,
+          "points": 270,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        },
+        {
+          "directory": "001_vehicle_2013_Hyundai_Xcient_P520__236a5223/d2500_l+0000_v3",
+          "distance_m": 25.0,
+          "view": 3,
+          "points": 185,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        }
+      ],
+      "motion_speeds_kmh": [
+        3.6
+      ],
+      "images": [
+        {
+          "path": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road_review/2013_Hyundai_Xcient(P520).jpg",
+          "sha256": "8a6adc0ff0563780293820501b51587af126c6b88fe777cc2de9c7bd54dde43a"
+        }
+      ],
+      "usable_views": 8,
+      "min_containment": 1.0,
+      "lidar_pass": true,
+      "configured_speed_coverage_pass": true,
+      "camera_review": "pending",
+      "approved": false
+    },
+    "2013_Hyundai_Xcient(P540)": {
+      "model": "2013_Hyundai_Xcient(P540)",
+      "kind": "vehicle",
+      "metrics": [
+        {
+          "directory": "002_vehicle_2013_Hyundai_Xcient_P540__7aaa69a6/d1900_l+0000_v0",
+          "distance_m": 19.0,
+          "view": 0,
+          "points": 278,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        },
+        {
+          "directory": "002_vehicle_2013_Hyundai_Xcient_P540__7aaa69a6/d1900_l+0000_v1",
+          "distance_m": 19.0,
+          "view": 1,
+          "points": 679,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        },
+        {
+          "directory": "002_vehicle_2013_Hyundai_Xcient_P540__7aaa69a6/d1900_l+0000_v2",
+          "distance_m": 19.0,
+          "view": 2,
+          "points": 777,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        },
+        {
+          "directory": "002_vehicle_2013_Hyundai_Xcient_P540__7aaa69a6/d1900_l+0000_v3",
+          "distance_m": 19.0,
+          "view": 3,
+          "points": 505,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        },
+        {
+          "directory": "002_vehicle_2013_Hyundai_Xcient_P540__7aaa69a6/d2500_l+0000_v0",
+          "distance_m": 25.0,
+          "view": 0,
+          "points": 152,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        },
+        {
+          "directory": "002_vehicle_2013_Hyundai_Xcient_P540__7aaa69a6/d2500_l+0000_v1",
+          "distance_m": 25.0,
+          "view": 1,
+          "points": 355,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        },
+        {
+          "directory": "002_vehicle_2013_Hyundai_Xcient_P540__7aaa69a6/d2500_l+0000_v2",
+          "distance_m": 25.0,
+          "view": 2,
+          "points": 356,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        },
+        {
+          "directory": "002_vehicle_2013_Hyundai_Xcient_P540__7aaa69a6/d2500_l+0000_v3",
+          "distance_m": 25.0,
+          "view": 3,
+          "points": 283,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        }
+      ],
+      "motion_speeds_kmh": [
+        3.6
+      ],
+      "images": [
+        {
+          "path": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road_review/2013_Hyundai_Xcient(P540).jpg",
+          "sha256": "b49a43f311cb81b7f4a6b363dc222769cedde4be5e7bf904be242fd843c60555"
+        }
+      ],
+      "usable_views": 8,
+      "min_containment": 1.0,
+      "lidar_pass": true,
+      "configured_speed_coverage_pass": true,
+      "camera_review": "pending",
+      "approved": false
+    },
+    "DR_OMLift_2022_Bus": {
+      "model": "DR_OMLift_2022_Bus",
+      "kind": "vehicle",
+      "metrics": [
+        {
+          "directory": "003_vehicle_DR_OMLift_2022_Bus_9a40ffbe/d1900_l+0000_v0",
+          "distance_m": 19.0,
+          "view": 0,
+          "points": 170,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        },
+        {
+          "directory": "003_vehicle_DR_OMLift_2022_Bus_9a40ffbe/d1900_l+0000_v1",
+          "distance_m": 19.0,
+          "view": 1,
+          "points": 332,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        },
+        {
+          "directory": "003_vehicle_DR_OMLift_2022_Bus_9a40ffbe/d1900_l+0000_v2",
+          "distance_m": 19.0,
+          "view": 2,
+          "points": 322,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        },
+        {
+          "directory": "003_vehicle_DR_OMLift_2022_Bus_9a40ffbe/d1900_l+0000_v3",
+          "distance_m": 19.0,
+          "view": 3,
+          "points": 278,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        },
+        {
+          "directory": "003_vehicle_DR_OMLift_2022_Bus_9a40ffbe/d2500_l+0000_v0",
+          "distance_m": 25.0,
+          "view": 0,
+          "points": 104,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        },
+        {
+          "directory": "003_vehicle_DR_OMLift_2022_Bus_9a40ffbe/d2500_l+0000_v1",
+          "distance_m": 25.0,
+          "view": 1,
+          "points": 173,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        },
+        {
+          "directory": "003_vehicle_DR_OMLift_2022_Bus_9a40ffbe/d2500_l+0000_v2",
+          "distance_m": 25.0,
+          "view": 2,
+          "points": 148,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        },
+        {
+          "directory": "003_vehicle_DR_OMLift_2022_Bus_9a40ffbe/d2500_l+0000_v3",
+          "distance_m": 25.0,
+          "view": 3,
+          "points": 157,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road"
+        }
+      ],
+      "motion_speeds_kmh": [
+        3.6
+      ],
+      "images": [
+        {
+          "path": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road_review/DR_OMLift_2022_Bus.jpg",
+          "sha256": "dabe66187592674f65bfe8f97da42bfbe1634132cd63a755170d69a81f7fb805"
+        }
+      ],
+      "usable_views": 8,
+      "min_containment": 1.0,
+      "lidar_pass": true,
+      "configured_speed_coverage_pass": true,
+      "camera_review": "pending",
+      "approved": false
+    }
+  },
+  "all_lidar_pass": true,
+  "all_configured_speed_coverage_pass": true
+}

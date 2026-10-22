@@ -9,8 +9,19 @@ import subprocess
 from runtime_paths import POWERSHELL_EXE
 
 
+_STDIN_SCRIPT_LOADER = (
+    "& ([ScriptBlock]::Create([Text.Encoding]::Unicode.GetString("
+    "[Convert]::FromBase64String([Console]::In.ReadToEnd()))))"
+)
+_ENCODED_STDIN_SCRIPT_LOADER = base64.b64encode(
+    _STDIN_SCRIPT_LOADER.encode("utf-16le")
+).decode("ascii")
+
+
 def powershell(script, timeout=30):
-    encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
+    # Windows limits the entire command line to 32,767 characters. Keep only a
+    # fixed loader in argv and carry the exact UTF-16LE source as ASCII on stdin.
+    encoded = base64.b64encode(script.encode("utf-16le"))
     try:
         process = subprocess.run(
             [
@@ -18,8 +29,9 @@ def powershell(script, timeout=30):
                 "-NoProfile",
                 "-NonInteractive",
                 "-EncodedCommand",
-                encoded,
+                _ENCODED_STDIN_SCRIPT_LOADER,
             ],
+            input=encoded,
             capture_output=True,
             timeout=timeout,
         )

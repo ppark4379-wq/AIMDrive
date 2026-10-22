@@ -379,7 +379,9 @@ def main():
         '--sensor-record-coordination',str(coordination),
         '--raw-camera-transport',a.raw_camera_transport,'--seed',str(a.seed),
         '--grpc-target',grpc_target]
-    if a.scenario != TUNNEL_STATIC_SCENARIO:
+    if a.scenario == 'full_loop_traffic_light':
+        command += ['--max-speed-kmh','30']
+    elif a.scenario != TUNNEL_STATIC_SCENARIO:
         command += ['--max-speed-kmh','60']
     if direct:
         command.append('--prepared-output-root')

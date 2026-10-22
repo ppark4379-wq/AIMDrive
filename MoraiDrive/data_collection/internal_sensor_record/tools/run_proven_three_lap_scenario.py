@@ -44,6 +44,9 @@ from async_capture.scenario_simulation import (SimulationObservationClock, RosCl
     cleanup_unreachable_expert_publishers, publish_final_brake,
     start_simulation_time_world, wait_for_control_release, wait_for_native_capture_armed)
 from async_capture.scenario_catalog import COLLECTION_SCENARIOS, TUNNEL_STATIC_SCENARIO
+from async_capture.tunnel_normal_collection import finalize_normal_collection
+from async_capture.traffic_light_collection import (collection_evidence as traffic_light_collection_evidence,
+    finalize_traffic_light_collection, PERMISSION_POLICY)
 from async_capture.rosbag_recording import ScenarioRosbag
 from async_capture.route_signal_contract import build_route_signal_contract
 from native_capture.ground_truth import default_grpc_target
@@ -92,6 +95,7 @@ def software_inventory(expert_root):
     files = [
         Path(__file__).resolve(),
         ROOT / 'scenario_collection.py',
+        ROOT / 'async_capture/traffic_light_collection.py',
         ROOT / 'tools/collect_async_raw_proven.py',
         ROOT / 'async_capture/rosbag_recording.py',
         ROOT / 'tools/exec_owned_rosbag.py',
@@ -333,9 +337,10 @@ class RawScenario(FullLoopScenario):
         if collision_policy not in ('abort', 'record'):
             raise ValueError('Unknown collision policy')
         super().__init__(*args, **kwargs)
-        # Recorded in episode.json through scenario_config.
-        self.cfg['progress_watchdog'] = dict(COLLECTION_PROGRESS_WATCHDOG)
-        self.cfg['off_route_timeout_sec'] = COLLECTION_OFF_ROUTE_TIMEOUT_SEC
+        # 신호 구간의 45초 watchdog·3초 이탈 계약은 Runner 설정을 그대로 유지한다.
+        if self.cfg.get('mission_mode') != 'full_loop_traffic_light':
+            self.cfg['progress_watchdog'] = dict(COLLECTION_PROGRESS_WATCHDOG)
+            self.cfg['off_route_timeout_sec'] = COLLECTION_OFF_ROUTE_TIMEOUT_SEC
         self.output = Path(output).resolve()
         self.output.mkdir(exist_ok=False)
         self.contract_path = Path(contract_path).resolve()
@@ -377,9 +382,15 @@ class RawScenario(FullLoopScenario):
         runtime_path = Path(self.expert_controller.runtime_config_path)
         runtime = json.loads(runtime_path.read_text())
         maximum = float(runtime['planning']['velocity_profile']['max_velocity'])
-        for zone in runtime['planning']['velocity_profile'].get('speed_limit_zones', []):
-            zone['max_velocity'] = min(float(zone['max_velocity']), maximum)
-        runtime_path.write_text(json.dumps(runtime, indent=2) + '\n')
+        if self.cfg.get('mission_mode') == 'full_loop_traffic_light':
+            # Runner가 검증한 실제 설정 바이트를 그대로 보존한다.
+            if maximum != 30. or any(float(zone['max_velocity']) > maximum for zone in
+                                    runtime['planning']['velocity_profile'].get('speed_limit_zones', [])):
+                raise ValueError('좌회전 신호 Expert 속도 계약이 수집 전에 변경됐습니다')
+        else:
+            for zone in runtime['planning']['velocity_profile'].get('speed_limit_zones', []):
+                zone['max_velocity'] = min(float(zone['max_velocity']), maximum)
+            runtime_path.write_text(json.dumps(runtime, indent=2) + '\n')
         expert = dict(self.global_cfg.get('expert_provenance', {}))
         setup = dict(scenario_name=self.scenario_name,
                      expert_mode=expert.get('mode'),
@@ -403,6 +414,8 @@ class RawScenario(FullLoopScenario):
                      ),
                      tunnel_mission=tunnel_collection_evidence(self),
                      training_visible=False, object_geometry_verified=False)
+        if self.cfg.get('mission_mode') == 'full_loop_traffic_light':
+            setup['traffic_light_mission'] = traffic_light_collection_evidence(self)
         if self.cfg.get('_tunnel_static_collection'):
             trial = getattr(self,'tunnel_static_trial_context',None)
             if trial is None:
@@ -612,12 +625,79 @@ class RawScenario(FullLoopScenario):
         tunnel_evidence = tunnel_collection_evidence(self)
         if tunnel_evidence is not None:
             self.outcome['tunnel_mission'] = tunnel_evidence
+        if self.cfg.get('mission_mode') == 'full_loop_traffic_light':
+            self.outcome['traffic_light_mission'] = traffic_light_collection_evidence(self)
         self.event('episode_finished', **self.outcome)
         write_json(self.output / 'outcome.json', self.outcome)
 
 
 class RawMissionScenario(RawScenario, MissionScenario):
     """Collection lifecycle layered on the main segment scenario."""
+
+    def run(self):
+        if self.cfg.get('mission_mode') == 'full_loop_traffic_light':
+            # cleanup에서 파일 기록이 실패해도 변경한 신호의 복원 시도는 보장한다.
+            result, primary_error, restoration_errors = None, None, []
+            try:
+                result = super().run()
+            except BaseException as error:
+                primary_error = error
+            finally:
+                restoration_errors = self._restore_traffic_signal(result, primary_error)
+            if primary_error is not None:
+                if restoration_errors:
+                    raise RuntimeError('수집 오류: ' + str(primary_error) + '; 신호 복원/기록 오류: '
+                                       + '; '.join(restoration_errors)) from primary_error
+                raise primary_error
+            return result
+        result = super().run()
+        # RawScenario owns run/cleanup in this MRO, so MissionScenario.run's
+        # final parking block is not reached. Preserve that baseline check
+        # explicitly before sealing the empty-road collection evidence.
+        if self.cfg.get('mission_mode') == 'full_loop_tunnel_normal':
+            from scenario_runner.scenarios.segment_modes import tunnel_baseline
+            try:
+                tunnel_baseline.park(self)
+            except Exception as error:
+                tunnel_baseline.finish(self, 'failed', str(error) or type(error).__name__)
+                detail = str(error) or type(error).__name__
+                result.update(status='failed', reason='tunnel_normal_parking_failed: ' + detail,
+                              tunnel_normal_parking_error=detail)
+                self.event('tunnel_normal_parking_failed', error=detail)
+            else:
+                self.event('tunnel_normal_parking_verified')
+        return result
+
+    def _restore_traffic_signal(self, result, primary_error):
+        from scenario_runner.scenarios.segment_modes import traffic_light
+        errors = []
+        report = getattr(self, 'traffic_light_report', {})
+        required = report.get('original') is not None
+        try:
+            traffic_light.restore(self)
+            if required and report.get('restore', {}).get('verified') is not True:
+                raise RuntimeError('좌회전 신호의 원래 상태 복원이 실제 readback으로 확인되지 않았습니다')
+            if not required and isinstance(result, dict) and result.get('status') == 'mission_completed':
+                raise RuntimeError('완료된 신호 수집에 원래 신호 상태가 없습니다')
+        except BaseException as error:
+            errors.append(str(error) or type(error).__name__)
+        if primary_error is not None or errors:
+            reason = '; '.join(([str(primary_error)] if primary_error is not None else []) + errors)
+            try:
+                traffic_light.finish(self, 'failed', reason)
+            except BaseException as error:
+                errors.append('복원 보고서 기록: ' + (str(error) or type(error).__name__))
+        if required or errors:
+            try:
+                self.event('traffic_light_restore_failed' if errors else 'traffic_light_restore_verified',
+                           **({'error': '; '.join(errors)} if errors else {}))
+            except BaseException as error:
+                errors.append('복원 이벤트 기록: ' + (str(error) or type(error).__name__))
+        if errors and isinstance(result, dict):
+            detail = '; '.join(errors)
+            result.update(status='failed', reason='traffic_light_restore_failed: ' + detail,
+                          traffic_light_restore_error=detail)
+        return errors
 
 
 def collection_scenario_class(name):
@@ -666,7 +746,7 @@ def main():
     p.add_argument('--seconds', type=float, default=90, help='Maximum driving wall seconds; stop earlier at route completion')
     p.add_argument('--full-lap', action='store_true', help='Require selected-scenario route completion; permit a bounded wall budget up to 3540 seconds')
     p.add_argument('--max-speed-kmh', type=float, default=None,
-                   help='Optional cap; omitted uses 20 km/h normally and original Expert speed for tunnel static')
+                   help='일반 생략값은 20km/h, 좌회전 신호는 30km/h 고정, 터널 정적은 원래 Expert 속도')
     p.add_argument('--seed', type=int, default=260910)
     p.add_argument('--profile-state',type=Path,
                    help='Optional D-local state shared by separate one-lap processes')
@@ -687,6 +767,10 @@ def main():
                    default='required',
                    help='required: write ROS cameras; unrecorded: omit raw writes; bridge_dropped: discard at bridge ingress; absent: diagnostic only')
     a = p.parse_args()
+    if a.scenario == 'full_loop_traffic_light':
+        if a.max_speed_kmh not in (None, 30.):
+            p.error('좌회전 신호 수집은 --max-speed-kmh 30 고정 계약을 사용합니다')
+        a.max_speed_kmh = 30.
     if a.max_speed_kmh is None and a.scenario != TUNNEL_STATIC_SCENARIO:
         a.max_speed_kmh = 20.
     expert_root = require_expert_root(a.expert_runtime)
@@ -841,6 +925,9 @@ def main():
             contract['capture']['traffic_light_ground_truth'] = build_route_signal_contract(
                 global_cfg['paths']['mgeo_root'],cfg['route_definition_path'],
                 cfg.get('route_definition_key','full_loop'))
+            if a.scenario == 'full_loop_traffic_light':
+                # 기존 색 분류 정답은 유지하고 행동 허용 근거만 별도로 기록한다.
+                contract['traffic_light_permission_target'] = copy.deepcopy(PERMISSION_POLICY)
             contract_path = output / 'sensor_contract.json'
             write_json(contract_path, contract)
             results = []
@@ -887,6 +974,10 @@ def main():
                         scenario = scenario_type(client,loader,gc,sc,**options)
                         configure_capture(scenario)
                         result = scenario.run()
+                        # RawMissionScenario includes the normal baseline's
+                        # final parking check before writing collection proof.
+                        finalize_normal_collection(scenario, result)
+                        finalize_traffic_light_collection(scenario, result)
                 finally:
                     client.stop()
                 raw = episode / 'raw'

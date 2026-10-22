@@ -24,6 +24,7 @@ from async_capture.scenario_catalog import (
     COLLECTION_SCENARIOS, TUNNEL_STATIC_SCENARIO, scenario_zone_contract as collection_zone_contract,
     validate_tunnel_static_collection,
 )
+from async_capture.traffic_light_collection import validate_traffic_light_collection
 
 
 def load(path):
@@ -64,6 +65,33 @@ def summarize_traffic_interventions(events):
             for row in commands
             if row.get("light_id")
         }),
+    }
+
+
+def summarize_static_blockage_releases(events):
+    """Stop-triggered removal of a deliberately blocking static layout."""
+    releases = [row for row in events if row.get("event") == "static_blockage_released"]
+    lifecycle = [row for row in events
+                 if row.get("event") == "actor_lifecycle_finished"
+                 and row.get("action") == "static_blockage_release"]
+    disclosed = all(
+        row.get("intervention") is True
+        and row.get("mission_distribution_changed") is True
+        and row.get("training_visible") is False
+        for row in releases
+    )
+    removed = all(
+        bool(row.get("removed"))
+        and all(item.get("destroy_accepted") is True and item.get("absent_after_readback") is True
+                for item in row["removed"])
+        for row in releases
+    )
+    return {
+        "releases": len(releases),
+        "all_events_disclosed": disclosed,
+        "all_removals_verified": removed and len(lifecycle) == len(releases)
+        and all(row.get("success") is True for row in lifecycle),
+        "actor_ids": sorted({str(actor) for row in releases for actor in row.get("actor_ids", [])}),
     }
 
 
@@ -269,6 +297,7 @@ def main():
         for row in progress if row.get("tunnel_phase") is not None
     })
     traffic_interventions = summarize_traffic_interventions(events)
+    blockage_releases = summarize_static_blockage_releases(events)
     traffic_override = dict(config.get("traffic_light_wait_override", {}))
 
     scenario_name = (
@@ -363,6 +392,11 @@ def main():
                 )
             ) == 6.0
         ),
+        "static_blockage_releases_verified": (
+            blockage_releases["releases"] == 0
+            or (blockage_releases["all_events_disclosed"]
+                and blockage_releases["all_removals_verified"])
+        ),
         "native_files": native.get("files_valid") is True,
         "actor_transport": actor.get("structural_valid") is True,
         **zone_checks,
@@ -370,11 +404,18 @@ def main():
     tunnel_guard = validate_tunnel_static_collection(args.episode, scenario_name) if scenario_name == TUNNEL_STATIC_SCENARIO else None
     if tunnel_guard is not None:
         checks["tunnel_static_guarded_collection"] = tunnel_guard["valid"]
+    signal_guard = validate_traffic_light_collection(args.episode, scenario_name)
+    if signal_guard["required"]:
+        # 새 구간에서는 전용 신호 단계만 허용하며 과거 자동 해제는 계속 금지한다.
+        checks["traffic_override_contract"] = traffic_override.get("enabled") is False
+        checks["legacy_traffic_override_absent"] = traffic_interventions["commands"] == 0
+        checks["traffic_light_guarded_collection"] = signal_guard["valid"]
     report = {
         "schema": "morai_team_scenario_fidelity_audit_v3",
         "scenario_name": scenario_name,
         "enabled_zones": zones,
         "tunnel_static_guarded_collection": tunnel_guard,
+        "traffic_light_guarded_collection": signal_guard if signal_guard["required"] else None,
         "checks": checks,
         "selected_profile": {
             "weather": profile.get("weather"),
@@ -390,11 +431,14 @@ def main():
             "highway_active_samples": highway_samples,
             "tunnel_phases": tunnel_phases,
             "traffic_light_interventions": traffic_interventions,
+            "static_blockage_releases": blockage_releases,
         },
         "collector_distribution_overrides": [],
-        "scenario_distribution_interventions": [
-            "traffic_light_wait_override"
-        ] if traffic_interventions["commands"] else [],
+        "scenario_distribution_interventions": (
+            (["traffic_light_wait_override"] if traffic_interventions["commands"] else [])
+            + (["static_blockage_release"] if blockage_releases["releases"] else [])
+            + (["controlled_left_turn_signal_phases"] if signal_guard["required"] else [])
+        ),
         "valid": all(checks.values()),
         "source_timestamps_modified": False,
         "physical_simultaneity_verified": False,

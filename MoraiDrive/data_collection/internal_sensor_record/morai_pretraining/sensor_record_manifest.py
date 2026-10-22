@@ -475,15 +475,23 @@ def build_episode_manifest(episode, *, campaign_validation_sha256, split,
             "object_valid": object_valid,
             "object_positive": object_positive,
             "traffic_light": light,
+            "traffic_signal": traffic_signal_metadata(signal, admit),
             "asset_roles": roles,
             "assets": assets,
             "asset_sizes": sizes,
         })
+        if contract.get("traffic_light_permission_target") is not None:
+            # 좌회전 행동 GT는 색 head의 traffic_light 값과 별도로 보존한다.
+            permission = route_permission_metadata(signal, admit, contract["traffic_light_permission_target"])
+            entries[-1]["route_permission"] = permission
+            if permission["valid"]:
+                counts["route_permission_" + str(int(permission["target"]))] += 1
         counts["waypoint_frames"] += 1
         counts["navigation_target_frames"] += 1
         counts["object_frames"] += int(object_valid)
         counts["object_positive_frames"] += int(object_positive)
         counts["traffic_light_" + str(light)] += 1
+        counts["route_permission_frames"] += int(entries[-1]["traffic_signal"]["permission_valid"])
     if not entries:
         raise ValueError("No admitted Sensor Record training frames")
     return {
@@ -518,6 +526,57 @@ def build_episode_manifest(episode, *, campaign_validation_sha256, split,
         "entries": entries,
         "training_visible": True,
     }
+
+
+def traffic_signal_metadata(signal, admission):
+    """Keep protected-turn evidence separate from the legacy two-class target.
+
+    Old sealed ledgers cannot acquire a new supervised permission implicitly.
+    Both the new route ledger and the transport timing gate must admit it.
+    """
+    valid=bool(admission.get('traffic_light_gt_transport_timing_candidate')
+               and admission.get('route_signal_permission_candidate')
+               and signal.get('permission_valid') is True
+               and signal.get('signal_movement') in ('straight','left')
+               and isinstance(signal.get('signal_permission'), bool))
+    return {
+        'schema': 'morai_route_movement_permission_v1',
+        'light_id': signal.get('light_id'),
+        'raw_signal_bits': signal.get('raw_signal_bits', signal.get('color')),
+        'distance_to_stopline_m': signal.get('distance_to_stopline_m'),
+        'signal_movement': signal.get('signal_movement'),
+        'signal_route_link_id': signal.get('signal_route_link_id'),
+        'signal_stop_node_id': signal.get('signal_stop_node_id'),
+        'straight_permitted': signal.get('straight_permitted') if valid else None,
+        'left_permitted': signal.get('left_permitted') if valid else None,
+        'signal_permission': signal.get('signal_permission') if valid else None,
+        'permission_valid': valid,
+        'light_source_record_ids': signal.get('light_source_record_ids', []),
+        'light_source_bracket_ns': signal.get('light_source_bracket_ns', []),
+    }
+
+
+def route_permission_metadata(signal, admission, policy):
+    """선택한 좌회전 신호의 행동 허용 정답을 별도 필드로 기록한다."""
+    if (policy.get('schema') != 'morai_route_movement_permission_v1'
+            or policy.get('light_id') != 'C1256W000052' or policy.get('movement') != 'left'
+            or policy.get('separate_from_color_head') is not True
+            or policy.get('unsupported_phases_masked') is not True
+            or policy.get('raw_phase_permission') != {'1': False, '16': False, '32': True, '33': True, '48': True}):
+        raise ValueError('지원되지 않는 별도 좌회전 행동 GT 계약입니다')
+    metadata = traffic_signal_metadata(signal, admission)
+    raw = metadata['raw_signal_bits']
+    expected = policy['raw_phase_permission'].get(str(raw))
+    valid = bool(metadata['permission_valid'] and metadata['light_id'] == policy['light_id']
+                 and metadata['signal_movement'] == policy['movement']
+                 and isinstance(expected, bool) and metadata['signal_permission'] == expected)
+    return dict(schema=policy['schema'], valid=valid,
+                target=metadata['signal_permission'] if valid else None,
+                raw_signal_bits=raw, light_id=metadata['light_id'],
+                signal_movement=metadata['signal_movement'],
+                source_record_ids=metadata['light_source_record_ids'],
+                source_bracket_ns=metadata['light_source_bracket_ns'],
+                separate_from_color_head=True)
 
 
 def read_native_lidar(path):

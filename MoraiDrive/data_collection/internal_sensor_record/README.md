@@ -128,6 +128,27 @@ main 업데이트 후 과거 터널 자료를 검증할 때는 캡처 당시 SHA
   --static-plan scenario_runner/config/static_scenario_presets/plans/static_balanced_100.json
 ```
 
+좌회전 신호 자료는 `--signal-plan`으로 SUNNY/FOGGY와 11/13/15시의 6조합을
+고르게 수집할 수 있다. 아래 기본 계획은 18회이며 각 조합에 학습 2회·평가 1회를
+배정한다. 1~12회는 학습, 13~18회는 평가로 고정되며 03번이 이 분할을 자동 적용한다.
+추가 `--val-lap`은 고정 계획과 혼용할 수 없다. 회차별 계획과 SHA-256을 campaign에
+보존하고 실제 MORAI 환경과 저장된 profile이 일치해야 통과한다.
+
+```bash
+mkdir -p .runtime/data_collection/traffic_light_balanced
+python3 data_collection/internal_sensor_record/tools/traffic_light_collection_plan.py create \
+  --output .runtime/data_collection/traffic_light_balanced/plan.json --repeats 3
+./data_collection/tools/02_collect_internal_sensor_record_laps.sh 18 traffic_light_balanced \
+  --scenario full_loop_traffic_light \
+  --signal-plan .runtime/data_collection/traffic_light_balanced/plan.json
+./data_collection/tools/03_validate_internal_sensor_record.sh traffic_light_balanced
+```
+
+신호 계획 수집은 시작 전에 기존 여유 70GiB와 회차당 2GiB를 합한 공간을 확인한다.
+18회는 106GiB가 필요하다. 계획 수집이 실패하면 첫 실패에서 중단하고 센서 원본과
+진단 파일을 모두 보존한다. 이번 계획은 날씨·시간 분포를 늘리며 기존 Expert의
+속도, 정지 위치와 빨강 3초·직진 초록 4초 대기 계약을 유지한다.
+
 START/END, 잘린 경로, 활성 장애물·NPC, 완료 판정은 메인 `scenario_runner`가 담당한다.
 Data Collection은 선택 이름 전달, Sensor Record 시작·종료·저장, 선택 모드에 맞는
 사후 검증을 담당한다. 첫 번째 인자는 성공 목표가 아니라 최대 시도 횟수다. 안전한
@@ -242,18 +263,26 @@ manifest와 검증 경로만 상대경로로 바꿀 수 있다. 이 작업은 �
 
 이 승인은 기본 스케일의 모델 형상 범위이며 병진 이동 중 센서 시간 정합 승인은 별도다. 보행자 속도 파라미터 2.5/3.0m/s를 검증했다. 기존 sealed timeline/manifest는 자동으로 바뀌지 않는다. full pose가 없는 과거 timeline의 기울어진 동적 객체는 새 timeline 버전으로 다시 생성·검증해야 한다. [최종 결과](evidence/object_geometry_registry_default3d_v2/completion.json), [모델별 목록](evidence/object_geometry_registry_default3d_v2/dynamic65.csv).
 
-## 터널 동적 장애물 수집
+## 터널 기본 주행·동적 장애물 수집
 
 기존 01번 preflight 후 같은 02번 스크립트에서 터널 모드를 선택한다.
 각 회차는 CP14에서 시작해 CP15까지 Expert로 주행하고 새 seed로 실행한다.
+기본 주행은 터널 진입 전 접근 구간부터 출구 뒤까지 주행하며, 두 차로와
+접근·출구 구간에 다른 객체가 관측되면 통과시키지 않는다.
 
 ```bash
 cd ~/AIMDrive/MoraiDrive
+# 빈 도로: 터널 진입·통과·출구 및 마지막 정지/P단 확인
+./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_tunnel_normal --scenario full_loop_tunnel_normal
 # 차량: 느린 차량 / 급정지 / 대향 차량 중 하나와 차량 모델 랜덤 선택
 ./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_01 --scenario full_loop_tunnel_vehicle
 # 보행자: 4구간의 행동 조합과 보행자 모델 랜덤 선택
 ./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_pedestrian --scenario full_loop_tunnel_dynamic
 ```
+
+차량 수집은 기본 스케일 3D 형상 검증 36종과 현재 MORAI 모델 목록의 교집합에서
+선택한다. 모델별 검증 자료의 해시와 제외된 모델은 `tunnel_mission`에 기록한다.
+이 형상 검증과 이동 중 카메라·GT 시간 정합 검증은 별도다.
 
 `--scenario` 생략 시 기존 `full_loop`를 실행한다. 차량 끼어들기는 기본 랜덤
 풀에서 제외된다. 보행자 조합은 기존 `--tunnel-random-mix`와 같은 trial 정책으로
@@ -264,3 +293,6 @@ NPC lifecycle까지 완료되지 않은 회차는 후속 검증에서 성공으�
 수집 중 저장 경로는 `<storage_root>/dataset/.collecting/tunnel_vehicle/campaign_01`
 (보행자는 `tunnel_dynamic`)이다. 기존 03번 검증 후 최종 `dataset/<터널_모드>/<campaign>`
 폴더로 이동하며 04번 NAS 업로드도 같은 터널 폴더 이름을 사용한다.
+기본 주행은 `tunnel_normal` 폴더에 저장한다. 후속 검증은
+`episode_000/tunnel_normal/COLLECTION_TUNNEL_NORMAL_COMPLETE.json`과 캡처 당시 소스
+스냅샷을 확인한다. 이 완료 증거는 센서·teacher·객체 정합 검증을 대신하지 않는다.

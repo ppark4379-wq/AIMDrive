@@ -1,0 +1,195 @@
+{
+  "schema": "morai_dynamic_default_surface_profiles_v1",
+  "source_report": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/calibration_open_road/report.json",
+  "source_sha256": "5b2a98178e7078e3d562c020404b4042ea79b97a7b959a1db47e7864dcd870a6",
+  "additional_sources": [
+    {
+      "path": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/calibration_p540_far/report.json",
+      "sha256": "3b95f729bc400894e204a84afd9a31200bf59ae4aa74fdb82cb927157dcc8f19"
+    }
+  ],
+  "script_sha256": "fd5891816ec09aefef156dc28a9ad768d41c18f2142b0e0f816e4fc6d8483803",
+  "method": "Union of all source visible foreground points in actor-local FLU, min/max + 0.02m each face",
+  "policy": {
+    "containment_margin_m": 0.1,
+    "min_points_per_view": 10,
+    "min_usable_views": 6,
+    "min_each_view_containment": 0.95,
+    "min_distances": 2,
+    "min_yaws": 4,
+    "camera_review_required": true
+  },
+  "models": {
+    "2012_Hyundai_HD65": {
+      "kind": "vehicle",
+      "scale_xyz": [
+        1,
+        1,
+        1
+      ],
+      "center_offset_flu_m": [
+        1.367127417546267,
+        -0.010878890516726414,
+        0.8676475627670637
+      ],
+      "size_lwh_m": [
+        6.469951103804046,
+        2.551250067314733,
+        2.419270932593737
+      ],
+      "fit_points": 4119,
+      "fit_views": 8,
+      "raw_size_lwh_m": [
+        6.559886932373047,
+        2.516584634780884,
+        2.481106758117676
+      ],
+      "raw_offset_flu_m": [
+        1.3851635993061333,
+        2.5918614939595933e-05,
+        0.857520069472376
+      ],
+      "approved": false,
+      "image_extension_faces_m": [
+        0.062087737346765495,
+        5.2041042063941607e-14,
+        9.999999999959194e-09,
+        8.974178400397749e-14,
+        3.305763044944215e-14,
+        2.4952199504240394e-14
+      ],
+      "image_calibration_views": 8,
+      "image_optimizer_success": true
+    },
+    "2013_Hyundai_Xcient(P520)": {
+      "kind": "vehicle",
+      "scale_xyz": [
+        1,
+        1,
+        1
+      ],
+      "center_offset_flu_m": [
+        2.671229894879434,
+        0.003606887531906855,
+        1.5240891185186325
+      ],
+      "size_lwh_m": [
+        6.924556718567873,
+        3.16173907610899,
+        3.830892567442165
+      ],
+      "fit_points": 6120,
+      "fit_views": 8,
+      "raw_size_lwh_m": [
+        6.947522163391113,
+        3.1458210945129395,
+        3.9630210399627686
+      ],
+      "raw_offset_flu_m": [
+        2.6838606997173713,
+        3.046773884986834e-05,
+        1.455168409957798
+      ],
+      "approved": false,
+      "image_extension_faces_m": [
+        3.661763656773529e-16,
+        2.0313958351744367e-19,
+        9.999999999999997e-09,
+        1.1580538915500044e-19,
+        1.9370646751067722e-19,
+        1.9903516501674383e-20
+      ],
+      "image_calibration_views": 8,
+      "image_optimizer_success": true
+    },
+    "2013_Hyundai_Xcient(P540)": {
+      "kind": "vehicle",
+      "scale_xyz": [
+        1,
+        1,
+        1
+      ],
+      "center_offset_flu_m": [
+        3.266722988150065,
+        -0.060674122782830464,
+        1.228748792237584
+      ],
+      "size_lwh_m": [
+        8.760770745335687,
+        3.2851182612569265,
+        3.3185710512527544
+      ],
+      "fit_points": 3127,
+      "fit_views": 8,
+      "raw_size_lwh_m": [
+        8.830185890197754,
+        3.1457438468933105,
+        3.4747798442840576
+      ],
+      "raw_offset_flu_m": [
+        3.2698793721580333,
+        6.769850170147946e-05,
+        1.2039330974774163
+      ],
+      "approved": false,
+      "image_extension_faces_m": [
+        0.08504816069485789,
+        0.10772181114004738,
+        9.999999999992513e-09,
+        7.195597289835714e-15,
+        1.818002914443078e-14,
+        6.202693266631934e-15
+      ],
+      "image_calibration_views": 8,
+      "image_optimizer_success": true
+    },
+    "DR_OMLift_2022_Bus": {
+      "kind": "vehicle",
+      "scale_xyz": [
+        1,
+        1,
+        1
+      ],
+      "center_offset_flu_m": [
+        1.5948463088946532,
+        -0.031803002067255615,
+        1.072057276710291
+      ],
+      "size_lwh_m": [
+        4.777721480239396,
+        2.4344350006860447,
+        2.787370056164996
+      ],
+      "fit_points": 3795,
+      "fit_views": 8,
+      "raw_size_lwh_m": [
+        4.78322696685791,
+        2.2353804111480713,
+        2.8316948413848877
+      ],
+      "raw_offset_flu_m": [
+        1.624534131913932,
+        3.9793000970046184e-05,
+        1.0535488109384867
+      ],
+      "approved": false,
+      "image_extension_faces_m": [
+        0.05833215008608406,
+        0.061248571009982086,
+        9.999999999973128e-09,
+        3.973664357400427e-14,
+        6.301115894659084e-14,
+        1.468261999556981e-14
+      ],
+      "image_calibration_views": 8,
+      "image_optimizer_success": true
+    }
+  },
+  "surface_input_sha256": "51d0159d82ab70022fb8444014fa3e57fd34944da6e8f6f30a395c625e9e505f",
+  "image_refinement": {
+    "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/calibration_p540_far/report.json",
+    "sha256": "3b95f729bc400894e204a84afd9a31200bf59ae4aa74fdb82cb927157dcc8f19",
+    "method": "All changed components anchored by foreground LiDAR; only extend surface bounds (max 0.5m/face; downward extension capped at actor ground -0.02m to exclude cast shadows), fit all calibration camera views",
+    "script_sha256": "0717379c04a187fbc80449bf191dc83d025f87fbc26c79cc88075da27de35758"
+  }
+}

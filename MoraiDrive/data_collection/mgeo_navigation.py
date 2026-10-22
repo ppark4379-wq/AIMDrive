@@ -38,6 +38,9 @@ class RouteProgress:
     distance_to_stopline_m: Optional[float]
     affected_light_id: Optional[str]
     future_waypoints: List[List[float]]
+    signal_movement: Optional[str] = None
+    signal_route_link_id: Optional[str] = None
+    signal_stop_node_id: Optional[str] = None
 
 
 def load_official_route(route_definition_path: str, global_path_path: str,
@@ -589,6 +592,7 @@ class MGeoRouteTracker:
         is_junction = self._is_topology_junction(current_link_index)
         distance_to_stopline = None
         affected_light_id = None
+        signal_movement = signal_route_link_id = signal_stop_node_id = None
         for link_index in range(current_link_index, len(self.link_ids)):
             link = self.map.links[self.link_ids[link_index]]
             node = self.map.nodes.get(str(link.get("to_node_idx")))
@@ -599,11 +603,26 @@ class MGeoRouteTracker:
                 )
                 affected_light_id = node.get("traffic_light_id") or None
                 if affected_light_id:
+                    signal_stop_node_id = str(link.get("to_node_idx"))
+                    # Movement belongs to the link AFTER this stop line. The
+                    # approach link or the next geometric turn is not enough.
+                    following_index = link_index + 1
+                    if following_index == len(self.link_ids) and self._closed_route:
+                        following_index = 0
+                    if following_index < len(self.link_ids):
+                        following_id = self.link_ids[following_index]
+                        following = self.map.links[following_id]
+                        if str(following.get("from_node_idx")) == signal_stop_node_id:
+                            signal_route_link_id = following_id
+                            movement = str(following.get("related_signal") or "").lower()
+                            if movement in ("straight", "left"):
+                                signal_movement = movement
                     break
             if self.cumulative_m[self.link_end_point_indices[link_index]] - \
                     self.cumulative_m[route_index] > self.traffic_light_lookahead_m:
                 break
-        return is_junction, distance_to_stopline, affected_light_id
+        return (is_junction, distance_to_stopline, affected_light_id,
+                signal_movement, signal_route_link_id, signal_stop_node_id)
 
     def update(self, x: float, y: float, heading_rad: float) -> RouteProgress:
         self._route_index = self._nearest_index(x, y, heading_rad)
@@ -613,7 +632,8 @@ class MGeoRouteTracker:
         near_x, near_y = self.points[near_index]
         target_x, target_y = self.points[target_index]
         link_index = self.point_link_indices[self._route_index]
-        is_junction, distance_to_stopline, affected_light_id = \
+        (is_junction, distance_to_stopline, affected_light_id,
+         signal_movement, signal_route_link_id, signal_stop_node_id) = \
             self._road_semantics(self._route_index)
         return RouteProgress(
             route_index=self._route_index,
@@ -632,4 +652,7 @@ class MGeoRouteTracker:
             distance_to_stopline_m=distance_to_stopline,
             affected_light_id=affected_light_id,
             future_waypoints=self.get_future_waypoints(self._route_index),
+            signal_movement=signal_movement,
+            signal_route_link_id=signal_route_link_id,
+            signal_stop_node_id=signal_stop_node_id,
         )

@@ -49,8 +49,10 @@ def required_training_coverage(scenario_name):
         zones.tunnel_static,
     )):
         required.append("object_positive_frames")
-    if scenario_name in ("full_loop", "full_loop_normal"):
+    if scenario_name in ("full_loop", "full_loop_normal", "full_loop_traffic_light"):
         required.extend(("traffic_light_0", "traffic_light_1"))
+    if scenario_name == "full_loop_traffic_light":
+        required.extend(("route_permission_0", "route_permission_1"))
     return tuple(required)
 
 

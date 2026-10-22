@@ -12,7 +12,7 @@ sys.path.insert(0, str(INTERNAL / "tools"))
 
 from bridge.bridge_health import IMPLEMENTATION, check_bridge
 from probe_sensor_record_readiness import (
-    clock_ingress_failure, snapshot_observations, source_status,
+    clock_ingress_failure, control_status, snapshot_observations, source_status,
 )
 from render_sensor_record_readiness import next_actions, render, state_for
 
@@ -29,6 +29,46 @@ def check(health, now):
 
 
 class SensorRecordReadinessTest(unittest.TestCase):
+    def test_fresh_ego_stream_cannot_substitute_for_control_connection(self):
+        state = (1, "", ([('/Ego_topic', ['/morai_internal_sensor_record_bridge'])], [], []))
+        row, failures = control_status(state)
+        self.assertEqual(row['subscribers'], [])
+        self.assertEqual(failures, ['missing_control_subscriber'])
+        output = render(dict(ready=False, failures=failures,
+                             streams={'control': row, 'ego': {'messages': 10}}),
+                        bridge_ip='127.0.0.1')
+        self.assertIn('차량 제어 /ctrl_cmd', output)
+        self.assertIn('제어 명령 수신 연결 없음', output)
+        self.assertIn('127.0.0.1:9090', output)
+        self.assertIn('Disconnect → Connect', output)
+        self.assertNotIn('[PASS]', output)
+
+    def test_reconnected_control_passes_without_overriding_publisher_handoff(self):
+        state = (1, "", ([('/ctrl_cmd', ['/morai_standard_stopping'])],
+                         [('/ctrl_cmd', ['/morai_internal_sensor_record_bridge'])], []))
+        row, failures = control_status(state)
+        self.assertEqual(failures, [])
+        self.assertEqual(row['publishers'], ['/morai_standard_stopping'])
+        self.assertIn('연결 정상', state_for('control', row, failures))
+        self.assertNotIn('Disconnect', ' '.join(next_actions(dict(failures=failures))))
+
+    def test_ros_master_error_does_not_produce_a_control_ready_result(self):
+        row, failures = control_status((0, 'master unavailable', None))
+        self.assertEqual(failures, ['control_topology_unavailable'])
+        self.assertEqual(row['error'], 'master unavailable')
+        self.assertIn('상태 확인 실패', state_for('control', row, failures))
+
+    def test_only_the_requested_control_topic_counts_as_connected(self):
+        state = (1, '', ([], [('/ctrl_cmd_0', ['/morai_internal_sensor_record_bridge'])], []))
+        self.assertEqual(control_status(state)[1], ['missing_control_subscriber'])
+        self.assertEqual(control_status(state, '/ctrl_cmd_0')[1], [])
+        row, failures = control_status((1, '', ([], [], [])), '/ctrl_cmd_0')
+        actions = next_actions(dict(failures=failures, streams={'control': row}))
+        self.assertIn('제어 토픽 /ctrl_cmd_0', ' '.join(actions))
+
+    def test_historical_sensor_only_report_does_not_claim_control_was_checked(self):
+        self.assertEqual(state_for('control', {}, []), '이 보고서에서는 미검사')
+
     def test_callback_during_unsubscribe_cannot_poison_closed_window(self):
         now = 10_000_000_000
         rows = defaultdict(list)

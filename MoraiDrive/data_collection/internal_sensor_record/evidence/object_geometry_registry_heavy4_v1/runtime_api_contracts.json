@@ -1,0 +1,128 @@
+{
+  "schema": "morai_dynamic_current_api_contract_v1",
+  "surface_profiles_sha256": "88f5126d6863f2211f0d9bd521ec1e24412d926b59b07704af318cefb1b9ba4a",
+  "bounds_unchanged": true,
+  "source_reports": [
+    {
+      "path": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/calibration_open_road/report.json",
+      "sha256": "5b2a98178e7078e3d562c020404b4042ea79b97a7b959a1db47e7864dcd870a6"
+    },
+    {
+      "path": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/calibration_p540_far/report.json",
+      "sha256": "3b95f729bc400894e204a84afd9a31200bf59ae4aa74fdb82cb927157dcc8f19"
+    }
+  ],
+  "skipped_failed_model_captures": [
+    {
+      "source": "MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/calibration_open_road",
+      "model": "2013_Hyundai_Xcient(P540)",
+      "reason": "ModelFailure: Motion displacement outside .05..2.5 m: 0.005124341208577652"
+    }
+  ],
+  "models": {
+    "2012_Hyundai_HD65": {
+      "kind": "vehicle",
+      "raw_offset_flu_m": [
+        1.384795519792547,
+        -0.03277875306765987,
+        0.8575193095232998
+      ],
+      "raw_size_lwh_m": [
+        6.559886932373047,
+        2.516584634780884,
+        2.481106758117676
+      ],
+      "offset_range_xyz_m": [
+        0.0003083682507836194,
+        0.00025927374509671086,
+        0.00046583537926170315
+      ],
+      "size_range_lwh_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "views": 8,
+      "source_report": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/calibration_open_road/report.json",
+      "source_sha256": "5b2a98178e7078e3d562c020404b4042ea79b97a7b959a1db47e7864dcd870a6"
+    },
+    "2013_Hyundai_Xcient(P520)": {
+      "kind": "vehicle",
+      "raw_offset_flu_m": [
+        2.68311336545539,
+        -0.06403406269095885,
+        1.4551586891312813
+      ],
+      "raw_size_lwh_m": [
+        6.947522163391113,
+        3.1458210945129395,
+        3.9630210399627686
+      ],
+      "offset_range_xyz_m": [
+        0.0005492891620928475,
+        0.0003676783684671975,
+        0.0009252515513527015
+      ],
+      "size_range_lwh_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "views": 8,
+      "source_report": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/calibration_open_road/report.json",
+      "source_sha256": "5b2a98178e7078e3d562c020404b4042ea79b97a7b959a1db47e7864dcd870a6"
+    },
+    "DR_OMLift_2022_Bus": {
+      "kind": "vehicle",
+      "raw_offset_flu_m": [
+        1.6241122354740518,
+        -0.03814612039495932,
+        1.0535910795314076
+      ],
+      "raw_size_lwh_m": [
+        4.78322696685791,
+        2.2353804111480713,
+        2.8316948413848877
+      ],
+      "offset_range_xyz_m": [
+        0.00036619683488137156,
+        0.0002977033576557764,
+        0.0005190787435067623
+      ],
+      "size_range_lwh_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "views": 8,
+      "source_report": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/calibration_open_road/report.json",
+      "source_sha256": "5b2a98178e7078e3d562c020404b4042ea79b97a7b959a1db47e7864dcd870a6"
+    },
+    "2013_Hyundai_Xcient(P540)": {
+      "kind": "vehicle",
+      "raw_offset_flu_m": [
+        3.2689638783287394,
+        -0.07719969264406647,
+        1.2039085844225266
+      ],
+      "raw_size_lwh_m": [
+        8.830185890197754,
+        3.1457438468933105,
+        3.4747798442840576
+      ],
+      "offset_range_xyz_m": [
+        0.0003536826412622318,
+        0.0004060447031540848,
+        0.000996845047383843
+      ],
+      "size_range_lwh_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "views": 8,
+      "source_report": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/calibration_p540_far/report.json",
+      "source_sha256": "3b95f729bc400894e204a84afd9a31200bf59ae4aa74fdb82cb927157dcc8f19"
+    }
+  }
+}

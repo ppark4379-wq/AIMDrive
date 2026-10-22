@@ -151,6 +151,7 @@ def main():
         row['object_api_box_geometry_candidate']=bool(
             geometry_row.get('api_box_geometry_candidate'))
         row['route_signal_binding_candidate']=bool(signal_row['valid'])
+        row['route_signal_permission_candidate']=bool(signal_row.get('permission_valid'))
         row['route_signal_training_label_candidate']=(int(signal_row['training_label'])
             if signal_row['valid'] else -1)
         # These remain candidates until object geometry and the MORAI
@@ -164,6 +165,7 @@ def main():
     counts['object_api_box_geometry_candidate']=sum(
         row['object_api_box_geometry_candidate'] for row in frames)
     counts['route_signal_binding_candidate']=sum(row['route_signal_binding_candidate'] for row in frames)
+    counts['route_signal_permission_candidate']=sum(row['route_signal_permission_candidate'] for row in frames)
     report = {
         "schema": "morai_sensor_record_admission_v1",
         "capture_contract_valid": contract_check["valid"],

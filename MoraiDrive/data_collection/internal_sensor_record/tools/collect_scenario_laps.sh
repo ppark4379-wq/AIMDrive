@@ -33,19 +33,21 @@ SSD_ROOT="$(MORAI_PROJECT_ROOT="$PROJECT_ROOT" \
 LEGACY_BASE="$SSD_ROOT/sensor_record_auto_v1"
 DATASET_ROOT="$SSD_ROOT/dataset"
 usage() {
-    echo "사용법: $0 <회차 수> [campaign_id] [--scenario <name>] [--static-preset <name|path>] [--static-plan <json>]"
+    echo "사용법: $0 <회차 수> [campaign_id] [--scenario <name>] [--static-preset <name|path>] [--static-plan <json>] [--signal-plan <json>]"
     echo "예:   $0 3"
     echo "      $0 100 --scenario full_loop_static"
     echo "      $0 30 --scenario full_loop_static --static-preset intersection_pair_01"
     echo "      $0 100 --scenario full_loop_static --static-plan scenario_runner/config/static_scenario_presets/plans/static_balanced_100.json"
     echo "      $0 3 campaign_static --scenario full_loop_static"
     echo "      $0 3 --scenario full_loop_tunnel_static"
+    echo "      $0 18 --scenario full_loop_traffic_light --signal-plan <json>"
     echo "campaign_id를 생략하면 <시나리오_폴더>_lap<회차>_<생성일시>로 자동 생성합니다."
     echo "시나리오: full_loop, full_loop_normal, full_loop_static, full_loop_dynamic,"
     echo "          full_loop_roundabout, full_loop_roundabout_nonuniform,"
     echo "          full_loop_roundabout_speed_random, full_loop_roundabout_brake,"
-    echo "          full_loop_highway, full_loop_tunnel_static,"
+    echo "          full_loop_highway, full_loop_tunnel_normal, full_loop_tunnel_static,"
     echo "          full_loop_tunnel_dynamic, full_loop_tunnel_vehicle"
+    echo "          full_loop_traffic_light (동적 구간 이후 우회전·좌회전 신호 실험)"
     echo "터널: 보행자는 랜덤 4구간 조합, 차량은 회차별 랜덤 미션·모델로 실행합니다."
     echo "선택 환경변수: MORAI_STORAGE_ROOT, MORAI_BASE_SEED, MORAI_LAP_WALL_SECONDS, MORAI_SIMULATOR_PID"
     echo "                MORAI_SCENARIO_RUNTIME=current (기본 current)"
@@ -59,6 +61,7 @@ CAMPAIGN_ID=""
 SCENARIO="full_loop"
 STATIC_PRESET=""
 STATIC_PLAN=""
+SIGNAL_PLAN=""
 while (( $# > 0 )); do
     case "$1" in
         --scenario)
@@ -100,6 +103,19 @@ while (( $# > 0 )); do
             STATIC_PLAN="${1#--static-plan=}"
             shift
             ;;
+        --signal-plan)
+            if (( $# < 2 )); then
+                echo "[FAIL] --signal-plan 뒤에 신호등 collection plan JSON 경로가 필요합니다." >&2
+                usage >&2
+                exit 2
+            fi
+            SIGNAL_PLAN="$2"
+            shift 2
+            ;;
+        --signal-plan=*)
+            SIGNAL_PLAN="${1#--signal-plan=}"
+            shift
+            ;;
         --*)
             echo "[FAIL] 알 수 없는 옵션입니다: $1" >&2
             usage >&2
@@ -117,7 +133,7 @@ while (( $# > 0 )); do
     esac
 done
 case "$SCENARIO" in
-    full_loop|full_loop_normal|full_loop_static|full_loop_dynamic|full_loop_roundabout|full_loop_roundabout_nonuniform|full_loop_roundabout_speed_random|full_loop_roundabout_brake|full_loop_highway|full_loop_tunnel_static|full_loop_tunnel_dynamic|full_loop_tunnel_vehicle)
+    full_loop|full_loop_normal|full_loop_static|full_loop_dynamic|full_loop_roundabout|full_loop_roundabout_nonuniform|full_loop_roundabout_speed_random|full_loop_roundabout_brake|full_loop_highway|full_loop_tunnel_normal|full_loop_tunnel_static|full_loop_tunnel_dynamic|full_loop_tunnel_vehicle|full_loop_traffic_light)
         ;;
     *)
         echo "[FAIL] 지원하지 않는 시나리오입니다: $SCENARIO" >&2
@@ -125,6 +141,14 @@ case "$SCENARIO" in
         exit 2
         ;;
 esac
+if [[ -n "$SIGNAL_PLAN" ]] && { [[ -n "$STATIC_PRESET" ]] || [[ -n "$STATIC_PLAN" ]]; }; then
+    echo "[FAIL] --signal-plan은 --static-preset 또는 --static-plan과 함께 사용할 수 없습니다." >&2
+    exit 2
+fi
+if [[ -n "$SIGNAL_PLAN" && "$SCENARIO" != "full_loop_traffic_light" ]]; then
+    echo "[FAIL] --signal-plan은 --scenario full_loop_traffic_light에서만 사용할 수 있습니다." >&2
+    exit 2
+fi
 if [[ -n "$STATIC_PRESET" && "$SCENARIO" != "full_loop_static" ]]; then
     echo "[FAIL] --static-preset은 --scenario full_loop_static에서만 사용할 수 있습니다." >&2
     exit 2
@@ -141,6 +165,7 @@ case "$SCENARIO" in
     full_loop) SCENARIO_FOLDER="full_route" ;;
     full_loop_normal) SCENARIO_FOLDER="basic_driving" ;;
     full_loop_static) SCENARIO_FOLDER="static_obstacle" ;;
+    full_loop_tunnel_normal) SCENARIO_FOLDER="tunnel_normal" ;;
     full_loop_tunnel_static) SCENARIO_FOLDER="tunnel_static_obstacle" ;;
     full_loop_dynamic) SCENARIO_FOLDER="dynamic_obstacle" ;;
     full_loop_roundabout) SCENARIO_FOLDER="roundabout" ;;
@@ -150,6 +175,7 @@ case "$SCENARIO" in
     full_loop_highway) SCENARIO_FOLDER="highway" ;;
     full_loop_tunnel_dynamic) SCENARIO_FOLDER="tunnel_dynamic" ;;
     full_loop_tunnel_vehicle) SCENARIO_FOLDER="tunnel_vehicle" ;;
+    full_loop_traffic_light) SCENARIO_FOLDER="traffic_light" ;;
 esac
 BASE_SEED="${MORAI_BASE_SEED:-26091200}"
 LAP_WALL_SECONDS="${MORAI_LAP_WALL_SECONDS:-3000}"
@@ -183,12 +209,25 @@ export MORAI_ASYNC_DEPS="$ASYNC_DEPS"
 export MORAI_STORAGE_ROOT="$SSD_ROOT"
 export MORAI_SCENARIO_RUNTIME
 
-/usr/bin/python3 "$INTEGRATION/tools/preflight_local_storage.py" --reserve-gib 70
+if [[ -n "$SIGNAL_PLAN" ]]; then
+    # Keep the ordinary 70 GiB acquisition reserve and budget 2 GiB for every
+    # planned signal pass before starting the campaign. Per-pass collectors
+    # retain their existing 70 GiB storage gate.
+    signal_reserve_gib=$((70 + 2 * LAPS))
+    echo "[STORAGE] 신호등 ${LAPS}회 예산: 회차당 2GiB + 기존 여유 70GiB, 시작 전 ${signal_reserve_gib}GiB 필요"
+    /usr/bin/python3 "$INTEGRATION/tools/preflight_local_storage.py" \
+        --reserve-gib "$signal_reserve_gib"
+else
+    /usr/bin/python3 "$INTEGRATION/tools/preflight_local_storage.py" --reserve-gib 70
+fi
 
 integration_log="$MORAI_PROJECT_ROOT/.runtime/data_collection/scenario_contract_check.log"
 mkdir -p "$(dirname "$integration_log")"
 STATIC_PLAN_TOOL="$PROJECT_ROOT/scenario_runner/tools/static_collection_plan.py"
+SIGNAL_PLAN_TOOL="$INTEGRATION/tools/traffic_light_collection_plan.py"
 STATIC_CHECK_PRESET="$STATIC_PRESET"
+SIGNAL_CHECK_WEATHER=""
+SIGNAL_CHECK_HOUR=""
 if [[ -n "$STATIC_PLAN" ]]; then
     if [[ ! -f "$STATIC_PLAN_TOOL" ]]; then
         echo "[FAIL] static collection plan 검사기가 없습니다: $STATIC_PLAN_TOOL" >&2
@@ -204,6 +243,22 @@ if [[ -n "$STATIC_PLAN" ]]; then
     STATIC_CHECK_PRESET="$(/usr/bin/python3 "$STATIC_PLAN_TOOL" resolve \
         --plan "$STATIC_PLAN" --lap 1 --field preset)"
 fi
+if [[ -n "$SIGNAL_PLAN" ]]; then
+    if [[ ! -f "$SIGNAL_PLAN_TOOL" ]]; then
+        echo "[FAIL] 신호등 collection plan 검사기가 없습니다: $SIGNAL_PLAN_TOOL" >&2
+        exit 2
+    fi
+    if ! /usr/bin/python3 "$SIGNAL_PLAN_TOOL" check \
+            --plan "$SIGNAL_PLAN" --laps "$LAPS" >"$integration_log" 2>&1; then
+        echo "[FAIL] 신호등 collection plan이 실행 가능한 상태가 아닙니다." >&2
+        cat "$integration_log" >&2 || true
+        exit 2
+    fi
+    SIGNAL_CHECK_WEATHER="$(/usr/bin/python3 "$SIGNAL_PLAN_TOOL" resolve \
+        --plan "$SIGNAL_PLAN" --lap 1 --field weather)"
+    SIGNAL_CHECK_HOUR="$(/usr/bin/python3 "$SIGNAL_PLAN_TOOL" resolve \
+        --plan "$SIGNAL_PLAN" --lap 1 --field time_hour)"
+fi
 scenario_check=(
     /usr/bin/python3 "$INTEGRATION/tools/run_proven_three_lap_scenario.py"
     --check --scenario "$SCENARIO" --nearby-actors
@@ -211,11 +266,16 @@ scenario_check=(
     --time-mode simulation_free_run --collision-policy record
     --raw-camera-transport bridge_dropped
 )
-if [[ "$SCENARIO" != "full_loop_tunnel_static" ]]; then
+if [[ "$SCENARIO" == "full_loop_traffic_light" ]]; then
+    scenario_check+=(--max-speed-kmh 30)
+elif [[ "$SCENARIO" != "full_loop_tunnel_static" ]]; then
     scenario_check+=(--max-speed-kmh 60)
 fi
 if [[ -n "$STATIC_CHECK_PRESET" ]]; then
     scenario_check+=(--static-preset "$STATIC_CHECK_PRESET")
+fi
+if [[ -n "$SIGNAL_CHECK_WEATHER" ]]; then
+    scenario_check+=(--scenario-weather "$SIGNAL_CHECK_WEATHER" --scenario-hour "$SIGNAL_CHECK_HOUR")
 fi
 runtime_label="현재 MoraiDrive/expert runtime"
 if ! "${scenario_check[@]}" >"$integration_log" 2>&1; then
@@ -309,16 +369,24 @@ fi
 RUNS_FILE="$CAMPAIGN_DIR/runs.tsv"
 mkdir -p "$CAMPAIGN_DIR"
 STATIC_PLAN_ACTIVE=""
+SIGNAL_PLAN_ACTIVE=""
 if [[ -n "$STATIC_PLAN" ]]; then
     STATIC_PLAN_ACTIVE="$CAMPAIGN_DIR/static_collection_plan.json"
     cp -- "$(readlink -f -- "$STATIC_PLAN")" "$STATIC_PLAN_ACTIVE"
     /usr/bin/python3 "$STATIC_PLAN_TOOL" check \
         --plan "$STATIC_PLAN_ACTIVE" --laps "$LAPS" >/dev/null
 fi
+if [[ -n "$SIGNAL_PLAN" ]]; then
+    SIGNAL_PLAN_ACTIVE="$CAMPAIGN_DIR/signal_collection_plan.json"
+    /usr/bin/python3 "$SIGNAL_PLAN_TOOL" seal \
+        --plan "$SIGNAL_PLAN" --laps "$LAPS" --output "$SIGNAL_PLAN_ACTIVE"
+fi
 printf 'lap\tseed\trun_name\tstatus\tweather\ttime_hour\tstatic_obstacle\tdynamic_obstacle\tstarted_utc\tfinished_utc\n' > "$RUNS_FILE"
-/usr/bin/python3 - "$CAMPAIGN_DIR/campaign_plan.json" "$CAMPAIGN_ID" "$LAPS" "$BASE_SEED" "$LAP_WALL_SECONDS" "$SIMULATOR_PID" "$SCENARIO" "$SCENARIO_RUNTIME" "$SCENARIO_FOLDER" "$STATIC_PRESET" "$STATIC_PLAN" "$STATIC_PLAN_ACTIVE" <<'PY'
+/usr/bin/python3 - "$CAMPAIGN_DIR/campaign_plan.json" "$CAMPAIGN_ID" "$LAPS" "$BASE_SEED" "$LAP_WALL_SECONDS" "$SIMULATOR_PID" "$SCENARIO" "$SCENARIO_RUNTIME" "$SCENARIO_FOLDER" "$STATIC_PRESET" "$STATIC_PLAN" "$STATIC_PLAN_ACTIVE" "$SIGNAL_PLAN" "$SIGNAL_PLAN_ACTIVE" <<'PY'
 import hashlib, json, pathlib, sys, time
-path, campaign_id, laps, seed, seconds, pid, scenario_name, scenario_runtime, scenario_folder, static_preset, static_plan, static_plan_active = sys.argv[1:]
+path, campaign_id, laps, seed, seconds, pid, scenario_name, scenario_runtime, scenario_folder, static_preset, static_plan, static_plan_active, signal_plan, signal_plan_active = sys.argv[1:]
+signal_plan_bytes = pathlib.Path(signal_plan_active).read_bytes() if signal_plan_active else None
+signal_plan_document = json.loads(signal_plan_bytes) if signal_plan_bytes is not None else None
 payload = {
     "schema": "morai_sensor_record_campaign_v1",
     "campaign_id": campaign_id,
@@ -335,6 +403,13 @@ payload = {
         hashlib.sha256(pathlib.Path(static_plan_active).read_bytes()).hexdigest()
         if static_plan_active else None
     ),
+    "signal_collection_plan_request": signal_plan or None,
+    "signal_collection_plan_evidence": (
+        pathlib.Path(signal_plan_active).name if signal_plan_active else None
+    ),
+    "signal_collection_plan_sha256": (
+        hashlib.sha256(signal_plan_bytes).hexdigest() if signal_plan_bytes is not None else None
+    ),
     "tunnel_selection_policy": (
         "random_behavior_and_model" if scenario_name == "full_loop_tunnel_vehicle"
         else "random_section_mix_and_model" if scenario_name == "full_loop_tunnel_dynamic"
@@ -348,6 +423,7 @@ payload = {
     "weather_candidates": ["SUNNY", "FOGGY"],
     "time_candidates": [11, 13, 15],
     "environment_schedule": (
+        signal_plan_document["runs"] if signal_plan_document is not None else
         "sealed per-run weather/time from static collection plan"
         if static_plan_active else
         "deterministic fresh selection with adjacent-repeat prevention"
@@ -356,9 +432,12 @@ payload = {
     "highway_native_vehicle_cap": "team scenario configuration",
     "competition_reference_spawnpoint_cap_per_point": 50,
     "mission_distribution_changes": [
+        "C052 빨강 정지 3초, 직진 초록 정지 4초, 좌회전 허용 신호 출발; 원래 신호 복원과 별도 permission GT"
+    ] if scenario_name == "full_loop_traffic_light" else [
         "scenario route-light red-stop release after 10 host-monotonic seconds; exact-ID command/readback events are disclosed"
     ],
-    "expert_max_speed_kmh": None if scenario_name == "full_loop_tunnel_static" else 60,
+    "expert_max_speed_kmh": (None if scenario_name == "full_loop_tunnel_static"
+                             else 30 if scenario_name == "full_loop_traffic_light" else 60),
     "raw_camera_transport": "bridge_dropped",
     "native_camera_storage": "configured local Windows Sensor Record storage",
     "offline_review": "deferred until validate_sensor_record_campaign.py",
@@ -434,6 +513,15 @@ for ((lap=1; lap<=LAPS; lap++)); do
             --plan "$STATIC_PLAN_ACTIVE" --lap "$lap" --field json)"
         echo "[STATIC PLAN] $lap_plan_json"
     fi
+    if [[ -n "$SIGNAL_PLAN_ACTIVE" ]]; then
+        LAP_SCENARIO_WEATHER="$(/usr/bin/python3 "$SIGNAL_PLAN_TOOL" resolve \
+            --plan "$SIGNAL_PLAN_ACTIVE" --lap "$lap" --field weather)"
+        LAP_SCENARIO_HOUR="$(/usr/bin/python3 "$SIGNAL_PLAN_TOOL" resolve \
+            --plan "$SIGNAL_PLAN_ACTIVE" --lap "$lap" --field time_hour)"
+        lap_plan_json="$(/usr/bin/python3 "$SIGNAL_PLAN_TOOL" resolve \
+            --plan "$SIGNAL_PLAN_ACTIVE" --lap "$lap" --field json)"
+        echo "[SIGNAL PLAN] $lap_plan_json"
+    fi
     collector_command=(/usr/bin/python3 "$INTEGRATION/tools/run_sensor_record_scenario.py" \
             --name "$CURRENT_RUN" --pid "$SIMULATOR_PID" \
             --run-root "$CAMPAIGN_ROOT/$CURRENT_RUN" \
@@ -490,7 +578,11 @@ PY
         finished="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         printf '%s\t%s\t%s\tfailed_%s\t-\t-\t-\t-\t%s\t%s\n' \
             "$lap" "$seed" "$CURRENT_RUN" "$code" "$started" "$finished" >> "$RUNS_FILE"
-        echo "[FAIL] lap $lap가 실패했습니다. 진단 증거를 보존하고 실패 payload를 정리합니다." >&2
+        if [[ -n "$SIGNAL_PLAN_ACTIVE" ]]; then
+            echo "[FAIL] lap $lap가 실패했습니다. 센서 원본과 진단 증거를 모두 보존합니다." >&2
+        else
+            echo "[FAIL] lap $lap가 실패했습니다. 진단 증거를 보존하고 실패 payload를 정리합니다." >&2
+        fi
         /usr/bin/python3 - "$CAMPAIGN_ROOT/$CURRENT_RUN" <<'PY' >&2 || true
 import json
 from pathlib import Path
@@ -537,6 +629,11 @@ if outcome.get("reason") == "bounded_window_elapsed":
         "못한 주행 완료 실패입니다. 이 run은 부분 데이터로 보존됩니다."
     )
 PY
+        if [[ -n "$SIGNAL_PLAN_ACTIVE" ]]; then
+            echo "[FATAL] 신호등 plan 수집 실패로 중단합니다. 실패 센서 payload를 삭제하지 않았습니다." >&2
+            echo "        실패 원인과 남은 저장 용량을 확인한 뒤 새 campaign으로 재시도하세요." >&2
+            exit 2
+        fi
         if ! /usr/bin/python3 "$INTEGRATION/tools/cleanup_failed_sensor_record_attempt.py" \
                 --run-name "$CURRENT_RUN" --failure-status "failed_$code" \
                 --run-root "$CAMPAIGN_ROOT/$CURRENT_RUN" \

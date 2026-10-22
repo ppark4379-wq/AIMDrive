@@ -290,18 +290,26 @@ NAS 전송 없이 로컬 통합 dataset까지만 만들려면 03 명령에 --no-
 ??? ?? ???? ?? ?? ??? ???? ??? ????,
 `--rebuild-route-review`? ?? ?? ???? ??? ? ?? ?????.
 
-## 터널 동적 장애물 수집
+## 터널 기본 주행·동적 장애물 수집
 
 기존 01번 preflight 후 같은 02번 스크립트에서 터널 모드를 선택한다.
 각 회차는 CP14에서 시작해 CP15까지 Expert로 주행하고 새 seed로 실행한다.
+기본 주행은 터널 진입 전 접근 구간부터 출구 뒤까지 주행하며, 두 차로와
+접근·출구 구간에 다른 객체가 관측되면 통과시키지 않는다.
 
 ```bash
 cd ~/AIMDrive/MoraiDrive
+# 빈 도로: 터널 진입·통과·출구 및 마지막 정지/P단 확인
+./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_tunnel_normal --scenario full_loop_tunnel_normal
 # 차량: 느린 차량 / 급정지 / 대향 차량 중 하나와 차량 모델 랜덤 선택
 ./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_01 --scenario full_loop_tunnel_vehicle
 # 보행자: 4구간의 행동 조합과 보행자 모델 랜덤 선택
 ./data_collection/tools/02_collect_internal_sensor_record_laps.sh 3 campaign_pedestrian --scenario full_loop_tunnel_dynamic
 ```
+
+차량 수집은 기본 스케일 3D 형상 검증 36종과 현재 MORAI 모델 목록의 교집합에서
+선택한다. 모델별 검증 자료의 해시와 제외된 모델은 `tunnel_mission`에 기록한다.
+이 형상 검증과 이동 중 카메라·GT 시간 정합 검증은 별도다.
 
 `--scenario` 생략 시 기존 `full_loop`를 실행한다. 차량 끼어들기는 기본 랜덤
 풀에서 제외된다. 보행자 조합은 기존 `--tunnel-random-mix`와 같은 trial 정책으로
@@ -312,3 +320,6 @@ NPC lifecycle까지 완료되지 않은 회차는 후속 검증에서 성공으�
 수집 중 저장 경로는 `<storage_root>/dataset/.collecting/tunnel_vehicle/campaign_01`
 (보행자는 `tunnel_dynamic`)이다. 기존 03번 검증 후 최종 `dataset/<터널_모드>/<campaign>`
 폴더로 이동하며 04번 NAS 업로드도 같은 터널 폴더 이름을 사용한다.
+기본 주행은 `tunnel_normal` 폴더에 저장한다. 후속 검증은
+`episode_000/tunnel_normal/COLLECTION_TUNNEL_NORMAL_COMPLETE.json`과 캡처 당시 소스
+스냅샷을 확인한다. 이 완료 증거는 센서·teacher·객체 정합 검증을 대신하지 않는다.

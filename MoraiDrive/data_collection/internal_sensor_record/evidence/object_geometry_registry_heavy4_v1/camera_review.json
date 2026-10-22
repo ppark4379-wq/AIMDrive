@@ -1,0 +1,92 @@
+{
+  "schema": "morai_dynamic_camera_review_v1",
+  "profile_sha256": "88f5126d6863f2211f0d9bd521ec1e24412d926b59b07704af318cefb1b9ba4a",
+  "confirmation_sha256": "9b103e660caa99e781c392cace9e8746a9494fc7d176b96c1b0bf656928859e1",
+  "scope": "32 independent held-pose views, not full driving dataset semantic certification",
+  "models": {
+    "2012_Hyundai_HD65": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "reviewer": "assistant visual inspection",
+      "reviewed_views": 8,
+      "distances_m": [
+        19,
+        25
+      ],
+      "images": [
+        {
+          "path": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road_review/2012_Hyundai_HD65.jpg",
+          "sha256": "2be1a9dd63df0159fd5971caae983cd17ef6e0aff29e33e3d7e218772522a79a"
+        },
+        {
+          "path": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road_review/2012_Hyundai_HD65_far.jpg",
+          "sha256": "76018cd330e455bbcf9b59b2778864df1e692d9a1c9efd91386e2e64374ecf67"
+        }
+      ],
+      "notes": "Reviewed all four headings at both independent distances. Visible body, wheels and roof align with the default-scale 3D envelope; no gross translation, rotation or size mismatch. Sparse/mirror details are bounded only by the stated visible-surface scope, not exact mesh geometry."
+    },
+    "2013_Hyundai_Xcient(P520)": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "reviewer": "assistant visual inspection",
+      "reviewed_views": 8,
+      "distances_m": [
+        19,
+        25
+      ],
+      "images": [
+        {
+          "path": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road_review/2013_Hyundai_Xcient(P520).jpg",
+          "sha256": "8a6adc0ff0563780293820501b51587af126c6b88fe777cc2de9c7bd54dde43a"
+        },
+        {
+          "path": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road_review/2013_Hyundai_Xcient(P520)_far.jpg",
+          "sha256": "bca6c42cc21cd289593a2f2ff70c431d1a6adf51d6002e13d3f78e356a122630"
+        }
+      ],
+      "notes": "Reviewed all four headings at both independent distances. Visible body, wheels and roof align with the default-scale 3D envelope; no gross translation, rotation or size mismatch. Sparse/mirror details are bounded only by the stated visible-surface scope, not exact mesh geometry."
+    },
+    "2013_Hyundai_Xcient(P540)": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "reviewer": "assistant visual inspection",
+      "reviewed_views": 8,
+      "distances_m": [
+        19,
+        25
+      ],
+      "images": [
+        {
+          "path": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road_review/2013_Hyundai_Xcient(P540).jpg",
+          "sha256": "b49a43f311cb81b7f4a6b363dc222769cedde4be5e7bf904be242fd843c60555"
+        },
+        {
+          "path": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road_review/2013_Hyundai_Xcient(P540)_far.jpg",
+          "sha256": "e2da1ca207ef25128a224977ac51e045e20135beeb6e79a98bcdf6d55e4daf7e"
+        }
+      ],
+      "notes": "Reviewed all four headings at both independent distances. Visible body, wheels and roof align with the default-scale 3D envelope; no gross translation, rotation or size mismatch. Sparse/mirror details are bounded only by the stated visible-surface scope, not exact mesh geometry."
+    },
+    "DR_OMLift_2022_Bus": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "reviewer": "assistant visual inspection",
+      "reviewed_views": 8,
+      "distances_m": [
+        19,
+        25
+      ],
+      "images": [
+        {
+          "path": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road_review/DR_OMLift_2022_Bus.jpg",
+          "sha256": "dabe66187592674f65bfe8f97da42bfbe1634132cd63a755170d69a81f7fb805"
+        },
+        {
+          "path": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_open_road_review/DR_OMLift_2022_Bus_far.jpg",
+          "sha256": "8d80d2176ca99782340d5230f325b0db7d198daf2794d66637c8b1db389a5bce"
+        }
+      ],
+      "notes": "Reviewed all four headings at both independent distances. Visible body, wheels and roof align with the default-scale 3D envelope; no gross translation, rotation or size mismatch. Sparse/mirror details are bounded only by the stated visible-surface scope, not exact mesh geometry."
+    }
+  }
+}

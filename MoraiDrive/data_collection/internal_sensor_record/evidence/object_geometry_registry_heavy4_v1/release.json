@@ -1,0 +1,27 @@
+{
+  "schema": "heavy4_geometry_release_v1",
+  "status": "VALIDATED",
+  "base_models_preserved": 308,
+  "new_models": 4,
+  "calibration_root": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015",
+  "scope": "Default-scale visible-surface geometry; independent moving-then-held capture. Not sensor synchronization or trained model accuracy.",
+  "files": {
+    "combined_confirmation.json": "9b103e660caa99e781c392cace9e8746a9494fc7d176b96c1b0bf656928859e1",
+    "configured_frozen_profiles.json": "88f5126d6863f2211f0d9bd521ec1e24412d926b59b07704af318cefb1b9ba4a",
+    "pipeline_application_report.json": "c260d5dad977d625f77b2d8aeb58851d931e205e8c3ed0aba5b767963924147c",
+    "camera_review.json": "8c6a2850e79a6e71b935f9291daf87aa2047f2979fc5db51fbfc352d6bada012",
+    "build_runtime_contracts.py": "a95434459aee702b2c95a5117aac6b4dd704f22b489c787edce41b24c08fc9d3",
+    "selection.json": "3385c6df787b690c39c14f28ba82d84de56d4aecd029f8cc79ffa226c628f07c",
+    "check_pipeline_application.py": "0ee7f0fbe0cdd59bf44422ecf7f689b10a28e4297bf7e24197b1a2e378303100",
+    "registry.json": "1a3cb48ac74c6496c8cd6e10a6ae6356262a6decc1f241e77c72eb860aef5697",
+    "runtime_api_contracts.json": "7e22a654257522d8f24bda4ff70cd244c8615cb9ab9ec481fdc6aac9675e08a5",
+    "review/DR_OMLift_2022_Bus.jpg": "dabe66187592674f65bfe8f97da42bfbe1634132cd63a755170d69a81f7fb805",
+    "review/2013_Hyundai_Xcient(P520)_far.jpg": "bca6c42cc21cd289593a2f2ff70c431d1a6adf51d6002e13d3f78e356a122630",
+    "review/2012_Hyundai_HD65.jpg": "2be1a9dd63df0159fd5971caae983cd17ef6e0aff29e33e3d7e218772522a79a",
+    "review/DR_OMLift_2022_Bus_far.jpg": "8d80d2176ca99782340d5230f325b0db7d198daf2794d66637c8b1db389a5bce",
+    "review/2013_Hyundai_Xcient(P520).jpg": "8a6adc0ff0563780293820501b51587af126c6b88fe777cc2de9c7bd54dde43a",
+    "review/2013_Hyundai_Xcient(P540).jpg": "b49a43f311cb81b7f4a6b363dc222769cedde4be5e7bf904be242fd843c60555",
+    "review/2013_Hyundai_Xcient(P540)_far.jpg": "e2da1ca207ef25128a224977ac51e045e20135beeb6e79a98bcdf6d55e4daf7e",
+    "review/2012_Hyundai_HD65_far.jpg": "76018cd330e455bbcf9b59b2778864df1e692d9a1c9efd91386e2e64374ecf67"
+  }
+}
