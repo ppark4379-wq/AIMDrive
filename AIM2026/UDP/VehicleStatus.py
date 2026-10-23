@@ -103,4 +103,5 @@ class VehicleStatusReceiver(_Receiver):
             "steer": float(packet.steer),
             "gear": int(packet.gear),
             "sim_time": packet.sec + packet.nsec / 1e9,
+            "source_stamp_ns": packet.sec * 1_000_000_000 + packet.nsec,
         }

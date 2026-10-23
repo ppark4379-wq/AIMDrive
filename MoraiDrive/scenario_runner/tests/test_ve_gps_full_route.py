@@ -1,5 +1,7 @@
 """Scenario lifecycle must never switch the GPS driver back to simulator GT."""
 import copy
+import contextlib
+import io
 import json
 from pathlib import Path
 import tempfile
@@ -9,6 +11,7 @@ from unittest.mock import Mock, patch
 
 from MoraiDrive.scenario_runner.tools.run_ve_gps_full_route import configure_scenario, GpsController
 from run_ve_gps_expert import prepare
+from MoraiDrive.scenario_runner.tools import run_ve_gps_full_route as route_runner
 
 
 class GpsFullRouteTests(unittest.TestCase):
@@ -53,6 +56,33 @@ class GpsFullRouteTests(unittest.TestCase):
             self.assertEqual(saved['route_points'], [[1.,2.,3.],[4.,5.,6.]])
             self.assertTrue(saved['scenario_config']['ve_stop_before_tunnel'])
             self.assertNotIn('--drive',controller.command(check=True))
+
+    def test_aim_backend_forwarding_changes_only_the_explicit_backend_option(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args=self.args()
+            context=SimpleNamespace(gps_output=Path(directory),gps_args=args,
+                global_cfg={'paths':{}},cfg={},route_points=[(1.,2.,3.),(4.,5.,6.)])
+            controller=GpsController(Mock(),context)
+            before=controller.command()
+            args.aim2026_config=Path(directory)/'backend with spaces.yaml'
+            after=controller.command()
+            index=after.index('--aim2026-config')
+            self.assertEqual(after[index+1],str(args.aim2026_config))
+            self.assertEqual(after[:index]+after[index+2:],before)
+            checked=controller.command(check=True)
+            self.assertIn('--aim2026-config',checked)
+            self.assertIn('--check',checked)
+
+    def test_aim_backend_guards_run_before_scenario_setup_or_model_checks(self):
+        base=['--check','--aim2026-config',str(route_runner.REPO/'AIM2026/config.yaml'),
+              '--mission','full_loop_tunnel_normal']
+        for extra in ([],['--gps-blackout-hold','--simulate-gps-blackout'],
+                      ['--gps-blackout-hold','--gps-latency-s','.1'],
+                      ['--gps-blackout-hold','--gt-expert']):
+            with self.subTest(extra=extra),contextlib.redirect_stderr(io.StringIO()), \
+                 patch.object(route_runner,'load_configuration') as setup:
+                with self.assertRaises(SystemExit):route_runner.main(base+extra)
+                setup.assert_not_called()
 
     def test_child_refuses_a_route_different_from_the_scene_before_planner_setup(self):
         with tempfile.TemporaryDirectory() as d:

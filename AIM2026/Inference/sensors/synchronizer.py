@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 import math
 import time
+from .position import position_identity, position_at_frame
 
 
 CAMERAS = ('rgb_front', 'rgb_left', 'rgb_right', 'rgb_rear')
@@ -16,6 +17,7 @@ class SensorFrame:
     lidar: object
     speed_mps: float
     pose: dict
+    position_identity: dict = None
 
 
 def causal_sample(records, anchor, tolerance):
@@ -45,7 +47,7 @@ class SensorSynchronizer:
     def current_state(self):
         snapshot = self.udp.snapshot()
         names = ('gps', 'imu', 'vehicle_status')
-        if any(name not in snapshot or snapshot[name][0] is None or snapshot[name][1] > self.max_age
+        if any(name not in snapshot or snapshot[name][0] is None or not 0 <= snapshot[name][1] <= self.max_age
                for name in names):
             return None, 'stale_pose_or_status'
         stamps = [snapshot[name][3] for name in names]
@@ -76,11 +78,14 @@ class SensorSynchronizer:
         for name in (*CAMERAS, 'lidar', 'gps', 'imu', 'vehicle_status'):
             # Match the frozen VE's causal speed contract (50 ms).
             tolerance = .05 if name == 'vehicle_status' else self.max_skew
-            record = causal_sample(recent.get(name, ()), anchor, tolerance)
-            if record is None or now - record.received_at > self.max_age:
+            record = (position_at_frame(recent.get(name, ()), anchor, anchor.source_time, tolerance)
+                      if name == 'gps' else causal_sample(recent.get(name, ()), anchor, tolerance))
+            if record is None or record.value is None or not 0 <= now - record.received_at <= self.max_age:
                 self.reason = 'waiting_for_causal_' + name
                 return None
             values[name] = record.value
+            if name == 'gps':
+                pose_identity = position_identity(record)
         if not values['vehicle_status'].get('competition_variant'):
             self.reason = 'competition_status_required'
             return None
@@ -92,4 +97,5 @@ class SensorSynchronizer:
         self.last_sequence = anchor.sequence
         self.reason = None
         return SensorFrame(anchor.source_time, anchor.received_at, anchor.sequence,
-                           {name: values[name] for name in CAMERAS}, values['lidar'], speed, pose)
+                           {name: values[name] for name in CAMERAS}, values['lidar'], speed, pose,
+                           pose_identity)

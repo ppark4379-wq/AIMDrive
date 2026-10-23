@@ -1,4 +1,7 @@
 import importlib.util
+import contextlib
+import io
+import tempfile
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -43,6 +46,43 @@ class CampaignTests(unittest.TestCase):
         self.assertTrue(args.stop_before_tunnel)
         self.assertIsNone(args.seed)
         self.assertFalse(campaign.parse_arguments(['--output', '/tmp/not-created', '--include-tunnel']).stop_before_tunnel)
+
+    def test_aim_backend_path_and_trial_command_preserve_common_mission_options(self):
+        args=campaign.parse_arguments(['--output','/tmp/not-created','--include-tunnel',
+            '--gps-blackout-hold','--aim2026-config','AIM2026/config.yaml',
+            '--mission','full_loop_tunnel_normal','--speed-cap-kmh','40'])
+        self.assertEqual(args.aim2026_config,campaign.REPO/'AIM2026/config.yaml')
+        command=campaign.trial_command(args,123,Path('/tmp/ego.csv'))
+        self.assertEqual(command[command.index('--aim2026-config')+1],str(args.aim2026_config))
+        self.assertEqual(command[command.index('--speed-cap-kmh')+1],'40.0')
+        self.assertEqual(command[command.index('--mission')+1],'full_loop_tunnel_normal')
+        self.assertIn('--gps-blackout-hold',command)
+        self.assertNotIn('--simulate-gps-blackout',command)
+
+    def test_aim_backend_incompatible_flags_rejected_before_execution(self):
+        base=['--output','/tmp/not-created','--include-tunnel','--aim2026-config','AIM2026/config.yaml']
+        for extra in ([],['--gps-blackout-hold','--simulate-gps-blackout'],
+                      ['--gps-blackout-hold','--gps-latency-s','.1']):
+            with self.subTest(extra=extra),contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit):campaign.parse_arguments(base+extra)
+
+    def test_aim_backend_missing_or_malformed_config_rejected(self):
+        base=['--output','/tmp/not-created','--include-tunnel','--gps-blackout-hold']
+        with tempfile.TemporaryDirectory() as directory:
+            file=Path(directory)/'configuration with spaces.yaml'
+            for value in ('Localization: []','Localization:\n  enabled: "true"'):
+                file.write_text(value)
+                with contextlib.redirect_stderr(io.StringIO()),self.assertRaises(SystemExit):
+                    campaign.parse_arguments(base+['--aim2026-config',str(file)])
+            with contextlib.redirect_stderr(io.StringIO()),self.assertRaises(SystemExit):
+                campaign.parse_arguments(base+['--aim2026-config',str(file.parent/'missing.yaml')])
+
+    def test_aim_backend_does_not_require_dr_when_localization_explicitly_disabled(self):
+        with tempfile.TemporaryDirectory() as directory:
+            file=Path(directory)/'disabled.yaml';file.write_text('Localization:\n  enabled: false')
+            args=campaign.parse_arguments(['--output','/tmp/not-created','--aim2026-config',str(file)])
+            self.assertFalse(args.gps_blackout_hold)
+            self.assertTrue(args.stop_before_tunnel)
 
     def test_stationary_jitter_and_real_movement(self):
         watch = campaign.MovementWatch(180)

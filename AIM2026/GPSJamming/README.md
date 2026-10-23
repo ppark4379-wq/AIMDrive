@@ -151,3 +151,10 @@ Open3D의 [비차단 시각화 방식](https://www.open3d.org/docs/release/tutor
 근접 객체는 합쳐지거나 멀리 있는 객체는 나뉠 수 있습니다. 단일 평면 지면 모델은 급경사·굴곡 도로에 한계가 있습니다.
 실제 차량·보행자 정답과 비교한 검출률, 움직이는 장면의 centroid 안정성, 장시간 부하와 절대시각 정합은 아직 검증하지 않았습니다.
 후속 순서는 정지 장면 보정·투영 → 카메라 시간 매칭 → association → 동적 장면 검증 → 속도 계산입니다.
+
+
+## GPS·IMU·차속 위치 추정
+
+`gps_jamming/localization/`은 인지 파이프라인과 독립적으로 위치만 추정합니다.
+차량 제어 명령을 보내지 않습니다. 설치는 `python -m pip install -e "AIM2026/GPSJamming[localization]"`입니다.
+기록 재생·평가·오프라인 HTML 보고서의 실행 방법과 검증 범위는 [localization.md](docs/localization.md)를 참고하세요.

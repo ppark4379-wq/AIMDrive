@@ -24,6 +24,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from AIM2026.Inference.settings import read_config
+from AIM2026.Inference.sensors.position import position_at_frame, position_identity
 
 CAMERAS = ('rgb_front', 'rgb_left', 'rgb_right', 'rgb_rear')
 SPEED_ALIGNMENT_S = 0.05  # status/IMU sample at or before the LiDAR source time
@@ -53,7 +54,7 @@ class VePublisher:
         self.last = None
 
     def _fresh(self, record, now):
-        return record is not None and 0 <= now - record.received_at <= self.max_age_s
+        return record is not None and record.value is not None and 0 <= now - record.received_at <= self.max_age_s
 
     def _inputs(self, recent, lidar, now):
         """(selected records, alignment) or (None, missing reasons)."""
@@ -94,7 +95,8 @@ class VePublisher:
         chosen['imu'] = imu
         if not self._fresh(imu, now):
             missing.append('imu')
-        chosen['gps'] = recent['gps'][-1] if recent.get('gps') else None
+        chosen['gps'] = position_at_frame(recent.get('gps', ()), lidar, lidar_time,
+                                          max_skew_s=min(.15, self.max_age_s))
         if not self._fresh(chosen['gps'], now):
             missing.append('gps')
         return (None, missing) if missing else (chosen, alignment)
@@ -119,15 +121,21 @@ class VePublisher:
                                         lidar.value, speed, pose)
         except ValueError as exc:
             return self._not_ready('input_rejected: ' + str(exc))
-        oldest = min(chosen[name].received_at for name in (*CAMERAS, 'lidar', 'vehicle_status', 'gps'))
+        oldest = min(chosen[name].received_at for name in (*CAMERAS, 'lidar', 'vehicle_status', 'gps', 'imu'))
+        identity = position_identity(chosen['gps'])
+        if identity['position_mode'] not in ('gps', 'dead_reckoning'):
+            return self._not_ready('position_unavailable')
         ego_pose = EgoPose(pose['x'], pose['y'], math.degrees(pose['yaw_raw_rad']), pose['yaw_grid_rad'], speed)
         self.udp.send_detection(result.boxes, ego_pose, oldest, signal=result.signal,
-                                native_signal=result.native_signal)
+                                native_signal=result.native_signal, position_identity=identity,
+                                ego_position_source='GPS_dead_reckoning'
+                                if identity['position_mode']=='dead_reckoning' else 'GPS')
         self.ready_frames += 1
         self.reason = None
         self.last = dict(objects=len(result.boxes), inference_ms=round(result.inference_ms, 1),
                          signal=result.signal, native_signal=result.native_signal,
                          speed_alignment=detail, sensor_age_ms=round((time.monotonic() - oldest) * 1e3, 1),
+                         position_identity=identity,
                          pose=dict(x=round(pose['x'], 2), y=round(pose['y'], 2)))
         return 'ready'
 
@@ -141,7 +149,9 @@ class VePublisher:
                               **({'rejected': d['counters']} if d['counters'] else {}))
                    for name, d in self.udp.diagnostics().items()}
         return dict(frames=self.frames, ready_frames=self.ready_frames, reason=self.reason,
-                    last=self.last, pose_reason=getattr(self.udp.pose, 'reason', None), streams=streams)
+                    last=self.last, pose_reason=getattr(self.udp.pose, 'reason', None), streams=streams,
+                    localization=self.udp.localization.diagnostics()
+                    if getattr(self.udp, 'localization', None) is not None else None)
 
 
 def main():
@@ -149,8 +159,13 @@ def main():
     parser.add_argument('--config', type=Path, default=ROOT / 'AIM2026/config.yaml')
     parser.add_argument('--check', action='store_true', help='Validate config and weight files; no sockets, no model')
     parser.add_argument('--seconds', type=float, default=0., help='Stop after this many seconds (0 = until Ctrl+C)')
+    parser.add_argument('--generation', help='Shared sender identity when launched by the common Expert')
     args = parser.parse_args()
     config = read_config(args.config)
+    if args.generation is not None:
+        if not args.generation.strip():
+            parser.error('--generation must be nonempty')
+        config['Detection']['generation'] = args.generation
     options, vision = config['Inference'], config['Inference']['vision']
 
     from AIM2026.UDP import UDPManager

@@ -7,10 +7,6 @@ differs from its label is never loaded.
 import hashlib
 from pathlib import Path
 
-import torch
-
-from .model import create_vision_encoder, load_signal_head
-
 WEIGHTS_DIR = Path(__file__).resolve().parents[2] / 'Weights' / 'VE'
 MODEL_NAME = 'memfuser_baseline_e1d3'
 
@@ -48,6 +44,8 @@ def resolve(label):
 
 def load_encoder(path, expected_sha256, device):
     """(eval model on device, payload without being trusted further, actual SHA256)."""
+    import torch
+    from .model import create_vision_encoder
     path = Path(path)
     if not path.is_file():
         raise FileNotFoundError('VE checkpoint not found: %s' % path)
@@ -67,6 +65,8 @@ def load_encoder(path, expected_sha256, device):
 
 
 def load_signal(path, base_sha256, device):
+    import torch
+    from .model import load_signal_head
     path = Path(path)
     if not path.is_file():
         raise FileNotFoundError('Signal head not found: %s' % path)
