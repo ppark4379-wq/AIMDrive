@@ -1,0 +1,24 @@
+{
+  "status": "RUNNING",
+  "sensors": {
+    "ego": 410600,
+    "rgb_rear": 167772,
+    "rgb_front": 167566,
+    "rgb_right": 153785,
+    "lidar": 78362,
+    "rgb_left": 167755
+  },
+  "results": 86916,
+  "latest": {
+    "sequence": 86916,
+    "metrics": {
+      "new_hz": 11.66517880083989,
+      "gpu_ms": 42.95996856689453,
+      "preprocess_ms": 24.404,
+      "pipeline_ms": 67.8662,
+      "input_receipt_age_ms": 93.0,
+      "sensor_skew_ms": 13.0
+    }
+  },
+  "control_publications": 0
+}

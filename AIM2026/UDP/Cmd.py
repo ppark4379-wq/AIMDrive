@@ -32,14 +32,28 @@ class Command:
 
 
 class CmdSender:
-    def __init__(self, host, port, *, protocol='morai'):
+    """MORAI Ego Ctrl Cmd sender.
+
+    ``source_port`` binds the sending socket so packets leave from the port
+    entered as the Ctrl Cmd Destination in MORAI (7600 on the verified setup).
+    Without it the OS picks an ephemeral source port.
+    """
+    def __init__(self, host, port, *, protocol='morai', source_port=None, bind='0.0.0.0'):
         if not isinstance(host, str) or not host.strip() or type(port) is not int or not 1 <= port <= 65535:
             raise ValueError('Invalid command target')
+        if source_port is not None and (type(source_port) is not int or not 1 <= source_port <= 65535):
+            raise ValueError('Invalid command source port')
         self.target = (host, port)
         if protocol != 'morai':
             raise ValueError('Competition control requires MORAI Ego Ctrl Cmd')
         self.protocol = protocol
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        if source_port is not None:
+            try:
+                self.socket.bind((bind, source_port))
+            except BaseException:
+                self.socket.close()
+                raise
 
     def send(self, command):
         payload = command.pack()

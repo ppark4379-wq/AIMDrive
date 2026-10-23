@@ -1,0 +1,8 @@
+[ROI] base_link FLU. Exact /ve/Object_topic. No controls. Close RViz or Ctrl+C to stop viewer.
+[0m[INFO] [1791979196.786417343]: rviz version 1.14.26[0m
+[0m[INFO] [1791979196.786444696]: compiled against Qt version 5.12.8[0m
+[0m[INFO] [1791979196.786448799]: compiled against OGRE version 1.9.0 (Ghadamon)[0m
+[0m[INFO] [1791979196.790615460]: Forcing OpenGl version 0.[0m
+[0m[INFO] [1791979197.969903212]: Stereo is NOT SUPPORTED[0m
+[0m[INFO] [1791979197.969980471]: OpenGL device: D3D12 (NVIDIA GeForce RTX 5070 Ti)[0m
+[0m[INFO] [1791979197.970031187]: OpenGl version: 3.1 (GLSL 1.4).[0m

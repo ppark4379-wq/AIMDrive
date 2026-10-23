@@ -1,0 +1,232 @@
+{
+  "objects": 90,
+  "diagnostics": 90,
+  "markers": 156,
+  "actual_control_messages": 0,
+  "frames": [
+    "base_link"
+  ],
+  "samples": [
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n36.3 km/h (10.1 m/s)\nx=+21.2 y=-0.1 m",
+        "LIVE: 1 current objects\nNEW 9.62 Hz | ROS matched 9.62 Hz | update age 78 ms\nGPU 54 ms | pipeline 88 ms | input->output 125 ms | sim lag 206 ms"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n36.3 km/h (10.1 m/s)\nx=+21.2 y=-0.1 m",
+        "LIVE: 1 current objects\nNEW 9.62 Hz | ROS matched 9.62 Hz | update age 42 ms\nGPU 63 ms | pipeline 96 ms | input->output 141 ms | sim lag 163 ms",
+        "EGO planner bbox 4.635 x 2.0 m\n0.0 km/h"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n36.3 km/h (10.1 m/s)\nx=+21.2 y=-0.1 m",
+        "LIVE: 1 current objects\nNEW 9.62 Hz | ROS matched 9.62 Hz | update age 94 ms\nGPU 63 ms | pipeline 96 ms | input->output 141 ms | sim lag 229 ms",
+        "EGO planner bbox 4.635 x 2.0 m\n0.0 km/h"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n36.4 km/h (10.1 m/s)\nx=+21.2 y=-0.1 m",
+        "LIVE: 1 current objects\nNEW 9.62 Hz | ROS matched 9.62 Hz | update age 48 ms\nGPU 73 ms | pipeline 108 ms | input->output 156 ms | sim lag 164 ms",
+        "EGO planner bbox 4.635 x 2.0 m\n0.0 km/h"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n36.4 km/h (10.1 m/s)\nx=+21.2 y=-0.1 m",
+        "LIVE: 1 current objects\nNEW 9.61 Hz | ROS matched 9.61 Hz | update age 11 ms\nGPU 63 ms | pipeline 98 ms | input->output 141 ms | sim lag 145 ms",
+        "EGO planner bbox 4.635 x 2.0 m\n0.0 km/h"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n36.4 km/h (10.1 m/s)\nx=+21.2 y=-0.1 m",
+        "LIVE: 1 current objects\nNEW 9.61 Hz | ROS matched 9.61 Hz | update age 63 ms\nGPU 63 ms | pipeline 98 ms | input->output 141 ms | sim lag 195 ms",
+        "EGO planner bbox 4.635 x 2.0 m\n0.0 km/h"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n36.4 km/h (10.1 m/s)\nx=+21.2 y=-0.1 m",
+        "LIVE: 1 current objects\nNEW 9.67 Hz | ROS matched 9.67 Hz | update age 24 ms\nGPU 64 ms | pipeline 99 ms | input->output 125 ms | sim lag 151 ms",
+        "EGO planner bbox 4.635 x 2.0 m\n0.0 km/h"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n36.4 km/h (10.1 m/s)\nx=+21.2 y=-0.1 m",
+        "LIVE: 1 current objects\nNEW 9.67 Hz | ROS matched 9.67 Hz | update age 76 ms\nGPU 64 ms | pipeline 99 ms | input->output 125 ms | sim lag 202 ms",
+        "EGO planner bbox 4.635 x 2.0 m\n0.0 km/h"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n36.4 km/h (10.1 m/s)\nx=+21.2 y=-0.1 m",
+        "LIVE: 1 current objects\nNEW 9.67 Hz | ROS matched 9.67 Hz | update age 43 ms\nGPU 59 ms | pipeline 93 ms | input->output 218 ms | sim lag 242 ms",
+        "EGO planner bbox 4.635 x 2.0 m\n0.0 km/h"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n36.4 km/h (10.1 m/s)\nx=+21.2 y=-0.1 m",
+        "LIVE: 1 current objects\nNEW 9.68 Hz | ROS matched 9.68 Hz | update age 12 ms\nGPU 56 ms | pipeline 91 ms | input->output 187 ms | sim lag 187 ms",
+        "EGO planner bbox 4.635 x 2.0 m\n0.0 km/h"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n36.4 km/h (10.1 m/s)\nx=+21.2 y=-0.1 m",
+        "LIVE: 1 current objects\nNEW 9.68 Hz | ROS matched 9.68 Hz | update age 63 ms\nGPU 56 ms | pipeline 91 ms | input->output 187 ms | sim lag 239 ms",
+        "EGO planner bbox 4.635 x 2.0 m\n0.0 km/h"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n36.5 km/h (10.1 m/s)\nx=+21.2 y=-0.1 m",
+        "LIVE: 1 current objects\nNEW 9.69 Hz | ROS matched 9.69 Hz | update age 32 ms\nGPU 54 ms | pipeline 91 ms | input->output 188 ms | sim lag 201 ms",
+        "EGO planner bbox 4.635 x 2.0 m\n0.0 km/h"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n36.5 km/h (10.1 m/s)\nx=+21.2 y=-0.1 m",
+        "LIVE: 1 current objects\nNEW 9.69 Hz | ROS matched 9.69 Hz | update age 83 ms\nGPU 54 ms | pipeline 91 ms | input->output 188 ms | sim lag 251 ms",
+        "EGO planner bbox 4.635 x 2.0 m\n0.0 km/h"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n36.6 km/h (10.2 m/s)\nx=+21.2 y=-0.1 m",
+        "LIVE: 1 current objects\nNEW 9.67 Hz | ROS matched 9.67 Hz | update age 41 ms\nGPU 62 ms | pipeline 103 ms | input->output 187 ms | sim lag 199 ms",
+        "EGO planner bbox 4.635 x 2.0 m\n0.0 km/h"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n36.6 km/h (10.2 m/s)\nx=+21.2 y=-0.1 m",
+        "LIVE: 1 current objects\nNEW 9.65 Hz | ROS matched 9.65 Hz | update age 5 ms\nGPU 64 ms | pipeline 97 ms | input->output 172 ms | sim lag 163 ms",
+        "EGO planner bbox 4.635 x 2.0 m\n0.0 km/h"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n36.6 km/h (10.2 m/s)\nx=+21.2 y=-0.1 m",
+        "LIVE: 1 current objects\nNEW 9.65 Hz | ROS matched 9.65 Hz | update age 57 ms\nGPU 64 ms | pipeline 97 ms | input->output 172 ms | sim lag 214 ms",
+        "EGO planner bbox 4.635 x 2.0 m\n0.0 km/h"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n36.6 km/h (10.2 m/s)\nx=+21.2 y=-0.1 m",
+        "LIVE: 1 current objects\nNEW 9.63 Hz | ROS matched 9.63 Hz | update age 15 ms\nGPU 70 ms | pipeline 102 ms | input->output 141 ms | sim lag 130 ms",
+        "EGO planner bbox 4.635 x 2.0 m\n0.0 km/h"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n36.6 km/h (10.2 m/s)\nx=+21.2 y=-0.1 m",
+        "LIVE: 1 current objects\nNEW 9.63 Hz | ROS matched 9.63 Hz | update age 67 ms\nGPU 70 ms | pipeline 102 ms | input->output 141 ms | sim lag 181 ms",
+        "EGO planner bbox 4.635 x 2.0 m\n0.0 km/h"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n36.6 km/h (10.2 m/s)\nx=+21.2 y=-0.1 m",
+        "LIVE: 1 current objects\nNEW 9.66 Hz | ROS matched 9.66 Hz | update age 35 ms\nGPU 59 ms | pipeline 92 ms | input->output 109 ms | sim lag 132 ms",
+        "EGO planner bbox 4.635 x 2.0 m\n0.0 km/h"
+      ]
+    },
+    {
+      "boxes": 1,
+      "texts": [
+        "ID 1 moving\n36.6 km/h (10.2 m/s)\nx=+21.2 y=-0.1 m",
+        "LIVE: 1 current objects\nNEW 9.72 Hz | ROS matched 9.72 Hz | update age 7 ms\nGPU 53 ms | pipeline 87 ms | input->output 140 ms | sim lag 133 ms",
+        "EGO planner bbox 4.635 x 2.0 m\n0.0 km/h"
+      ]
+    }
+  ],
+  "ego_bbox_seen": true,
+  "last_objects": [
+    {
+      "id": 1,
+      "speed_kmh": 36.7464900970459,
+      "x": 62.48423818977306,
+      "y": 185.32469625935005
+    }
+  ],
+  "last_diagnostics": {
+    "kind": "ve_result",
+    "generation": "73b592c5-9c94-4126-bd9a-feaaeb506194",
+    "checkpoint_sha256": "6824d3998ec4be85bf40f96de37a195d12ff00aa8181d6739ed75125a7bb5e5b",
+    "map_basis": {
+      "crs": "+proj=utm +zone=52 +datum=WGS84 +units=m +no_defs",
+      "orientation_frame": "projected_grid",
+      "origin_xyz": [
+        302595.0,
+        4124145.0,
+        0.0
+      ],
+      "position_frame": "projected_grid",
+      "schema": "morai_projected_grid_basis_v1",
+      "source_orientation_frame": "true_enu"
+    },
+    "roi_flu_m": {
+      "x_min": -20.0,
+      "x_max": 30.0,
+      "y_min": -25.0,
+      "y_max": 25.0
+    },
+    "ready": true,
+    "sequence": 2444,
+    "source_stamp_ns": 1791979258866000000,
+    "publish_perf_ns": 188513830146000,
+    "source_stamps_ns": {
+      "rgb_front": 1791979258866000000,
+      "rgb_left": 1791979258883000000,
+      "rgb_right": 1791979258883000000,
+      "rgb_rear": 1791979258825000000,
+      "lidar": 1791979258870000000,
+      "ego": 1791979258856000000
+    },
+    "ego_pose": {
+      "x": 62.46558380126953,
+      "y": 206.49668884277344,
+      "yaw": -1.5645958993639213
+    },
+    "ego_speed_mps": 1.766877322841574e-06,
+    "metrics": {
+      "new_hz": 9.98876630721297,
+      "gpu_ms": 54.0928955078125,
+      "preprocess_ms": 29.6248,
+      "pipeline_ms": 86.6817,
+      "input_receipt_age_ms": 140.0,
+      "sensor_skew_ms": 41.0
+    },
+    "wire_seq": 2217,
+    "object_count": 1
+  },
+  "wall_seconds": 8.007794618606567,
+  "local_clock_note": "WSL local duration is diagnostic only; use Windows-clock NEW/ROS matched rates in the status text."
+}

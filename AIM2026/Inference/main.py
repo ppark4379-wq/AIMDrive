@@ -1,49 +1,213 @@
-"""MORAI permitted UDP sensors -> VLDrive -> LMDrive waypoint PID.
+"""MORAI UDP sensors -> VE perception -> rule-based Expert (loopback UDP).
 
-python AIM2026/Inference/main.py --check
-python AIM2026/Inference/main.py               # live sensors, predictions only
-python AIM2026/Inference/main.py --control     # also send Ego Ctrl Cmd
+python AIM2026/Inference/main.py --check        # config and weight files only; no sockets, no model
+python AIM2026/Inference/main.py                # run until Ctrl+C
+python AIM2026/Inference/main.py --seconds 60
+
+For every new LiDAR frame: the newest four cameras, the vehicle-status speed
+causal to the LiDAR source time (<= 50 ms, the trained contract), the IMU
+heading and the GPS fix -> VisionRuntime -> one Detection packet. The control
+pose (GPS / IMU / status, 50 Hz) is sent independently by the UDP manager.
+Missing or stale inputs send a not-ready packet, never old boxes. This process
+never sends vehicle control; the Expert does.
 """
 import argparse
+import json
+import math
 from pathlib import Path
+import signal
 import sys
+import time
 
 ROOT = Path(__file__).resolve().parents[2]
-for path in (ROOT, ROOT / 'VLDrive'):
-    if str(path) not in sys.path:
-        sys.path.insert(0, str(path))
-if sys.platform != 'win32' and (ROOT / 'VLDrive/.runtime/stage2_wsl_deps').is_dir():
-    sys.path.insert(0, str(ROOT / 'VLDrive/.runtime/stage2_wsl_deps'))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from AIM2026.Inference.settings import read_config
 
+CAMERAS = ('rgb_front', 'rgb_left', 'rgb_right', 'rgb_rear')
+SPEED_ALIGNMENT_S = 0.05  # status/IMU sample at or before the LiDAR source time
+LIDAR_STAMP_RESOLUTION_S = 1e-6  # LiDAR stamps are whole microseconds; status stamps are ns
+
+
+def _causal(records, source_time, tolerance=SPEED_ALIGNMENT_S):
+    """Newest record stamped at or before source_time, within tolerance (simulator clock).
+
+    A sample from the same instant may read up to 1 us later than the truncated
+    LiDAR stamp; it is still causal and must not be skipped.
+    """
+    candidates = [r for r in records if r.source_time
+                  and -LIDAR_STAMP_RESOLUTION_S <= source_time - r.source_time <= tolerance + 1e-9]
+    return max(candidates, key=lambda r: r.source_time) if candidates else None
+
+
+class VePublisher:
+    """One VE inference per new LiDAR frame, published as a Detection packet."""
+
+    def __init__(self, udp, runtime, projector, *, max_age_s=.5):
+        self.udp, self.runtime, self.projector = udp, runtime, projector
+        self.max_age_s = max_age_s
+        self.last_lidar = 0
+        self.frames = self.ready_frames = 0
+        self.reason = 'waiting_for_lidar'
+        self.last = None
+
+    def _fresh(self, record, now):
+        return record is not None and 0 <= now - record.received_at <= self.max_age_s
+
+    def _inputs(self, recent, lidar, now):
+        """(selected records, alignment) or (None, missing reasons)."""
+        missing, chosen = [], dict(lidar=lidar)
+        if not self._fresh(lidar, now):
+            missing.append('lidar')
+        for name in CAMERAS:
+            record = recent[name][-1] if recent.get(name) else None
+            chosen[name] = record
+            if not self._fresh(record, now):
+                missing.append(name)
+        statuses, imus = recent.get('vehicle_status', ()), recent.get('imu', ())
+        reference = statuses[-1] if statuses else None
+        stamp_us = (lidar.meta or {}).get('source_stamp_us_within_hour')
+        lidar_time = None
+        if stamp_us is None:
+            # azimuth_wrap frames carry no source time: newest status by receipt.
+            chosen['vehicle_status'], alignment = reference, 'receipt'
+        elif not self._fresh(reference, now):
+            chosen['vehicle_status'], alignment = None, None
+        else:
+            from AIM2026.UDP.LiDAR import resolve_hour_stamp
+            try:
+                lidar_time = resolve_hour_stamp(stamp_us, reference.source_time)
+            except (ValueError, TypeError):
+                missing.append('lidar_source_clock')
+            chosen['vehicle_status'] = _causal(statuses, lidar_time) if lidar_time else None
+            alignment = 'causal_lidar_source_50ms'
+            if lidar_time and chosen['vehicle_status'] is None:
+                missing.append('vehicle_status_source_alignment')
+        if not self._fresh(chosen['vehicle_status'], now) and 'vehicle_status_source_alignment' not in missing:
+            missing.append('vehicle_status')
+        # A stamped IMU uses the same causal window; the 107-byte IMU has no stamp.
+        newest_imu = imus[-1] if imus else None
+        imu = _causal(imus, lidar_time) if lidar_time else None
+        if imu is None and newest_imu is not None and not newest_imu.source_time:
+            imu = newest_imu
+        chosen['imu'] = imu
+        if not self._fresh(imu, now):
+            missing.append('imu')
+        chosen['gps'] = recent['gps'][-1] if recent.get('gps') else None
+        if not self._fresh(chosen['gps'], now):
+            missing.append('gps')
+        return (None, missing) if missing else (chosen, alignment)
+
+    def step(self):
+        """Process the newest LiDAR frame once; None when no new frame has arrived."""
+        from AIM2026.UDP import EgoPose
+        recent = self.udp.recent()
+        lidar = recent['lidar'][-1] if recent.get('lidar') else None
+        if lidar is None or lidar.sequence <= self.last_lidar:
+            return None
+        self.last_lidar = lidar.sequence
+        self.frames += 1
+        now = time.monotonic()
+        chosen, detail = self._inputs(recent, lidar, now)
+        if chosen is None:
+            return self._not_ready('missing:' + ','.join(detail))
+        try:
+            pose = self.projector.project(chosen['gps'].value, chosen['imu'].value)
+            speed = float(chosen['vehicle_status'].value['speed'])
+            result = self.runtime.infer({name: chosen[name].value for name in CAMERAS},
+                                        lidar.value, speed, pose)
+        except ValueError as exc:
+            return self._not_ready('input_rejected: ' + str(exc))
+        oldest = min(chosen[name].received_at for name in (*CAMERAS, 'lidar', 'vehicle_status', 'gps'))
+        ego_pose = EgoPose(pose['x'], pose['y'], math.degrees(pose['yaw_raw_rad']), pose['yaw_grid_rad'], speed)
+        self.udp.send_detection(result.boxes, ego_pose, oldest, signal=result.signal,
+                                native_signal=result.native_signal)
+        self.ready_frames += 1
+        self.reason = None
+        self.last = dict(objects=len(result.boxes), inference_ms=round(result.inference_ms, 1),
+                         signal=result.signal, native_signal=result.native_signal,
+                         speed_alignment=detail, sensor_age_ms=round((time.monotonic() - oldest) * 1e3, 1),
+                         pose=dict(x=round(pose['x'], 2), y=round(pose['y'], 2)))
+        return 'ready'
+
+    def _not_ready(self, reason):
+        self.reason = reason
+        self.udp.send_detection_not_ready(reason)
+        return reason
+
+    def status(self):
+        streams = {name: dict(packets=d['packets'], samples=d['samples'],
+                              **({'rejected': d['counters']} if d['counters'] else {}))
+                   for name, d in self.udp.diagnostics().items()}
+        return dict(frames=self.frames, ready_frames=self.ready_frames, reason=self.reason,
+                    last=self.last, pose_reason=getattr(self.udp.pose, 'reason', None), streams=streams)
+
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--config', type=Path, default=ROOT / 'AIM2026/config.yaml')
-    parser.add_argument('--check', action='store_true', help='Validate paths/ports without loading models or opening sockets')
-    parser.add_argument('--control', action='store_true', help='Send competition Ego Ctrl Cmd in addition to inference')
+    parser.add_argument('--check', action='store_true', help='Validate config and weight files; no sockets, no model')
+    parser.add_argument('--seconds', type=float, default=0., help='Stop after this many seconds (0 = until Ctrl+C)')
     args = parser.parse_args()
     config = read_config(args.config)
+    options, vision = config['Inference'], config['Inference']['vision']
+
     from AIM2026.UDP import UDPManager
+    from AIM2026.Inference.vision.checkpoint import resolve
     udp = UDPManager(config)
     udp._validate_ports()
-    if args.control:
-        from AIM2026.Control.waypoint import WaypointController
-        WaypointController(positive_steer=config['Control']['positive_steer'])
-        if not config['Ego'].get('cmd_port'):
-            raise ValueError('Set Ego.ip and Ego.cmd_port before --control')
+    weights, _sha, head = resolve(vision['checkpoint'])
+    files = [weights] + ([head] if vision['signal_head'] and head else [])
+    if vision['signal_head'] and head is None:
+        raise ValueError('No signal head is registered for %s; set Inference.vision.signal_head: false'
+                         % vision['checkpoint'])
+    absent = [str(p) for p in files if not p.is_file()]
     if args.check:
-        print('Configuration OK; no sockets opened and no simulator commands sent.')
-        return
-    from AIM2026.Inference.models.pipeline import LiveModels
-    from AIM2026.Inference.runtime.runner import LiveRunner
-    models = LiveModels(config['Inference'], config)
+        print('Configuration OK; no sockets opened, no model loaded.')
+        print('VE %s weights: %s' % (vision['checkpoint'], 'present' if not absent else 'MISSING ' + ', '.join(absent)))
+        print('Detection/pose -> %s:%s' % (config['Detection'].get('ip') or '127.0.0.1', config['Detection']['port']))
+        return 1 if absent else 0
+    if absent:
+        raise FileNotFoundError('Put the VE weights in AIM2026/Weights/VE: ' + ', '.join(absent))
+
+    from AIM2026.Inference.vision import VisionRuntime, lidar_to_base
+    lidar = config['LiDAR']
+    runtime = VisionRuntime(vision['checkpoint'], device=options['device'], signal_head=vision['signal_head'],
+                            lidar_to_base=lidar_to_base(lidar['pos'], lidar['rot_deg']),
+                            cpu_threads=options['cpu_threads'])
+    print('[VE] %s loaded (%s), signal head=%s' % (vision['checkpoint'], options['device'],
+                                                  runtime.signal_head is not None), flush=True)
+    stop = []
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(sig, lambda *_: stop.append(True))
+    udp.start()
     try:
-        LiveRunner(config, models, control=args.control).run()
-    except KeyboardInterrupt:
-        pass
+        publisher = VePublisher(udp, runtime, udp.pose.projector, max_age_s=vision['max_sensor_age_s'])
+        print('[VE] receiving: %s -> Detection/pose %s:%s' % (', '.join(udp.receivers),
+              config['Detection'].get('ip') or '127.0.0.1', config['Detection']['port']), flush=True)
+        started = next_status = time.monotonic()
+        while not stop and not (args.seconds and time.monotonic() - started >= args.seconds):
+            if udp.pose.error:
+                raise RuntimeError('Control pose stream stopped: ' + udp.pose.error)
+            if publisher.step() is None:
+                time.sleep(.002)
+            if time.monotonic() >= next_status:
+                row = publisher.status()
+                print(json.dumps(row, ensure_ascii=False, default=str), flush=True)
+                if options.get('status_file'):
+                    target = Path(options['status_file'])
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_text(json.dumps(row, ensure_ascii=False, indent=1, default=str), encoding='utf-8')
+                next_status = time.monotonic() + options['status_interval_s']
+    finally:
+        try:
+            if udp.running:
+                udp.send_detection_not_ready('publisher_stopped')
+        finally:
+            udp.close()
+    return 0
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())
