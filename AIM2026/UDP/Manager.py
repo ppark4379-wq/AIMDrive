@@ -1,4 +1,5 @@
 import math
+import socket
 from copy import deepcopy
 
 from .Camera import CameraReceiver
@@ -7,6 +8,8 @@ from .IMU import ImuReceiver
 from .VehicleStatus import VehicleStatusReceiver
 from .LiDAR import LidarReceiver
 from .Cmd import CmdSender, Command
+from .Detection import DetectionSender
+from .Pose import PoseSender, GridProjector, DEFAULT_HZ as POSE_HZ
 
 
 class UDPManager:
@@ -23,9 +26,13 @@ class UDPManager:
         self.sensor_config['vehicle_status'] = {
             'bind': ego.get('bind'), 'dest_port': ego.get('vehicle_status_port')}
         self.cmd_config = dict(ego)
+        # Optional: VE detections -> planning/control (see Detection.py).
+        self.detection_config = dict(config.get('Detection') or {})
         self._validate_geometry()
         self.receivers = {}
         self.cmd = None
+        self.detection = None
+        self.pose = None
         self.running = False
 
     def _validate_geometry(self):
@@ -45,12 +52,16 @@ class UDPManager:
                 if type(fov) not in (int, float) or not 0 < fov < 180:
                     raise ValueError(f'{name}.fov: horizontal FOV must be between 0 and 180 degrees')
 
+    @staticmethod
+    def _valid_port(port):
+        return type(port) is int and 1 <= port <= 65535
+
     def _validate_ports(self):
         errors = []
         used = set()
         for name, cfg in self.sensor_config.items():
             port = cfg.get('dest_port')
-            if type(port) is not int or not 1 <= port <= 65535:
+            if not self._valid_port(port):
                 errors.append(f'{name}.dest_port (Ego.vehicle_status_port for vehicle_status)')
             elif port in used:
                 errors.append(f'{name}: duplicate receive port {port}')
@@ -58,16 +69,56 @@ class UDPManager:
                 used.add(port)
         port = self.cmd_config.get('cmd_port')
         if port is not None:
-            if type(port) is not int or not 1 <= port <= 65535:
+            if not self._valid_port(port):
                 errors.append('Ego.cmd_port')
             if not isinstance(self.cmd_config.get('ip'), str) or not self.cmd_config['ip'].strip():
                 errors.append('Ego.ip: required when cmd_port is set')
+        source = self.cmd_config.get('cmd_source_port')
+        if source is not None:
+            if not self._valid_port(source):
+                errors.append('Ego.cmd_source_port')
+            elif source in used:
+                errors.append(f'Ego.cmd_source_port {source} is also a sensor receive port')
+        port = self.detection_config.get('port')
+        if port is not None:
+            if not self._valid_port(port):
+                errors.append('Detection.port')
+            elif port in used:
+                errors.append(f'Detection.port {port} is also a sensor receive port')
+            if not isinstance(self.detection_config.get('checkpoint_sha256'), str):
+                errors.append('Detection.checkpoint_sha256: required when Detection.port is set')
+            hz = self.detection_config.get('pose_hz', POSE_HZ)
+            if hz is not None and (type(hz) not in (int, float) or not 1 <= hz <= 100):
+                errors.append('Detection.pose_hz: 1..100 Hz, or null to disable the control pose')
         if errors:
             raise ValueError('Missing/invalid UDP configuration: ' + '; '.join(errors))
         if (self.cmd_config.get('ctrl_mode', 2) != 2
                 or self.cmd_config.get('cmd_type', 1) != 1
                 or self.cmd_config.get('protocol', 'morai') != 'morai'):
             raise ValueError('Competition permits only MORAI cmd_type=1, ctrl_mode=2')
+
+    def _probe_ports(self):
+        """Fail if another process already owns a port.
+
+        Receivers set SO_REUSEADDR, so a second consumer would otherwise bind
+        silently and split the datagrams with the first one.
+        """
+        ports = [(name, cfg.get('bind') or '0.0.0.0', cfg['dest_port'])
+                 for name, cfg in self.sensor_config.items()]
+        if self.cmd_config.get('cmd_port') is not None and self.cmd_config.get('cmd_source_port') is not None:
+            ports.append(('cmd_source', self.cmd_config.get('bind') or '0.0.0.0',
+                          self.cmd_config['cmd_source_port']))
+        busy = []
+        for name, address, port in ports:
+            probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                probe.bind((address, port))
+            except OSError:
+                busy.append(f'{name}:{port}')
+            finally:
+                probe.close()
+        if busy:
+            raise RuntimeError('UDP port already in use (stop the other receiver first): ' + ', '.join(busy))
 
     def start(self):
         if self.running:
@@ -77,16 +128,32 @@ class UDPManager:
         factories.update({name: CameraReceiver for name in
                           ('rgb_front', 'rgb_left', 'rgb_right', 'rgb_rear')})
         self._validate_ports()
+        self._probe_ports()
         try:
             for name, cfg in self.sensor_config.items():
-                options = {key: cfg[key] for key in ('elevations', 'distance_scale')
+                options = {key: cfg[key] for key in ('elevations', 'distance_scale', 'frame_policy')
                            if name == 'lidar' and key in cfg}
                 options['history_size'] = 128 if name in ('vehicle_status', 'imu', 'gps') else 16
                 self.receivers[name] = factories[name](
-                    cfg['dest_port'], bind=cfg.get('bind') or '0.0.0.0', name=name, **options)
+                    cfg['dest_port'], bind=cfg.get('bind') or '0.0.0.0', name=name,
+                    drop_audit=True, **options)
             cfg = self.cmd_config
             if cfg.get('cmd_port') is not None:
-                self.cmd = CmdSender(cfg['ip'], cfg['cmd_port'], protocol=cfg.get('protocol', 'morai'))
+                self.cmd = CmdSender(cfg['ip'], cfg['cmd_port'], protocol=cfg.get('protocol', 'morai'),
+                                     source_port=cfg.get('cmd_source_port'),
+                                     bind=cfg.get('bind') or '0.0.0.0')
+            cfg = self.detection_config
+            if cfg.get('port') is not None:
+                host = cfg.get('ip') or '127.0.0.1'
+                self.detection = DetectionSender(cfg['checkpoint_sha256'], host, cfg['port'])
+                if cfg.get('pose_hz', POSE_HZ) is not None:
+                    # Rule 2-6-2/2-8: GPS position, IMU heading, Competition Vehicle Status speed.
+                    projector = GridProjector(self.sensor_config['gps']['pos'],
+                                              self.sensor_config['imu']['rot_deg'])
+                    self.pose = PoseSender(self.receivers['gps'], self.receivers['imu'],
+                                           self.receivers['vehicle_status'], projector,
+                                           cfg['checkpoint_sha256'], self.detection.generation,
+                                           host, cfg['port'], hz=float(cfg.get('pose_hz', POSE_HZ))).start()
             self.running = True
             return self
         except BaseException:
@@ -99,6 +166,10 @@ class UDPManager:
     def recent(self):
         return {name: receiver.recent() for name, receiver in self.receivers.items()}
 
+    def diagnostics(self):
+        """Per-receiver packet/sample counts and rejection reasons."""
+        return {name: receiver.diagnostics() for name, receiver in self.receivers.items()}
+
     def send_control(self, accel, brake, steer):
         if not self.running or self.cmd is None:
             raise RuntimeError('UDP manager is not running or Cmd is not configured')
@@ -107,13 +178,30 @@ class UDPManager:
                                      gear=cfg.get('gear', 4), cmd_type=1,
                                      accel=accel, brake=brake, steer=steer))
 
+    def send_detection(self, boxes, ego_pose, sensor_received_at, **kwargs):
+        """VE boxes to planning/control; see DetectionSender.send."""
+        if not self.running or self.detection is None:
+            raise RuntimeError('UDP manager is not running or Detection is not configured')
+        return self.detection.send(boxes, ego_pose, sensor_received_at, **kwargs)
+
+    def send_detection_not_ready(self, reason):
+        if not self.running or self.detection is None:
+            raise RuntimeError('UDP manager is not running or Detection is not configured')
+        return self.detection.send_not_ready(reason)
+
     def close(self):
+        if self.pose is not None:
+            self.pose.close()
+            self.pose = None
         for receiver in self.receivers.values():
             receiver.close()
         self.receivers.clear()
         if self.cmd is not None:
             self.cmd.close()
             self.cmd = None
+        if self.detection is not None:
+            self.detection.close()
+            self.detection = None
         self.running = False
 
     stop = close

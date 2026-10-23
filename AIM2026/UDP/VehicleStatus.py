@@ -77,12 +77,16 @@ class VehicleStatusReceiver(_Receiver):
 
     def _consume(self, payload):
         if len(payload) != COMPETITION_STATUS_BYTES:
+            # e.g. 229/245-byte full Ego Vehicle Status from a non-competition build.
+            self._count('non_competition_layout_%d_bytes' % len(payload))
             return None
         packet = CompetitionVehicleStatusPacket.from_buffer_copy(payload)
         if not packet.header.startswith(b"#MoraiInfo$") or packet.tail != b'\r\n':
+            self._count('invalid_header_or_tail')
             return None
         if (not 0 <= packet.nsec < 1000000000 or packet.sec < 0
                 or not all(math.isfinite(v) for v in (packet.signed_vel, packet.yaw))):
+            self._count('invalid_values')
             return None
         self.layout_bytes = COMPETITION_STATUS_BYTES
         return {
