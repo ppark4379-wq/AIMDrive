@@ -147,7 +147,7 @@ def expert_provenance(mode, expert_root):
         ).encode('utf-8')
     ).hexdigest()
     base_config = expert_root / 'src/expert/src/config/config.json'
-    status = _git_value('status', '--porcelain', '--', 'expert')
+    status = _git_value('status', '--porcelain', '--', '../AIM2026/Expert')
     return dict(
         mode=mode,
         root=str(expert_root),
@@ -162,7 +162,7 @@ def expert_provenance(mode, expert_root):
 def require_expert_root(mode):
     if mode != 'current':
         raise ValueError('Only current is supported; the proven runtime was removed')
-    root = (PROJECT_ROOT / 'expert').resolve()
+    root = (PROJECT_ROOT.parent / 'AIM2026' / 'Expert').resolve()
     marker = root / 'src/expert/src/config/config.json'
     if not marker.is_file():
         raise RuntimeError(
@@ -727,7 +727,7 @@ def main():
     )
     p.add_argument(
         '--expert-runtime', choices=('current',), default='current',
-        help='Execute MoraiDrive/expert; the frozen proven mode has been removed',
+        help='Execute AIM2026/Expert; the frozen proven mode has been removed',
     )
     p.add_argument('--nearby-actors', action='store_true', help='Compatibility option; actor lifecycle is owned by the main scenario runner')
     p.add_argument('--rosbag', action='store_true', help='Record original ROS topics including ReplayInfo before expert launch')

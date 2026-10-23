@@ -12,7 +12,7 @@ import time
 import xmlrpc.client
 
 REPO = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(REPO), str(REPO/'MoraiDrive/expert/src')]
+sys.path[:0] = [str(REPO), str(REPO/'AIM2026/Expert/src')]
 
 
 def latest_record(path, max_age=.75):

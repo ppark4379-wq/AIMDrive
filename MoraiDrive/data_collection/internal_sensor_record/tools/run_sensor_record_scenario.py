@@ -204,7 +204,7 @@ def main():
     p.add_argument(
         '--scenario-runtime', choices=('current',), default='current',
         help=(
-            'Execute MoraiDrive/expert (current); the frozen proven mode '
+            'Execute AIM2026/Expert (current); the frozen proven mode '
             'has been removed'
         ),
     )
@@ -360,7 +360,7 @@ def main():
             run,evidence,a,'simulation_mode_preflight',exc)
     coordination=ep/'sensor_record_coordination'
     # Keep the established production runner path for process-lock identity
-    # and recorded software provenance; it now uses only MoraiDrive/expert.
+    # and recorded software provenance; it now uses only AIM2026/Expert.
     runner = ROOT/'tools/run_proven_three_lap_scenario.py'
     command=['/usr/bin/python3',str(runner),
              '--scenario',a.scenario,'--nearby-actors',

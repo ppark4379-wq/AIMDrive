@@ -15,7 +15,7 @@ import time
 from types import SimpleNamespace
 
 REPO = Path(__file__).resolve().parents[3]
-sys.path[:0] = [str(REPO/'MoraiDrive'), str(REPO/'MoraiDrive/expert/tools')]
+sys.path[:0] = [str(REPO/'MoraiDrive'), str(REPO/'AIM2026/Expert/tools')]
 from scenario_runner.main_runner import load_configuration, resolve_static_preset
 from scenario_runner.scenarios.full_loop_scenario import FullLoopScenario
 from scenario_runner.scenarios.segment_modes.modes import MISSION_MODES
@@ -100,7 +100,7 @@ class GpsController:
 
     def command(self, check=False):
         args = self.context.gps_args
-        return [sys.executable, '-u', '-B', str(REPO/'MoraiDrive/expert/tools/run_ve_gps_expert.py'),
+        return [sys.executable, '-u', '-B', str(REPO/'AIM2026/Expert/tools/run_ve_gps_expert.py'),
                 '--check' if check else '--drive', '--scenario-context', str(self.context_path),
                 '--output', str(self.output), '--speed-cap-kmh', str(args.speed_cap_kmh),
                 '--sim-profile', args.sim_profile, '--signal-head', str(args.signal_head),

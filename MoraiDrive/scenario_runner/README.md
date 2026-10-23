@@ -3,7 +3,7 @@
 MORAI Simulator 26.R1과 `R_KR_PR_K-city_2025` 맵을 위한 gRPC 기반 시나리오 자동화 패키지입니다.
 
 기존 `full_loop`는 정적·동적 장애물, 회전교차로·고속도로 NPC와 터널 급제동 이벤트를 모두 유지합니다. 장애물·NPC 없는 전체 주행은 `full_loop_normal`을 사용합니다.
-차량 제어에는 AIMDrive의 `MoraiDrive/expert`를 사용하고, 원격 main의 Sync Runtime 연동도 모든 모드에서 유지됩니다.
+차량 제어에는 AIMDrive의 `AIM2026/Expert`를 사용하고, 원격 main의 Sync Runtime 연동도 모든 모드에서 유지됩니다.
 
 ## Sync Runtime 먼저 실행
 

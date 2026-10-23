@@ -4,7 +4,7 @@
 팀의 최신 `scenario_runner`와 `expert`를 그대로 import하며, 둘의 source를 복사하거나
 실행 중 수정하지 않는다.
 
-수집 runtime은 `current` 하나이며 항상 최상위 `MoraiDrive/expert`와
+수집 runtime은 `current` 하나이며 항상 최상위 `AIM2026/Expert`와
 `MoraiDrive/scenario_runner`를 사용한다. `MORAI_SCENARIO_RUNTIME=current`와
 기존 `--scenario-runtime current` / `--expert-runtime current` 지정은 계속 지원한다.
 `proven` 모드, 동결 소스 복사본과 그 전용 기준 해시 검사는 제거했다.

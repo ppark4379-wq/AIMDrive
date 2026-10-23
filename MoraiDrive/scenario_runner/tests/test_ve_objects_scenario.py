@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 from scenario_runner.adapters.ve_objects import configure, configure_expert, verify_topology, VeObjectInput
 from scenario_runner.main_runner import load_configuration
 from scenario_runner.core.full_loop_drive_base import FullLoopDriveBase
-from MoraiDrive.expert.tools.ve_udp_session import PerceptionSession
+from AIM2026.Expert.tools.ve_udp_session import PerceptionSession
 
 
 class WiringTests(unittest.TestCase):
@@ -80,10 +80,10 @@ class WiringTests(unittest.TestCase):
         session.checkpoint = dict(path='/model', sha256='hash')
         session.generation = 'generation'
         with tempfile.TemporaryDirectory() as tmp, \
-             patch('MoraiDrive.expert.tools.ve_udp_session.socket.socket'), \
-             patch('MoraiDrive.expert.tools.ve_udp_session.build_analysis_environment', return_value={}), \
-             patch('MoraiDrive.expert.tools.ve_udp_session.subprocess.Popen'), \
-             patch('MoraiDrive.expert.tools.ve_udp_session.threading.Thread'):
+             patch('AIM2026.Expert.tools.ve_udp_session.socket.socket'), \
+             patch('AIM2026.Expert.tools.ve_udp_session.build_analysis_environment', return_value={}), \
+             patch('AIM2026.Expert.tools.ve_udp_session.subprocess.Popen'), \
+             patch('AIM2026.Expert.tools.ve_udp_session.threading.Thread'):
             session.output = Path(tmp)
             session.start()
             config = json.loads((session.output / 'publisher_config.json').read_text())

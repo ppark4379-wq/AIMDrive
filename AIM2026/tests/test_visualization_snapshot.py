@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(ROOT), str(ROOT/'MoraiDrive/expert/src')]
+sys.path[:0] = [str(ROOT), str(ROOT/'AIM2026/Expert/src')]
 from AIM2026.Visualization.snapshot import write_snapshot, decode
 from expert.src.interfaces.geometry import Point
 from expert.src.interfaces.vehicle_state import VehicleState

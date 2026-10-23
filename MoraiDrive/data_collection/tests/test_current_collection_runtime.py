@@ -45,7 +45,7 @@ class CurrentCollectionRuntimeTests(unittest.TestCase):
                     '--collision-policy', 'record', '--raw-camera-transport', 'bridge_dropped',
                 ], {'MORAI_EXPERT_ROOT': '/unused/frozen/expert'})
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                self.assertIn('expert_mode=current; expert_root=' + str(PROJECT / 'expert'), result.stdout)
+                self.assertIn('expert_mode=current; expert_root=' + str(PROJECT.parent / 'AIM2026' / 'Expert'), result.stdout)
 
     def test_collection_enables_stall_and_off_route_aborts(self):
         spec = importlib.util.spec_from_file_location('collection_runner_under_test', RUNNER)
@@ -103,13 +103,13 @@ class CurrentCollectionRuntimeTests(unittest.TestCase):
         with patch.object(sys, 'path', list(sys.path)), patch.dict(os.environ):
             spec.loader.exec_module(module)
         with tempfile.TemporaryDirectory() as temporary:
-            project = Path(temporary)
-            config = project / 'expert/src/expert/src/config/config.json'
+            project = Path(temporary) / 'MoraiDrive'
+            config = project.parent / 'AIM2026/Expert/src/expert/src/config/config.json'
             config.parent.mkdir(parents=True)
             with patch.object(module, 'PROJECT_ROOT', project):
                 for content in ('{"version": 1}', '{"version": 2}'):
                     config.write_text(content)
-                    self.assertEqual(module.require_expert_root('current'), project / 'expert')
+                    self.assertEqual(module.require_expert_root('current'), project.parent / 'AIM2026' / 'Expert')
                 with self.assertRaises(ValueError):
                     module.require_expert_root('proven')
 

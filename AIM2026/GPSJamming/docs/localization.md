@@ -32,7 +32,7 @@ python AIM2026/GPSJamming/tools/run_localization.py --config AIM2026/config.yaml
 
 `--seconds 0`은 Ctrl+C까지 계속합니다. 설정 파일의 상대 경로는 저장소 루트를 기준으로, `--record-dir`의 상대 경로는 현재 작업 폴더를 기준으로 해석합니다. `Localization.enabled: true`가 필요합니다. 실행기는 설정 복사본에서 Detection 송신과 차량 명령 송신을 끄고 GPS·IMU·차속 세 수신기만 엽니다. 실행 중에는 약 1초마다 위치 추정 진단을 출력합니다.
 
-일반 통합 실행은 `AIM2026/Inference/main.py`가 공용 UDP 수신기를 소유하고 같은 `Localization.record_dir` 설정으로 기록합니다. 위치 패킷은 기존 공통 Expert가 소비합니다. 기존 `MoraiDrive/expert/tools/run_ve_gps_expert.py`의 `--gps-blackout-hold` 옵션은 `GPS_dead_reckoning` 입력을 허용하는 연결 옵션이며 새 Expert나 별도 제어기를 추가하지 않습니다. 독립 실행기와 Inference 실행기는 같은 센서 포트의 **서로 다른 소유자**이므로 동시에 실행하지 않습니다. Inference에서 기록할 때 별도 기록 프로세스를 켤 필요가 없습니다.
+일반 통합 실행은 `AIM2026/Inference/main.py`가 공용 UDP 수신기를 소유하고 같은 `Localization.record_dir` 설정으로 기록합니다. 위치 패킷은 기존 공통 Expert가 소비합니다. 기존 `AIM2026/Expert/tools/run_ve_gps_expert.py`의 `--gps-blackout-hold` 옵션은 `GPS_dead_reckoning` 입력을 허용하는 연결 옵션이며 새 Expert나 별도 제어기를 추가하지 않습니다. 독립 실행기와 Inference 실행기는 같은 센서 포트의 **서로 다른 소유자**이므로 동시에 실행하지 않습니다. Inference에서 기록할 때 별도 기록 프로세스를 켤 필요가 없습니다.
 
 기록 폴더에는 다음 파일이 생깁니다.
 

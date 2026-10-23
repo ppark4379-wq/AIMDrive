@@ -1,0 +1,17 @@
+{
+  "ready_for_planner": true,
+  "error": null,
+  "source_frame": "ENU",
+  "start_enu": [
+    31.42,
+    -486.5,
+    29.91
+  ],
+  "end_enu": [
+    -84.01,
+    -547.78,
+    30.02
+  ],
+  "prepared_path": "prepared/jamming_06.csv",
+  "common_end_forward_m": 125.89877633299514
+}

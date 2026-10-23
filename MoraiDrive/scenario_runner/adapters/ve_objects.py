@@ -46,7 +46,7 @@ def verify_topology(state, own_node, expert_pid=None, allow_starting=False):
 
 class VeObjectInput:
     def __init__(self, context):
-        from MoraiDrive.expert.tools.ve_udp_session import REPO, PerceptionSession
+        from AIM2026.Expert.tools.ve_udp_session import REPO, PerceptionSession
         self.context = context
         self.output = REPO/'MoraiDrive/scenario_runner/.runtime/ve_objects'/str(time.time_ns())
         self.output.mkdir(parents=True)
@@ -82,8 +82,8 @@ class VeObjectInput:
         print('[VE] 준비 완료. 기존 러너의 NPC·경로 사용; Expert 장애물 입력=/ve/Object_topic', flush=True)
 
     def start_gt_observer(self):
-        from MoraiDrive.expert.tools.ve_udp_session import REPO
-        script = REPO/'MoraiDrive/expert/tools/ve_gt_comparison.py'
+        from AIM2026.Expert.tools.ve_udp_session import REPO
+        script = REPO/'AIM2026/Expert/tools/ve_gt_comparison.py'
         self.gt_log = (self.output/'gt_observer.log').open('w', buffering=1)
         self.gt_observer = subprocess.Popen([sys.executable, '-u', '-B', str(script),
             '--record', str(self.output), '--geometry-target', '{}:{}'.format(
@@ -100,7 +100,7 @@ class VeObjectInput:
         raise RuntimeError('GT 비교 기록기 시작 시간 초과')
 
     def finish_gt_comparison(self):
-        from MoraiDrive.expert.tools.ve_udp_session import (REPO, ANALYSIS_PYTHON,
+        from AIM2026.Expert.tools.ve_udp_session import (REPO, ANALYSIS_PYTHON,
                                                            build_analysis_environment, stop_child)
         if self.gt_observer is None:
             return
@@ -108,7 +108,7 @@ class VeObjectInput:
         self.gt_log.close()
         try:
             result = subprocess.run([str(ANALYSIS_PYTHON), '-B',
-                str(REPO/'MoraiDrive/expert/tools/ve_gt_comparison.py'), '--analyze', str(self.output)],
+                str(REPO/'AIM2026/Expert/tools/ve_gt_comparison.py'), '--analyze', str(self.output)],
                 env=build_analysis_environment(ANALYSIS_PYTHON), timeout=120)
         except (OSError, subprocess.TimeoutExpired) as exc:
             print('[GT 비교] 분석 실행 실패. 원본 기록 보존: '+str(exc), flush=True)
@@ -120,7 +120,7 @@ class VeObjectInput:
             if (self.output/'gt_geometry.jsonl').is_file():
                 try:
                     audit = subprocess.run([str(ANALYSIS_PYTHON), '-B',
-                        str(REPO/'MoraiDrive/expert/tools/ve_gt_geometry_audit.py'), str(self.output)],
+                        str(REPO/'AIM2026/Expert/tools/ve_gt_geometry_audit.py'), str(self.output)],
                         env=build_analysis_environment(ANALYSIS_PYTHON), timeout=120,
                         stdout=subprocess.DEVNULL)
                     if audit.returncode:

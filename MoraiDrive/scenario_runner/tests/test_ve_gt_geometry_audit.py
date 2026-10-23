@@ -1,5 +1,5 @@
 import unittest
-from MoraiDrive.expert.tools.ve_gt_geometry_audit import interpolate, metric
+from AIM2026.Expert.tools.ve_gt_geometry_audit import interpolate, metric
 from MoraiDrive.scenario_runner.tests.test_ve_gt_comparison import box, prediction
 
 

@@ -26,7 +26,7 @@ sys.path[:0] = [str(ROOT), str(PROJECT_ROOT)]
 os.environ['MORAI_GRPC_SRC'] = str(
     PROJECT_ROOT / 'data_collection/third_party/grpc_inha_univ/src'
 )
-os.environ['MORAI_EXPERT_ROOT'] = str(PROJECT_ROOT / 'expert')
+os.environ['MORAI_EXPERT_ROOT'] = str(PROJECT_ROOT.parent / 'AIM2026' / 'Expert')
 from async_capture.journal import write_json, digest
 from async_capture.sim_mode import require_free_running_mode
 from process_guard import process_lock
@@ -521,7 +521,7 @@ def main():
                         Path(__file__).resolve(), ROOT/'tools/collect_async_raw.py',
                         ROOT/'async_capture/rosbag_recording.py',
                     ] + sorted((PROJECT_ROOT/'scenario_runner').rglob('*.py'))
-                      + sorted((PROJECT_ROOT/'expert').rglob('*.py'))
+                      + sorted((PROJECT_ROOT.parent/'AIM2026'/'Expert').rglob('*.py'))
                 }, project_root=str(PROJECT_ROOT)))
             contract = json.loads((ROOT/'configs/encoder_mission_candidate_v1.json').read_text())
             contract['capture']['actor_ground_truth']['target'] = a.grpc_target

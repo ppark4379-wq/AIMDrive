@@ -112,7 +112,7 @@ def resolve_runtime_paths(global_cfg, scenario_cfg):
         configured=paths.get("expert_root", "auto"),
         environment_name="MORAI_EXPERT_ROOT",
         candidates=[
-            PROJECT_ROOT / "expert",
+            PROJECT_ROOT.parent / "AIM2026" / "Expert",
             PROJECT_ROOT / "third_party" / "GT_BEV",
         ],
         marker=Path("src") / "expert" / "src" / "config" / "config.json",

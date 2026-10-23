@@ -194,7 +194,7 @@ def main(argv=None):
     if coordinate_config:
         if not gps_mode or config['runtime'].get('gps_blackout_hold', {}).get('enabled'):
             raise ValueError('Fixed ENU requires GPS/IMU UDP without blackout hold')
-        sys.path.insert(0, str(ROOT.parent/'MoraiDrive/expert/src'))
+        sys.path.insert(0, str(ROOT.parent/'AIM2026/Expert/src'))
         from expert.src.localization.coordinate_transform import CoordinateTransform
         from expert.src.localization.gps_imu_localization import GpsImuLocalization
         from expert.src.network.udp.udp_manager import UdpManager, load_network_config

@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from MoraiDrive.expert.tools.run_ve_hz_check import campaign, findings, wait_background_start
+from AIM2026.Expert.tools.run_ve_hz_check import campaign, findings, wait_background_start
 
 
 class CampaignTests(unittest.TestCase):
@@ -31,9 +31,9 @@ class CampaignTests(unittest.TestCase):
             if interrupted:
                 raise KeyboardInterrupt()
             clock[0] += seconds
-        with patch('MoraiDrive.expert.tools.run_ve_hz_check.time.monotonic',side_effect=lambda:clock[0]), \
-             patch('MoraiDrive.expert.tools.run_ve_hz_check.time.sleep',side_effect=sleep), \
-             patch('MoraiDrive.expert.tools.run_ve_hz_check.process_rss_mib',return_value=123.):
+        with patch('AIM2026.Expert.tools.run_ve_hz_check.time.monotonic',side_effect=lambda:clock[0]), \
+             patch('AIM2026.Expert.tools.run_ve_hz_check.time.sleep',side_effect=sleep), \
+             patch('AIM2026.Expert.tools.run_ve_hz_check.process_rss_mib',return_value=123.):
             code = campaign(root,'E3',4.,2,factory,Mock(),lambda:False,report)
         return code, sessions, json.loads((root/'campaign_report.json').read_text())
 
@@ -83,7 +83,7 @@ class CampaignTests(unittest.TestCase):
             states=[dict(status='RUNNING',phase='model_and_sensors_starting'),
                     dict(status='RUNNING',phase='measuring',input_fresh=True,performance='9Hz')]
             (root/'status.json').write_text(json.dumps(states[0]))
-            with patch('MoraiDrive.expert.tools.run_ve_hz_check.time.sleep',
+            with patch('AIM2026.Expert.tools.run_ve_hz_check.time.sleep',
                        side_effect=lambda _: (root/'status.json').write_text(json.dumps(states[1]))) as sleep:
                 self.assertEqual(wait_background_start(root,child),0)
                 sleep.assert_called_once()

@@ -277,7 +277,7 @@ fi
 if [[ -n "$SIGNAL_CHECK_WEATHER" ]]; then
     scenario_check+=(--scenario-weather "$SIGNAL_CHECK_WEATHER" --scenario-hour "$SIGNAL_CHECK_HOUR")
 fi
-runtime_label="현재 MoraiDrive/expert runtime"
+runtime_label="현재 AIM2026/Expert runtime"
 if ! "${scenario_check[@]}" >"$integration_log" 2>&1; then
     echo "[FAIL] 선택한 Scenario Runner·Expert·수집기 인터페이스가 호환되지 않습니다." >&2
     echo "       runtime=$SCENARIO_RUNTIME ($runtime_label)" >&2

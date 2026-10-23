@@ -13,7 +13,7 @@ import sys
 
 SCHEMA = "ve_expert_generic_lattice_pair_v1"
 _REPOSITORY = Path(__file__).resolve().parents[3]
-_EXPERT_PACKAGE_ROOT = _REPOSITORY / "MoraiDrive/expert/src"
+_EXPERT_PACKAGE_ROOT = _REPOSITORY / "AIM2026/Expert/src"
 
 
 def _load_planner():

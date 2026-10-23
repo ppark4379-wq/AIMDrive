@@ -13,7 +13,7 @@ import time
 import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
-for path in (ROOT, ROOT/'MoraiDrive', ROOT/'MoraiDrive/expert/src', ROOT/'VLDrive'):
+for path in (ROOT, ROOT/'MoraiDrive', ROOT/'AIM2026/Expert/src', ROOT/'VLDrive'):
     sys.path.insert(0, str(path))
 
 from AIM2026.UDP.Detection import decode, NotReady
