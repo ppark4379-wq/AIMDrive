@@ -6,6 +6,8 @@ The uint32 trailer at offset 1200 is preserved without guessing its time unit.
 This assembler requires one source timestamp per complete measurement group;
 hardware per-packet timestamps require a different assembly policy.
 """
+from __future__ import annotations
+
 from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 import socket
