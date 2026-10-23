@@ -33,8 +33,12 @@ def right_forward_to_world(center, heading, ego_pose):
 
 
 def _world_box(box, ego_pose, source, *, speed_mps=None, track_id=None,
-               kind='unknown', is_static=None):
-    centre, heading = right_forward_to_world(box['center'], box['heading'], ego_pose)
+               kind='unknown', is_static=None, coordinate_transform=None):
+    if coordinate_transform is None:
+        centre, heading = right_forward_to_world(box['center'], box['heading'], ego_pose)
+    else:
+        x,y,yaw = _pose(ego_pose)
+        centre, heading = coordinate_transform.ve_box_to_enu(box['center'], box['heading'], (x,y), yaw)
     return dict(center_world=centre, heading_deg=heading,
                 length_m=float(box['length']), width_m=float(box['width']),
                 speed_mps=speed_mps, track_id=track_id, kind=kind,
@@ -44,7 +48,7 @@ def _world_box(box, ego_pose, source, *, speed_mps=None, track_id=None,
                 partial_bev=bool(box.get('partial', False)))
 
 
-def decode_world_predictions(detection, ego_pose):
+def decode_world_predictions(detection, ego_pose, coordinate_transform=None):
     """Decode at existing fixed confidence/NMS policy, without GT access."""
     boxes, counts = decode_object_boxes(detection)
     values = detection.detach().float().cpu().numpy() if hasattr(detection, 'detach') else np.asarray(detection)
@@ -55,7 +59,7 @@ def decode_world_predictions(detection, ego_pose):
         if not math.isfinite(speed) or speed < 0.:
             speed = None
             invalid_speeds += 1
-        record = _world_box(box, ego_pose, 've', speed_mps=speed)
+        record = _world_box(box, ego_pose, 've', speed_mps=speed, coordinate_transform=coordinate_transform)
         record['cell_index'] = int(box['cell_index'])
         # Cell IDs are not actor IDs; do not turn a shifting cell into a track.
         result.append(record)

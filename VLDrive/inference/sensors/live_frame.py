@@ -71,11 +71,14 @@ class LiveFrameSource:
                  route_map_root=None, route_definition=None, orientation_frame=None,
                  perception_only=False, status_receiver=None, pose_source='gps', diagnostics=False,
                  camera_receiver_mode='thread', gps_receiver=None,
-                 lidar_frame_policy='morai_frame_timestamp'):
+                 lidar_frame_policy='morai_frame_timestamp', localization=None):
         if camera_receiver_mode not in ('thread', 'process'):
             raise ValueError('Camera receiver mode must be thread or process')
         self.ports = dict(ports)
         self.perception_only = bool(perception_only)
+        self.localization = localization
+        if localization is not None and not (perception_only and pose_source == 'gps' and status_receiver is localization):
+            raise ValueError('External localization requires perception-only GPS mode with the same status source')
         self.audit_enabled = diagnostics
         self.decode_failures = {key: 0 for key in CAMERA_KEYS}
         if pose_source not in ('gps', 'ego_topic'):
@@ -316,8 +319,18 @@ class LiveFrameSource:
                 if fix is None or gps_age > max_age:
                     meta['missing'].append('gps (world pose unavailable)')
                     return None, meta
-                east, north = self._ego_xy(fix)
-                meta['ego_local'] = (east - utm_offsets[0], north - utm_offsets[1])
+                if getattr(self, 'localization', None) is not None:
+                    pose_packet = self.localization.pose_packet(meta['selected_samples'])
+                    if not pose_packet['ready']:
+                        meta['missing'].append(pose_packet['reason'])
+                        return None, meta
+                    meta['localization_pose'] = pose_packet
+                    pose = pose_packet['ego_pose']
+                    meta['ego_local'] = (pose['x'],pose['y'])
+                    meta['pose_frame'] = 'enu'
+                else:
+                    east, north = self._ego_xy(fix)
+                    meta['ego_local'] = (east - utm_offsets[0], north - utm_offsets[1])
             meta['pose_source'] = self.pose_source
         elif fix is not None and gps_age <= max_age and self.route is not None:
             east, north = self._ego_xy(fix)

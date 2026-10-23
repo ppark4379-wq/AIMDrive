@@ -1,4 +1,5 @@
 import ctypes
+import queue
 import socket
 import struct
 import sys
@@ -26,7 +27,7 @@ WSAEMSGSIZE = 10040
 
 class _Receiver:
     def __init__(self, port, bind="0.0.0.0", recv_bytes=70000, name=None, history_size=32,
-                 drop_audit=False):
+                 drop_audit=False, shared_port=None, source_ip=None, source_port=None):
         if type(history_size) is not int or history_size < 1:
             raise ValueError('history_size must be a positive integer')
         self._history = deque(maxlen=history_size)
@@ -34,18 +35,24 @@ class _Receiver:
         self.name = name or self.__class__.__name__
         self.audit_counts = Counter()
         self._counts_lock = threading.Lock()
-        self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1 << 22)
-        except OSError:
-            pass
-        try:
-            self._socket.bind((bind, self.port))
-        except BaseException:
-            self._socket.close()
-            raise
-        self._socket.settimeout(0.5)
+        self._shared_port = shared_port
+        self._datagram_received_at = None
+        self._channel = (shared_port.subscribe(source_ip, source_port, self._count)
+                         if shared_port is not None else None)
+        self._socket = None
+        if shared_port is None:
+            self._socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1 << 22)
+            except OSError:
+                pass
+            try:
+                self._socket.bind((bind, self.port))
+            except BaseException:
+                self._socket.close()
+                raise
+            self._socket.settimeout(0.5)
         self._rx_overflow_option = None
         if drop_audit and sys.platform.startswith('linux') and hasattr(self._socket, 'recvmsg'):
             try:
@@ -65,6 +72,15 @@ class _Receiver:
 
     def _receive(self):
         """One datagram, or None when it must not be parsed (truncated)."""
+        if self._channel is not None:
+            try:
+                payload, self._datagram_received_at = self._channel.get(timeout=.5)
+            except queue.Empty:
+                raise socket.timeout from None
+            if len(payload) > self._recv_bytes:
+                self._count('truncated_datagrams')
+                return None
+            return payload
         if self._rx_overflow_option is None:
             payload, _ = self._socket.recvfrom(self._recv_bytes)
             return payload
@@ -99,9 +115,9 @@ class _Receiver:
                 self._count('parse_exceptions')
                 continue
             if sample is not None:
-                self._store(sample)
+                self._store(sample, received_at=self._datagram_received_at)
 
-    def _store(self, sample):
+    def _store(self, sample, received_at=None):
         source_time = self.source_time(sample)
         meta = self.sample_metadata(sample)
         with self._lock:
@@ -118,8 +134,8 @@ class _Receiver:
                     self._history.clear()
                     self._count('source_time_resets')
             self._latest = sample
-            self._stamp = time.time()
-            self._monotonic_stamp = time.monotonic()
+            self._monotonic_stamp = time.monotonic() if received_at is None else received_at
+            self._stamp = time.time() - (time.monotonic() - self._monotonic_stamp)
             self.samples += 1
             self._history.append(ReceivedSample(sample, self._monotonic_stamp,
                                                 self.samples, source_time, meta))
@@ -179,8 +195,11 @@ class _Receiver:
 
     def close(self):
         self._running = False
+        if self._shared_port is not None:
+            self._shared_port.unsubscribe(self._channel)
         try:
-            self._socket.close()
+            if self._socket is not None:
+                self._socket.close()
         except OSError:
             pass
 

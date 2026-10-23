@@ -11,9 +11,9 @@ from unittest.mock import patch
 
 from expert.src.localization.point import Point
 from expert.src.obstacle.object_info import ObjectInfo
-from expert.src.planning.lattice_planning import parameters as p
-from expert.src.planning.lattice_planning import roundabout_debug as debug
-from expert.src.planning.lattice_planning.roundabout_entry import RoundaboutEntryPlanner
+from expert.src.planning.lattice import parameters as p
+from expert.src.planning.roundabout import diagnostics as debug
+from expert.src.planning.roundabout.planner import RoundaboutEntryPlanner
 from expert.src.vehicle_state import VehicleState
 
 

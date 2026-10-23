@@ -3,7 +3,8 @@ import math
 import socket
 import struct
 
-FORMAT = struct.Struct('<14si3i3b5f2s')
+# MORAI 26.R1: 27-byte payload includes rear steering (zero for our controller).
+FORMAT = struct.Struct('<14si3i3b6f2s')
 
 
 @dataclass(frozen=True)
@@ -27,8 +28,8 @@ class Command:
             raise ValueError('Command values must be finite')
         if not 0 <= self.accel <= 1 or not 0 <= self.brake <= 1 or not -1 <= self.steer <= 1:
             raise ValueError('Pedals require 0..1 and normalized steer requires -1..1')
-        return FORMAT.pack(b'#MoraiCtrlCmd$', 23, 0, 0, 0,
-                           self.ctrl_mode, self.gear, self.cmd_type, *values, b'\r\n')
+        return FORMAT.pack(b'#MoraiCtrlCmd$', 27, 0, 0, 0,
+                           self.ctrl_mode, self.gear, self.cmd_type, *values, 0.0, b'\r\n')
 
 
 class CmdSender:

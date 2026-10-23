@@ -15,8 +15,8 @@ import shapely
 from shapely.geometry import Polygon
 
 from expert.src.localization.point import Point
-from expert.src.planning.Jamming.road_boundary import RoadBoundary
-from expert.src.planning.Jamming.recorded_planner import JammingPlanner
+from expert.src.planning.jamming.road_boundary import RoadBoundary
+from expert.src.planning.jamming.recorded_planner import JammingPlanner
 
 
 MAP_DIR = Path(__file__).resolve().parents[4] / "scenario_runner/data/R_KR_PR_K-city_2025"

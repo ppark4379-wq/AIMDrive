@@ -43,7 +43,10 @@ def resolve(label):
         raise ValueError('Unknown VE checkpoint label %r; choose from %s' % (label, sorted(CHECKPOINTS)))
     entry = CHECKPOINTS[label]
     head = SIGNAL_HEADS.get(label)
-    return WEIGHTS_DIR / entry['file'], entry['sha256'], (WEIGHTS_DIR / head if head else None)
+    path = WEIGHTS_DIR / entry['file']
+    if label == 'E3' and not path.is_file():
+        path = Path(__file__).resolve().parents[3] / 'VLDrive/outputs/checkpoints/vision_encoder/checkpoint-best-object.pth.tar'
+    return path, entry['sha256'], (WEIGHTS_DIR / head if head else None)
 
 
 def load_encoder(path, expected_sha256, device):

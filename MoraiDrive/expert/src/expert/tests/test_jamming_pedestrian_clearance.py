@@ -12,7 +12,7 @@ from expert.src.localization.point import Point
 from expert.src.obstacle.object_info import ObjectInfo
 from expert.src.vehicle_state import VehicleState
 from expert.src.planning.adaptive_cruise_control import AdaptiveCruiseControl
-from expert.src.planning.Jamming.pedestrian_safety import pedestrian_conflict
+from expert.src.planning.jamming.pedestrian_safety import pedestrian_conflict
 
 
 class TunnelPedestrianClearanceTests(unittest.TestCase):
@@ -107,7 +107,7 @@ class TunnelPedestrianClearanceTests(unittest.TestCase):
 class TunnelPedestrianControllerTests(unittest.TestCase):
     def setUp(self):
         from expert.src.autonomous_driving import AutonomousDriving
-        from expert.src.planning.Jamming.recorded_planner import JammingPlanner
+        from expert.src.planning.jamming.recorded_planner import JammingPlanner
         root = Path(__file__).resolve().parents[3]
         self.route = [Point(*row[:2]) for row in np.loadtxt(
             root/'map_data/R_KR_PG_KATRI_2025/2026_molit_comp_global_path.txt')]

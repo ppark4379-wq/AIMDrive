@@ -10,22 +10,22 @@ camera:
   frame_max_age_ms: 400 # Receipt age limit; never wait for a future camera frame.
   udp: &front_camera_udp
     bind: 127.0.0.1
-    port: 5050  # Destination port (Python receiver).
-    source_port: 5000  # MORAI Host Sensor Port; checked before JPEG assembly.
+    port: 9090  # Shared sensor destination; filter front camera by sender port.
+    source_port: 7501  # MORAI Host Sensor Port; checked before JPEG assembly.
   # Endpoint definitions for future multi-camera MOT; current viewer opens front only.
   # Camera 1/2/3 orientation must be assigned from the actual sensor settings.
   endpoints:
     front: *front_camera_udp
-    camera_1: {bind: 127.0.0.1, source_port: 5001, port: 5051}
-    camera_2: {bind: 127.0.0.1, source_port: 5002, port: 5052}
-    camera_3: {bind: 127.0.0.1, source_port: 5003, port: 5053}
+    camera_1: {bind: 127.0.0.1, source_port: 7502, port: 9090}
+    camera_2: {bind: 127.0.0.1, source_port: 7503, port: 9090}
+    camera_3: {bind: 127.0.0.1, source_port: 7504, port: 9090}
 lidar:
   runtime:
     frame_queue_size: 4
   udp:
     bind: 127.0.0.1
-    # MORAI Host Sensor Port: 2368 -> Destination Port (this receiver): 2369.
-    port: 2369
+    # MORAI Host Sensor Port: 2369 -> Destination Port (this receiver): 2368.
+    port: 2368
     source_ip: null
     socket_timeout_ms: 50
   decoder:

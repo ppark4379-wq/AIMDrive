@@ -12,10 +12,10 @@ import numpy as np
 from expert.src.localization.point import Point
 from expert.src.vehicle_state import VehicleState
 from expert.src.obstacle.object_info import ObjectInfo
-from expert.src.planning.lattice_planning.lattice_planner import LatticePlanner
+from expert.src.planning.lattice.lattice_planner import LatticePlanner
 
 
-module = importlib.import_module('expert.src.planning.\uC815\uC801\uC7A5\uC560\uBB3C.recorded_planner')
+module = importlib.import_module('expert.src.planning.static_obstacle.recorded_planner')
 
 
 def captured_scene():

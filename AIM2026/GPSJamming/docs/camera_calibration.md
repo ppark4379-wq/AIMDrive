@@ -46,7 +46,7 @@ p_camera_optical = R @ p_base_link + t
 
 YAML을 읽은 뒤 `CameraCalibration.from_config(config['cameras']['front'])`처럼
 카메라 키로 선택하여 로드한다. 기존 전방 실행은 `cameras.front`를 사용한다.
-현재 `view_association.py`는 전방 포트 5050만 지원하므로, 설정 파일 추가만으로
+현재 `view_association.py`는 공용 포트 9090에서 전방 송신 포트 7501만 선택하므로, 설정 파일 추가만으로
 4개 카메라를 동시에 수신하거나 투영하지는 않는다. 다중 카메라 실행에는 각 영상과
 해당 calibration을 연결하는 처리가 별도로 필요하다.
 

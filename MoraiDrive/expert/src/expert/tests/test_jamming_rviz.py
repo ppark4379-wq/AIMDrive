@@ -4,15 +4,15 @@ import unittest
 try:
     import rospy
     from visualization_msgs.msg import Marker
-    from expert.src.planning.lattice_planning.rviz_visualizer import LatticeRvizVisualizer
+    from expert.src.visualization.rviz_visualizer import LatticeRvizVisualizer
 except ImportError:
     LatticeRvizVisualizer = None
 
 from expert.src.localization.point import Point
 from expert.src.vehicle_state import VehicleState
-from expert.src.planning.Jamming.recorded_planner import JammingPlanner
-from expert.src.planning.Jamming.section import JammingSection
-from expert.src.planning.lattice_planning.structures import CandidatePath, LatticePlanningResult
+from expert.src.planning.jamming.recorded_planner import JammingPlanner
+from expert.src.planning.jamming.section import JammingSection
+from expert.src.planning.lattice.structures import CandidatePath, LatticePlanningResult
 
 
 @unittest.skipIf(LatticeRvizVisualizer is None, 'Requires ROS Noetic message packages')

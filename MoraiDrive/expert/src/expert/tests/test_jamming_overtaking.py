@@ -7,8 +7,8 @@ import numpy as np
 from . import test_jamming_dynamic as fixtures
 from expert.src.localization.point import Point
 from expert.src.vehicle_state import VehicleState
-from expert.src.planning.Jamming.dynamic_planner import DynamicObstaclePlanner, RETURN_GAP
-from expert.src.planning.highway_lane_planning.planner import HighwayLanePlanner
+from expert.src.planning.jamming.dynamic_planner import DynamicObstaclePlanner, RETURN_GAP
+from expert.src.planning.highway.planner import HighwayLanePlanner
 
 
 class SlowOvertakingTests(unittest.TestCase):

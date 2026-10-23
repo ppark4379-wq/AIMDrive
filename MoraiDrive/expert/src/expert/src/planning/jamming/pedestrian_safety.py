@@ -21,7 +21,7 @@ def pedestrian_conflict(path, ego, person, target_speed):
     # The highway/static planner packages share initialization dependencies.
     from .recorded_planner import DynamicObstaclePlanner
     from .dynamic_planner import HORIZON
-    from ..highway_lane_planning import parameters as hp
+    from ..highway import parameters as hp
 
     numbers = (ego.position.x, ego.position.y, ego.yaw, ego.velocity,
                person.position.x, person.position.y, person.velocity,

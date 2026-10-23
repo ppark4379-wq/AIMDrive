@@ -4,10 +4,12 @@ import math
 import numpy as np
 from scipy.interpolate import CubicSpline
 from ...localization.point import Point
-from ..정적장애물.recorded_planner import connector, MAX_CURVATURE
+from ..static_obstacle.recorded_planner import connector, MAX_CURVATURE
 
-RECOVERY_SPEED = .5
-MAX_OVERRUN = .10
+from ...config.parameters.jamming import (
+    RECOVERY_SPEED,
+    MAX_OVERRUN,
+)
 
 
 def reconnect_tracker(template, ego, statics):

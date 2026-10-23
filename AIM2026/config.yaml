@@ -14,31 +14,35 @@ Weight_Path:
   LLM:
 
 GPS:
-  ip:
-  host_port:
-  dest_port: 10506
+  ip: 127.0.0.1
+  bind: 127.0.0.1
+  host_port: 7506
+  dest_port: 9090
   pos: [0.0, 0.0, 0.0]
   rot_deg: [0.0, 0.0, 0.0]
 
 IMU:
-  ip:
-  host_port:
-  dest_port: 10507
+  ip: 127.0.0.1
+  bind: 127.0.0.1
+  host_port: 7507
+  dest_port: 9090
   pos: [0.0, 0.0, 0.0]
   rot_deg: [0.0, 0.0, 0.0]
 
 LiDAR:
-  ip:
-  host_port:
+  ip: 127.0.0.1
+  bind: 127.0.0.1
+  host_port: 2369
   dest_port: 2368
   pos: [1.0, 0.0, 1.48]
   rot_deg: [0.0, 0.0, 0.0]
 
 Camera:
   Cam_Front:
-    ip:
-    host_port: 5000
-    dest_port: 5050
+    ip: 127.0.0.1
+    bind: 127.0.0.1
+    host_port: 7501
+    dest_port: 9090
     width: 1280
     height: 720
     fov: 90
@@ -46,9 +50,10 @@ Camera:
     rot_deg: [0.0, 2.0, 0.0]
 
   Cam_Left:
-    ip:
-    host_port: 5001
-    dest_port: 5051
+    ip: 127.0.0.1
+    bind: 127.0.0.1
+    host_port: 7502
+    dest_port: 9090
     width: 640
     height: 480
     fov: 130
@@ -56,9 +61,10 @@ Camera:
     rot_deg: [0.0, 10.0, 70.0]
 
   Cam_Right:
-    ip:
-    host_port: 5002
-    dest_port: 5052
+    ip: 127.0.0.1
+    bind: 127.0.0.1
+    host_port: 7503
+    dest_port: 9090
     width: 640
     height: 480
     fov: 130
@@ -66,9 +72,10 @@ Camera:
     rot_deg: [0.0, 10.0, 290.0]
 
   Cam_Rear:
-    ip:
-    host_port: 5003
-    dest_port: 5053
+    ip: 127.0.0.1
+    bind: 127.0.0.1
+    host_port: 7504
+    dest_port: 9090
     width: 640
     height: 480
     fov: 90

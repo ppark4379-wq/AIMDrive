@@ -32,7 +32,7 @@ def configure_tunnel_trial(driving, config, boundary_factory=None):
     if contract.get("mode") != "full_loop_tunnel_static" or not isinstance(rows, list) or not rows:
         raise RuntimeError("Measured Jamming geometry requires the guarded tunnel trial contract")
     if boundary_factory is None:
-        from expert.src.planning.Jamming.road_boundary import RoadBoundary
+        from expert.src.planning.jamming.road_boundary import RoadBoundary
         boundary_factory = RoadBoundary.from_map_dir
     policy = contract["road_boundary_policy"]
     boundary = boundary_factory(config["map"]["data_dir"], body_policy=policy["body"],

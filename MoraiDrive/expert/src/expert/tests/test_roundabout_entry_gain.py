@@ -8,7 +8,7 @@ from expert.src.autonomous_driving import AutonomousDriving
 from expert.src.control.pid import Pid
 from expert.src.control.pure_pursuit import PurePursuit
 from expert.src.localization.point import Point
-from expert.src.planning.lattice_planning.roundabout_entry import RoundaboutEntryPlanner
+from expert.src.planning.roundabout.planner import RoundaboutEntryPlanner
 from expert.src.vehicle_state import VehicleState
 
 

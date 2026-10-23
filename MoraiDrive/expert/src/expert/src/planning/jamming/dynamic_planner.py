@@ -13,21 +13,23 @@ import numpy as np
 from scipy.interpolate import CubicSpline
 
 from ...localization.point import Point
-from ..highway_lane_planning.planner import HighwayLanePlanner
-from ..highway_lane_planning.lane_change_safety import LaneChangeSafety
-from ..highway_lane_planning import parameters as hp
-from ..정적장애물.recorded_planner import connector
+from ..highway.planner import HighwayLanePlanner
+from ..highway.lane_change_safety import LaneChangeSafety
+from ..highway import parameters as hp
+from ..static_obstacle.recorded_planner import connector
 from .motion import key
 from .dynamic_recovery import make_recovery, recovery_result, reconnect_tracker, replan_tracker
 
-HORIZON = 6.
-MAX_MANEUVER_HORIZON = 20.
-SEARCH_BUDGET = .08
-TRIGGER_DISTANCE = 50.
-CRUISE_LIMIT = 30./3.6
-OVERTAKE_LEAD_LIMIT = 15./3.6
-RETURN_GAP = 5.
-PREDICT_ACCEL = 1.2
+from ...config.parameters.jamming import (
+    HORIZON,
+    MAX_MANEUVER_HORIZON,
+    SEARCH_BUDGET,
+    TRIGGER_DISTANCE,
+    CRUISE_LIMIT,
+    OVERTAKE_LEAD_LIMIT,
+    RETURN_GAP,
+    PREDICT_ACCEL,
+)
 
 
 class DynamicObstaclePlanner:

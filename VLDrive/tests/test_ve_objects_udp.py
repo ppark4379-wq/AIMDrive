@@ -145,10 +145,12 @@ class UdpObjectsTests(unittest.TestCase):
             self.assertEqual(config, expected)
             self.assertEqual(path, REPO / 'MoraiDrive/expert/.runtime/path.csv')
         command = launcher.expert_command(drive=True)
+        self.assertEqual(command[command.index('--transport') + 1], 'ros')
         self.assertIn('/Object_topic:=/ve/Object_topic', command)
         self.assertFalse(any('/ctrl_cmd:=' in word for word in command))
         self.assertFalse(any('GetTrafficLightStatus:=' in word for word in command))
         shadow = launcher.expert_command(drive=False)
+        self.assertEqual(shadow[shadow.index('--transport') + 1], 'ros')
         self.assertIn('/ctrl_cmd:=/ve/shadow_ctrl_cmd', shadow)
 
 

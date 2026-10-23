@@ -10,6 +10,7 @@ from .LiDAR import LidarReceiver
 from .Cmd import CmdSender, Command
 from .Detection import DetectionSender
 from .Pose import PoseSender, GridProjector, DEFAULT_HZ as POSE_HZ
+from .SharedPort import SharedPort
 
 
 class UDPManager:
@@ -30,6 +31,7 @@ class UDPManager:
         self.detection_config = dict(config.get('Detection') or {})
         self._validate_geometry()
         self.receivers = {}
+        self.shared_ports = {}
         self.cmd = None
         self.detection = None
         self.pose = None
@@ -59,14 +61,26 @@ class UDPManager:
     def _validate_ports(self):
         errors = []
         used = set()
+        endpoints = {}
         for name, cfg in self.sensor_config.items():
             port = cfg.get('dest_port')
             if not self._valid_port(port):
                 errors.append(f'{name}.dest_port (Ego.vehicle_status_port for vehicle_status)')
-            elif port in used:
-                errors.append(f'{name}: duplicate receive port {port}')
             else:
                 used.add(port)
+                endpoints.setdefault(port, []).append((name, cfg))
+        for port, group in endpoints.items():
+            if len(group) < 2:
+                continue
+            sources = set()
+            binds = {cfg.get('bind') or '0.0.0.0' for _, cfg in group}
+            if len(binds) != 1:
+                errors.append(f'shared port {port}: bind addresses must match')
+            for name, cfg in group:
+                source = cfg.get('host_port')
+                if not self._valid_port(source) or source in sources:
+                    errors.append(f'{name}: shared port {port} needs a distinct host_port')
+                sources.add(source)
         port = self.cmd_config.get('cmd_port')
         if port is not None:
             if not self._valid_port(port):
@@ -109,7 +123,11 @@ class UDPManager:
             ports.append(('cmd_source', self.cmd_config.get('bind') or '0.0.0.0',
                           self.cmd_config['cmd_source_port']))
         busy = []
+        checked = set()
         for name, address, port in ports:
+            if (address, port) in checked:
+                continue
+            checked.add((address, port))
             probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             try:
                 probe.bind((address, port))
@@ -130,13 +148,23 @@ class UDPManager:
         self._validate_ports()
         self._probe_ports()
         try:
+            for cfg in self.sensor_config.values():
+                key = (cfg.get('bind') or '0.0.0.0', cfg['dest_port'])
+                if key not in self.shared_ports:
+                    self.shared_ports[key] = SharedPort(*key)
             for name, cfg in self.sensor_config.items():
                 options = {key: cfg[key] for key in ('elevations', 'distance_scale', 'frame_policy')
                            if name == 'lidar' and key in cfg}
+                if name == 'vehicle_status':
+                    options['local_status_bytes'] = self.config['Ego'].get('local_status_bytes')
                 options['history_size'] = 128 if name in ('vehicle_status', 'imu', 'gps') else 16
                 self.receivers[name] = factories[name](
                     cfg['dest_port'], bind=cfg.get('bind') or '0.0.0.0', name=name,
-                    drop_audit=True, **options)
+                    drop_audit=True,
+                    shared_port=self.shared_ports[(cfg.get('bind') or '0.0.0.0', cfg['dest_port'])],
+                    source_ip=cfg.get('ip'), source_port=cfg.get('host_port'), **options)
+            for shared in self.shared_ports.values():
+                shared.start()
             cfg = self.cmd_config
             if cfg.get('cmd_port') is not None:
                 self.cmd = CmdSender(cfg['ip'], cfg['cmd_port'], protocol=cfg.get('protocol', 'morai'),
@@ -145,7 +173,7 @@ class UDPManager:
             cfg = self.detection_config
             if cfg.get('port') is not None:
                 host = cfg.get('ip') or '127.0.0.1'
-                self.detection = DetectionSender(cfg['checkpoint_sha256'], host, cfg['port'])
+                self.detection = DetectionSender(cfg['checkpoint_sha256'], host, cfg['port'], generation=cfg.get('generation'))
                 if cfg.get('pose_hz', POSE_HZ) is not None:
                     # Rule 2-6-2/2-8: GPS position, IMU heading, Competition Vehicle Status speed.
                     projector = GridProjector(self.sensor_config['gps']['pos'],
@@ -196,6 +224,9 @@ class UDPManager:
         for receiver in self.receivers.values():
             receiver.close()
         self.receivers.clear()
+        for shared in self.shared_ports.values():
+            shared.close()
+        self.shared_ports.clear()
         if self.cmd is not None:
             self.cmd.close()
             self.cmd = None

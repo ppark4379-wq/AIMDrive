@@ -6,9 +6,9 @@ from unittest.mock import patch
 from expert.src.localization.point import Point
 from expert.src.obstacle.object_info import ObjectInfo
 from expert.src.vehicle_state import VehicleState
-from expert.src.planning.lattice_planning.roundabout_entry import RoundaboutEntryPlanner
-from expert.src.planning.lattice_planning.planning_process import LatticePlanningProcess
-from expert.src.planning.lattice_planning import parameters as p
+from expert.src.planning.roundabout.planner import RoundaboutEntryPlanner
+from expert.src.planning.section_planning import LatticePlanningProcess
+from expert.src.planning.lattice import parameters as p
 
 
 class RoundaboutEntryTest(unittest.TestCase):
@@ -143,7 +143,7 @@ class RoundaboutEntryTest(unittest.TestCase):
         self.assertEqual(collision.call_args_list[-1].args[-1], p.ROUNDABOUT_LAUNCH_DELAY)
 
     def test_stopped_ego_keeps_measured_pose_for_future_collision_checks(self):
-        from expert.src.planning.highway_lane_planning.planner import HighwayLanePlanner
+        from expert.src.planning.highway.planner import HighwayLanePlanner
         self.ego = VehicleState(0., .4, math.pi / 3, 0.)
         with patch.object(HighwayLanePlanner, '_obb_collision', return_value=False) as collision:
             self.collision(self.obj(40., 10., 0.), 0.)
@@ -247,7 +247,7 @@ class RoundaboutMapTest(unittest.TestCase):
         self.assertAlmostEqual(result.acc_target_velocity * 3.6, 26.)
 
     def test_constant_speed_circulating_vehicle_does_not_need_to_brake_for_entry(self):
-        from expert.src.planning.highway_lane_planning.planner import HighwayLanePlanner
+        from expert.src.planning.highway.planner import HighwayLanePlanner
         route = self.planner._route(self.global_path)
         npc_link = self.lane_map.links['A2256W000134']
         initial = self.lane_map.project(npc_link.points[0], npc_link)

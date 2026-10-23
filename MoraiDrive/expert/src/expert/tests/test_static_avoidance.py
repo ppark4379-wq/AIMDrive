@@ -11,9 +11,9 @@ from expert.src.control.pure_pursuit import PurePursuit
 from expert.src.localization.point import Point
 from expert.src.obstacle.object_info import ObjectInfo
 from expert.src.planning.adaptive_cruise_control import AdaptiveCruiseControl
-from expert.src.planning.lattice_planning.lattice_planner import LatticePlanner
-from expert.src.planning.lattice_planning import parameters
-from expert.src.planning.lattice_planning.planning_process import LatticePlanningProcess
+from expert.src.planning.lattice.lattice_planner import LatticePlanner
+from expert.src.planning.lattice import parameters
+from expert.src.planning.section_planning import LatticePlanningProcess
 from expert.src.vehicle_state import VehicleState
 
 

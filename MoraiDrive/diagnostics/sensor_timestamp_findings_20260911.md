@@ -185,7 +185,7 @@ Header timestamp와 별개이며, 이름만으로 센서 취득 시각으로 취
 - expert/src/expert/src/network/ros_manager.py:418~444의 Path/Odometry 변환은
   frame_id와 자세만 채우고 header.stamp를 설정하지 않는다.
 - 같은 파일 452~457행의 TF는 입력 Ego의 원본 stamp 대신 rospy.Time.now()를 쓴다.
-- expert/src/expert/src/planning/lattice_planning/rviz_visualizer.py:39에서 현재
+- expert/src/expert/src/visualization/rviz_visualizer.py:39에서 현재
   ROSTIME을 얻고 Marker header.stamp에 넣는다. 현재의 /use_sim_time 미설정과
   epoch 실측이 일치한다. 입력 센서의 취득 시각이라는 뜻은 아니다.
 

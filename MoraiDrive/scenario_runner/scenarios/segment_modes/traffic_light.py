@@ -57,8 +57,8 @@ def default_contract():
         "scenario_runner/adapters/morai_grpc.py",
         "data_collection/third_party/grpc_inha_univ/src/api/simulation_world.py",
         "data_collection/third_party/grpc_inha_univ/morai_standard_proto/morai/infrastructure/traffic_light.proto",
-        "expert/src/expert/src/planning/traffic_light_stop.py",
-        "expert/src/expert/src/planning/route_signal_targets.py",
+        "expert/src/expert/src/planning/traffic/stop_controller.py",
+        "expert/src/expert/src/planning/traffic/route_targets.py",
         "expert/src/expert/src/config/config.json",
         "expert/src/expert/src/config/config.py",
         "scenario_runner/data/R_KR_PR_K-city_2025/link_set.json",
@@ -186,7 +186,7 @@ def verify_runtime(context):
     expected = route.build_expert_route_points(context)
     if len(actual) != len(expected) or any(math.dist(a, b[:2]) > 1e-6 for a, b in zip(actual, expected)):
         raise RuntimeError("Expert의 실제 경로 파일이 수집 경로+35m lookahead와 다릅니다")
-    source = Path(context.global_cfg["paths"]["expert_root"]) / "src/expert/src/planning/route_signal_targets.py"
+    source = Path(context.global_cfg["paths"]["expert_root"]) / "src/expert/src/planning/traffic/route_targets.py"
     spec = importlib.util.spec_from_file_location("_traffic_mission_actual_route_binding", source)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

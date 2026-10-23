@@ -1,0 +1,134 @@
+TargetHz: 30
+Ego:
+  ip: 127.0.0.1
+  vehicle_status_port: 8000
+  cmd_port: 9097
+  ctrl_mode: 2
+  cmd_type: 1
+  gear: 4
+  cmd_source_port: 9098
+  local_status_bytes: 245
+Weight_Path:
+  VE: null
+  Connector: null
+  LLM: null
+GPS:
+  ip: 127.0.0.1
+  bind: 127.0.0.1
+  host_port: 7506
+  dest_port: 9090
+  pos:
+  - 0.0
+  - 0.0
+  - 0.0
+  rot_deg:
+  - 0.0
+  - 0.0
+  - 0.0
+IMU:
+  ip: 127.0.0.1
+  bind: 127.0.0.1
+  host_port: 7507
+  dest_port: 9090
+  pos:
+  - 0.0
+  - 0.0
+  - 0.0
+  rot_deg:
+  - 0.0
+  - 0.0
+  - 0.0
+LiDAR:
+  ip: 127.0.0.1
+  bind: 127.0.0.1
+  host_port: 2369
+  dest_port: 2368
+  pos:
+  - 1.0
+  - 0.0
+  - 1.48
+  rot_deg:
+  - 0.0
+  - 0.0
+  - 0.0
+Camera:
+  Cam_Front:
+    ip: 127.0.0.1
+    bind: 127.0.0.1
+    host_port: 7501
+    dest_port: 9090
+    width: 1280
+    height: 720
+    fov: 90
+    pos:
+    - 1.9
+    - 0.0
+    - 1.2
+    rot_deg:
+    - 0.0
+    - 2.0
+    - 0.0
+  Cam_Left:
+    ip: 127.0.0.1
+    bind: 127.0.0.1
+    host_port: 7502
+    dest_port: 9090
+    width: 640
+    height: 480
+    fov: 130
+    pos:
+    - 1.15
+    - 0.65
+    - 1.2
+    rot_deg:
+    - 0.0
+    - 10.0
+    - 70.0
+  Cam_Right:
+    ip: 127.0.0.1
+    bind: 127.0.0.1
+    host_port: 7503
+    dest_port: 9090
+    width: 640
+    height: 480
+    fov: 130
+    pos:
+    - 1.15
+    - -0.65
+    - 1.2
+    rot_deg:
+    - 0.0
+    - 10.0
+    - 290.0
+  Cam_Rear:
+    ip: 127.0.0.1
+    bind: 127.0.0.1
+    host_port: 7504
+    dest_port: 9090
+    width: 640
+    height: 480
+    fov: 90
+    pos:
+    - -0.14
+    - 0.0
+    - 1.2
+    rot_deg:
+    - 0.0
+    - 2.0
+    - 180.0
+Control:
+  positive_steer: right  # Local 26.R1.H3: positive command decreased GPS/IMU yaw in the recorded run.
+  max_speed_mps: null
+Detection:
+  ip: 127.0.0.1
+  port: 12050
+  pose_hz: 50
+Inference:
+  device: cuda
+  cpu_threads: 4
+  status_file: AIM2026/outputs/live/ve_status.json
+  status_interval_s: 2.0
+  vision:
+    checkpoint: E3
+    signal_head: false
+    max_sensor_age_s: 0.5

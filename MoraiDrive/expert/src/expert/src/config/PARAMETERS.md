@@ -1,7 +1,6 @@
-# GT-BEV Expert 파라미터 안내
+# Expert parameters
 
-`main.py`를 단독 실행하면 같은 폴더의 `config.json`을 읽는다. JSON 문법은
-인라인 주석을 지원하지 않으므로 각 설정의 의미를 이 문서에 정리한다.
+Common settings: `config/config.json`. Section settings: `config/parameters/` (`highway.py`, `static_obstacle.py`, `jamming.py`, `lattice.py`, `sections.py`), with Korean section comments. Coordinates in planning parameters use the existing Expert projected_grid map frame.
 
 ## `planning.velocity_profile`
 
@@ -9,13 +8,13 @@
 - `road_friction`: 곡선구간 속도 프로파일 계산에 사용하는 노면 마찰계수. 낮을수록 곡선에서 느려진다.
 - `window_size`: 곡률을 계산할 때 앞뒤로 참고하는 경로 포인트 개수.
 - `speed_limit_deceleration`: 낮은 제한속도 구간 진입 전 적용할 최대 감속도 `[m/s²]`.
-- `speed_limit_zones`: 특정 링크 또는 ENU `start_point`/`end_point` 구간에 적용할 별도 최고속도 목록.
+- `speed_limit_zones`: 특정 링크 또는 Expert projected_grid `start_point`/`end_point` 구간에 적용할 별도 최고속도 목록.
 - 구간의 `entry_buffer_m`/`exit_buffer_m`: 전역경로 진행거리 기준 앞뒤 속도 제한 여유 `[m]`.
 - 구간의 `acc_time_gap`: 해당 구간에 위치한 보행자·차량·정적장애물의 ACC 시간 간격 `[s]`.
 - 구간의 `acc_lateral_threshold`: 시작/끝 좌표를 이은 중심축 양옆의 ACC 대상 범위 `[m]`. 기존 객체 탐지 조건도 충족해야 한다.
 - `terminal_deceleration`: 열린 경로의 마지막 지점에 정지하기 위한 감속도 `[m/s²]`.
 
-`north_crosswalk_pair`는 ENU `(-60.02,-35.85)`부터 `(-60.27,-8.98)`까지
+`north_crosswalk_pair`는 Expert projected_grid `(-60.02,-35.85)`부터 `(-60.27,-8.98)`까지
 최대 20km/h를 유지한다. 차체 통과를 위해 속도 제한 구간 양끝에 4.635m 여유를
 두고 기존 감속 프로파일로 진입 전부터 감속한다. 신호가 초록불이어도 제한은 유지된다.
 해당 좌표 구간의 객체는 ACC 간격 2초를 적용하며, 구간 밖 객체는 기존 0.8초를
@@ -32,16 +31,16 @@
 - `traffic_light_lateral_threshold`: 신호등 정지 대상을 판단할 최대 횡거리 `[m]`.
 - `pedestrian_longitudinal_max`: 보행자 ACC 판단에 사용할 최대 전방거리 `[m]`. 고속 주행 중에도 정지거리를 확보하도록 제한한다.
 
-## `planning.traffic_light_stop`
+## `planning.traffic.stop_controller`
 
 - `ignored_signal_ids`: 해당 ID의 신호에 의한 정지를 생략한다.
 - `left_arrow_only_signal_ids`: 같은 ID의 최신 신호에 좌회전 화살표가 있을 때만 통과한다.
   일반 초록, 빨강, 노랑, 소등, 미수신 또는 오래된 신호에서는 기존 빨간불 정지 계산을 사용한다.
 - `stop_statuses`: 위 두 목록에 없는 신호등의 기존 정지 상태 목록. 기본값은 `[1]`이다.
 
-KATRI 지도에서 ENU `(-60.77, 73.79)`의 가장 가까운 정지선 노드
+KATRI 지도에서 Expert projected_grid `(-60.77, 73.79)`의 가장 가까운 정지선 노드
 `A1256W000757`은 신호 `C1256W000123`에 연결되어 있으며 이 신호를 무시한다.
-ENU `(-13.13, 98.09)`의 가장 가까운 정지선 노드 `A1256W000742`는
+Expert projected_grid `(-13.13, 98.09)`의 가장 가까운 정지선 노드 `A1256W000742`는
 `C1256W000052`에 연결되어 있으며 좌회전 신호만 허용한다.
 사진 좌표와 각 정지선 노드의 평면 거리는 약 5.517m, 0.949m이다.
 두 노드는 현재 경로에 있으며, 정책은 좌표 반경 대신 정확한 신호 ID에 적용한다.
@@ -66,11 +65,11 @@ gRPC SyncMode의 `tl_id`/`tl_color`에도 같은 판정을 적용한다.
 - `min_lfd`: 최소 look-ahead 거리 `[m]`.
 - `max_lfd`: 최대 look-ahead 거리 `[m]`.
 
-레티스 관련 값은 `../planning/lattice_planning/parameters.py`에서 조정한다.
+레티스 관련 값은 `../planning/lattice/parameters.py`에서 조정한다.
 
 ## 회전교차로 진입
 
-설정 파일: `../planning/lattice_planning/parameters.py`.
+설정 파일: `../planning/lattice/parameters.py`.
 
 - `ROUNDABOUT_ENTRY_HOLD_POINT = (-99.02, 319.29)`: 최종 대기 위치. MORAI 자차 ENU 기준점 좌표이며 차량 길이를 다시 빼지 않는다.
 - `ROUNDABOUT_APPROACH_VELOCITY = 15.0 / 3.6`: 대기 위치까지의 접근 최고 목표속도 `[m/s]`.

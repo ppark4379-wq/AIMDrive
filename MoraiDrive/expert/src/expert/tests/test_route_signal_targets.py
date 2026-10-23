@@ -7,8 +7,8 @@ import tempfile
 import unittest
 from types import SimpleNamespace
 
-from expert.src.planning.route_signal_targets import build_route_signal_targets, signal_permission
-from expert.src.planning.traffic_light_stop import TrafficLightStopController
+from expert.src.planning.traffic.route_targets import build_route_signal_targets, signal_permission
+from expert.src.planning.traffic.stop_controller import TrafficLightStopController
 
 
 class Mapper:

@@ -257,7 +257,7 @@ def expanded_road_boundary(map_loader):
         raise ValueError("Expanded placement requires the connected MGeo link set")
     try:
         import sys
-        module = sys.modules.get("expert.src.planning.Jamming.road_boundary")
+        module = sys.modules.get("expert.src.planning.jamming.road_boundary")
         if module is None:
             from .screening import _expert_search
             _, boundary_type, _, _, _ = _expert_search()

@@ -30,7 +30,9 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "expert" / "src"))
 from scenario_runner.tools import static_lane_compliance as lane  # noqa: E402
+from expert.src.config.paths import STATIC_OBSTACLE_PATHS, RECORDINGS_DIRECTORY_NAME  # noqa: E402
 
 CONFIG_PATH = ROOT / "scenario_runner" / "config" / "full_loop.yaml"
 ROUTE_PATH = ROOT / "scenario_runner" / "config" / "full_loop_links.yaml"
@@ -49,9 +51,8 @@ LANE_EDGE_MARGIN_M = 0.10
 OBSTACLE_GAP_M = 0.30
 # The Expert's recorded static routes (read only) and the planner body it
 # sweeps along them: rear axle at the recorded pose, 4.635 m forward, 2.0 m
-# wide (expert lattice_planning/parameters.py VEHICLE_LENGTH, VEHICLE_WIDTH).
-EXPERT_ROUTE_DIR = (ROOT / "expert" / "src" / "expert" / "src" / "planning"
-                    / "정적장애물" / "후보전역경로")
+# wide (expert config/parameters/lattice.py VEHICLE_LENGTH, VEHICLE_WIDTH).
+EXPERT_ROUTE_DIR = STATIC_OBSTACLE_PATHS / RECORDINGS_DIRECTORY_NAME
 PLANNER_BODY_LENGTH_M = 4.635
 PLANNER_BODY_HALF_WIDTH_M = 1.0
 ROUTE_INDEX_SPACING_M = 0.5  # official path spacing in the static zone

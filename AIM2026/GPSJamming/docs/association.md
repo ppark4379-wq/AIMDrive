@@ -23,12 +23,12 @@ JSONL `tracks[].position`에 `xyz_m`, `coordinate_frame`, `planar_distance_m`,
 홀드 설정: `configs/perception.yaml` → `visualization.hold_last_pair_ms` (현재 100ms).
 H 키는 이번 실행에서 표시 홀드만 켜고 끄며 YAML을 수정하지 않는다.
 
-현재 카메라 Host Sensor Port → Destination Port 매핑은 `5000→5050`,
-`5001→5051`, `5002→5052`, `5003→5053`이다. `perception.yaml`의
-`camera.endpoints`에 정의하며 현재 전방 뷰어는 `camera.udp`의 `5000→5050`만
-사용한다. 전방 수신기는 JPEG 조립 전에 송신 포트 5000을 검사한다.
-나머지 포트는 향후 다중 카메라 MOT용 설정이며 아직 수신기를 열지 않는다.
-MORAI 센서 화면에서도 각 Destination Port를 동일하게 변경해야 한다.
+현재 센서 정답지 기준 카메라 Host Sensor Port → Destination Port는
+`7501→9090`, `7502→9090`, `7503→9090`, `7504→9090`이다.
+`perception.yaml`의 `camera.endpoints`에 정의하며 전방 뷰어는 공용 9090을
+한 번 열고 JPEG 조립 전에 송신 포트 7501만 선택한다.
+AIM2026 통합 추론도 9090을 사용하므로 이 독립 뷰어와 동시에 실행하지 않는다.
+LiDAR는 `2369→2368`이다. MORAI에는 `AIM2026/sensor_set_competition.json`을 로드한다.
 
 > 현재 뷰어는 timestamp 기반 선택을 사용합니다. 아래의 1단계 최신 수신 프레임/
 > schema 1 설명은 이전 구현 기록입니다. 현재 동작·schema 2·실행 경로는
@@ -156,12 +156,12 @@ LiDAR frame_id/clock_epoch를 확인해 중복 측정으로 세지 않아야 한
 
 ## 실시간 확인 화면
 
-현재 뷰어는 카메라 Destination Port **5050 하나만** 연다. 다른 `--port`는 거부한다.
+현재 뷰어는 카메라 Destination Port **9090 하나만** 연다. 선택한 YAML과 다른 `--port`는 거부한다.
 calibration 해상도(현재 1280×720)를 만족하는 첫 UDP 송신원 IP/포트에 고정하며,
 다른 송신원의 패킷과 해상도가 다른 프레임은 화면 및 MOT 갱신 전에 제외한다.
 송신원별로 JPEG를 조립하므로 다른 센서의 같은 timestamp 패킷을 섞지 않는다.
-이는 센서 ID 판별이 아니므로 같은 해상도의 다른 카메라가 먼저 도착하지 않도록
-MORAI에서도 전방 카메라만 5050으로 보내야 한다. 송신 포트가 변경되면 뷰어를 재시작한다.
+다른 카메라와 GPS/IMU도 같은 9090으로 보내지만, 전방 송신 포트 7501만 선택한다.
+송신 포트가 변경되면 YAML과 함께 수정하고 뷰어를 재시작한다.
 화면의 `peer`, `rejected frames/packets`에서 선택된 송신원과 제외 건수를 확인한다.
 추후 카메라 3개로 확장할 때는 각 포트별 수신기·보정값·tracker를 별도로 둔다.
 

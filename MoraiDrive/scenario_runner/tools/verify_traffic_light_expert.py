@@ -89,8 +89,8 @@ def verify_traffic_light_expert(global_cfg, scenario_cfg):
     expert_root = Path(paths["expert_root"]).resolve()
     expert_source = expert_root / "src"
     source_files = [expert_source / "expert/src" / relative for relative in (
-        "config/config.json", "config/config.py", "planning/traffic_light_stop.py",
-        "planning/route_signal_targets.py", "path/mapping.py", "localization/point.py")]
+        "config/config.json", "config/config.py", "planning/traffic/stop_controller.py",
+        "planning/traffic/route_targets.py", "path/mapping.py", "localization/point.py")]
     source_files += [Path(cfg["global_path"]), Path(cfg["route_definition_path"])]
     before = {str(path): _digest(path) for path in source_files}
     logs = io.StringIO()
@@ -131,7 +131,7 @@ def verify_traffic_light_expert(global_cfg, scenario_cfg):
             with _expert_scope(expert_source, environment):
                 Config = importlib.import_module("expert.src.config.config").Config
                 StopController = importlib.import_module(
-                    "expert.src.planning.traffic_light_stop").TrafficLightStopController
+                    "expert.src.planning.traffic.stop_controller").TrafficLightStopController
                 actual = Config()
                 signal_document = actual["map"]["route_signal_targets"]
                 policies = copy.deepcopy(actual["planning"]["traffic_light_stop"])

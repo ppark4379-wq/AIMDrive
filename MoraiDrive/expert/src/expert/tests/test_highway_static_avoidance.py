@@ -5,12 +5,12 @@ import unittest
 
 from expert.src.localization.point import Point
 from expert.src.obstacle.object_info import ObjectInfo
-from expert.src.planning.highway_lane_planning import parameters as p
-from expert.src.planning.highway_lane_planning.lane_map import HighwayLaneMap
-from expert.src.planning.highway_lane_planning.obstacle_motion import ObstacleMotion
-from expert.src.planning.highway_lane_planning.planner import HighwayLanePlanner
-from expert.src.planning.highway_lane_planning.structures import HighwayLaneLink
-from expert.src.planning.lattice_planning.planning_process import LatticePlanningProcess
+from expert.src.planning.highway import parameters as p
+from expert.src.planning.highway.lane_map import HighwayLaneMap
+from expert.src.planning.highway.obstacle_motion import ObstacleMotion
+from expert.src.planning.highway.planner import HighwayLanePlanner
+from expert.src.planning.highway.structures import HighwayLaneLink
+from expert.src.planning.section_planning import LatticePlanningProcess
 from expert.src.vehicle_state import VehicleState
 
 

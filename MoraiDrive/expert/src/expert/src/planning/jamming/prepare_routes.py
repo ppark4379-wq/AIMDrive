@@ -8,7 +8,9 @@ import math
 
 from .section import JammingSection, ROOT, ROUTE_DIRECTORY
 
-PREPARED_DIRECTORY = "공통종료선 경로"
+from ...config.paths import PREPARED_DIRECTORY_NAME
+
+PREPARED_DIRECTORY = PREPARED_DIRECTORY_NAME
 
 
 def clip_rows(section, rows, end_forward):

@@ -5,7 +5,7 @@ import unittest
 
 from expert.src.localization.point import Point
 from expert.src.path.mapping import NodeTrafficLightStoplineMapper
-from expert.src.planning.traffic_light_stop import TrafficLightStopController
+from expert.src.planning.traffic.stop_controller import TrafficLightStopController
 
 
 SRC_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "../.."))

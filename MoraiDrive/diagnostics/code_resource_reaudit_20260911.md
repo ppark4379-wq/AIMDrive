@@ -130,16 +130,16 @@ Writer에서 다시 디코드하여 JPEG로 저장한다. 불필요한 CPU/임�
 
 ## 6. 시나리오 단독: Expert 계산 비용과 네이티브 충돌을 별도로 추적해야 함
 
-- `expert/src/expert/src/planning/lattice_planning/planning_process.py:239`:
+- `expert/src/expert/src/planning/section_planning.py:239`:
   고속도로 밖인지 알아보기 위해 lane_map.match() 호출.
-- `planning/highway_lane_planning/lane_map.py:77`, `:96`:
+- `planning/highway/lane_map.py:77`, `:96`:
   거리 컷오프 전에 모든 링크/선분을 검사한다.
 - 현재 지도에서 22링크, 5,599선분. 시작 위치 (-131.486,-427.961)에서 5회 실행해
   모두 None(고속도로 밖), CPU 시간 합계 0.071889109초, 평균 **14.38ms/회**였다.
   30회/초라면 이 계산만 약 0.43 CPU초/초에 해당하는 단순 환산이다.
   짧은 단독 측정이며 전체 시스템의 CPU 43%라는 뜻은 아니다.
 - static 구간은 별도 `_obb_collision`을 실행하며 사용자의 SIGFPE Python 스택은
-  `planning/lattice_planning/lattice_planner.py:339`의 cos/sin 호출을 가리켰다.
+  `planning/lattice/lattice_planner.py:339`의 cos/sin 호출을 가리켰다.
 
 이전 gdb 기록은 서로 다른 위치의 SIGSEGV(`_PyObject_Malloc`, 잘못된 주소)와
 SIGILL(`PyDict_GetItem`)도 포착했다. 기록은

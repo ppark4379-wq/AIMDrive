@@ -9,8 +9,8 @@ import numpy as np
 from expert.src.localization.point import Point
 from expert.src.obstacle.object_info import ObjectInfo
 from expert.src.vehicle_state import VehicleState
-from expert.src.planning.lattice_planning.lattice_planner import LatticePlanner
-from expert.src.planning.정적장애물.recorded_planner import RecordedStaticPlanner, connector, GLOBAL_REJOIN_POINT
+from expert.src.planning.lattice.lattice_planner import LatticePlanner
+from expert.src.planning.static_obstacle.recorded_planner import RecordedStaticPlanner, connector, GLOBAL_REJOIN_POINT
 
 
 class RecordedStaticTests(unittest.TestCase):
@@ -183,7 +183,7 @@ class RecordedStaticTests(unittest.TestCase):
 
     def test_global_handoff_does_not_reactivate_legacy_static_planner(self):
         from unittest.mock import patch
-        from expert.src.planning.lattice_planning.planning_process import LatticePlanningProcess
+        from expert.src.planning.section_planning import LatticePlanningProcess
         process = LatticePlanningProcess(highway_zone_points=())
         ego = VehicleState(-59.97, -116.70, math.pi/2, 1.)
         obj = ObjectInfo(-59.97, -120., 0., 2, is_static=True, size_x=1., size_y=1.)
@@ -217,7 +217,7 @@ class RecordedStaticTests(unittest.TestCase):
 
     def test_stopped_and_still_blocked_replans_from_measured_pose(self):
         from unittest.mock import patch
-        import expert.src.planning.정적장애물.recorded_planner as module
+        import expert.src.planning.static_obstacle.recorded_planner as module
         original, obj, ego = self._block_committed_path(0.)
         clock = [1000.]
         with patch.object(module.time, 'monotonic', lambda: clock[0]):
@@ -238,7 +238,7 @@ class RecordedStaticTests(unittest.TestCase):
 
     def test_moving_vehicle_does_not_replan_a_blocked_path(self):
         from unittest.mock import patch
-        import expert.src.planning.정적장애물.recorded_planner as module
+        import expert.src.planning.static_obstacle.recorded_planner as module
         original, obj, ego = self._block_committed_path(2.)
         clock = [1000.]
         with patch.object(module.time, 'monotonic', lambda: clock[0]):
@@ -249,7 +249,7 @@ class RecordedStaticTests(unittest.TestCase):
         np.testing.assert_array_equal(original, self.planner.path)
 
     def test_runtime_envelope_check_tolerates_small_tracking_error(self):
-        import expert.src.planning.정적장애물.recorded_planner as module
+        import expert.src.planning.static_obstacle.recorded_planner as module
         self.start()
         point = self.planner.path[20]
         base = np.array([[point.x, point.y]]); yaw = np.array([self.ego.yaw])
@@ -386,7 +386,7 @@ class RecordedStaticTests(unittest.TestCase):
             planner.executor.shutdown(wait=True)
 
     def test_gt_preplanning_keeps_approach_and_moving_entry_continuous(self):
-        from expert.src.planning.lattice_planning.planning_process import LatticePlanningProcess
+        from expert.src.planning.section_planning import LatticePlanningProcess
         process = LatticePlanningProcess(highway_zone_points=())
         route = [Point(-59.85, -220.+.2*i) for i in range(625)]
         obstacle = ObjectInfo(-59.85, -145., 0., 2, is_static=True, size_x=1., size_y=1.)
@@ -482,7 +482,7 @@ class RecordedStaticTests(unittest.TestCase):
         import io
         from expert.src.autonomous_driving import AutonomousDriving
         from expert.src.control.pure_pursuit import PurePursuit
-        from expert.src.planning.lattice_planning.planning_process import LatticePlanningProcess
+        from expert.src.planning.section_planning import LatticePlanningProcess
         process = LatticePlanningProcess(highway_zone_points=())
         route = [Point(-59.85, -220.+.2*i) for i in range(625)]
         obstacle = ObjectInfo(-59.85, -145., 0., 2, is_static=True, size_x=1., size_y=1.)
@@ -551,7 +551,7 @@ class RecordedStaticTests(unittest.TestCase):
     def test_bicycle_handoff_has_no_zero_target_or_acceleration_jump(self):
         from expert.src.autonomous_driving import AutonomousDriving
         from expert.src.control.pure_pursuit import PurePursuit
-        from expert.src.planning.lattice_planning import parameters
+        from expert.src.planning.lattice import parameters
         import contextlib
         import io
         scene = json.loads((Path(__file__).parent/'static_scene_20260914.json').read_text())

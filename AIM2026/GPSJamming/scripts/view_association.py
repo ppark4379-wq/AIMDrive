@@ -62,11 +62,11 @@ def main():
     if not 2 <= config['camera'].get('frame_buffer_size', 8) <= 120:
         parser.error('camera.frame_buffer_size must be between 2 and 120')
     if args.port is None:
-        args.port = camera_udp.get('port', 5050)
+        args.port = camera_udp.get('port', 9090)
     if args.bind_ip is None:
         args.bind_ip = camera_udp.get('bind', '127.0.0.1')
-    if args.port != 5050:
-        parser.error('Single front-camera preview uses port 5050 only')
+    if args.port != camera_udp.get('port', 9090):
+        parser.error('Preview port must match camera.udp.port in the selected config')
     with open(args.calibration, encoding='utf-8') as f:
         calibration = yaml.safe_load(f)
         fusion = AssociationPipeline(calibration['cameras']['front'], config['association'])
@@ -120,7 +120,7 @@ def main():
             stream = resources.enter_context(LidarUDPStream(receiver, queue_size=2))
             camera = UdpCamera(args.bind_ip, args.port, args.sender_ip, args.index_base,
                                expected_image_size=fusion.calibration.image_size,
-                               sender_port=camera_udp.get('source_port', 5000),
+                               sender_port=camera_udp.get('source_port', 7501),
                                frame_buffer_size=config['camera'].get('frame_buffer_size', 8))
             resources.callback(camera.close)
             last_frame = None

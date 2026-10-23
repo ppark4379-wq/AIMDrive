@@ -39,7 +39,7 @@ def make_cursor(config_path, path_csv):
     config = json.loads(Path(config_path).read_text())
     points = [(float(row['x']), float(row['y'])) for row in csv.DictReader(Path(path_csv).open())]
     sys.path.insert(0, str(REPO / 'MoraiDrive/expert/src'))
-    from expert.src.planning.route_signal_targets import build_route_signal_targets
+    from expert.src.planning.traffic.route_targets import build_route_signal_targets
     doc = build_route_signal_targets(points, config['map']['data_dir'],
                                     config['map']['route_signal_route_links'],
                                     config['map'].get('is_closed_path', False))

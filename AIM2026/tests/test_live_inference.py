@@ -30,10 +30,12 @@ def frame(i, segment='straight', source_time=None):
 
 def test_command_format_and_competition_modes():
     packed = Command(accel=.2, brake=0., steer=-.3).pack()
-    assert len(packed) == 55
+    assert len(packed) == 59
     fields = FORMAT.unpack(packed)
     assert fields[0].rstrip(b'\0') == b'#MoraiCtrlCmd$'
     assert fields[5:8] == (2, 4, 1)
+    assert fields[1] == 27
+    assert fields[-2] == 0.0  # Unused rear steering in the 26.R1 packet.
     assert fields[-1] == b'\r\n'
 
 

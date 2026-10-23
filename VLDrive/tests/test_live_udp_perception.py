@@ -107,6 +107,33 @@ class UdpPerceptionTests(unittest.TestCase):
             self.assertIsNone(inputs)
             self.assertIn('gps (world pose unavailable)', meta['missing'])
 
+    def test_competition_pose_is_pinned_before_preprocessing_without_utm_conversion(self):
+        source = self.source()
+        self.populate(source)
+        source._ego_xy = lambda *_: self.fail('Competition pose must use central ENU conversion')
+        captured = []
+        def select(samples):
+            captured.append(samples.copy())
+            return dict(ready=True,ego_pose=dict(x=12.,y=34.,z=1.,yaw_enu_rad=.7,speed_mps=3.))
+        source.localization = NS(pose_packet=select)
+        inputs,meta = source.build('cpu')
+        self.assertIsNotNone(inputs)
+        self.assertEqual(meta['ego_local'],(12.,34.))
+        self.assertEqual(meta['pose_frame'],'enu')
+        self.assertEqual(meta['localization_pose']['ego_pose']['yaw_enu_rad'],.7)
+        self.assertEqual(captured[0]['gps'],meta['selected_samples']['gps'])
+        self.assertEqual(captured[0]['vehicle_status'],meta['selected_samples']['vehicle_status'])
+        self.assertEqual(inputs['velocity'].tolist(),[[3.]])
+
+    def test_competition_invalid_pose_blocks_model_preprocessing(self):
+        source = self.source()
+        self.populate(source)
+        source.localization = NS(pose_packet=lambda _:dict(ready=False,reason='IMU stale'))
+        with patch.object(source.input_adapter,'assemble',side_effect=AssertionError('must not assemble')):
+            inputs,meta = source.build('cpu')
+        self.assertIsNone(inputs)
+        self.assertIn('IMU stale',meta['missing'])
+
     def test_ros_ego_status_keeps_planar_speed_and_raw_heading(self):
         receiver = RosEgoStatusReceiver.__new__(RosEgoStatusReceiver)
         receiver.lock, receiver.value, receiver.received = threading.Lock(), None, 0.

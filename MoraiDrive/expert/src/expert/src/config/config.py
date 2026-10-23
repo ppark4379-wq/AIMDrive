@@ -7,7 +7,7 @@ import csv
 import math
 from ..localization.point import Point
 from ..path.mapping import NodeTrafficLightStoplineMapper
-from ..planning.route_signal_targets import build_route_signal_targets
+from ..planning.traffic.route_targets import build_route_signal_targets
 
 
 class Config(object):

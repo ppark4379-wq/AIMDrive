@@ -21,12 +21,12 @@ def _load_planner():
     root = str(_EXPERT_PACKAGE_ROOT)
     if root not in sys.path:
         sys.path.insert(0, root)
-    import expert.src.planning.lattice_planning.lattice_planner as implementation
+    import expert.src.planning.lattice.lattice_planner as implementation
     from expert.src.localization.point import Point
     from expert.src.obstacle.object_info import ObjectInfo
     from expert.src.vehicle_state import VehicleState
 
-    expected = _EXPERT_PACKAGE_ROOT / "expert/src/planning/lattice_planning/lattice_planner.py"
+    expected = _EXPERT_PACKAGE_ROOT / "expert/src/planning/lattice/lattice_planner.py"
     if Path(implementation.__file__).resolve() != expected.resolve():
         raise RuntimeError("An unrelated Expert package shadows this repository")
     return implementation.LatticePlanner, Point, ObjectInfo, VehicleState, expected

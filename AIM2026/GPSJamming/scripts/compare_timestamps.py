@@ -89,8 +89,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--duration', type=float, default=30)
     parser.add_argument('--bind', default='127.0.0.1')
-    parser.add_argument('--camera-port', type=int, default=5050)
-    parser.add_argument('--lidar-port', type=int, default=2369)
+    parser.add_argument('--camera-port', type=int, default=9090)
+    parser.add_argument('--lidar-port', type=int, default=2368)
     parser.add_argument('--input', type=Path, help='Analyze a previously captured timestamps.jsonl')
     args = parser.parse_args()
     if args.input:

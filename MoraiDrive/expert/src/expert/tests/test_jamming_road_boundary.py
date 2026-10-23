@@ -1,3 +1,4 @@
+from expert.src.config.paths import JAMMING_SECTION_CONFIG
 """Jamming-only road/body gates must survive workers and recovery exits."""
 import copy
 import csv
@@ -15,12 +16,12 @@ from shapely.geometry import Polygon
 from expert.src.localization.point import Point
 from expert.src.vehicle_state import VehicleState
 from expert.src.obstacle.object_info import ObjectInfo
-from expert.src.planning.Jamming.road_boundary import RoadBoundary, OWN_LINK, OPPOSING_LINK
-from expert.src.planning.Jamming.recorded_planner import JammingPlanner
-from expert.src.planning.Jamming.section import ROOT
-from expert.src.planning.Jamming.dynamic_recovery import recovery_result
-from expert.src.planning.Jamming.dynamic_planner import DynamicObstaclePlanner
-from expert.src.planning.lattice_planning.structures import LatticePlanningResult
+from expert.src.planning.jamming.road_boundary import RoadBoundary, OWN_LINK, OPPOSING_LINK
+from expert.src.planning.jamming.recorded_planner import JammingPlanner
+from expert.src.planning.jamming.section import ROOT
+from expert.src.planning.jamming.dynamic_recovery import recovery_result
+from expert.src.planning.jamming.dynamic_planner import DynamicObstaclePlanner
+from expert.src.planning.lattice.structures import LatticePlanningResult
 
 
 def links():
@@ -142,10 +143,10 @@ class JammingBoundaryGateTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
-        settings = json.loads((ROOT/'section.json').read_text())
+        settings = json.loads(JAMMING_SECTION_CONFIG.read_text())
         settings.update(start_enu=[0., 0., 0.], end_enu=[0., 100., 0.])
         (self.root/'section.json').write_text(json.dumps(settings))
-        directory = self.root/'후보 전역경로'
+        directory = self.root/'recordings'
         directory.mkdir()
         names = []
         for name, x in [('straight', 0.), ('left', -3.5), ('outside', 4.)]:

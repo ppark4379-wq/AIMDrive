@@ -7,9 +7,9 @@ import numpy as np
 from .pure_pursuit import PurePursuit
 from .pid import Pid
 from .control_input import ControlInput
-from ..planning.lattice_planning import parameters as lattice_parameters
-from ..planning.lattice_planning import roundabout_debug
-from ..planning.highway_lane_planning import parameters as highway_parameters
+from ..planning.lattice import parameters as lattice_parameters
+from ..planning.roundabout import diagnostics as roundabout_debug
+from ..planning.highway import parameters as highway_parameters
 
 
 class PathController:

@@ -2,7 +2,7 @@
 
 Paths, Ego and obstacle OBB headings are transformed together. The controller
 always receives ENU paths. Collision margins, search, speed and tracking are
-the implementations in 정적장애물, shared rather than copied.
+the implementations in static_obstacle, shared rather than copied.
 """
 import copy
 import hashlib
@@ -13,10 +13,10 @@ import numpy as np
 
 from ...localization.point import Point
 from ...obstacle.object_info import is_ve_tracked_unknown
-from ..lattice_planning.lattice_planner import LatticePlanner
-from ..lattice_planning import parameters
-from ..lattice_planning.structures import CandidatePath, LatticePlanningResult
-from ..정적장애물.recorded_planner import (
+from ..lattice.lattice_planner import LatticePlanner
+from ..lattice import parameters
+from ..lattice.structures import CandidatePath, LatticePlanningResult
+from ..static_obstacle.recorded_planner import (
     RecordedStaticPlanner, RecordedRouteGeometry, load_routes, connector,
 )
 from .section import JammingSection, ROOT, ROUTE_DIRECTORY

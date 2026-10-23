@@ -9,7 +9,7 @@ import unittest
 
 from expert.src.localization.point import Point
 from expert.src.path.mapping import NodeTrafficLightStoplineMapper
-from expert.src.planning.traffic_light_stop import TrafficLightStopController
+from expert.src.planning.traffic.stop_controller import TrafficLightStopController
 
 
 IGNORED_SIGNAL = "C1256W000123"

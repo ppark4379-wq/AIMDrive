@@ -5,8 +5,8 @@ from pathlib import Path
 from expert.src.localization.point import Point
 from expert.src.vehicle_state import VehicleState
 from expert.src.obstacle.object_info import ObjectInfo
-from expert.src.planning.lattice_planning.centerline_lattice import CenterlineLattice
-from expert.src.planning.lattice_planning.planning_process import LatticePlanningProcess
+from expert.src.planning.lattice.centerline_lattice import CenterlineLattice
+from expert.src.planning.section_planning import LatticePlanningProcess
 
 
 MAP_DIR = Path(__file__).resolve().parents[3] / 'map_data' / 'R_KR_PG_KATRI_2025'

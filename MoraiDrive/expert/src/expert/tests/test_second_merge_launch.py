@@ -9,9 +9,9 @@ import unittest
 from expert.src.control.path_controller import PathController
 from expert.src.localization.point import Point
 from expert.src.obstacle.object_info import ObjectInfo
-from expert.src.planning.highway_lane_planning.lane_map import HighwayLaneMap
-from expert.src.planning.highway_lane_planning.planner import HighwayLanePlanner
-from expert.src.planning.highway_lane_planning.structures import HighwayPlanningResult
+from expert.src.planning.highway.lane_map import HighwayLaneMap
+from expert.src.planning.highway.planner import HighwayLanePlanner
+from expert.src.planning.highway.structures import HighwayPlanningResult
 from expert.src.vehicle_state import VehicleState
 
 
@@ -236,7 +236,7 @@ class SecondMergeLaunchTest(unittest.TestCase):
         lane = self.map.links['A2256W000422']
         aligned = self.map.project(Point(72.5,-185.),lane)
         pos,yaw,_ = self.map.point_at_s(lane,aligned.s)
-        from expert.src.planning.highway_lane_planning import parameters as p
+        from expert.src.planning.highway import parameters as p
         ego = VehicleState(pos.x-.5*p.VEHICLE_LENGTH*math.cos(yaw),
                            pos.y-.5*p.VEHICLE_LENGTH*math.sin(yaw),yaw,10.)
         match = self.map.project(ego.position,self.map.links['A2256W000445'])

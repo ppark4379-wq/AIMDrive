@@ -18,13 +18,16 @@ DEAD_RECKONING_SOURCE = 'GPS_dead_reckoning'
 STATUS_SOURCE = 'UDP_status_speed_IMU_heading'
 
 
-def decode_control_pose(packet, generation, checkpoint_sha256, now_ns, position_sources=(POSITION_SOURCE,)):
+def decode_control_pose(packet, generation, checkpoint_sha256, now_ns, position_sources=(POSITION_SOURCE,),
+                        expected_frame='projected_grid', coordinates=None):
     if (packet.get('schema') != SCHEMA or packet.get('generation') != generation
             or packet.get('checkpoint_sha256') != checkpoint_sha256
-            or packet.get('output_frame') != 'projected_grid'
+            or packet.get('output_frame') != expected_frame
             or packet.get('ego_position_source') not in position_sources
             or packet.get('ego_status_source') != STATUS_SOURCE):
         raise ValueError('Control pose identity/source mismatch')
+    if coordinates is not None:
+        coordinates.validate_frame(packet)
     if type(packet.get('sequence')) is not int or packet['sequence'] < 1:
         raise ValueError('Invalid control pose sequence')
     sent, received = packet.get('sent_ns'), packet.get('sensor_received_ns')
@@ -35,7 +38,8 @@ def decode_control_pose(packet, generation, checkpoint_sha256, now_ns, position_
     if type(received) is not int or not 0 < received <= sent or now_ns-received > MAX_AGE_S*1e9:
         raise ValueError('Control pose sensors expired')
     pose = packet['ego_pose']
-    for key in ('x', 'y', 'yaw_raw_deg', 'yaw_grid_rad', 'speed_mps'):
+    keys = ('x', 'y', 'yaw_raw_deg', 'speed_mps') + (('z', 'yaw_enu_rad') if expected_frame == 'enu' else ('yaw_grid_rad',))
+    for key in keys:
         value = pose[key]
         if type(value) not in (int, float) or not math.isfinite(value):
             raise ValueError('Invalid control pose value')
@@ -44,6 +48,8 @@ def decode_control_pose(packet, generation, checkpoint_sha256, now_ns, position_
     samples = packet['selected_samples']
     receipts = [samples['gps']['received_ns'], samples['vehicle_status']['received_ns'],
                 samples['vehicle_status']['imu_received_ns']]
+    if expected_frame == 'enu':
+        receipts.append(samples['vehicle_status']['status_received_ns'])
     if any(type(stamp) is not int or not received <= stamp <= sent for stamp in receipts):
         raise ValueError('Invalid control pose sample receipts')
     # A recent GPS fix must not mask an old heading/status sample (or vice versa).
@@ -54,17 +60,19 @@ def decode_control_pose(packet, generation, checkpoint_sha256, now_ns, position_
 
 class ControlPoseStream:
     def __init__(self, status, gps, basis, generation, checkpoint_sha256,
-                 target=('127.0.0.1', 12050), hz=50.):
-        from pyproj import Transformer
-        from data.src.loaders.morai_map_geometry import validate_map_basis
+                 target=('127.0.0.1', 12050), hz=50., localization=None):
         if not math.isfinite(hz) or not 1 <= hz <= 100:
             raise ValueError('Control pose frequency must be 1..100Hz')
         if target[0] != '127.0.0.1':
             raise ValueError('Control pose stream must stay on loopback')
         self.status, self.gps = status, gps
-        self.geometry = validate_map_basis(basis)
-        self.utm = Transformer.from_crs('EPSG:4326', basis['crs'], always_xy=True)
-        self.origin = basis['origin_xyz']
+        self.localization = localization
+        if localization is None:
+            from pyproj import Transformer
+            from data.src.loaders.morai_map_geometry import validate_map_basis
+            self.geometry = validate_map_basis(basis)
+            self.utm = Transformer.from_crs('EPSG:4326', basis['crs'], always_xy=True)
+            self.origin = basis['origin_xyz']
         self.generation, self.digest = generation, checkpoint_sha256
         self.target, self.period = target, 1./hz
         self.sequence = 0
@@ -74,6 +82,12 @@ class ControlPoseStream:
         self.thread = threading.Thread(target=self._run, name='ve_control_pose', daemon=True)
 
     def sample(self):
+        if self.localization is not None:
+            self.sequence += 1
+            packet = self.localization.pose_packet()
+            packet.update(schema=SCHEMA, generation=self.generation, sequence=self.sequence,
+                          checkpoint_sha256=self.digest, sent_ns=time.monotonic_ns())
+            return packet
         status, status_age, status_id = self.status.latest_snapshot()
         fix, gps_age, gps_id = self.gps.latest_snapshot()
         self.sequence += 1

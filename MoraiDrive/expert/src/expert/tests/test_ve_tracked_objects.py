@@ -11,12 +11,12 @@ from expert.src.obstacle.object_info import ObjectInfo, is_ve_tracked_unknown
 from expert.src.localization.point import Point
 from expert.src.vehicle_state import VehicleState
 from expert.src.planning.adaptive_cruise_control import AdaptiveCruiseControl
-from expert.src.planning.lattice_planning.planning_process import LatticePlanningProcess
-from expert.src.planning.lattice_planning.roundabout_entry import RoundaboutEntryPlanner
-from expert.src.planning.lattice_planning.structures import LatticePlanningResult
-from expert.src.planning.lattice_planning import parameters as p
-from expert.src.planning.highway_lane_planning.obstacle_motion import ObstacleMotion
-from expert.src.planning.Jamming.motion import stationary, moving
+from expert.src.planning.section_planning import LatticePlanningProcess
+from expert.src.planning.roundabout.planner import RoundaboutEntryPlanner
+from expert.src.planning.lattice.structures import LatticePlanningResult
+from expert.src.planning.lattice import parameters as p
+from expert.src.planning.highway.obstacle_motion import ObstacleMotion
+from expert.src.planning.jamming.motion import stationary, moving
 
 
 def unknown(x, y=0., speed=3., heading=0., identity=1, state='moving'):

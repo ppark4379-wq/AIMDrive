@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import numpy as np
 from expert.src.localization.point import Point
-from expert.src.planning.highway_lane_planning import lane_map, project_diagnostics
+from expert.src.planning.highway import lane_map, project_diagnostics
 
 
 class ProjectDiagnosticsTest(unittest.TestCase):

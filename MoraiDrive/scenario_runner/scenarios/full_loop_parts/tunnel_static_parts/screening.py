@@ -20,7 +20,8 @@ from .layout import MAP_NAME, bbox_world, validate_candidate
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 EXPERT_ROOT = PROJECT_ROOT / "expert" / "src"
-JAMMING_ROOT = EXPERT_ROOT / "expert" / "src" / "planning" / "Jamming"
+EXPERT_CODE = EXPERT_ROOT / "expert" / "src"
+JAMMING_ROOT = PROJECT_ROOT / "expert" / "data" / "recorded_paths" / "jamming"
 ROUTE_PATH = PROJECT_ROOT / "scenario_runner/data/R_KR_PR_K-city_2025/2026_molit_comp_global_path.txt"
 POLICY = {
     "planner": "production_JammingPlanner",
@@ -65,29 +66,30 @@ def _relative(path):
 
 def screening_provenance():
     """Current source/library hashes, without importing Expert or ROS."""
-    planning = JAMMING_ROOT.parent
+    planning = EXPERT_CODE / "planning"
     sources = [Path(__file__), Path(__file__).with_name("live.py"),
                Path(__file__).with_name("layout.py"),
                Path(__file__).with_name("advanced_patterns.py"),
-               planning / "lattice_planning/parameters.py",
-               planning / "lattice_planning/lattice_planner.py",
-               planning.parent / "localization/path_manager.py",
+               planning.parent / "config/parameters/lattice.py",
+               planning / "lattice/lattice_planner.py",
+               planning / "common/reference_path.py",
                planning.parent / "autonomous_driving.py",
                planning.parent / "config/config.json",
                PROJECT_ROOT / "scenario_runner/scenarios/segment_modes/modes.py",
                PROJECT_ROOT / "scenario_runner/scenarios/segment_modes/route.py"]
-    for directory in (JAMMING_ROOT, planning / "정적장애물"):
+    for directory in (planning / "jamming", planning / "static_obstacle",
+                      planning / "common", planning.parent / "config/parameters"):
         sources.extend(sorted(directory.glob("*.py")))
     manifest = json.loads((JAMMING_ROOT / "routes.json").read_text(encoding="utf-8"))
-    directory = manifest.get("directory", "후보 전역경로")
-    if directory not in ("후보 전역경로", "공통종료선 경로"):
+    directory = manifest.get("directory", "recordings")
+    if directory not in ("recordings", "prepared"):
         raise ValueError("Unsupported Jamming recording directory")
     names = manifest.get("routes", [])
     if len(names) != POLICY["recorded_routes"] or len(set(names)) != len(names):
         raise ValueError("Tunnel screening requires the nine production Jamming recordings")
     if any(not isinstance(name, str) or Path(name).name != name for name in names):
         raise ValueError("Invalid Jamming recording filename")
-    recordings = [JAMMING_ROOT / "routes.json", JAMMING_ROOT / "section.json"]
+    recordings = [JAMMING_ROOT / "routes.json", EXPERT_CODE / "config/jamming_section.json"]
     recordings.extend(JAMMING_ROOT / directory / name for name in names)
     sources = {_relative(path): _file_hash(path) for path in sources}
     recordings = {_relative(path): _file_hash(path) for path in recordings}
@@ -118,9 +120,9 @@ def validate_screening_settings(settings):
 def _expert_search():
     """Import only inside the disposable worker; no highway search fallback."""
     sys.path.insert(0, str(EXPERT_ROOT))
-    importlib.import_module("expert.src.planning.lattice_planning")
-    module = importlib.import_module("expert.src.planning.Jamming.recorded_planner")
-    boundary = importlib.import_module("expert.src.planning.Jamming.road_boundary")
+    importlib.import_module("expert.src.planning.lattice")
+    module = importlib.import_module("expert.src.planning.jamming.recorded_planner")
+    boundary = importlib.import_module("expert.src.planning.jamming.road_boundary")
     point = importlib.import_module("expert.src.localization.point").Point
     state = importlib.import_module("expert.src.vehicle_state").VehicleState
     object_info = importlib.import_module("expert.src.obstacle.object_info").ObjectInfo

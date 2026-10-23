@@ -1,3 +1,4 @@
+from expert.src.config.paths import JAMMING_SECTION_CONFIG
 """ENU recordings must drive the same footprint-checked planner after rotation."""
 import csv
 import importlib.util
@@ -14,12 +15,12 @@ import numpy as np
 from expert.src.localization.point import Point
 from expert.src.vehicle_state import VehicleState
 from expert.src.obstacle.object_info import ObjectInfo
-from expert.src.planning.Jamming.section import JammingSection, ROOT, next_route_name, register_route
-from expert.src.planning.Jamming.recorded_planner import JammingPlanner
-from expert.src.planning.Jamming.prepare_routes import prepare_library, PREPARED_DIRECTORY
-from expert.src.planning.lattice_planning.lattice_planner import LatticePlanner
-from expert.src.planning.lattice_planning.planning_process import LatticePlanningProcess
-from expert.src.planning.정적장애물.recorded_planner import RecordedStaticPlanner
+from expert.src.planning.jamming.section import JammingSection, ROOT, next_route_name, register_route
+from expert.src.planning.jamming.recorded_planner import JammingPlanner
+from expert.src.planning.jamming.prepare_routes import prepare_library, PREPARED_DIRECTORY
+from expert.src.planning.lattice.lattice_planner import LatticePlanner
+from expert.src.planning.section_planning import LatticePlanningProcess
+from expert.src.planning.static_obstacle.recorded_planner import RecordedStaticPlanner
 
 SPEC = importlib.util.spec_from_file_location("jamming_recorder", Path(__file__).resolve().parents[3] / "record_static_route.py")
 recorder = importlib.util.module_from_spec(SPEC)
@@ -31,7 +32,7 @@ class JammingTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
-        (self.root / "section.json").write_bytes((ROOT / "section.json").read_bytes())
+        (self.root / "section.json").write_bytes(JAMMING_SECTION_CONFIG.read_bytes())
         (self.root / "routes.json").write_text('{"routes": []}', encoding="utf-8")
         self.section = JammingSection(self.root)
         self.section.output_dir.mkdir()

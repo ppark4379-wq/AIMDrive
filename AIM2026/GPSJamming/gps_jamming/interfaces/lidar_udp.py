@@ -171,7 +171,7 @@ class LidarAssembler:
 
 class LidarUDPReceiver:
     """Context-managed socket; malformed packets are counted and skipped."""
-    def __init__(self, assembler, bind="127.0.0.1", port=2369,
+    def __init__(self, assembler, bind="127.0.0.1", port=2368,
                  source_ip=None, decoder=None, socket_timeout_ms=50):
         self.assembler = assembler
         self.bind, self.port = bind, port

@@ -9,14 +9,19 @@ import math
 from pathlib import Path
 import re
 
-ROOT = Path(__file__).resolve().parent
-ROUTE_DIRECTORY = "후보 전역경로"
+from ...config.paths import JAMMING_PATHS, JAMMING_SECTION_CONFIG, RECORDINGS_DIRECTORY_NAME
+
+ROOT = JAMMING_PATHS
+ROUTE_DIRECTORY = RECORDINGS_DIRECTORY_NAME
 
 
 class JammingSection:
     def __init__(self, root=ROOT):
         self.root = Path(root)
-        settings = json.loads((self.root / "section.json").read_text(encoding="utf-8"))
+        # 기본 경로는 중앙 설정을 사용하고, 외부/테스트 라이브러리는 기존 section.json을 유지한다.
+        settings_path = (JAMMING_SECTION_CONFIG if self.root.resolve() == ROOT.resolve()
+                         else self.root / "section.json")
+        settings = json.loads(settings_path.read_text(encoding="utf-8"))
         self.start = tuple(settings["start_enu"])
         self.end = tuple(settings["end_enu"])
         for point in (self.start, self.end):

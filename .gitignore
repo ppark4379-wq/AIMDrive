@@ -59,3 +59,6 @@ MoraiDrive/data_collection/internal_sensor_record/proven_three_lap_runtime/scena
 /AIM2026/Weights/**/*.pt
 /AIM2026/Weights/**/*.pth
 /AIM2026/Weights/**/*.pth.tar
+
+# Generated UDP inference/driving logs and per-run configuration copies.
+/AIM2026/outputs/

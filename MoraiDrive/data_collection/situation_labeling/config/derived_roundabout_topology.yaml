@@ -6,7 +6,7 @@ source_sha256:
   route_definition: 3d655b67a63b869c90ac7e3ae365efb22216183aac591d924fbe82dd63100519
   global_path: 50658991e607d9339d76e4cd6cb169dfc733ea53b93de2c3e222460bb497cc05
 parameter_source:
-  git_object: 2cf1d3e:MoraiDrive/expert/src/expert/src/planning/lattice_planning/parameters.py
+  git_object: 2cf1d3e:MoraiDrive/expert/src/expert/src/planning/lattice/parameters.py
   git_blob_oid: 169e675ff6370e38372eafc461c2c29e140db2e8
   sha256: 890d9ec4ba9c73f1185121334e74ab3b8df4ac60163dfc9df9966fdb8e888b10
   text: "#!/usr/bin/env python3\r\n# -*- coding: utf-8 -*-\r\n\"\"\"레티스·정적 장애물·고속도로\

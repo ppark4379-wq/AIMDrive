@@ -194,7 +194,7 @@ class TunnelModelCoverageTest(unittest.TestCase):
         directory = Path(self.temp.name) / "cached"
         coverage._write(directory / "candidate.json", {"candidate": "data"})
         coverage._write(directory / "screening.json", {"planner_source_sha256": {
-            "expert/src/expert/src/planning/highway_lane_planning/static_corridor.py": "f" * 64}})
+            "expert/src/expert/src/planning/highway/static_corridor.py": "f" * 64}})
         manifest = Path(self.temp.name) / "manifest.json"
         coverage._write(manifest, {"schema": "aimdrive_tunnel_model_coverage_v1", "status": "completed_offline",
             **summary, "results": [{"actor_kind": "obstacle", "model": "WoodBox", "report_dir": str(directory)}]})

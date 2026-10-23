@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import unittest
 
 from expert.src.localization.point import Point
-from expert.src.planning.highway_lane_planning.lane_map import HighwayLaneMap
+from expert.src.planning.highway.lane_map import HighwayLaneMap
 
 
 class ScalarLaneMap(HighwayLaneMap):

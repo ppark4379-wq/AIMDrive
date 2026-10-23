@@ -7,9 +7,9 @@ from unittest.mock import patch
 from expert.src.localization.point import Point
 from expert.src.obstacle.object_info import ObjectInfo
 from expert.src.vehicle_state import VehicleState
-from expert.src.planning.highway_lane_planning import parameters as p
-from expert.src.planning.highway_lane_planning.lane_map import HighwayLaneMap
-from expert.src.planning.highway_lane_planning.planner import HighwayLanePlanner
+from expert.src.planning.highway import parameters as p
+from expert.src.planning.highway.lane_map import HighwayLaneMap
+from expert.src.planning.highway.planner import HighwayLanePlanner
 
 
 class HighwayMergeSafetyTest(unittest.TestCase):
@@ -117,7 +117,7 @@ class HighwayMergeSafetyTest(unittest.TestCase):
 
     def test_second_merge_rear_safe_hold_survives_speed_control(self):
         import json
-        from expert.src.planning.highway_lane_planning.structures import HighwayPlanningResult
+        from expert.src.planning.highway.structures import HighwayPlanningResult
         from expert.src.autonomous_driving import AutonomousDriving
         from expert.src.control.path_controller import PathController
         for lateral in (1.1, 1.8):
@@ -190,7 +190,7 @@ class HighwayMergeSafetyTest(unittest.TestCase):
 
     def test_second_merge_entry_speed_survives_repeated_profile_drops(self):
         from expert.src.autonomous_driving import AutonomousDriving
-        from expert.src.planning.highway_lane_planning.structures import HighwayPlanningResult
+        from expert.src.planning.highway.structures import HighwayPlanningResult
         from expert.src.control.path_controller import PathController
         import json
         planner = HighwayLanePlanner(lane_map=self.lane_map)

@@ -8,7 +8,7 @@ from expert.src.control.pid import Pid
 from expert.src.localization.point import Point
 from expert.src.obstacle.object_info import ObjectInfo
 from expert.src.planning.adaptive_cruise_control import AdaptiveCruiseControl
-from expert.src.planning.highway_lane_planning import parameters
+from expert.src.planning.highway import parameters
 
 
 class LongitudinalControlTest(unittest.TestCase):
@@ -26,7 +26,7 @@ class LongitudinalControlTest(unittest.TestCase):
         self.assertLessEqual(speed, 1.2*controller.control_dt)
 
     def test_recorded_handoff_target_accelerates_gradually(self):
-        from expert.src.planning.lattice_planning import parameters as static_p
+        from expert.src.planning.lattice import parameters as static_p
         controller = self._controller(0.)
         controller.previous_target_velocity = 2.6
         controller.control_dt = .1

@@ -1,6 +1,7 @@
 """Competition Vehicle Status only; full Ego Vehicle Status is rejected."""
 import ctypes
 import math
+import struct
 from .Common import _Receiver, _Packet
 
 class VehicleStatusPacket(_Packet):
@@ -71,11 +72,29 @@ COMPETITION_STATUS_BYTES = ctypes.sizeof(CompetitionVehicleStatusPacket)
 class VehicleStatusReceiver(_Receiver):
     """Competition Vehicle Status; supplies the encoder's speed and heading."""
 
-    def __init__(self, port, **kwargs):
+    def __init__(self, port, *, local_status_bytes=None, **kwargs):
+        if local_status_bytes not in (None, 229, 245):
+            raise ValueError("Unknown explicit local status layout")
+        self.local_status_bytes = local_status_bytes
         self.layout_bytes = None
         super().__init__(port, recv_bytes=1024, **kwargs)
 
     def _consume(self, payload):
+        if getattr(self, 'local_status_bytes', None) is not None:
+            if (len(payload) != self.local_status_bytes or payload[:11] != b'#MoraiInfo$'
+                    or payload[-2:] != b'\r\n' or struct.unpack_from('<i',payload,11)[0] != len(payload)-29):
+                return None
+            sec,nsec = struct.unpack_from('<ii',payload,27)
+            speed = struct.unpack_from('<f',payload,37)[0]
+            accel,brake = struct.unpack_from('<2f',payload,45)
+            steer = struct.unpack_from('<f',payload,137)[0]
+            if sec < 0 or not 0 <= nsec < 10**9 or not all(math.isfinite(v) for v in (speed,accel,brake,steer)):
+                return None
+            self.layout_bytes=len(payload)
+            return dict(competition_variant=False, local_status_allowed=True,
+                        layout_bytes=len(payload), speed=speed/3.6, signed_speed=speed,
+                        accel=accel, brake=brake, steer=steer, gear=payload[36], sim_time=sec+nsec/1e9)
+
         if len(payload) != COMPETITION_STATUS_BYTES:
             # e.g. 229/245-byte full Ego Vehicle Status from a non-competition build.
             self._count('non_competition_layout_%d_bytes' % len(payload))

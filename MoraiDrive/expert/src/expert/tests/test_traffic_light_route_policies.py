@@ -1,7 +1,7 @@
 """순서가 고정된 경로와 팀원 신호 ID 정책을 함께 검증한다.
 
 테스트 런처가 Expert src/tests를 sys.path에 추가하고 검토 대상 controller를
-expert.src.planning.traffic_light_stop에 로드한다. ROS/MORAI를 호출하지 않는다.
+expert.src.planning.traffic.stop_controller에 로드한다. ROS/MORAI를 호출하지 않는다.
 기존 exact-route fixture와 회귀 케이스를 상속하므로 원본 테스트는 수정하지 않는다.
 """
 import contextlib

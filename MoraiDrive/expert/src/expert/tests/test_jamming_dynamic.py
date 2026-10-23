@@ -11,10 +11,10 @@ import numpy as np
 from expert.src.localization.point import Point
 from expert.src.vehicle_state import VehicleState
 from expert.src.obstacle.object_info import ObjectInfo
-from expert.src.planning.Jamming.recorded_planner import JammingPlanner
-from expert.src.planning.Jamming.dynamic_planner import DynamicObstaclePlanner
-from expert.src.planning.Jamming.motion import stationary, moving
-from expert.src.planning.Jamming.dynamic_recovery import make_recovery, recovery_result, clearance, replan_tracker
+from expert.src.planning.jamming.recorded_planner import JammingPlanner
+from expert.src.planning.jamming.dynamic_planner import DynamicObstaclePlanner
+from expert.src.planning.jamming.motion import stationary, moving
+from expert.src.planning.jamming.dynamic_recovery import make_recovery, recovery_result, clearance, replan_tracker
 from expert.src.autonomous_driving import AutonomousDriving
 
 

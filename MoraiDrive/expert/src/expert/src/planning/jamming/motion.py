@@ -3,7 +3,9 @@ import math
 from ...obstacle.object_info import is_ve_tracked_unknown
 
 # GT float noise around standstill, in m/s (0.18 km/h).
-STATIONARY_SPEED = .05
+from ...config.parameters.jamming import (
+    STATIONARY_SPEED,
+)
 
 
 def stationary(obj):

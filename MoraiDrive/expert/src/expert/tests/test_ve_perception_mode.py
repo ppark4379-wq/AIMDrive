@@ -11,7 +11,7 @@ from unittest.mock import patch
 from expert.src.autonomous_driving import AutonomousDriving
 from expert.src.localization.point import Point
 from expert.src.obstacle.object_info import ObjectInfo
-from expert.src.planning.ve_perception_planning import (
+from expert.src.planning.ve_planning import (
     GridYawConverter, VeInputGate, VePerceptionPlanningProcess, perception_source,
 )
 from expert.src.vehicle_state import VehicleState

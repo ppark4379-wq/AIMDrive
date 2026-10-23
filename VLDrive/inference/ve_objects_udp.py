@@ -100,15 +100,18 @@ def encode_packet(packet):
     return data
 
 
-def decode_packet(data, generation, checkpoint_sha256, now_ns, max_age=MAX_AGE_S):
+def decode_packet(data, generation, checkpoint_sha256, now_ns, max_age=MAX_AGE_S,
+                  expected_frame='projected_grid', coordinates=None):
     if len(data) > MAX_PACKET_BYTES:
         raise ValueError('Oversize VE datagram')
     packet = json.loads(data)
     if (packet['schema'] != SCHEMA or packet['generation'] != generation
             or packet['checkpoint_sha256'] != checkpoint_sha256
-            or packet['output_frame'] != 'projected_grid'
+            or packet['output_frame'] != expected_frame
             or packet['scene_assumption'] != 'unknown'):
         raise ValueError('VE datagram identity/frame mismatch')
+    if coordinates is not None:
+        coordinates.validate_frame(packet)
     if type(packet['sequence']) is not int or packet['sequence'] < 1:
         raise ValueError('Invalid sequence')
     for key in ('sent_ns', 'sensor_received_ns'):
@@ -125,6 +128,14 @@ def decode_packet(data, generation, checkpoint_sha256, now_ns, max_age=MAX_AGE_S
     pose = packet['ego_pose']
     for key in ('x', 'y', 'yaw_raw_deg'):
         finite(pose[key])
+    if expected_frame == 'enu':
+        if (packet.get('ego_position_source') != 'GPS'
+                or packet.get('ego_status_source') != 'UDP_status_speed_IMU_heading'):
+            raise ValueError('ENU perception must use GPS/IMU/competition status')
+        for key in ('z', 'yaw_enu_rad', 'speed_mps'):
+            finite(pose[key])
+        if abs(pose['speed_mps']) > 100:
+            raise ValueError('Invalid ego speed')
     if not isinstance(packet['boxes'], list) or len(packet['boxes']) > 256:
         raise ValueError('Too many VE footprints')
     for box in packet['boxes']:
@@ -178,6 +189,23 @@ def main(argv=None):
         parser.error('seconds must be finite and nonnegative; 0 means run until interrupted')
     config = json.loads(Path(args.config).read_text(encoding='utf-8'))
     gps_mode = config.get('runtime', {}).get('ego_source', 'ros_ego') == 'gps_imu_udp'
+    coordinate_config = config.get('runtime', {}).get('coordinate_config')
+    coordinates = localization = None
+    if coordinate_config:
+        if not gps_mode or config['runtime'].get('gps_blackout_hold', {}).get('enabled'):
+            raise ValueError('Fixed ENU requires GPS/IMU UDP without blackout hold')
+        sys.path.insert(0, str(ROOT.parent/'MoraiDrive/expert/src'))
+        from expert.src.localization.coordinate_transform import CoordinateTransform
+        from expert.src.localization.gps_imu_localization import GpsImuLocalization
+        from expert.src.network.udp.udp_manager import UdpManager, load_network_config
+        coordinates = CoordinateTransform(coordinate_config)
+        network_config = load_network_config(config['runtime']['competition_network'])
+        if network_config['bind_ip'] != config['runtime']['bind']:
+            raise ValueError('VE and Expert bind addresses differ')
+        expected_ports = dict(gps=network_config['gps_port'], imu=network_config['imu_port'],
+                              vehicle_status=network_config['status_port'])
+        if any(config['ports'][name] != port for name,port in expected_ports.items()):
+            raise ValueError('VE and Expert sensor ports differ')
     control_pose_hz = config.get('runtime', {}).get('control_pose_hz')
     if control_pose_hz is not None and (not gps_mode or not 1 <= float(control_pose_hz) <= 100):
         raise ValueError('Control pose stream requires GPS mode and 1..100Hz')
@@ -200,9 +228,13 @@ def main(argv=None):
         for probe in probes:
             probe.close()
     from inference.realtime_ve_objects import CHECKPOINTS, MAP_BASIS, validate_contract
-    if not any(config['checkpoint'] == v['path'] and config['checkpoint_sha256'] == v['sha256']
-               for v in CHECKPOINTS.values()):
-        raise ValueError('Use the reviewed E3/E4 checkpoint')
+    reviewed_location = any(config['checkpoint'] == v['path'] and config['checkpoint_sha256'] == v['sha256']
+                            for v in CHECKPOINTS.values())
+    # A deployed copy may live at a different Windows/Linux path. The loader
+    # verifies the file bytes against the reviewed SHA256 before loading.
+    reviewed_digest = any(config['checkpoint_sha256'] == v['sha256'] for v in CHECKPOINTS.values())
+    if not (reviewed_location or reviewed_digest):
+        raise ValueError('Use a reviewed E3/E4/P1 checkpoint identity')
     from utils.common.runtime import configure_runtime
     configure_runtime()
     import torch
@@ -212,6 +244,7 @@ def main(argv=None):
     from inference.sensors.morai_ros_perception import forward_perception
     from utils.evaluation.morai_transfer_evaluation import _load_model
     from utils.evaluation.morai_ve_expert_adapter import decode_world_predictions
+    from models.ve.signal_state import decode_native_signal
     torch.set_num_threads(4)
     device = config['runtime']['device']
     model, payload, digest = _load_model(Path(config['checkpoint']), config['checkpoint_sha256'], device)
@@ -224,7 +257,12 @@ def main(argv=None):
     route, lidar = config['route'], config['lidar']
     gps_receiver = None
     source_ports = dict(config['ports'])
-    if gps_mode:
+    if coordinates is not None:
+        network = UdpManager(network_config)
+        localization = GpsImuLocalization(network, coordinates)
+        status_receiver, gps_receiver = localization, network.gps
+        source_ports.pop('imu')
+    elif gps_mode:
         from inference.sensors.gps_imu_status import GpsImuStatusReceiver, ValidGpsReceiver
         status_receiver = GpsImuStatusReceiver(source_ports, bind=config['runtime']['bind'])
         try:
@@ -264,7 +302,7 @@ def main(argv=None):
             perception_only=True, status_receiver=status_receiver, pose_source='gps' if gps_mode else 'ego_topic',
             diagnostics=args.audit_dir is not None,
             camera_receiver_mode=config['runtime'].get('camera_receiver_mode', 'process'), gps_receiver=gps_receiver,
-            lidar_frame_policy=config['runtime'].get('lidar_frame_policy', 'morai_frame_timestamp'))
+            lidar_frame_policy=config['runtime'].get('lidar_frame_policy', 'morai_frame_timestamp'), localization=localization)
     except BaseException:
         status_receiver.close()
         if gps_receiver is not None:
@@ -291,7 +329,7 @@ def main(argv=None):
         if control_pose_hz is not None:
             from utils.common.ve_control_pose import ControlPoseStream
             control_pose = ControlPoseStream(status_receiver, gps_receiver, MAP_BASIS,
-                args.generation, digest, hz=float(control_pose_hz)).start()
+                args.generation, digest, hz=float(control_pose_hz), localization=localization).start()
         while not stopped[0] and (args.seconds == 0 or time.monotonic() - start < args.seconds):
             if control_pose is not None and control_pose.error is not None:
                 raise RuntimeError('Control pose stream stopped: '+control_pose.error)
@@ -308,20 +346,27 @@ def main(argv=None):
                 time.sleep(.01)
                 continue
             sequence += 1
+            selected_pose = meta.get('localization_pose')
             packet = dict(schema=SCHEMA, generation=args.generation, sequence=sequence,
-                checkpoint_sha256=digest, output_frame='projected_grid', scene_assumption='unknown',
+                checkpoint_sha256=digest, output_frame='enu' if coordinates else 'projected_grid', scene_assumption='unknown',
                 sensor_received_ns=0, ready=False, reason='missing:' + ','.join(meta['missing']),
                 boxes=[], ego_pose=None, training_updates=0,
                 timing_policy=('lidar_source; causal_status_speed_50ms; GPS_receipt_freshness; IMU_alignment_in_audit; source_synchrony_unverified'
                                if gps_mode else 'morai_lidar_source_timestamp; causal_ego_50ms; latest_cameras; source_synchrony_unverified'))
+            if coordinates is not None:
+                packet.update(frame_id=coordinates.frame_id, reference_id=coordinates.reference_id)
             if inputs is not None:
                 lidar_sequence = meta['selected_samples']['lidar']['sample_id']
                 last_lidar = lidar_sequence
                 required = (*REQUIRED_STREAMS, 'gps') if gps_mode else REQUIRED_STREAMS
                 packet['sensor_received_ns'] = min(meta['selected_samples'][key]['received_ns']
                                                    for key in required)
-                x, y = meta['ego_local']
-                yaw = grid_yaw(math.radians(meta['yaw_degrees']), (x, y, 0.), MAP_BASIS, source_frame='true_enu')
+                if selected_pose is not None:
+                    selected = selected_pose['ego_pose']
+                    x,y,yaw = selected['x'],selected['y'],selected['yaw_enu_rad']
+                else:
+                    x, y = meta['ego_local']
+                    yaw = grid_yaw(math.radians(meta['yaw_degrees']), (x, y, 0.), MAP_BASIS, source_frame='true_enu')
                 forward_ns = time.monotonic_ns()
                 cuda_events = None
                 if audit is not None and str(device).startswith('cuda'):
@@ -330,6 +375,10 @@ def main(argv=None):
                 with torch.no_grad():
                     if signal_head is None:
                         detection, _light = forward_perception(model, inputs)
+                        # Reuse the existing binary head/decoder. No left-arrow
+                        # phase is inferred; the original signal policy handles
+                        # unsupported movements as unavailable evidence.
+                        packet['native_signal'] = decode_native_signal(_light)[0]
                     else:
                         token, (detection, _light) = extract_signal_feature(model, inputs, forward_perception)
                         signal_logits = signal_head(token)
@@ -346,7 +395,7 @@ def main(argv=None):
                 if cuda_events is not None:
                     cuda_events[1].record()
                 decode_ns = time.monotonic_ns()
-                boxes = decode_world_predictions(detection[0], dict(x=x, y=y, yaw=yaw))['boxes']
+                boxes = decode_world_predictions(detection[0], dict(x=x, y=y, yaw=yaw), coordinates)['boxes']
                 decoded_ns = time.monotonic_ns()
                 count += 1
                 packet.update(ready=True, reason=None, boxes=[{k: box[k] for k in
@@ -359,6 +408,9 @@ def main(argv=None):
                         else 'GPS'),
                     ego_control=meta.get('ego_control') if gps_mode else None,
                     model_inference_ms=(time.monotonic_ns() - begin) / 1e6)
+                if selected_pose is not None:
+                    packet.update(ego_pose=selected_pose['ego_pose'], selected_samples=selected_pose['selected_samples'],
+                                  sensor_received_ns=min(packet['sensor_received_ns'],selected_pose['sensor_received_ns']))
                 if audit is not None:
                     selected = meta['selected_samples']
                     receipts = [x['received_ns'] for x in selected.values() if x['received_ns'] > 0]
@@ -396,7 +448,7 @@ def main(argv=None):
         try:
             sequence += 1
             sock.sendto(encode_packet(dict(schema=SCHEMA, generation=args.generation, sequence=sequence,
-                checkpoint_sha256=digest, output_frame='projected_grid', scene_assumption='unknown',
+                checkpoint_sha256=digest, output_frame='enu' if coordinates else 'projected_grid', scene_assumption='unknown',
                 ready=False, reason='sender_stopped', sent_ns=time.monotonic_ns(), sensor_received_ns=0)), ('127.0.0.1', PORT))
             audit_write(dict(event='streams', monotonic_ns=time.monotonic_ns(), streams=source.diagnostics()))
             audit_write(dict(event='stopped', monotonic_ns=time.monotonic_ns(), model_forwards=count,

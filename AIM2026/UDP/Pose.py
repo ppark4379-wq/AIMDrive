@@ -218,7 +218,7 @@ class PoseSender:
                 return self._not_ready('missing_' + name, samples)
             if not 0 <= age <= self.max_age_s:
                 return self._not_ready('stale_' + name, samples)
-        if status.get('competition_variant') is not True:
+        if not (status.get('competition_variant') is True or status.get('local_status_allowed') is True):
             return self._not_ready('competition_status_required', samples)
         speed = status['speed']  # Competition Vehicle Status signed_vel / 3.6
         if not math.isfinite(speed) or abs(speed) > MAX_SPEED_MPS:

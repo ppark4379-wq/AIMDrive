@@ -74,7 +74,7 @@
 | 20도 | 약 12.7 km/h | 약 17.7 km/h |
 | 35.75도 | 약 9.0 km/h | 약 14.0 km/h |
 
-`planning/lattice_planning/parameters.py`의 `STATIC_LATERAL_ACCEL`,
+`planning/lattice/parameters.py`의 `STATIC_LATERAL_ACCEL`,
 `STATIC_CURVATURE_SPEED_OFFSET_KPH`,
 `STATIC_STEERING_RATE`, `STATIC_STEERING_RESPONSE_TIME`, `STATIC_SPEED_PREVIEW`가
 해당 정책의 입력이다. 조향 변화율·응답 시간은 실차 동특성 측정값이 아닌
@@ -129,7 +129,7 @@
 
 이 절의 수치는 완화 전 기록이다. 현재 적용값은 아래 '두 번째 합류 전용 완화' 절을 참조한다.
 
-설정 위치: `src/expert/src/planning/highway_lane_planning/parameters.py`.
+설정 위치: `src/expert/src/planning/highway/parameters.py`.
 현재 우선권 판단은 `_merge_arrivals_overlap()`을 사용한다.
 
 ```

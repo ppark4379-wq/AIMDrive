@@ -20,9 +20,11 @@ if not hasattr(shapely, 'union_all') or not hasattr(shapely, 'polygons'):
     raise ImportError('Jamming road boundary requires Shapely 2; install the pinned Expert runtime dependencies')
 
 
-OWN_LINK = "A2256W000126"
-OPPOSING_LINK = "A2256W000131"
-BODY_POLICY = {"rear_m": .85, "front_m": 3.85, "width_m": 2.17}
+from ...config.parameters.jamming import (
+    OWN_LINK,
+    OPPOSING_LINK,
+    BODY_POLICY,
+)
 
 
 def _digest(value):

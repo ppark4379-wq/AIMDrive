@@ -4,7 +4,7 @@
     "exe": "/usr/bin/python3",
     "exit": -11,
     "stdout": "",
-    "stderr": "Fatal Python error: Segmentation fault\n\nCurrent thread 0x0000757f68e52740 (most recent call first):\n  File \"/home/jun/AIMDrive/MoraiDrive/expert/src/expert/src/planning/highway_lane_planning/lane_map.py\", line 106 in _projection_xy\n  File \"/home/jun/AIMDrive/MoraiDrive/expert/src/expert/src/planning/highway_lane_planning/lane_map.py\", line 123 in project\n  File \"/home/jun/AIMDrive/MoraiDrive/diagnostics/.runtime/probe_real_projection_long.py\", line 16 in <module>\n"
+    "stderr": "Fatal Python error: Segmentation fault\n\nCurrent thread 0x0000757f68e52740 (most recent call first):\n  File \"/home/jun/AIMDrive/MoraiDrive/expert/src/expert/src/planning/highway/lane_map.py\", line 106 in _projection_xy\n  File \"/home/jun/AIMDrive/MoraiDrive/expert/src/expert/src/planning/highway/lane_map.py\", line 123 in project\n  File \"/home/jun/AIMDrive/MoraiDrive/diagnostics/.runtime/probe_real_projection_long.py\", line 16 in <module>\n"
   },
   {
     "round": 1,

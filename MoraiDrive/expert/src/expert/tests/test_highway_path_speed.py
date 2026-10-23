@@ -7,7 +7,7 @@ import numpy as np
 from expert.src.autonomous_driving import AutonomousDriving
 from expert.src.localization.path_manager import PathManager
 from expert.src.localization.point import Point
-from expert.src.planning.highway_lane_planning.structures import HighwayPlanningResult
+from expert.src.planning.highway.structures import HighwayPlanningResult
 from expert.src.vehicle_state import VehicleState
 
 

@@ -7,8 +7,8 @@ from types import SimpleNamespace
 import test_highway_static_merge_escape as fixture
 from expert.src.localization.point import Point
 from expert.src.control.path_controller import PathController
-from expert.src.planning.highway_lane_planning.planner import HighwayLanePlanner
-from expert.src.planning.highway_lane_planning import parameters
+from expert.src.planning.highway.planner import HighwayLanePlanner
+from expert.src.planning.highway import parameters
 from expert.src.vehicle_state import VehicleState
 from expert.src.obstacle.object_info import ObjectInfo
 
@@ -30,7 +30,7 @@ class HighwaySearchBudgetTest(unittest.TestCase):
     def test_timeout_rejects_unverified_changes_and_does_not_accelerate_toward_static(self):
         scene = self.scene()
         calls = iter([0., 1.])
-        with patch('expert.src.planning.highway_lane_planning.planner.time.monotonic',
+        with patch('expert.src.planning.highway.planner.time.monotonic',
                    side_effect=lambda: next(calls,1.)):
             result = scene.plan()
         self.assertTrue(result.debug_details['lane_search_budget_exhausted'])
@@ -42,7 +42,7 @@ class HighwaySearchBudgetTest(unittest.TestCase):
 
     def test_normal_safe_escape_still_starts_within_budget(self):
         scene = self.scene()
-        with patch('expert.src.planning.highway_lane_planning.planner.time.monotonic',return_value=0.):
+        with patch('expert.src.planning.highway.planner.time.monotonic',return_value=0.):
             result = scene.plan()
         self.assertEqual('CHANGE_LEFT', result.highway_state)
         self.assertTrue(scene.planner.active_candidate.lane_change_verified)

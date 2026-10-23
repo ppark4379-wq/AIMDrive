@@ -12,7 +12,7 @@ from expert.src.localization.path_manager import PathManager
 from expert.src.localization.point import Point
 from expert.src.obstacle.object_info import ObjectInfo
 from expert.src.planning.adaptive_cruise_control import AdaptiveCruiseControl
-from expert.src.planning.traffic_light_stop import TrafficLightStopController
+from expert.src.planning.traffic.stop_controller import TrafficLightStopController
 
 
 class CrosswalkZoneTests(unittest.TestCase):
@@ -156,7 +156,7 @@ class CrosswalkZoneTests(unittest.TestCase):
         from expert.src.control.pid import Pid
         from expert.src.control.pure_pursuit import PurePursuit
         from expert.src.obstacle.forward_object_detector import ForwardObjectDetector
-        from expert.src.planning.lattice_planning.planning_process import LatticePlanningProcess
+        from expert.src.planning.section_planning import LatticePlanningProcess
         from expert.src.vehicle_state import VehicleState
         controller = AutonomousDriving.__new__(AutonomousDriving)
         controller._configure_runtime = lambda **kwargs: None
