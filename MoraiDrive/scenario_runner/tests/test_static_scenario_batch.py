@@ -490,6 +490,37 @@ class LaneAwarePlacementTest(unittest.TestCase):
         self.assertEqual(result["reasons"], ["ego_trace_missing"])
         self.assertEqual(batch.lane_summary(result)["reasons"], ["ego_trace_missing"])
 
+    def test_blocked_layout_covers_every_recorded_bypass(self):
+        rng = random.Random(4)
+        roles, fractions = batch.layout_roles(batch.BLOCKED_TARGET, 3, rng)
+        self.assertEqual(roles, ["block_far", "block_02", "lane_block"])
+        self.assertTrue(all(0.0 <= value <= 0.12 for value in fractions))
+        with self.assertRaises(ValueError):
+            batch.layout_roles(batch.BLOCKED_TARGET, 2, rng)
+        models = batch.target_models_for(self.policy, batch.BLOCKED_TARGET, -83.219)
+        for attempt in range(6):
+            obstacles = batch.generate_lane_layout(
+                self.policy, rng, 3, batch.BLOCKED_TARGET, models[attempt % len(models)], {},
+                90.0 if attempt % 2 else 0.0)
+            blocked = set()
+            for item in obstacles:
+                blocked.update(item["generation"].get("blocks_routes", []))
+            self.assertTrue(set(batch.BLOCKED_ROUTES) <= blocked)
+            roles = [item["generation"]["placement_role"] for item in obstacles]
+            self.assertEqual(roles.count("lane_block"), 1)
+
+    def test_blockage_release_policy_and_evidence(self):
+        from ..scenarios.full_loop_parts import static_blockage_release
+        self.assertEqual(static_blockage_release.validate_policy(batch.BLOCKAGE_RELEASE_POLICY),
+                         batch.BLOCKAGE_RELEASE_POLICY)
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "attempt.log"
+            log.write_text("[STATIC BLOCKAGE] static_blockage_wait_started {}\n")
+            self.assertFalse(batch.blockage_release_observed(log))
+            log.write_text(log.read_text() + batch.BLOCKAGE_RELEASED_MARKER + " {}\n")
+            self.assertTrue(batch.blockage_release_observed(log))
+            self.assertFalse(batch.blockage_release_observed(Path(tmp) / "missing.log"))
+
 
 if __name__ == "__main__":
     unittest.main()

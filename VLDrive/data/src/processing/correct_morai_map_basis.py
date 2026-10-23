@@ -1,4 +1,4 @@
-"""Publish additive projected-grid targets from sealed full-pose publications.
+"""Publish grid targets from sealed full-pose or complete actor-free publications.
 
 Run with python -m data.src.processing.correct_morai_map_basis from VLDrive.
 Original sensor bytes, source manifests, dimensions, times and splits are retained.
@@ -10,9 +10,11 @@ from collections import Counter
 from pathlib import Path
 
 from data.src.loaders.morai_map_geometry import BASIS_SCHEMA, validate_map_basis
-from data.src.loaders.morai_map_derivation import SCHEMA, correct_entry, verify_map_derivation
+from data.src.loaders.morai_map_derivation import (
+    SCHEMA, MANIFEST_PATH_FIELDS, correct_entry, load_map_derivation_inputs,
+    verify_map_derivation)
 from data.src.loaders.morai_sensor_record_dataset import (
-    PathResolver, digest, load_publication, read_json, verify_geometry_derivation, verify_seal)
+    PathResolver, digest, load_publication, read_json, verify_seal)
 
 
 def write(path, data):
@@ -50,8 +52,10 @@ def main():
         files, counts, coverage, audit_rows = {}, Counter(), {}, []
         for split in ('train', 'val', 'test'):
             new_index[split] = []
-            c = Counter()
-            for row in index[split]:
+            # Preserve source-only audit counts, such as raw and excluded frames.
+            c = Counter({k:v for k,v in index.get('coverage', {}).get(split, {}).items()
+                         if k in ('raw_frames', 'excluded_frames')})
+            for row in index.get(split, []):
                 p = resolver(row['path'], src.parent)
                 if digest(p) != row['sha256']:
                     raise ValueError('Changed source manifest')
@@ -59,14 +63,14 @@ def main():
                 if original.get('map_basis') or original.get('map_basis_reprocessing'):
                     raise ValueError('Already converted manifest')
                 episode = resolver(original['episode'], p.parent)
-                verify_geometry_derivation(original, resolver, p.parent, episode)
-                ev = original['geometry_reprocessing']
-                ts = {r['index']:r for r in read_json(resolver(ev['timeline_directory'])/'frames.json')}
-                gs = {r['index']:r for r in read_json(resolver(ev['geometry_directory'])/'frames.json')}
+                ts, gs, pivots, geometry_policy = load_map_derivation_inputs(
+                    original, resolver, p.parent, episode)
                 verify_seal(episode/'route_signal_audit_v1')
                 signals = {r['index']:r for r in read_json(episode/'route_signal_audit_v1/frames.json')}
-                pivots = read_json(resolver(ev['geometry_directory'])/'pivot_evidence.json')['instances']
                 doc = copy.deepcopy(original)
+                for key in MANIFEST_PATH_FIELDS:
+                    if key in doc:
+                        doc[key] = str(resolver(original[key], p.parent))
                 entries, stats = [], Counter()
                 for before in original['entries']:
                     i = before['frame_id']
@@ -80,10 +84,15 @@ def main():
                     c['object_frames'] += bool(after['object_valid'])
                     c['object_positive_frames'] += after['object_positive']
                     c['traffic_light_'+str(after['traffic_light'])] += 1
+                    permission = after.get('route_permission', {})
+                    if permission.get('valid') is True:
+                        c['route_permission_frames'] += 1
+                        c['route_permission_'+str(int(permission['target']))] += 1
                 doc['entries'] = entries
                 doc['map_basis'] = basis
                 doc['map_basis_reprocessing'] = dict(
                     schema=SCHEMA, source_manifest=str(p), source_manifest_sha256=digest(p),
+                    geometry_input_policy=geometry_policy,
                     map_metadata=str(map_path), map_metadata_sha256=digest(map_path),
                     source_timestamps_modified=False, original_frame_order_and_splits_preserved=True,
                     physical_simultaneity_verified=False, counts=dict(stats),

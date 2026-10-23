@@ -1,0 +1,121 @@
+schema: morai_static_obstacle_preset_v1
+name: static_rot2obs_train_20261018_attempt_162
+map_name: R_KR_PR_K-city_2025
+scenario: full_loop_static
+source: automated_static_expert_verified
+generation:
+  batch_seed: 26101801
+  attempt: 162
+  candidate_only_until_expert_passes: false
+  scale_policy: morai_native_model_scale_v1
+  placement_policy: lane_aware_right_edge_strata_v1
+  avoidance_target: medium
+  footprint_catalog_sha256: 83e6ae9bab5d7a89e0958952181cbaf62c798036fc9c5b4aa94db5588f20416f
+obstacles:
+- model: Bollard01
+  position:
+    x: -61.112684
+    y: -145.708035
+    z: 28.376481
+  yaw_deg: -158.810233
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 661
+  generation:
+    longitudinal_fraction: 0.06873878
+    lateral_offset_m: 0.511534
+    route_lateral_m: 1.263497
+    right_edge_route_lateral_m: 1.0245
+    left_edge_route_lateral_m: 1.5025
+    placement_role: lane_any
+    lateral_stratum: left
+    lane_fit: inside
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+    lane_left_bound_m: 1.6964
+    right_02_clearance_m: 0.89
+    right_03_clearance_m: 2.2597
+- model: Bike2
+  position:
+    x: -59.568169
+    y: -140.596313
+    z: 28.380058
+  yaw_deg: -11.266738
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 672
+  generation:
+    longitudinal_fraction: 0.57965173
+    lateral_offset_m: -1.041554
+    route_lateral_m: -0.28959
+    right_edge_route_lateral_m: -1.1832
+    left_edge_route_lateral_m: 0.604
+    placement_role: lane_any
+    lateral_stratum: right
+    lane_fit: inside
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+    lane_left_bound_m: 1.7192
+    right_02_clearance_m: -1.0355
+    right_03_clearance_m: 1.0039
+- model: NCAP_GVT
+  position:
+    x: -60.728075
+    y: -136.760734
+    z: 28.382744
+  yaw_deg: -117.130974
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 679
+  generation:
+    longitudinal_fraction: 0.96340762
+    lateral_offset_m: 0.111916
+    route_lateral_m: 0.863879
+    right_edge_route_lateral_m: -0.8122
+    left_edge_route_lateral_m: 2.5399
+    placement_role: lane_block
+    lateral_stratum: right
+    lane_fit: covers_centre_line
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+    lane_left_bound_m: 1.7264
+    right_02_clearance_m: -0.9189
+    right_03_clearance_m: 0.8048
+verification:
+  expert_completed: true
+  collision_free: true
+  runner_return_code: 0
+  max_cross_track_error_m: 3.39
+  cross_track_limit_m: 4.0
+  valid_plan_samples: 23
+  selected_routes:
+  - right_03.csv
+  blockage_release_observed: null
+  lane_compliance:
+    passed: true
+    reasons: []
+    raw_samples: 506
+    max_sample_gap_m: 0.998
+    route_index_span:
+    - 487.1
+    - 753.0
+    min_marking_clearance_m: 0.147
+    closest_marking: B2256W000445:505:solid
+    touched_markings: []
+    max_right_deviation_m: 3.424
+    max_left_deviation_m: 0.088
+    avoidance_class: medium
+    trajectory_class: medium
+    swing_onset_route_index: 647.5
+    peak_route_index: 674.4
+    markings_source_sha256: f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb
+  verified_at_unix: 1792179637.8030324
+  log: scenario_runner/.runtime/static_scenario_batch/static_rot2obs_train_20261018/logs/static_rot2obs_train_20261018_attempt_162.log
+  ego_trace: scenario_runner/.runtime/static_scenario_batch/static_rot2obs_train_20261018/traces/static_rot2obs_train_20261018_attempt_162.csv
+  ego_trace_sha256: b5ce47b59c8255b8bbe09ed14a097eb6fc5ddd776f4004f0c95a595392e11dc8

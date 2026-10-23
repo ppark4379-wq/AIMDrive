@@ -3,6 +3,7 @@
 import json
 import math
 import random
+import time
 from pathlib import Path
 
 from ...utils import safe_print as print
@@ -27,6 +28,12 @@ TRIGGER_DEFAULTS = {
     "minimum_ego_speed_mps": 2.0,
     "missed_trigger_tolerance_m": 1.0,
 }
+
+# The native spawn readback probe observed UNKNOWN/empty inventories immediately
+# after a successful ACK, followed by a valid actor at 0.11--0.15 wall seconds.
+# Bound initialization in host time rather than treating three fast ticks as
+# proof of a lost moving actor. This never verifies an unobserved spawn.
+INITIAL_STATE_TIMEOUT_WALL_SEC = 1.0
 
 
 def _number(value, name):
@@ -398,9 +405,53 @@ class TunnelDynamicHandler:
         actor = context.tunnel_dynamic_actor
         if actor is None:
             return
-        result = actor.destroy()
-        if result is False:
-            raise RuntimeError("Failed to destroy tunnel pedestrian")
+        actor_id = context.tunnel_dynamic_result.get("actor_id")
+        result = None
+        errors = []
+        try:
+            result = actor.destroy()
+        except Exception as error:
+            errors.append(f"DestroyActor: {error}")
+        if not actor_id:
+            # A returned spawn handle must still be cleaned up when get_id
+            # failed. Keep it owned for outer teardown: without an exact ID,
+            # neither a destroy ACK nor empty inventory verifies removal.
+            errors.append("Actor ID unavailable; deletion cannot be verified")
+            context.tunnel_dynamic_result["removal_observation"] = {
+                "actor_id": None, "destroy_result": result,
+                "absence_confirmations": 0, "polls": [],
+                "errors": errors, "verified": False,
+            }
+            raise RuntimeError("Tunnel pedestrian removal unverified: actor ID unavailable")
+        # Native Actor.destroy returns None and can hide a server RPC error.
+        # Do not spawn the next event with a reused ID until deletion is
+        # observed. Use the normal dynamic handler's bounded poll interval,
+        # with two independent absence checks even when the ACK says success.
+        absent = 0
+        polls = []
+        for attempt in range(3):
+            try:
+                states = context.grpc.get_all_pedestrian_states(strict=True)
+                matches = [state for state in states
+                           if str(state.actor_info.id.value).strip() == actor_id]
+                absent = absent + 1 if not matches else 0
+                polls.append({"poll": attempt + 1, "exact_id_matches": len(matches)})
+            except Exception as error:
+                absent = 0
+                errors.append(f"GetAllActorsState: {error}")
+                polls.append({"poll": attempt + 1, "error": str(error)})
+            if absent >= 2:
+                break
+            if attempt < 2:
+                time.sleep(0.1)
+        context.tunnel_dynamic_result["removal_observation"] = {
+            "actor_id": actor_id, "destroy_result": result,
+            "absence_confirmations": absent, "polls": polls,
+            "errors": errors, "verified": absent >= 2,
+        }
+        if absent < 2:
+            raise RuntimeError(f"Tunnel pedestrian removal unverified actor_id={actor_id}: "
+                               f"absence_checks={absent}, errors={errors}")
         if actor in context.scenario_actors:
             context.scenario_actors.remove(actor)
         context.tunnel_dynamic_actor = None
@@ -442,7 +493,15 @@ class TunnelDynamicHandler:
         if not actor_id:
             self._fail(context, "Tunnel pedestrian has no actor ID")
         context.tunnel_dynamic_result.update(
-            spawned=True, actor_id=actor_id, spawn_elapsed_sec=float(elapsed))
+            spawned=True, actor_id=actor_id, spawn_elapsed_sec=float(elapsed),
+            spawn_state_verified=False)
+        context.tunnel_dynamic_spawn_ack_monotonic = time.monotonic()
+        context.tunnel_dynamic_result.update(
+            spawn_ack_monotonic_sec=context.tunnel_dynamic_spawn_ack_monotonic,
+            initial_state_policy={"clock": "host_monotonic",
+                                  "timeout_wall_sec": INITIAL_STATE_TIMEOUT_WALL_SEC},
+            initial_state_read_misses=0, initial_state_read_history=[],
+        )
         context.tunnel_dynamic_spawn_elapsed = float(elapsed)
         context.tunnel_dynamic_last_position = {"x": a["x"], "y": a["y"]}
         context.tunnel_dynamic_last_observed_elapsed = float(elapsed)
@@ -454,12 +513,46 @@ class TunnelDynamicHandler:
                 self._command(context, 1)
             except RuntimeError as error:
                 self._fail(context, error)
-        context.tunnel_dynamic_phase = "moving"
+        # A successful spawn response is not an observed actor. The first
+        # actual, plausible pose below is required before confirming motion.
+        context.tunnel_dynamic_phase = "spawned_unobserved"
         print(f"[TunnelDynamic] spawned actor={actor_id} A->B "
               f"path={plan['path_id']} model={plan['model']} "
               f"method={'native_straight' if plan.get('trial_candidate') else 'set_waypoint'} "
               f"yaw={yaw:.1f} speed={plan['speed_mps']:.2f}m/s")
         self._save_report(context)
+
+    def _read_state(self, context, actor):
+        """Read this spawned pedestrian, never an old pose or a nearby actor.
+
+        MORAI can return UNKNOWN for GetActorState while GetAllActorsState
+        still exposes the actor. The SDK converts that RPC error to None.
+        Query a fresh, client-scoped inventory only on a direct read failure;
+        require one exact ID and pedestrian type, as the normal dynamic
+        obstacle handler does. Strict mode keeps RPC failure distinct from an
+        observed empty inventory. Neither is a completed pedestrian event.
+        """
+        errors = []
+        try:
+            state = actor.get_actor_state()
+            if state is not None:
+                return state, "GetActorState", errors
+            errors.append("GetActorState returned no state")
+        except Exception as error:
+            errors.append(f"GetActorState: {error}")
+        actor_id = context.tunnel_dynamic_result["actor_id"]
+        try:
+            states = context.grpc.get_all_pedestrian_states(strict=True)
+            matches = [state for state in states
+                       if str(state.actor_info.id.value).strip() == actor_id
+                       and state.actor_info.object_type == 2]
+            if len(matches) == 1:
+                return matches[0], "GetAllActorsState", errors
+            errors.append(f"GetAllActorsState expected one exact pedestrian {actor_id}, "
+                          f"found {len(matches)}")
+        except Exception as error:
+            errors.append(f"GetAllActorsState: {error}")
+        raise RuntimeError("; ".join(errors))
 
     def update(self, context, elapsed, ego_state, current_s):
         phase = context.tunnel_dynamic_phase
@@ -473,16 +566,55 @@ class TunnelDynamicHandler:
             raise RuntimeError("Tunnel dynamic event already failed")
         if float(elapsed) - context.tunnel_dynamic_spawn_elapsed > plan["max_run_sec"]:
             self._fail(context, "Tunnel pedestrian timed out")
+        initializing = phase == "spawned_unobserved"
+        if initializing:
+            wait_wall = time.monotonic() - context.tunnel_dynamic_spawn_ack_monotonic
+            context.tunnel_dynamic_result["initial_state_wait_wall_seconds"] = wait_wall
+            if wait_wall >= INITIAL_STATE_TIMEOUT_WALL_SEC:
+                self._fail(context, "Tunnel pedestrian initial state unavailable after "
+                           f"{INITIAL_STATE_TIMEOUT_WALL_SEC:.1f}s wall deadline")
+            # Do not allow the initialization deadline to carry an absent
+            # obstacle into an unsafe or already missed interaction window.
+            timing = interaction_timing(
+                context.tunnel_dynamic_trigger_cfg, plan["interaction_s"],
+                plan["start_to_interaction_m"], plan["speed_mps"], ego_state, current_s)
+            context.tunnel_dynamic_result["initial_state_interaction_timing"] = timing
+            if timing["remaining_m"] < timing["safe_stop_distance_m"]:
+                self._fail(context, "Tunnel pedestrian initial state unobserved in unsafe "
+                           f"interaction window: remaining={timing['remaining_m']:.2f}m, "
+                           f"safe_stop={timing['safe_stop_distance_m']:.2f}m")
         actor = context.tunnel_dynamic_actor
         try:
-            state = actor.get_actor_state()
+            state, source, read_errors = self._read_state(context, actor)
             x = float(state.transform.location.x)
             y = float(state.transform.location.y)
         except Exception as error:
             context.tunnel_dynamic_state_misses += 1
-            if context.tunnel_dynamic_state_misses >= 3:
+            context.tunnel_dynamic_result.update(
+                state_read_failures=context.tunnel_dynamic_state_misses,
+                state_read_error=str(error),
+                state_failure_phase="initialization" if initializing else "moving",
+            )
+            if initializing:
+                context.tunnel_dynamic_result["initial_state_read_misses"] += 1
+                observation = {"wait_wall_seconds": time.monotonic() -
+                               context.tunnel_dynamic_spawn_ack_monotonic,
+                               "error": str(error)}
+                context.tunnel_dynamic_result["last_initial_state_miss"] = observation
+                history = context.tunnel_dynamic_result["initial_state_read_history"]
+                if len(history) < 8:
+                    history.append(observation)
+                if observation["wait_wall_seconds"] >= INITIAL_STATE_TIMEOUT_WALL_SEC:
+                    self._fail(context, "Tunnel pedestrian initial state unavailable after "
+                               f"{INITIAL_STATE_TIMEOUT_WALL_SEC:.1f}s wall deadline: {error}")
+            elif context.tunnel_dynamic_state_misses >= 3:
                 self._fail(context, f"Tunnel pedestrian state unavailable: {error}")
+            self._save_report(context)
             return
+        if (initializing and time.monotonic() - context.tunnel_dynamic_spawn_ack_monotonic
+                >= INITIAL_STATE_TIMEOUT_WALL_SEC):
+            self._fail(context, "Tunnel pedestrian first state arrived after "
+                       f"{INITIAL_STATE_TIMEOUT_WALL_SEC:.1f}s wall deadline")
         context.tunnel_dynamic_state_misses = 0
         if not math.isfinite(x) or not math.isfinite(y):
             self._fail(context, "Tunnel pedestrian position is not finite")
@@ -503,6 +635,23 @@ class TunnelDynamicHandler:
             return
         context.tunnel_dynamic_last_position = {"x": x, "y": y}
         context.tunnel_dynamic_last_observed_elapsed = float(elapsed)
+        context.tunnel_dynamic_phase = "moving"
+        observations = context.tunnel_dynamic_result.setdefault("state_observations", {})
+        observations[source] = observations.get(source, 0) + 1
+        if source == "GetAllActorsState" and observations[source] == 1:
+            print(f"[TunnelDynamic] actor={context.tunnel_dynamic_result['actor_id']} "
+                  f"state_source={source} direct_read_error={'; '.join(read_errors)}")
+        context.tunnel_dynamic_result.update(
+            state_read_failures=0, state_read_error=None,
+            last_state_source=source, last_state_elapsed_sec=float(elapsed),
+            spawn_state_verified=True,
+        )
+        if initializing:
+            context.tunnel_dynamic_result.update(
+                first_verified_state_source=source,
+                first_verified_state_delay_wall_seconds=time.monotonic() -
+                context.tunnel_dynamic_spawn_ack_monotonic,
+            )
         target_index = context.tunnel_dynamic_target_index
         target = plan["waypoints"][target_index]
         remaining = math.hypot(x - target["x"], y - target["y"])

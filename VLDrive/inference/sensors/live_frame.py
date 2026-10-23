@@ -31,6 +31,7 @@ from inference.sensors.morai_udp import (
     ImuReceiver,
     LidarReceiver,
     VehicleStatusReceiver,
+    resolve_lidar_hour_stamp,
 )
 
 # SensorRecord manifest target distance.
@@ -68,7 +69,11 @@ class LiveFrameSource:
                  encoder_contract=None, lidar_frame=None, lidar_to_base=None,
                  velocity_source=None, allow_velocity_mismatch=False,
                  route_map_root=None, route_definition=None, orientation_frame=None,
-                 perception_only=False, status_receiver=None, pose_source='gps', diagnostics=False):
+                 perception_only=False, status_receiver=None, pose_source='gps', diagnostics=False,
+                 camera_receiver_mode='thread', gps_receiver=None,
+                 lidar_frame_policy='morai_frame_timestamp'):
+        if camera_receiver_mode not in ('thread', 'process'):
+            raise ValueError('Camera receiver mode must be thread or process')
         self.ports = dict(ports)
         self.perception_only = bool(perception_only)
         self.audit_enabled = diagnostics
@@ -104,17 +109,32 @@ class LiveFrameSource:
                 raise ValueError("This checkpoint requires an official navigation route")
             self.route_tracker = official_route_tracker(self.contract, route_csv,
                 map_root=route_map_root, route_definition=route_definition)
-        self.cameras = {
-            key: CameraReceiver(self.ports[key], bind=bind, name=key, diagnostics=diagnostics)
-            for key in CAMERA_KEYS if key in self.ports
-        }
-        self.lidar = LidarReceiver(self.ports["lidar"], bind=bind,
-                                   elevations=lidar_elevations, name="lidar", diagnostics=diagnostics)
-        self.status = (status_receiver if status_receiver is not None else
-                       VehicleStatusReceiver(self.ports["vehicle_status"], bind=bind,
-                                             name="vehicle_status"))
-        self.gps = GpsReceiver(self.ports["gps"], bind=bind, name="gps") if "gps" in self.ports else None
-        self.imu = ImuReceiver(self.ports["imu"], bind=bind, name="imu") if "imu" in self.ports else None
+        self.camera_group = None
+        if camera_receiver_mode == 'process':
+            from inference.sensors.camera_process import CameraProcessGroup
+            self.camera_group = CameraProcessGroup(
+                {key: self.ports[key] for key in CAMERA_KEYS if key in self.ports},
+                bind=bind, diagnostics=diagnostics)
+            self.cameras = self.camera_group.cameras
+        else:
+            self.cameras = {
+                key: CameraReceiver(self.ports[key], bind=bind, name=key, diagnostics=diagnostics)
+                for key in CAMERA_KEYS if key in self.ports
+            }
+        self.lidar = self.status = self.gps = self.imu = None
+        try:
+            self.lidar = LidarReceiver(self.ports["lidar"], bind=bind,
+                                       elevations=lidar_elevations, name="lidar", diagnostics=diagnostics,
+                                       frame_policy=lidar_frame_policy)
+            self.status = (status_receiver if status_receiver is not None else
+                           VehicleStatusReceiver(self.ports["vehicle_status"], bind=bind,
+                                                 name="vehicle_status"))
+            self.gps = (gps_receiver if gps_receiver is not None else
+                        GpsReceiver(self.ports["gps"], bind=bind, name="gps") if "gps" in self.ports else None)
+            self.imu = ImuReceiver(self.ports["imu"], bind=bind, name="imu") if "imu" in self.ports else None
+        except BaseException:
+            self.close()
+            raise
 
         self.route = self.route_tracker.points if self.route_tracker is not None else None
         self._utm = None
@@ -242,18 +262,45 @@ class LiveFrameSource:
         if status is None or status_age > max_age:
             meta["missing"].append("vehicle_status")
 
+        lidar_identity = meta['selected_samples'].get('lidar', {})
+        if 'source_stamp_us_within_hour' in lidar_identity:
+            # The packet clock is modulo one hour. Resolve it only against a
+            # real source header; receipt time is not a substitute for capture.
+            reference = meta['selected_samples'].get('vehicle_status', {}).get('source_stamp_ns', 0)
+            if not reference:
+                reference = meta['selected_samples'].get('rgb_front', {}).get('source_stamp_ns', 0)
+            try:
+                lidar_identity['source_stamp_ns'] = resolve_lidar_hour_stamp(
+                    lidar_identity['source_stamp_us_within_hour'], reference)
+                if hasattr(self.status, 'at_source_stamp'):
+                    status, status_age, identity = self.status.at_source_stamp(lidar_identity['source_stamp_ns'])
+                    if status is None or status_age > max_age:
+                        meta['missing'].append('vehicle_status_source_alignment')
+                    else:
+                        meta['selected_samples']['vehicle_status'] = identity
+                        meta['ages']['vehicle_status'] = status_age
+                        meta['ego_alignment'] = 'causal_lidar_source_50ms'
+            except ValueError:
+                meta['missing'].append('lidar_source_clock')
+
         if meta["missing"]:
             return None, meta
 
+        source_stamps = [s['source_stamp_ns'] for s in meta['selected_samples'].values()
+                         if s.get('source_stamp_ns', 0) > 0]
+        meta['source_spread_ms'] = ((max(source_stamps)-min(source_stamps))/1e6
+                                    if source_stamps else None)
+
         theta = status["yaw"]
         meta["speed"] = status["speed"]
+        meta['ego_control'] = {k: status[k] for k in ('accel', 'brake', 'steer', 'gear') if k in status}
         meta["velocity_contract_mismatch"] = self.velocity_mismatch
         meta["velocity_source"] = "constant_zero" if self.contract["velocity_input"] == "constant_zero" else self.velocity_source
         meta["waypoint_output_axes"] = self.contract["waypoint_output_axes"]
         meta["detection_output_axes"] = self.contract["detection_output_axes"]
         meta["yaw_degrees"] = status["yaw_degrees"]
         target_point = np.zeros(2, dtype=np.float32)
-        fix, gps_age = (self.gps.latest() if self.gps else (None, float("inf")))
+        fix, gps_age = (self._latest_for_build('gps', self.gps, meta) if self.gps else (None, float("inf")))
         meta["ages"]["gps"] = gps_age
         perception_only = getattr(self, 'perception_only', False)
         if perception_only:
@@ -306,5 +353,10 @@ class LiveFrameSource:
         return inputs, meta
 
     def close(self):
-        for _, receiver in self._receivers():
-            receiver.close()
+        try:
+            for _, receiver in self._receivers():
+                if receiver is not None:
+                    receiver.close()
+        finally:
+            if getattr(self, 'camera_group', None) is not None:
+                self.camera_group.close()

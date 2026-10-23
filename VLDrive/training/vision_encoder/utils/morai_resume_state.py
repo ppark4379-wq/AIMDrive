@@ -33,6 +33,52 @@ SEMANTIC_FIELDS = (
     'frame_sampling', 'augmentation', 'velocity_source', 'velocity_contract',
     'waypoint_source', 'target_point', 'batchnorm', 'stop_sign',
 )
+AUGMENTATION_RNG_POLICY = 'main_process_torch_generators_v1'
+AUGMENTATION_GENERATOR_NAMES = ('photometric', 'target_point_dropout')
+
+
+def _augmentation_contract(provenance):
+    """Only the explicitly saved, main-process camera/target RNG is supported."""
+    policy = provenance.get('augmentation_rng_contract')
+    if policy is None:
+        if provenance['augmentation'] != 'none' or provenance.get('args', {}).get('target_point_dropout', 0):
+            raise ValueError('Exact augmentation continuation requires saved main-process generators')
+        return None
+    if (not isinstance(policy, dict) or policy.get('policy') != AUGMENTATION_RNG_POLICY
+            or set(policy) != {'policy', 'generator_names', 'photometric_probability',
+                              'target_point_dropout_probability'}
+            or tuple(policy.get('generator_names', ())) != AUGMENTATION_GENERATOR_NAMES):
+        raise ValueError('Unsupported augmentation RNG contract')
+    photo, dropout = policy['photometric_probability'], policy['target_point_dropout_probability']
+    if (not math.isfinite(photo) or not 0 <= photo <= 1
+            or not math.isfinite(dropout) or not 0 <= dropout < 1):
+        raise ValueError('Invalid augmentation probabilities')
+    expected = 'photometric_shared_per_frame p=%g' % photo if photo else 'none'
+    if provenance['augmentation'] != expected:
+        raise ValueError('Photometric augmentation contradicts RNG contract')
+    return _canonical_sequences(policy)
+
+
+def _validate_augmentation_rng(state, names):
+    if not isinstance(state, dict) or set(state) != set(names):
+        raise ValueError('Missing/unexpected augmentation generator state')
+    for name in names:
+        value = state[name]
+        if not isinstance(value, torch.Tensor) or value.dtype != torch.uint8 or value.ndim != 1:
+            raise ValueError('Invalid augmentation generator state: ' + name)
+        try:
+            torch.Generator().set_state(value.cpu())
+        except RuntimeError as exc:
+            raise ValueError('Invalid augmentation generator state: ' + name) from exc
+
+
+def apply_augmentation_rng_state(state, generators):
+    """Restore independent training augmentation generators after loader setup."""
+    if state is None:
+        return
+    _validate_augmentation_rng(state, generators)
+    for name, generator in generators.items():
+        generator.set_state(state[name].cpu())
 
 
 def _integer(value, name, minimum=0):
@@ -77,9 +123,17 @@ def _contract(provenance, encoder_contract):
     result['optimizer'] = {k: optimizer[k] for k in ('name', 'learning_rate', 'weight_decay', 'schedule')}
     if result['batch_size'] != 1 or result['frame_sampling'].get('policy') != 'all':
         raise ValueError('Resume currently requires batch one and all-frame sampling')
-    if result['augmentation'] != 'none':
-        raise ValueError('Exact worker continuation requires deterministic preprocessing')
+    augmentation = _augmentation_contract(provenance)
+    if augmentation is not None:
+        result['augmentation_rng_contract'] = augmentation
     hashes = provenance.get('implementation_sha256', {})
+    if augmentation is not None:
+        # These transforms live in the recipe, outside the native model/data
+        # implementation list protected by historical no-augmentation runs.
+        recipe = 'training/vision_encoder/recipes/transfer.py'
+        if not isinstance(hashes.get(recipe), str) or not hashes[recipe]:
+            raise ValueError('Missing augmentation implementation hash')
+        result['augmentation_implementation_sha256'] = hashes[recipe]
     for key in PROTECTED_IMPLEMENTATIONS:
         if not isinstance(hashes.get(key), str) or not hashes[key]:
             raise ValueError('Missing protected implementation hash: ' + key)
@@ -171,17 +225,27 @@ def apply_rng_state(state):
 
 
 def capture_progress(model, optimizer, provenance, encoder_contract, *, epoch_index,
-                     order, cursor, global_step, include_cuda=True, continuity=None):
+                     order, cursor, global_step, include_cuda=True, continuity=None,
+                     augmentation_generators=None):
     """Return safe state for payload['training_state']; call after optimizer.step."""
     contract = _contract(provenance, encoder_contract)
     _validate_optimizer_contract(optimizer, contract)
     size = _integer(contract['frame_sampling']['selected_frames'], 'selected_frames', 1)
     _validate_position(order, cursor, epoch_index, global_step, size)
-    return dict(schema=SCHEMA, contract=contract,
+    result = dict(schema=SCHEMA, contract=contract,
                 optimizer_parameter_names=_optimizer_names(model, optimizer),
                 dataset_size=size, epoch_index=epoch_index, order=list(order), cursor=cursor,
                 global_step=global_step, rng_state=_capture_rng(include_cuda),
                 continuity=copy.deepcopy(continuity or {'origin': 'stateful_sampler'}))
+    augmentation = contract.get('augmentation_rng_contract')
+    if augmentation is not None:
+        generators = augmentation_generators or {}
+        state = {name: generator.get_state().clone() for name, generator in generators.items()}
+        _validate_augmentation_rng(state, augmentation['generator_names'])
+        result['augmentation_rng_state'] = state
+    elif augmentation_generators:
+        raise ValueError('Augmentation generators require an explicit contract')
+    return result
 
 
 def _validate_weights(payload, model):
@@ -253,7 +317,11 @@ def restore_progress(payload, model, optimizer, provenance, encoder_contract, *,
     steps = _integer(payload.get('steps'), 'global_step')
     names = _optimizer_names(model, optimizer)
     state = payload.get('training_state')
+    augmentation = expected.get('augmentation_rng_contract')
+    augmentation_rng = None
     if state is None:
+        if augmentation is not None:
+            raise ValueError('Legacy checkpoint has no augmentation generator state')
         if not allow_legacy_sampler_reset:
             raise ValueError('Legacy checkpoint lacks sampler/RNG; explicitly allow one-time sampler reset')
         hashes = payload['pretraining'].get('implementation_sha256', {})
@@ -280,6 +348,11 @@ def restore_progress(payload, model, optimizer, provenance, encoder_contract, *,
         epoch_index, order, cursor = state['epoch_index'], state['order'], state['cursor']
         rng = state['rng_state']
         _validate_rng(rng)
+        if augmentation is not None:
+            augmentation_rng = state.get('augmentation_rng_state')
+            _validate_augmentation_rng(augmentation_rng, augmentation['generator_names'])
+        elif state.get('augmentation_rng_state'):
+            raise ValueError('Unexpected augmentation RNG state without contract')
         if rng['cuda_required'] and (not torch.cuda.is_available()
                                     or torch.cuda.device_count() != len(rng['torch_cuda'])):
             raise ValueError('CUDA RNG device count differs from checkpoint')
@@ -294,5 +367,6 @@ def restore_progress(payload, model, optimizer, provenance, encoder_contract, *,
     optimizer.load_state_dict(payload['optimizer'])
     return dict(epoch_index=epoch_index, order=list(order), cursor=cursor, global_step=steps,
                 remaining_epoch_samples=size-cursor, pending_rng_state=copy.deepcopy(rng),
+                pending_augmentation_rng_state=copy.deepcopy(augmentation_rng),
                 resume_kind=kind, continuity=continuity,
                 exact_next_batch=rng is not None, optimizer_restored=True)

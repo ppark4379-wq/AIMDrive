@@ -36,6 +36,22 @@ def verify(folder,seal_name):
     return seal
 
 
+def apply_route_agreement(row, current_link, rpc_links, route_index, last_route):
+    """The route agreement gate applies to arrow permissions as well as binary GT."""
+    links=set(rpc_links);links.discard(None)
+    agreement=(len(links)==1 and current_link in links)
+    row.update(rpc_ego_current_links=sorted(links),
+               route_rpc_current_link_agreement=agreement)
+    reasons=[]
+    if (row.get('valid') or row.get('permission_valid')) and not agreement:
+        reasons.append('route_and_rpc_current_link_disagree')
+    if route_index<last_route:reasons.append('route_progress_reversed')
+    if reasons:
+        row.update(valid=False,training_label=-1,permission_valid=False,
+                   signal_permission=None,reason='+'.join(reasons))
+    return row
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--episode',type=Path,required=True);p.add_argument('--output',type=Path,required=True)
@@ -68,25 +84,21 @@ def main():
     if len(actor_frames)!=len(frames):raise ValueError('Actor frame brackets differ from sensor frames')
     last_route=-1
     for frame,actor_frame in zip(frames,actor_frames):
-        ego=ego_at(egos,frame['lidar_source_ns']);reasons=[]
+        ego=ego_at(egos,frame['lidar_source_ns'])
         if ego is None:
             row=dict(index=frame['index'],sensor_source_ns=frame['lidar_source_ns'],valid=False,
-                     training_label=-1,reason='ego_not_source_bracketed')
+                     training_label=-1,permission_valid=False,signal_permission=None,
+                     reason='ego_not_source_bracketed')
         else:
             progress=tracker.update(ego['position'][0],ego['position'][1],ego['yaw'])
             row=bind_route_progress(progress,tracker._point_heading(progress.route_index),ego['yaw'],
                 frame['traffic_light_gt'].get('values',[]),lights)
             rpc_links={actor_frame.get('ego_current_link_before'),actor_frame.get('ego_current_link_after')}
-            rpc_links.discard(None)
-            agreement=(len(rpc_links)==1 and progress.current_link_id in rpc_links)
             row.update(index=frame['index'],sensor_source_ns=frame['lidar_source_ns'],
-                       ego_source_record_ids=ego['record_ids'],rpc_ego_current_links=sorted(rpc_links),
-                       route_rpc_current_link_agreement=agreement)
-            if row['valid'] and not agreement:reasons.append('route_and_rpc_current_link_disagree')
-            if progress.route_index<last_route:reasons.append('route_progress_reversed')
+                       ego_source_record_ids=ego['record_ids'])
+            apply_route_agreement(row,progress.current_link_id,rpc_links,
+                                  progress.route_index,last_route)
             last_route=max(last_route,progress.route_index)
-        if reasons:
-            row['valid']=False;row['training_label']=-1;row['reason']='+'.join(reasons)
         row['training_visible']=False;output.append(row)
     statuses=Counter(row['reason'] or ('red' if row['training_label']==0 else 'green') for row in output)
     candidates=[row for row in output if row['valid']]
@@ -95,11 +107,19 @@ def main():
     report=dict(schema='morai_sensor_record_route_signal_binding_audit_v1',frames=len(output),
         route_source_sha256=sources['hashes'],route_key=sources['route_key'],
         route_source_resolution=sources['provenance'],
+        binding_implementation_sha256={
+            'route_signal_binding.py':digest(ROOT/'async_capture/route_signal_binding.py'),
+            'mgeo_navigation.py':digest(ROOT.parent/'mgeo_navigation.py')},
         exact_route_source=route['route_source'],route_definition_sha256=digest(a.route_definition),
         global_path_sha256=digest(a.map_root/'2026_molit_comp_global_path.txt'),
         route_light_ids=lights,status_counts=dict(statuses),stopline_lookahead_frames=len(target),
         bound_pure_color_frames=len(candidates),red_frames=sum(row['training_label']==0 for row in candidates),
         green_frames=sum(row['training_label']==1 for row in candidates),
+        permission_schema='morai_route_movement_permission_v1',
+        route_permission_candidate_frames=sum(row.get('permission_valid') is True for row in output),
+        route_permission_counts=dict(Counter(
+            '{}:{}'.format(row['signal_movement'],row['signal_permission'])
+            for row in output if row.get('permission_valid') is True)),
         route_binding_evidence_present=bool(target),route_signal_training_label_candidate=bool(candidates),
         both_binary_classes_observed=all(any(row['training_label']==value for row in candidates) for value in (0,1)),
         route_rpc_current_link_agreement_frames=sum(row.get('route_rpc_current_link_agreement') is True for row in output),

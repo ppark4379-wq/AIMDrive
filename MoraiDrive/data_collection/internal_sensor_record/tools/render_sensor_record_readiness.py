@@ -8,6 +8,7 @@ import sys
 
 
 LABELS = (
+    ("control", "차량 제어 /ctrl_cmd"),
     ("ego", "차량 정보 /Ego_topic"),
     ("objects", "객체 /Object_topic"),
     ("lidar", "LiDAR"),
@@ -20,6 +21,16 @@ LABELS = (
 
 def state_for(role, row, failures):
     prefixes = tuple(str(item) for item in failures)
+    if role == "control":
+        if not row and not any(item in prefixes for item in (
+                "missing_control_subscriber", "control_topology_unavailable")):
+            return "이 보고서에서는 미검사"
+        if "control_topology_unavailable" in prefixes:
+            return "대기: ROS 제어 연결 상태 확인 실패"
+        listeners = row.get("subscribers", [])
+        if "missing_control_subscriber" in prefixes or not listeners:
+            return "대기: MORAI 제어 명령 수신 연결 없음"
+        return "연결 정상: " + ", ".join(listeners)
     bridge_key = {
         "ego": "/Ego_topic", "lidar": "/lidar3D",
         "gps": "/gps", "imu": "/imu",
@@ -60,6 +71,17 @@ def next_actions(report, bridge_ip=None):
         )
     if "use_sim_time_not_true" in failures:
         actions.append("ROS master에서 rosparam set /use_sim_time true를 실행하세요.")
+    if "missing_control_subscriber" in failures:
+        endpoint = (bridge_ip + ":9090") if bridge_ip else "01번에 표시된 MORAI 연결 주소:9090"
+        topic = report.get("streams", {}).get("control", {}).get("topic", "/ctrl_cmd")
+        actions.append(
+            "MORAI 차량 제어 Network Settings에서 ROS 주소 %s, "
+            "제어 토픽 %s의 Disconnect → Connect를 실행하세요. "
+            "/Ego_topic 차량 정보 수신과 제어 명령 수신 연결은 별도로 확인해야 합니다."
+            % (endpoint, topic)
+        )
+    if "control_topology_unavailable" in failures:
+        actions.append("ROS master의 /ctrl_cmd 연결 상태를 확인하지 못했습니다. 표시된 오류와 bridge.log를 확인하세요.")
     clock_ingress_broken = "clock_ingress_not_delivered_to_ros" in failures
     clock_missing = (
         "morai_simulator_network_clock_not_sent" in failures

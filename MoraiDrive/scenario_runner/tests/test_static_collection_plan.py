@@ -412,6 +412,39 @@ class StaticCollectionPlanTest(unittest.TestCase):
         plan.assign_splits(selected, {"train": 80, "val": 10, "test": 10}, 5, "avoidance_class")
         self.assertEqual(plan.distribution(selected, "split"), {"test": 10, "train": 80, "val": 10})
 
+    def test_released_blockage_replaces_route_evidence_only_when_proven(self):
+        model = sorted(plan.load_fixed_scale_policy()["model_baselines"])[0]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            def suite(name, release, observed):
+                preset = root / (name + ".yaml")
+                document = {
+                    "schema": "morai_static_obstacle_preset_v1", "scenario": "full_loop_static",
+                    "obstacles": [{"model": model, "scale": [1.0, 1.0, 1.0]}],
+                    "verification": {"expert_completed": True, "collision_free": True,
+                                     "selected_routes": [], "blockage_release_observed": observed,
+                                     "lane_compliance": {"passed": True, "trajectory_class": "straight"}},
+                }
+                if release:
+                    document["blockage_release"] = {"wait_wall_sec": 6.0}
+                preset.write_text(yaml.safe_dump(document), encoding="utf-8")
+                manifest = root / (name + "_manifest.json")
+                manifest.write_text(json.dumps({
+                    "name": name, "accepted_presets": [str(preset)],
+                    "attempts": [{"attempt": 1, "accepted_preset": str(preset),
+                                  "closed_loop_evidence": {"selected_routes": []}}],
+                }), encoding="utf-8")
+                return manifest
+
+            candidates, _ = plan.load_candidates([suite("blocked", True, True)])
+            self.assertEqual(len(candidates), 1)
+            self.assertEqual(candidates[0]["route_class"], "compact")
+            self.assertEqual(candidates[0]["avoidance_class"], "straight")
+            for name, release, observed in (("unproven", True, False), ("plain", False, True)):
+                with self.assertRaisesRegex(ValueError, "route evidence missing"):
+                    plan.load_candidates([suite(name, release, observed)])
+
     def test_lane_aware_presets_balance_on_their_lateral_stratum(self):
         document = {"obstacles": [
             {"model": "A", "generation": {"lateral_stratum": "left", "longitudinal_fraction": 0.2}},

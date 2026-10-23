@@ -62,6 +62,8 @@ class ExpertController:
         ros_remaps=None,
         is_closed_path=False,
         velocity_profile_window_size=None,
+        route_signal_route_links=None,
+        speed_cap_kmh=None,
     ):
         self.expert_root = os.path.abspath(expert_root)
         self.runtime_root = os.path.abspath(runtime_root)
@@ -72,11 +74,21 @@ class ExpertController:
         self.end_link = end_link
         self.max_velocity_kmh = None if max_velocity_kmh is None else validate_max_velocity_kmh(max_velocity_kmh)
         self.requested_max_velocity_kmh = self.max_velocity_kmh
+        self.speed_cap_kmh = None if speed_cap_kmh is None else validate_max_velocity_kmh(speed_cap_kmh)
         self.traffic_light_control = bool(traffic_light_control)
         self.python_executable = python_executable or sys.executable
         self.ros_remaps = list(ros_remaps or [])
         self.is_closed_path = bool(is_closed_path)
         self.velocity_profile_window_size = velocity_profile_window_size
+        if route_signal_route_links is not None and (
+            not isinstance(route_signal_route_links, (list, tuple))
+            or not route_signal_route_links
+            or any(not isinstance(link, str) or not link.strip()
+                   for link in route_signal_route_links)
+        ):
+            raise ValueError("Signal route links must be a nonempty ordered list of IDs")
+        self.route_signal_route_links = (None if route_signal_route_links is None
+                                         else list(route_signal_route_links))
         self.process = None
 
         self._validate_expert()
@@ -141,6 +153,11 @@ class ExpertController:
         config["map"]["use_mgeo_path"] = False
         config["map"]["traffic_light_control"] = self.traffic_light_control
         config["map"]["is_closed_path"] = self.is_closed_path
+        # Bind signal permissions to this invocation, not a stale base config.
+        config["map"].pop("route_signal_route_links", None)
+        config["map"].pop("route_signal_targets", None)
+        if self.route_signal_route_links is not None:
+            config["map"]["route_signal_route_links"] = self.route_signal_route_links
         velocity_profile = config["planning"]["velocity_profile"]
         if self.requested_max_velocity_kmh is not None:
             velocity_profile["max_velocity"] = self.max_velocity_kmh
@@ -148,6 +165,16 @@ class ExpertController:
             velocity_profile["window_size"] = int(
                 self.velocity_profile_window_size
             )
+
+        if self.speed_cap_kmh is not None:
+            velocity_profile["max_velocity"] = min(
+                validate_max_velocity_kmh(velocity_profile["max_velocity"]), self.speed_cap_kmh)
+            for zone in velocity_profile.get("speed_limit_zones", []):
+                if "max_velocity" in zone:
+                    zone["max_velocity"] = min(
+                        validate_max_velocity_kmh(zone["max_velocity"]), self.speed_cap_kmh)
+            self.speed_contract["runtime_speed_cap_kmh"] = self.speed_cap_kmh
+            print(f"[Expert] 이번 실행 목표속도 상한: {self.speed_cap_kmh:g}km/h (구간별 제한 포함)")
 
         self.runtime_config_path = os.path.join(
             self.runtime_root,

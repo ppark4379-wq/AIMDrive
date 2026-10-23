@@ -1,0 +1,140 @@
+schema: morai_static_obstacle_preset_v1
+name: static_blocked_20261005_attempt_062
+map_name: R_KR_PR_K-city_2025
+scenario: full_loop_static
+source: automated_static_expert_verified
+generation:
+  batch_seed: 26100523
+  attempt: 62
+  candidate_only_until_expert_passes: false
+  scale_policy: morai_native_model_scale_v1
+  placement_policy: lane_aware_right_edge_strata_v1
+  avoidance_target: blocked
+  footprint_catalog_sha256: 83e6ae9bab5d7a89e0958952181cbaf62c798036fc9c5b4aa94db5588f20416f
+obstacles:
+- model: BabyStroller2
+  position:
+    x: -55.928109
+    y: -146.371388
+    z: 28.376011
+  yaw_deg: -92.835998
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 660
+  generation:
+    longitudinal_fraction: 0.001533
+    lateral_offset_m: -4.67192
+    route_lateral_m: -3.919957
+    right_edge_route_lateral_m: -4.2577
+    left_edge_route_lateral_m: -3.5845
+    placement_role: block_far
+    lateral_stratum: right_wall
+    lane_fit: right_of_path
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+    blocks_routes:
+    - right_03.csv
+    - right_04.csv
+    - right_05.csv
+    - right_06_retry.csv
+    right_01_right_clearance_m: 2.5218
+    right_02_right_clearance_m: 1.6817
+    right_03_right_clearance_m: 0.2859
+    right_04_right_clearance_m: -1.2524
+    right_05_right_clearance_m: -2.7328
+    right_06_retry_right_clearance_m: -4.7666
+- model: ElectricScooter1
+  position:
+    x: -56.613276
+    y: -145.418474
+    z: 28.376679
+  yaw_deg: -84.107249
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 662
+  generation:
+    longitudinal_fraction: 0.09694034
+    lateral_offset_m: -3.988353
+    route_lateral_m: -3.23639
+    right_edge_route_lateral_m: -3.8715
+    left_edge_route_lateral_m: -2.6013
+    placement_role: block_02
+    lateral_stratum: right_block
+    lane_fit: right_of_path
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+    blocks_routes:
+    - right_02.csv
+    - right_03.csv
+    - right_04.csv
+    - right_05.csv
+    right_01_right_clearance_m: 1.5285
+    right_02_right_clearance_m: 0.5349
+    right_03_right_clearance_m: -1.0767
+    right_04_right_clearance_m: -2.7766
+    right_05_right_clearance_m: -4.6254
+    right_06_retry_right_clearance_m: -7.1572
+- model: BabyStroller1
+  position:
+    x: -60.166694
+    y: -145.323161
+    z: 28.376749
+  yaw_deg: -147.391929
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 662
+  generation:
+    longitudinal_fraction: 0.10706784
+    lateral_offset_m: -0.435101
+    route_lateral_m: 0.316863
+    right_edge_route_lateral_m: 0.008
+    left_edge_route_lateral_m: 1.3554
+    placement_role: lane_block
+    lateral_stratum: centre
+    lane_fit: inside
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+    lane_left_bound_m: 1.6955
+    right_02_clearance_m: -0.1471
+    right_03_clearance_m: 1.178
+blockage_release:
+  wait_wall_sec: 6.0
+  stopped_speed_mps: 0.3
+  max_gap_m: 12.0
+verification:
+  expert_completed: true
+  collision_free: true
+  runner_return_code: 0
+  max_cross_track_error_m: 0.27
+  cross_track_limit_m: 4.0
+  valid_plan_samples: 0
+  selected_routes: []
+  blockage_release_observed: true
+  lane_compliance:
+    passed: true
+    reasons: []
+    raw_samples: 752
+    max_sample_gap_m: 0.878
+    route_index_span:
+    - 487.1
+    - 752.7
+    min_marking_clearance_m: 0.167
+    closest_marking: B2256W000445:505:solid
+    touched_markings: []
+    max_right_deviation_m: 0.246
+    max_left_deviation_m: 0.035
+    avoidance_class: small
+    trajectory_class: straight
+    swing_onset_route_index: null
+    peak_route_index: 590.5
+    markings_source_sha256: f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb
+  verified_at_unix: 1791199602.2908921
+  log: scenario_runner/.runtime/static_scenario_batch/static_blocked_20261005/logs/static_blocked_20261005_attempt_062.log
+  ego_trace: scenario_runner/.runtime/static_scenario_batch/static_blocked_20261005/traces/static_blocked_20261005_attempt_062.csv
+  ego_trace_sha256: 2693e6c171ae485003688c161c844503ad62df85b03b81ab7df0ac09073d496c

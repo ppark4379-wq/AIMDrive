@@ -201,7 +201,15 @@ def build_parser():
     )
     parser.add_argument('--ve-objects', action='store_true',
                         help='기존 Expert 장애물 입력만 VE로 교체 (회전교차로/고주로, 비동기 실행)')
-    parser.add_argument('--ve-checkpoint', choices=('E3', 'E4'), default='E3')
+    parser.add_argument('--ve-signal-head', help='P1 3종 신호 head 경로; 신호 시험 구간에서만 사용')
+    parser.add_argument('--ve-checkpoint', choices=('E3', 'E4', 'P1'), default='E3')
+    parser.add_argument('--stop-before-tunnel', action='store_true',
+                        help='VE 풀루트 시험의 종점을 고주로 종료 체크포인트로 제한')
+    from .adapters.expert_controller import validate_max_velocity_kmh
+    parser.add_argument('--expert-speed-cap-kmh', type=validate_max_velocity_kmh, default=None,
+                        help='이번 실행의 Expert 목표속도 상한; 구간별 상한에도 적용 (km/h)')
+    parser.add_argument('--ve-compare-gt', action='store_true',
+                        help='별도 GT 기록기로 VE bbox·속도 비교; Expert는 VE 장애물만 사용')
     parser.add_argument(
         "--manual-ego",
         action="store_true",
@@ -262,6 +270,14 @@ def build_parser():
         ),
     )
     parser.add_argument(
+        "--static-verified-pair", action="store_true",
+        help="Replay an exact two-obstacle layout previously passed by the GT Expert.",
+    )
+    parser.add_argument(
+        "--no-highway-merge-static-vehicle", action="store_true",
+        help="Disable only the scenario-owned stopped vehicle at the highway merge.",
+    )
+    parser.add_argument(
         "--static-editor",
         action="store_true",
         help=(
@@ -318,6 +334,29 @@ def run_offline_check(global_cfg, scenario_cfg, scenario_name):
         scenario_cfg=scenario_cfg,
         scenario_name=scenario_name,
     )
+    if scenario_cfg.get('ve_stop_before_tunnel'):
+        context = FullLoopScenario(
+            grpc_client=SimpleNamespace(make_transform=lambda *args: args),
+            map_loader=MGeoMapLoader(global_cfg['paths']['mgeo_root']),
+            global_cfg=global_cfg, scenario_cfg=copy.deepcopy(scenario_cfg))
+        context.cfg['route_debug_enabled'] = False
+        context.route_definition = context.load_route_definition()
+        context.prepare_full_loop_route()
+        if not context.route_length_m < context.tunnel_entry_s:
+            raise RuntimeError('Before-tunnel route does not end before tunnel entry')
+        from .adapters.ve_signal import build_signal_targets
+        targets = build_signal_targets(context, {'map': {
+            'data_dir': global_cfg['paths']['mgeo_root'],
+            'route_signal_route_links': context.route_definition['route_links'],
+            'is_closed_path': context.cfg['expert_is_closed_path']}})
+        print('[BeforeTunnel] VE 신호 경로 연결 PASS: ' + repr(
+            [(t['signal_id'], t['signal_movement']) for t in targets['targets']]))
+        print('[BeforeTunnel] 실제 지도 경로·종점 검증 PASS')
+    if scenario_name == "full_loop_traffic_light":
+        from .tools.verify_traffic_light_expert import verify_traffic_light_expert
+        print("[TrafficLight] 실제 Expert 경로·신호 정책 오프라인 검증:")
+        print(json.dumps(verify_traffic_light_expert(global_cfg, scenario_cfg),
+                         indent=2, ensure_ascii=False, allow_nan=False))
     if scenario_name == "full_loop_tunnel_vehicle":
         from .tools.generate_tunnel_dynamic_candidates import load_catalog_inputs
         from .scenarios.full_loop_parts.tunnel_vehicle_dynamic import prepare_tunnel_vehicle
@@ -373,6 +412,10 @@ def main():
         parser.error("full_loop_tunnel_vehicle requires --once")
 
     global_cfg, zone_cfg, base_scenario_cfg = load_configuration()
+    if args.stop_before_tunnel:
+        if args.scenario != 'full_loop' or not args.ve_objects or not args.no_sync_runtime or not args.once:
+            parser.error('--stop-before-tunnel requires full_loop --ve-objects --no-sync-runtime --once')
+        base_scenario_cfg['ve_stop_before_tunnel'] = True
     if args.seed is not None:
         base_scenario_cfg["random_seed"] = args.seed
     if args.static_editor:
@@ -397,6 +440,31 @@ def main():
             configure(base_scenario_cfg, args.scenario, args.ve_checkpoint)
         except ValueError as error:
             parser.error(str(error))
+    if args.ve_signal_head:
+        if not args.ve_objects or args.scenario not in ('full_loop_traffic_light', 'full_loop') or args.ve_checkpoint != 'P1':
+            parser.error('--ve-signal-head requires traffic_light/full_loop, --ve-objects and P1')
+        head_path = Path(args.ve_signal_head).expanduser().resolve()
+        if not head_path.is_file():
+            parser.error('신호 head 없음: ' + str(head_path))
+        base_scenario_cfg['ve_signal_head'] = str(head_path)
+        if args.scenario == 'full_loop':
+            base_scenario_cfg['ve_full_route_signals'] = True
+            base_scenario_cfg['clean_road_mode'] = False
+            base_scenario_cfg.setdefault('traffic_light_wait_override', {})['enabled'] = False
+        base_scenario_cfg['expert_ros_remaps'].append('/GetTrafficLightStatus:=/ve/GetTrafficLightStatus')
+    if args.ve_objects and args.scenario == 'full_loop_traffic_light' and not args.ve_signal_head:
+        parser.error('VE 신호 시험에는 --ve-signal-head가 필요합니다')
+    if args.expert_speed_cap_kmh is not None:
+        # GT-driven Expert at a raised cap is allowed on the highway only (VE can then be observed passively
+        # with record_ve_manual.sh); other scenarios keep the VE-run requirement.
+        gt_highway = args.scenario == "full_loop_highway" and not args.ve_objects
+        if not gt_highway and (not args.ve_objects or args.scenario not in ("full_loop_highway", "full_loop_roundabout", "full_loop")):
+            parser.error("--expert-speed-cap-kmh requires a VE highway/roundabout run (or a GT full_loop_highway run)")
+        base_scenario_cfg["expert_speed_cap_kmh"] = args.expert_speed_cap_kmh
+    if args.ve_compare_gt:
+        if not args.ve_objects:
+            parser.error('--ve-compare-gt requires --ve-objects')
+        base_scenario_cfg['ve_compare_gt'] = True
     if args.manual_ego:
         base_scenario_cfg.setdefault("sync_runtime", {})["enabled"] = False
         base_scenario_cfg["drive_control_mode"] = "morai_keyboard"
@@ -436,9 +504,23 @@ def main():
                 "--scenario full_loop_static"
             )
         base_scenario_cfg["static_obstacle_count"] = args.static_obstacle_count
+    if args.no_highway_merge_static_vehicle:
+        base_scenario_cfg.setdefault("highway_merge_static_vehicle", {})["enabled"] = False
+        base_scenario_cfg["highway_merge_static_vehicle_explicitly_disabled"] = True
+    if args.static_verified_pair:
+        if args.scenario not in ("full_loop", "full_loop_static"):
+            parser.error("--static-verified-pair requires full_loop or full_loop_static")
+        if args.static_preset or args.static_editor or args.static_obstacle_count != 1:
+            parser.error("--static-verified-pair cannot be combined with preset/editor/count")
+        from .scenarios.full_loop_parts.static_obstacle import verified_pair_presets
+        pool = verified_pair_presets()
+        if not pool:
+            parser.error("No verified two-obstacle layouts available")
+        base_scenario_cfg["static_verified_pair"] = True
+        print("[정적 배치] GT Expert 통과 2개 배치 {}종 · 원래 위치/각도/크기 재사용".format(len(pool)))
     if args.static_preset:
-        if args.scenario != "full_loop_static":
-            parser.error("--static-preset requires --scenario full_loop_static")
+        if args.scenario not in ("full_loop", "full_loop_static"):
+            parser.error("--static-preset requires full_loop or full_loop_static")
         if args.static_obstacle_count != 1:
             parser.error("--static-preset cannot be combined with --static-obstacle-count")
         try:
@@ -453,6 +535,9 @@ def main():
         )
     if args.scenario in MISSION_MODES:
         base_scenario_cfg["mission_mode"] = args.scenario
+    if args.scenario == "full_loop_traffic_light":
+        from .scenarios.segment_modes.traffic_light import configure
+        configure(base_scenario_cfg)
     if (
         args.highway_object_audit
         and args.scenario != "full_loop_highway_tunnel_test"
@@ -481,7 +566,7 @@ def main():
             selected = CHECKPOINTS[args.ve_checkpoint]
             if not Path(selected['path']).is_file():
                 parser.error('VE 체크포인트 없음: '+selected['path'])
-            print('[VE 설정] 체크포인트={} · Expert 장애물=/ve/Object_topic · GT 장애물 입력 없음 · 자차/신호등=기존 ROS'.format(args.ve_checkpoint))
+            print('[VE 설정] 체크포인트={} · Expert 장애물=/ve/Object_topic · GT 장애물 입력 없음 · 자차=기존 ROS · 신호={}'.format(args.ve_checkpoint, 'VE' if args.ve_signal_head else '기존 ROS'))
         run_offline_check(global_cfg, base_scenario_cfg, args.scenario)
         return
 

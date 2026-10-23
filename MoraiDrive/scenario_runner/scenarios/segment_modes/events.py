@@ -18,6 +18,10 @@ def prepare_mission(context):
     context.scenario_name = context.mission_mode.name
     context.mission_route = None
 
+    if context.scenario_name == "full_loop_traffic_light":
+        from .traffic_light import configure
+        configure(context.cfg)
+
     if context.scenario_name in ("full_loop_tunnel_normal", "full_loop_tunnel_static"):
         # Keep the owned-actor reset path while every mission event is OFF.
         context.cfg["clean_road_mode"] = False

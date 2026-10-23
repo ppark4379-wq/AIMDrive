@@ -35,6 +35,7 @@ class TunnelRandomMixTest(unittest.TestCase):
         grpc = Mock()
         grpc.get_available_pedestrian_models.return_value = ["Woman1", "Man1", "Outside"]
         grpc.control_pedestrian.return_value = True
+        grpc.get_all_pedestrian_states.return_value = []
         spec = {
             "division_count": 4, "endpoint_margin_m": 10.0,
             "side_offset_m": 2.5, "opposite_lane_1_offset_m": 2.5,

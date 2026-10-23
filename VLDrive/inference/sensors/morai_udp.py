@@ -233,6 +233,8 @@ class _Receiver:
                     self._latest = sample
                     self._stamp = time.time()
                     self._received_ns = time.monotonic_ns()
+                    self._source_stamp_ns = getattr(self, '_completed_source_stamp_ns', 0)
+                    self._sample_metadata = dict(getattr(self, '_completed_metadata', {}))
                     self.samples += 1
 
     def _consume(self, payload):
@@ -256,7 +258,10 @@ class _Receiver:
         """Sample identity and completion time, read under the same lock."""
         with self._lock:
             age = time.time() - self._stamp if self._latest is not None else float('inf')
-            return self._latest, age, dict(sample_id=self.samples, received_ns=self._received_ns)
+            identity = dict(sample_id=self.samples, received_ns=self._received_ns,
+                            source_stamp_ns=getattr(self, '_source_stamp_ns', 0))
+            identity.update(getattr(self, '_sample_metadata', {}))
+            return self._latest, age, identity
 
     def diagnostics(self):
         return dict(packets=self.packets, samples=self.samples,
@@ -340,6 +345,8 @@ class CameraReceiver(_Receiver):
             self._buffer = bytearray()
             self._expect_index = 0
             self._intact = False
+            if image is not None:
+                self._completed_source_stamp_ns = _sec * 1_000_000_000 + _nsec
             return image
         return None
 
@@ -459,6 +466,23 @@ class VehicleStatusReceiver(_Receiver):
         }
 
 
+def resolve_lidar_hour_stamp(stamp_us, reference_ns, max_delta_ns=1_000_000_000):
+    """Resolve MORAI microseconds within an hour against a sensor source clock.
+
+    The reference must be a camera/Ego source header, never host wall time.
+    Adjacent hours handle a sweep crossing the hour boundary.
+    """
+    if not 0 <= stamp_us < 3_600_000_000 or reference_ns <= 0:
+        raise ValueError('Invalid LiDAR hour timestamp or source-clock reference')
+    hour = 3_600_000_000_000
+    base = reference_ns // hour * hour
+    candidates = [base + shift * hour + stamp_us * 1000 for shift in (-1, 0, 1)]
+    result = min(candidates, key=lambda value: abs(value-reference_ns))
+    if abs(result-reference_ns) > max_delta_ns:
+        raise ValueError('LiDAR and reference source clocks differ by more than one second')
+    return result
+
+
 class LidarReceiver(_Receiver):
     """Velodyne-style 3D LiDAR, accumulated into one revolution of points.
 
@@ -483,7 +507,18 @@ class LidarReceiver(_Receiver):
         ("returns", np.dtype([("distance", "<u2"), ("reflectivity", "u1")]), CHANNELS_PER_BLOCK),
     ])
 
-    def __init__(self, port, elevations=None, distance_scale=0.002, **kwargs):
+    def __init__(self, port, elevations=None, distance_scale=0.002,
+                 frame_policy='azimuth_wrap', **kwargs):
+        if frame_policy not in ('azimuth_wrap', 'morai_frame_timestamp', 'morai_cyclic_frame_timestamp'):
+            raise ValueError('Unknown LiDAR frame policy')
+        self.frame_policy = frame_policy
+        self._frame_timestamp_us = None
+        self._frame_chunks = []
+        self._frame_last = None
+        self._frame_step = None
+        self._frame_valid = False
+        self._frame_finished = False
+        self._frame_packets = 0
         table = [math.radians(a) for a in (elevations or self.VLP16_ELEVATIONS)]
         # Tiled to the 32 slots a block carries; VLP-16 fires its 16 lasers
         # twice per block, which a live capture confirmed (channels 0..15 and
@@ -501,6 +536,10 @@ class LidarReceiver(_Receiver):
     def _consume(self, payload):
         """Whole packet in vectorised numpy; a python loop here cost the live
         loop about a quarter of its frame time."""
+        if self.frame_policy == 'morai_frame_timestamp':
+            return self._consume_timestamped(payload)
+        if self.frame_policy == 'morai_cyclic_frame_timestamp':
+            return self._consume_cyclic_timestamped(payload)
         if len(payload) < self.BLOCKS_PER_PACKET * self.BLOCK_BYTES:
             self.audit_counts['short_lidar_packets'] += 1
             return None
@@ -522,19 +561,7 @@ class LidarReceiver(_Receiver):
             first = 0
         self._last_azimuth = int(raw_azimuth[-1])
 
-        distance = blocks["returns"]["distance"].astype(np.float32) * self.distance_scale
-        reflectivity = blocks["returns"]["reflectivity"].astype(np.float32)
-        azimuth = np.radians(raw_azimuth.astype(np.float32) / 100.0)[:, None]
-        horizontal = distance * self._cos_elevation[None, :]
-        # MORAI/Velodyne azimuth is clockwise from +y; the encoder wants
-        # +x forward, +y left, which is what the recordings also store.
-        points = np.stack([
-            horizontal * np.cos(azimuth),
-            -horizontal * np.sin(azimuth),
-            distance * self._sin_elevation[None, :],
-            reflectivity,
-        ], axis=-1)
-        keep = distance > 0.0
+        points, keep = self._decode_points(blocks)
 
         if first is not None:
             head = points[:first][keep[:first]]
@@ -550,6 +577,158 @@ class LidarReceiver(_Receiver):
             if chunk.size:
                 self._sweep.append(chunk)
         return finished
+
+    def _decode_points(self, blocks):
+        raw_azimuth = blocks['azimuth'].astype(np.int32)
+        distance = blocks["returns"]["distance"].astype(np.float32) * self.distance_scale
+        reflectivity = blocks["returns"]["reflectivity"].astype(np.float32)
+        azimuth = np.radians(raw_azimuth.astype(np.float32) / 100.0)[:, None]
+        horizontal = distance * self._cos_elevation[None, :]
+        # MORAI/Velodyne azimuth is clockwise from +y; the encoder wants
+        # +x forward, +y left, which is what the recordings also store.
+        points = np.stack([
+            horizontal * np.cos(azimuth),
+            -horizontal * np.sin(azimuth),
+            distance * self._sin_elevation[None, :],
+            reflectivity,
+        ], axis=-1)
+        keep = distance > 0.0
+
+        return points, keep
+
+    def _consume_timestamped(self, payload):
+        """MORAI full-frame packets share a microsecond-of-hour timestamp.
+
+        Emit at the last angular block of that frame, not at the first packet
+        of the next frame. Require complete, ordered angular coverage; never
+        join returns from different frame timestamps. This policy is explicit
+        because physical Velodyne per-packet timestamps have different semantics.
+        """
+        if len(payload) != 1206:
+            self.audit_counts['invalid_timestamped_lidar_size'] += 1
+            self._frame_valid = False
+            return None
+        stamp = struct.unpack_from('<I', payload, 1200)[0]
+        if stamp >= 3_600_000_000:
+            self.audit_counts['invalid_lidar_hour_timestamp'] += 1
+            self._frame_valid = False
+            return None
+        blocks = np.frombuffer(payload, dtype=self.PACKET_DTYPE, count=12)
+        az = blocks['azimuth'].astype(np.int32)
+        if stamp != self._frame_timestamp_us:
+            if self._frame_timestamp_us is not None:
+                delta = (stamp - self._frame_timestamp_us) % 3_600_000_000
+                if delta > 1_800_000_000:
+                    self.audit_counts['old_lidar_frame_packets'] += 1
+                    return None
+                if not self._frame_finished:
+                    self.audit_counts['incomplete_lidar_frames'] += 1
+            self._frame_timestamp_us = stamp
+            self._frame_chunks = []
+            self._frame_last = None
+            self._frame_step = None
+            self._frame_valid = bool(az[0] == 0)
+            self._frame_finished = False
+            self._frame_packets = 0
+        if self._frame_finished:
+            self.audit_counts['duplicate_completed_lidar_packets'] += 1
+            return None
+        step = int(az[1] - az[0])
+        if (not np.all(blocks['flag'] == 0xEEFF) or step <= 0
+                or 36000 % step or not np.all(np.diff(az) == step)
+                or az[-1] >= 36000
+                or (self._frame_step is not None and step != self._frame_step)
+                or (self._frame_last is not None and az[0] != self._frame_last + step)):
+            self.audit_counts['lidar_frame_discontinuities'] += 1
+            self._frame_valid = False
+        self._frame_step, self._frame_last = step, int(az[-1])
+        self._frame_packets += 1
+        if self._frame_valid:
+            points, keep = self._decode_points(blocks)
+            self._frame_chunks.append(points[keep])
+        if int(az[-1]) + step != 36000:
+            return None
+        self._frame_finished = True
+        if not self._frame_valid:
+            self.audit_counts['discarded_incomplete_lidar_frames'] += 1
+            self._frame_chunks = []
+            return None
+        cloud = np.concatenate(self._frame_chunks)
+        self._frame_chunks = []
+        self._completed_metadata = dict(
+            source_stamp_us_within_hour=stamp,
+            frame_policy='morai_frame_timestamp',
+            frame_packets=self._frame_packets, angular_coverage_complete=True)
+        self.audit_counts['complete_timestamped_lidar_frames'] += 1
+        return cloud
+
+    def _consume_cyclic_timestamped(self, payload):
+        """Competition frames: arbitrary start azimuth and 0.01deg rounding.
+
+        A measured frame has 900 blocks (75 packets), 0.4deg spacing, one
+        shared timestamp, and starts at 7.5deg instead of zero. Validate every
+        block against its expected circular position. Missing, repeated, or
+        reordered blocks cannot complete a frame; no timestamp mixing occurs.
+        """
+        if len(payload) != 1206:
+            self.audit_counts['invalid_timestamped_lidar_size'] += 1
+            self._frame_valid = False
+            return None
+        stamp = struct.unpack_from('<I', payload, 1200)[0]
+        if stamp >= 3_600_000_000:
+            self.audit_counts['invalid_lidar_hour_timestamp'] += 1
+            self._frame_valid = False
+            return None
+        blocks = np.frombuffer(payload, dtype=self.PACKET_DTYPE, count=12)
+        az = blocks['azimuth'].astype(np.int32)
+        if stamp != self._frame_timestamp_us:
+            if self._frame_timestamp_us is not None:
+                delta = (stamp-self._frame_timestamp_us) % 3_600_000_000
+                if delta > 1_800_000_000:
+                    self.audit_counts['old_lidar_frame_packets'] += 1
+                    return None
+                if not self._frame_finished:
+                    self.audit_counts['incomplete_lidar_frames'] += 1
+            step = int(round(float(np.median(np.diff(az) % 36000))))
+            self._frame_timestamp_us = stamp
+            self._frame_first_azimuth = int(az[0])
+            self._frame_step = step
+            self._frame_block_count = 0
+            self._frame_packets = 0
+            self._frame_chunks = []
+            self._frame_finished = False
+            self._frame_valid = bool(step > 0 and 36000 % step == 0 and 36000//step % 12 == 0)
+        if self._frame_finished:
+            self.audit_counts['duplicate_completed_lidar_packets'] += 1
+            return None
+        if not self._frame_valid:
+            return None
+        expected_blocks = 36000//self._frame_step
+        expected_az = (self._frame_first_azimuth +
+                      (self._frame_block_count+np.arange(12))*self._frame_step) % 36000
+        circular_error = (az-expected_az+18000) % 36000-18000
+        if (not np.all(blocks['flag'] == 0xEEFF) or np.any(az >= 36000)
+                or np.any(np.abs(circular_error) > 1)
+                or self._frame_block_count+12 > expected_blocks):
+            self.audit_counts['lidar_frame_discontinuities'] += 1
+            self._frame_valid = False
+            self._frame_chunks = []
+            return None
+        points, keep = self._decode_points(blocks)
+        self._frame_chunks.append(points[keep])
+        self._frame_block_count += 12
+        self._frame_packets += 1
+        if self._frame_block_count != expected_blocks:
+            return None
+        self._frame_finished = True
+        cloud = np.concatenate(self._frame_chunks)
+        self._frame_chunks = []
+        self._completed_metadata = dict(source_stamp_us_within_hour=stamp,
+            frame_policy='morai_cyclic_frame_timestamp', frame_packets=self._frame_packets,
+            angular_coverage_complete=True, start_azimuth_centidegrees=self._frame_first_azimuth,
+            azimuth_step_centidegrees=self._frame_step, rounding_tolerance_centidegrees=1)
+        self.audit_counts['complete_timestamped_lidar_frames'] += 1
+        return cloud
 
 
 __all__ = [

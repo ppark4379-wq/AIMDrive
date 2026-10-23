@@ -65,6 +65,22 @@ class VeTrackedObjectsTests(unittest.TestCase):
         obj.name = 'unrelated_unknown'
         self.assertEqual([], planner._tracks(ego, [dict(object_info=obj)]))
 
+    def test_uncertain_zero_speed_lead_still_reaches_acc(self):
+        acc = AdaptiveCruiseControl(.5, 1., .8, 4.635)
+        route = [Point(float(x), 0.) for x in range(40)]
+        # A conservative speed fallback must not delete the bbox or rely on a
+        # stationary/vehicle label to activate the existing Expert policy.
+        obj = unknown(12., speed=0., state='uncertain')
+        self.assertFalse(obj.is_static)
+        acc.check_object(route, [dict(object_info=obj, local_position=Point(12., 0.))], [])
+        with contextlib.redirect_stdout(io.StringIO()):
+            stopped_target = acc.get_target_velocity(8., 8.)
+        self.assertLess(stopped_target, 8.)
+        obj.velocity = 13.
+        acc.check_object(route, [dict(object_info=obj, local_position=Point(12., 0.))], [])
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertLess(stopped_target, acc.get_target_velocity(8., 8.))
+
     def test_highway_receives_tagged_unknown_and_motion_tracks_do_not_collapse(self):
         process = object.__new__(LatticePlanningProcess)
         process.highway_lane_planner = Mock()

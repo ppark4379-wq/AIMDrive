@@ -222,6 +222,35 @@ def verify_subset_selection(index, report):
         raise ValueError('Subset validation does not preserve complete admitted laps')
 
 
+def verify_train_supplement(index, report, resolver, parent):
+    """An explicitly planned train-only collection may supplement held-out campaigns.
+
+    It cannot provide validation itself or reassign a held-out collection. The
+    pre-capture split plan must match the sealed campaign validation evidence.
+    """
+    plan_path = resolver(index['split_plan'], parent)
+    plan_hash = digest(plan_path)
+    plan = read_json(plan_path)
+    planned = plan.get('runs', [])
+    admitted = report.get('laps', [])
+    rows = index.get('train', [])
+    ids = [r.get('run') for r in planned]
+    if (index.get('val') or index.get('test') or not rows or not planned
+            or plan_hash != index.get('split_plan_sha256')
+            or plan_hash != report.get('static_collection_plan_sha256')
+            or plan.get('schema') != 'morai_static_collection_plan_v1'
+            or plan.get('ready') is not True
+            or any(r.get('split') != 'train' for r in planned)
+            or len(set(ids)) != len(ids)
+            or set(ids) != set(range(1, len(ids) + 1))
+            or len(rows) != len(ids) or len(admitted) != len(ids)
+            or {r.get('lap') for r in rows} != set(ids)
+            or {r.get('lap') for r in admitted} != set(ids)
+            or any(r.get('valid') is not True or r.get('training_usable') is not True
+                   for r in admitted)):
+        raise ValueError('Train supplement must preserve its sealed all-train collection plan')
+
+
 def load_publication(path, resolver):
     path = resolver(path)
     index = read_json(path)
@@ -248,6 +277,9 @@ def load_publication(path, resolver):
         raise ValueError('Source validation is not a sealed passed report')
     if index['source_schema'] == 'morai_sensor_record_campaign_validation_subset_v1':
         verify_subset_selection(index, source_report)
+    supplement = index.get('publication_role') == 'train_supplement'
+    if supplement:
+        verify_train_supplement(index, source_report, resolver, path.parent)
     result = {}
     for split in ('train', 'val'):
         result[split] = []
@@ -262,7 +294,7 @@ def load_publication(path, resolver):
                     != index['source_validation_sha256']):
                 raise ValueError('Manifest source validation mismatch')
             result[split].append((p, doc))
-        if not result[split]:
+        if not result[split] and not (supplement and split == 'val'):
             raise ValueError('Empty split: ' + split)
     train_episodes = {str(resolver(d['episode'], p.parent)) for p,d in result['train']}
     val_episodes = {str(resolver(d['episode'], p.parent)) for p,d in result['val']}

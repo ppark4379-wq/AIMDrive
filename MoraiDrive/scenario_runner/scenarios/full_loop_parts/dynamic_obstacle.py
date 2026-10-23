@@ -995,6 +995,18 @@ def _emit_event(self, name, event, **fields):
 
 
 def spawn_dynamic_obstacle(self):
+    # Cleanup can run after any setup failure, including the stop-line guard.
+    self.dynamic_validation = {
+        "review_only": bool(self.cfg.get("dynamic_obstacle_review")),
+        "goal_reached": False,
+        "cleanup_verified": False,
+        "max_ego_center_error_m": 0.0,
+        "corridor_observations": 0,
+        "max_ego_body_lateral_extent_m": 0.0,
+        "collision_objects": [],
+        "safety_validation_passed": False,
+        "failure_reason": None,
+    }
     _strict_assessment(self)  # Reject invalid policy before creating actors.
     zone_spec = self.route_definition["zones"]["dynamic_obstacle"]
     cfg = _dynamic_cfg(self)
@@ -1018,17 +1030,7 @@ def spawn_dynamic_obstacle(self):
         _initialize_signal_guard(self, event)
     self.dynamic_obstacle_event_index = 0
     self.dynamic_obstacle_owned_ids = set()
-    self.dynamic_validation = {
-        "review_only": bool(self.cfg.get("dynamic_obstacle_review")),
-        "goal_reached": False,
-        "cleanup_verified": False,
-        "max_ego_center_error_m": 0.0,
-        "corridor_observations": 0,
-        "max_ego_body_lateral_extent_m": 0.0,
-        "collision_objects": [],
-        "safety_validation_passed": False,
-        "failure_reason": None,
-    }
+
     self.dynamic_obstacle_phase = "waiting"
     self.dynamic_obstacle_started_at = None
     self.dynamic_obstacle_started_scenario_time = None

@@ -41,7 +41,14 @@ class UdpObjectsTests(unittest.TestCase):
 
     def test_roundtrip_preserves_physical_geometry_and_scalar_speed(self):
         packet = self.decode(sample())
-        wire = make_object_message(VeObjectTracker().update(packet), msg, obj, 'publication_stamp')
+        # Transport preserves the speed selected by tracking; warm-up speed is
+        # now explicitly unconfirmed instead of copied from the model.
+        tracker = VeObjectTracker()
+        for i in range(5):
+            packet['sent_ns'] = 1200000000 + i*100000000
+            packet['boxes'][0]['center_world'][1] = -146. + i*.25
+            tracked = tracker.update(packet)
+        wire = make_object_message(tracked, msg, obj, 'publication_stamp')
         self.assertEqual(wire.header.stamp, 'publication_stamp')
         self.assertEqual(wire.header.frame_id, 'map')
         self.assertEqual((wire.num_of_obstacle, wire.num_of_npcs, wire.num_of_pedestrian), (0, 1, 0))
@@ -50,6 +57,15 @@ class UdpObjectsTests(unittest.TestCase):
         self.assertEqual((item.size.x, item.size.y, item.heading), (1.1, .3, 90.))
         self.assertEqual(item.velocity.x / 3.6, 2.5)
         self.assertEqual((item.type, item.unique_id), (-1, 1))
+
+    def test_unconfirmed_nonzero_model_speed_keeps_obstacle_without_claiming_motion(self):
+        tracked = VeObjectTracker().update(self.decode(sample()))
+        self.assertEqual(tracked['boxes'][0]['speed_mps'], 2.5)
+        wire = make_object_message(tracked, msg, obj, 1)
+        self.assertEqual(wire.npc_list[0].name, 've_tracked_unknown:uncertain')
+        self.assertEqual(wire.npc_list[0].velocity.x, 0.)
+        self.assertEqual(wire.num_of_npcs, 1)
+        self.assertEqual(wire.num_of_obstacle, 0)
 
     def test_valid_empty_frame_is_distinct_from_missing_sensor(self):
         packet = sample(); packet['boxes'] = []

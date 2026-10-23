@@ -48,6 +48,9 @@ class WiringTests(unittest.TestCase):
         state = [[('/ve/Object_topic', ['/adapter']), ('/ctrl_cmd', [node])],
                  [('/ve/Object_topic', [node])], []]
         self.assertTrue(verify_topology(state, '/adapter', 42))
+        observing = copy.deepcopy(state)
+        observing[1].append(('/Object_topic', ['/ve_gt_observer']))
+        self.assertTrue(verify_topology(observing, '/adapter', 42))
         leaked = copy.deepcopy(state)
         leaked[1].append(('/Object_topic', [node]))
         with self.assertRaisesRegex(RuntimeError, 'GT'):
@@ -72,6 +75,7 @@ class WiringTests(unittest.TestCase):
     def test_transport_does_not_subscribe_to_gt_in_scenario_mode(self):
         session = object.__new__(PerceptionSession)
         session.observe_gt = False
+        session.camera_receiver_mode = 'process'
         session.ros = Mock()
         session.checkpoint = dict(path='/model', sha256='hash')
         session.generation = 'generation'
@@ -82,6 +86,8 @@ class WiringTests(unittest.TestCase):
              patch('MoraiDrive.expert.tools.ve_udp_session.threading.Thread'):
             session.output = Path(tmp)
             session.start()
+            config = json.loads((session.output / 'publisher_config.json').read_text())
+            self.assertEqual(config['runtime']['camera_receiver_mode'], 'process')
             topics = [c.args[0] for c in session.ros.Subscriber.call_args_list]
             self.assertEqual(topics, ['/Ego_topic'])
             session.trace.close()

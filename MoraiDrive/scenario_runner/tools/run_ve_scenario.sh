@@ -3,8 +3,10 @@ set -euo pipefail
 ve_scenario_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 case "${1:-}" in
     roundabout) ve_scenario_mode=full_loop_roundabout ;;
+    full) ve_scenario_mode=full_loop ;;
+    traffic_light) ve_scenario_mode=full_loop_traffic_light ;;
     highway) ve_scenario_mode=full_loop_highway ;;
-    *) echo "사용법: bash $0 {roundabout|highway} [--check] [--repeat] [--ve-checkpoint E3|E4]" >&2; exit 2 ;;
+    *) echo "사용법: bash $0 {roundabout|highway|traffic_light|full} [--check] [--repeat] [--ve-checkpoint E3|E4|P1] [--ve-compare-gt] [--expert-speed-cap-kmh 60]" >&2; exit 2 ;;
 esac
 shift
 ve_scenario_once=(--once)

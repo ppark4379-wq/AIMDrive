@@ -59,5 +59,10 @@ fi
 echo "[STATIC BATCH] MORAI vehicle control ready: /ctrl_cmd subscriber connected"
 
 PYTHON_BIN="${SCENARIO_PYTHON:-/usr/bin/python3}"
+# Run the runner and Expert in the same environment as the collection
+# entrypoints (ROS, catkin morai_msgs, pinned grpc/protobuf); the calling
+# shell may be a conda env that hides the user site or lacks the catkin path.
+source "$ROOT/data_collection/tools/internal_sensor_record_env.sh"
+morai_load_internal_sensor_record_environment
 echo "[STATIC BATCH] Python: $PYTHON_BIN"
 exec "$PYTHON_BIN" -m scenario_runner.tools.generate_static_scenario_suite "$@"

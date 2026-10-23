@@ -10,6 +10,7 @@ sys.path.insert(0, str(INTERNAL / "tools"))
 from audit_scenario_interventions import (
     scenario_zone_contract,
     summarize_roundabout_observation,
+    summarize_static_blockage_releases,
     summarize_traffic_interventions,
     zone_observation_checks,
 )
@@ -55,6 +56,23 @@ class ScenarioInterventionAuditTest(unittest.TestCase):
         )
         self.assertFalse(report["all_commands_verified"])
         self.assertFalse(report["all_events_disclosed"])
+
+    def test_static_blockage_release_must_be_disclosed_and_verified(self):
+        removed = [{"actor_id": "7", "destroy_accepted": True, "absent_after_readback": True}]
+        released = {"event": "static_blockage_released", "actor_ids": ["7"], "removed": removed,
+                    "intervention": True, "mission_distribution_changed": True,
+                    "training_visible": False}
+        lifecycle = {"event": "actor_lifecycle_finished", "action": "static_blockage_release",
+                     "success": True}
+        report = summarize_static_blockage_releases([released, lifecycle])
+        self.assertEqual(report["releases"], 1)
+        self.assertTrue(report["all_events_disclosed"] and report["all_removals_verified"])
+        self.assertEqual(summarize_static_blockage_releases([])["releases"], 0)
+        hidden = dict(released, training_visible=True)
+        self.assertFalse(summarize_static_blockage_releases([hidden, lifecycle])["all_events_disclosed"])
+        left = dict(released, removed=[dict(removed[0], absent_after_readback=False)])
+        self.assertFalse(summarize_static_blockage_releases([left, lifecycle])["all_removals_verified"])
+        self.assertFalse(summarize_static_blockage_releases([released])["all_removals_verified"])
 
     def test_three_car_roundabout_lifecycle_uses_explicit_contract_events(self):
         actors = ["6", "10", "13"]

@@ -277,13 +277,14 @@ PYCTRL
 fi
 
 echo "[5/5] 실제 메시지를 확인합니다."
-echo "      MORAI에서 차량 정보·Simulator Network(/clock)와"
+echo "      MORAI에서 차량 제어(/ctrl_cmd)·차량 정보·Simulator Network(/clock)와"
 echo "      Camera 1~4·LiDAR·GPS·IMU를"
 echo "      ${MORAI_ENDPOINT_IP}:9090으로 연결하세요."
 echo "      Simulation Time / Sensor Synchronization 10Hz / External Sync OFF"
 echo "      /clock은 센서셋과 별도인 Simulator Network 연결에서 송신됩니다."
 echo "      127.0.0.1은 Windows→WSL localhost 전달을 사용하므로 WSL 재시작 뒤에도 주소가 유지됩니다."
 echo "      차량 정보와 Simulator Network도 센서셋과 같은 주소를 사용해야 합니다."
+echo "      차량 정보 수신과 별도로 /ctrl_cmd 제어 명령 수신 연결도 확인합니다."
 echo "      센서셋 IP가 이번 실행에서 바뀌었다면 MORAI에서 센서셋을 다시 불러온 뒤 연결하세요."
 
 deadline=$((SECONDS + CONNECT_TIMEOUT))

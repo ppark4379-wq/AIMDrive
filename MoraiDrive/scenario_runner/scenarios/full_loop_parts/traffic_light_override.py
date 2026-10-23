@@ -13,7 +13,32 @@ from ...utils.transform_utils import polyline_length
 
 
 STRAIGHT_GREEN_BIT = 16
+LEFT_GREEN_BIT = 32
 RED_BIT = 1
+KNOWN_RELEASE_COLORS = {1, 4, 16, 32, 33, 48}
+
+
+def _following_signal_movement(context, full_route_links, index, node_id):
+    """Use the connected outgoing route link, never the approach's bearing."""
+    if index + 1 >= len(full_route_links):
+        return {"signal_movement": None, "signal_movement_binding": "no_following_route_link"}
+    next_id = str(full_route_links[index + 1])
+    following = context.map_loader.get_link(next_id)
+    # Historical adapters/fixtures did not expose topology or related_signal.
+    # Only their absent metadata can keep the old straight release policy.
+    if "from_node_idx" not in following and "related_signal" not in following:
+        return {"signal_movement_binding": "legacy_missing_route_metadata"}
+    result = {"signal_movement": None, "signal_route_link_id": next_id}
+    if str(following.get("from_node_idx")) != str(node_id):
+        result["signal_movement_binding"] = "following_link_not_connected"
+        return result
+    movement = str(following.get("related_signal") or "").strip().lower()
+    if movement in {"straight", "left"}:
+        result.update(signal_movement=movement,
+                      signal_movement_binding="connected_ordered_route_link")
+    else:
+        result["signal_movement_binding"] = "unsupported_route_movement"
+    return result
 
 
 def initialize(context):
@@ -78,9 +103,11 @@ def _active_route_prefix(context):
 
 def prepare(context):
     """Associate exact MGeo stop-line lights with the active route window."""
-    if not bool(
-        context.cfg.get("traffic_light_wait_override", {}).get("enabled", False)
-    ):
+    release_enabled = bool(context.cfg.get("traffic_light_wait_override", {}).get("enabled", False))
+    guard_enabled = bool(context.cfg.get("dynamic_obstacle", {}).get("pre_signal_guard", {}).get("enabled", False))
+    # Stop-line geometry is also required by pedestrian placement. Disabling
+    # forced signal release must not erase that independent map information.
+    if not (release_enabled or guard_enabled):
         context.traffic_light_stops = []
         return
     cumulative_s = 0.0
@@ -93,15 +120,17 @@ def prepare(context):
         node = context.map_loader.node_set.get(node_id)
         light_id = node.get("traffic_light_id") if node else None
         if node and node.get("on_stop_line") and light_id:
-            full_stops.append(
-                {
-                    "route_link_index": int(route_link_index),
-                    "route_link_id": str(link_id),
-                    "stop_node_id": node_id,
-                    "light_id": str(light_id),
-                    "global_route_s": float(cumulative_s),
-                }
-            )
+            stop = {
+                "route_link_index": int(route_link_index),
+                "route_link_id": str(link_id),
+                "stop_node_id": node_id,
+                "light_id": str(light_id),
+                "global_route_s": float(cumulative_s),
+            }
+            stop.update(_following_signal_movement(
+                context, full_route_links, route_link_index, node_id,
+            ))
+            full_stops.append(stop)
 
     official_length = polyline_length(_full_route_points(context))
     if abs(cumulative_s - official_length) > 0.05:
@@ -143,12 +172,39 @@ def straight_movement_is_blocked(color):
 
 
 def target_is_satisfied(observed_color, target_color):
-    """Accept MORAI's combined straight/left green readback for target 16."""
-    observed = int(observed_color)
-    target = int(target_color)
+    """Verify the requested movement against supported MORAI readbacks."""
+    try:
+        observed = int(observed_color)
+        target = int(target_color)
+    except (TypeError, ValueError, OverflowError):
+        return False
     if target == STRAIGHT_GREEN_BIT:
-        return bool(observed & STRAIGHT_GREEN_BIT) and not bool(observed & RED_BIT)
+        return observed in {16, 48}
+    if target == LEFT_GREEN_BIT:
+        # Red+left green means straight must wait while protected left may go.
+        return observed in {32, 33, 48}
     return observed == target
+
+
+def _release_policy(stop, cfg, color):
+    """Return a route-specific target only when a known phase forbids it."""
+    if "signal_movement" not in stop:
+        if not straight_movement_is_blocked(color):
+            return None
+        return int(cfg.get("target_color", STRAIGHT_GREEN_BIT))
+    movement = stop.get("signal_movement")
+    target = {"straight": STRAIGHT_GREEN_BIT, "left": LEFT_GREEN_BIT}.get(movement)
+    if target is None or int(color) not in KNOWN_RELEASE_COLORS:
+        return None
+    return None if target_is_satisfied(color, target) else target
+
+
+def _verification_semantics(target):
+    if int(target) == LEFT_GREEN_BIT:
+        return "protected_left_green_bit"
+    if int(target) == STRAIGHT_GREEN_BIT:
+        return "straight_green_bit_without_red"
+    return "exact_requested_color"
 
 
 def reset_wait(context):
@@ -188,7 +244,8 @@ def update(context, elapsed, ego_state, current_s):
                 target_color=target_color,
                 observed_color=observed_color,
                 exact_target_color_match=observed_color == target_color,
-                verification_semantics="straight_green_bit_without_red",
+                verification_semantics=_verification_semantics(target_color),
+                signal_movement=waiting.get("signal_movement"),
                 command_to_readback_wall_sec=float(now - waiting["commanded_wall"]),
                 command_result=waiting["command_result"],
                 intervention=True,
@@ -242,7 +299,8 @@ def update(context, elapsed, ego_state, current_s):
     if state is None or str(state.get("id")) != str(upcoming["light_id"]):
         return
     color = int(state["color"])
-    if not straight_movement_is_blocked(color):
+    target_color = _release_policy(upcoming, cfg, color)
+    if target_color is None:
         reset_wait(context)
         return
 
@@ -252,6 +310,7 @@ def update(context, elapsed, ego_state, current_s):
             "started_wall": now,
             "started_elapsed": float(elapsed),
             "last_attempt_wall": float("-inf"),
+            "signal_movement": upcoming.get("signal_movement"),
         }
         _emit_collection_event(
             context,
@@ -261,6 +320,8 @@ def update(context, elapsed, ego_state, current_s):
             stopline_route_s=float(upcoming["route_s"]),
             distance_to_stopline_m=distance,
             observed_color=color,
+            signal_movement=upcoming.get("signal_movement"),
+            signal_route_link_id=upcoming.get("signal_route_link_id"),
             wait_clock="host_monotonic",
         )
         return
@@ -282,7 +343,6 @@ def update(context, elapsed, ego_state, current_s):
             raise RuntimeError("Dynamic signal recovery exhausted for exact light " + stop_key[0])
         context.dynamic_signal_attempts[stop_key] = attempts + 1
     context.traffic_override_attempts += 1
-    target_color = int(cfg.get("target_color", STRAIGHT_GREEN_BIT))
     result = context.grpc.set_traffic_light_color_verified(
         upcoming["light_id"],
         target_color,
@@ -298,11 +358,22 @@ def update(context, elapsed, ego_state, current_s):
         distance_to_stopline_m=distance,
         wait_wall_sec=float(waited_wall),
         wait_scenario_sec=float(elapsed) - waiting["started_elapsed"],
+        target_color=target_color,
+        signal_movement=upcoming.get("signal_movement"),
+        signal_route_link_id=upcoming.get("signal_route_link_id"),
         result=result,
         intervention=True,
         mission_distribution_changed=True,
     )
-    if result.get("verified"):
+    readback = result.get("after")
+    direct_readback_valid = (
+        isinstance(readback, dict)
+        and str(result.get("id")) == stop_key[0]
+        and str(readback.get("id")) == stop_key[0]
+        and result.get("target_color") == target_color
+        and target_is_satisfied(readback.get("color", -1), target_color)
+    )
+    if result.get("verified") and direct_readback_valid:
         context.traffic_override_verified += 1
         context.traffic_override_completed.add(stop_key)
         reset_wait(context)

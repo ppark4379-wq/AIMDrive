@@ -1,0 +1,18 @@
+[
+  {
+    "kind": "vehicle",
+    "model": "2012_Hyundai_HD65"
+  },
+  {
+    "kind": "vehicle",
+    "model": "2013_Hyundai_Xcient(P520)"
+  },
+  {
+    "kind": "vehicle",
+    "model": "2013_Hyundai_Xcient(P540)"
+  },
+  {
+    "kind": "vehicle",
+    "model": "DR_OMLift_2022_Bus"
+  }
+]

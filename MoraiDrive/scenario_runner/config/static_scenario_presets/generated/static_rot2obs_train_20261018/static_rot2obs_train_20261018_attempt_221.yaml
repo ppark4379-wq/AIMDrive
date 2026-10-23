@@ -1,0 +1,128 @@
+schema: morai_static_obstacle_preset_v1
+name: static_rot2obs_train_20261018_attempt_221
+map_name: R_KR_PR_K-city_2025
+scenario: full_loop_static
+source: automated_static_expert_verified
+generation:
+  batch_seed: 26101801
+  attempt: 221
+  candidate_only_until_expert_passes: false
+  scale_policy: morai_native_model_scale_v1
+  placement_policy: lane_aware_right_edge_strata_v1
+  avoidance_target: small
+  footprint_catalog_sha256: 83e6ae9bab5d7a89e0958952181cbaf62c798036fc9c5b4aa94db5588f20416f
+obstacles:
+- model: BabyStroller1
+  position:
+    x: -56.113343
+    y: -144.719253
+    z: 28.377167
+  yaw_deg: -50.244096
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 663
+  generation:
+    longitudinal_fraction: 0.16677857
+    lateral_offset_m: -4.489459
+    route_lateral_m: -3.737495
+    right_edge_route_lateral_m: -4.6627
+    left_edge_route_lateral_m: -3.4094
+    placement_role: clear_02
+    lateral_stratum: right_far
+    lane_fit: right_of_path
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+    blocks_routes:
+    - right_03.csv
+    - right_04.csv
+    - right_05.csv
+    right_01_right_clearance_m: 2.3334
+    right_02_right_clearance_m: 1.2891
+    right_03_right_clearance_m: -0.396
+    right_04_right_clearance_m: -2.1005
+    right_05_right_clearance_m: -4.0891
+    right_06_retry_right_clearance_m: -6.7994
+- model: TrafficBarrel
+  position:
+    x: -61.006705
+    y: -140.699973
+    z: 28.379987
+  yaw_deg: -58.055988
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 671
+  generation:
+    longitudinal_fraction: 0.56952705
+    lateral_offset_m: 0.397154
+    route_lateral_m: 1.149117
+    right_edge_route_lateral_m: 0.6677
+    left_edge_route_lateral_m: 1.6095
+    placement_role: lane_small
+    lateral_stratum: left
+    lane_fit: inside
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+    lane_left_bound_m: 1.7181
+    right_02_clearance_m: 0.8077
+    right_03_clearance_m: 2.8312
+- model: Bollard01
+  position:
+    x: -61.151913
+    y: -136.566609
+    z: 28.38288
+  yaw_deg: -45.345807
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  route_path_index: 680
+  generation:
+    longitudinal_fraction: 0.98289136
+    lateral_offset_m: 0.535428
+    route_lateral_m: 1.287391
+    right_edge_route_lateral_m: 1.0286
+    left_edge_route_lateral_m: 1.5462
+    placement_role: lane_small
+    lateral_stratum: left
+    lane_fit: inside
+    scale_multiplier: 1.0
+    scale_policy: morai_native_model_scale_v1
+    lane_left_bound_m: 1.7232
+    right_02_clearance_m: 1.0764
+    right_03_clearance_m: 3.0108
+verification:
+  expert_completed: true
+  collision_free: true
+  runner_return_code: 0
+  max_cross_track_error_m: 1.29
+  cross_track_limit_m: 4.0
+  valid_plan_samples: 16
+  selected_routes:
+  - right_02.csv
+  blockage_release_observed: null
+  lane_compliance:
+    passed: true
+    reasons: []
+    raw_samples: 659
+    max_sample_gap_m: 0.771
+    route_index_span:
+    - 487.1
+    - 752.4
+    min_marking_clearance_m: 0.171
+    closest_marking: B2256W000445:505:solid
+    touched_markings: []
+    max_right_deviation_m: 1.333
+    max_left_deviation_m: 0.035
+    avoidance_class: small
+    trajectory_class: small
+    swing_onset_route_index: 652.7
+    peak_route_index: 674.7
+    markings_source_sha256: f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb
+  verified_at_unix: 1792182651.1917076
+  log: scenario_runner/.runtime/static_scenario_batch/static_rot2obs_train_20261018/logs/static_rot2obs_train_20261018_attempt_221.log
+  ego_trace: scenario_runner/.runtime/static_scenario_batch/static_rot2obs_train_20261018/traces/static_rot2obs_train_20261018_attempt_221.csv
+  ego_trace_sha256: 6bb2347ca3bbf3a3e057dd1e84e4582836430260f4a8f6ba5c89ee9b227613b8

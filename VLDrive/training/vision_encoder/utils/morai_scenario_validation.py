@@ -44,7 +44,7 @@ def scenario_loaders(dataset, groups, workers=0, *, pin_memory=False, prefetch_f
 
 
 def evaluate_scenarios(model, loaders, device, *, progress_phase=None,
-                       detection_loss_policy='lmdrive_lav_v1', **kwargs):
+                       detection_loss_policy='lmdrive_lav_v1', waypoint_loss_weight=0.5, **kwargs):
     reports = {}
     for name in SCENARIOS.values():
         loader = loaders[name]
@@ -52,7 +52,8 @@ def evaluate_scenarios(model, loaders, device, *, progress_phase=None,
         entries = [subset.dataset.rows[i][1] for i in subset.indices]
         reports[name] = evaluate(model, loader, device,
             progress_phase=(progress_phase or 'evaluation') + ':' + name,
-            detection_loss_policy=detection_loss_policy, object_entries=entries)
+            detection_loss_policy=detection_loss_policy, object_entries=entries,
+            waypoint_loss_weight=waypoint_loss_weight)
     frames = sum(r['frames'] for r in reports.values())
     macro = {}
     for metric in ('detection_cell_average_precision', 'detection_cell_recall', 'detection_cell_f1'):

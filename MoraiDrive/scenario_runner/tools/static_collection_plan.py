@@ -276,7 +276,11 @@ def load_candidates(manifest_paths, *, scale_policy=None):
                 routes = parse_selected_routes(
                     resolve_path(log_value, manifest_path.parent)
                 )
-            if not routes:
+            # A released blockage leaves nothing to plan around; its verified
+            # stop and release replace the selected-route evidence.
+            released_blockage = bool(document.get("blockage_release")
+                                     and verification.get("blockage_release_observed") is True)
+            if not routes and not released_blockage:
                 raise ValueError(
                     "Selected Expert route evidence missing: {}".format(preset_path)
                 )

@@ -59,11 +59,14 @@ def _lmdrive_lav_loss(prediction, target, zero):
 
 
 def multitask_loss(outputs, targets, include_traffic_light=True, include_objects=True,
-                   detection_loss_policy="mvt_l1_v1", geometry_aux_weight=0.0):
+                   detection_loss_policy="mvt_l1_v1", geometry_aux_weight=0.0,
+                   waypoint_loss_weight=0.5):
     if detection_loss_policy not in DETECTION_LOSS_POLICIES:
         raise ValueError("Unknown detection loss policy: " + str(detection_loss_policy))
     if not math.isfinite(geometry_aux_weight) or geometry_aux_weight < 0:
         raise ValueError('Geometry auxiliary weight must be finite and nonnegative')
+    if not math.isfinite(waypoint_loss_weight) or waypoint_loss_weight < 0:
+        raise ValueError('Waypoint loss weight must be finite and nonnegative')
     if geometry_aux_weight and detection_loss_policy != 'lmdrive_lav_v1':
         raise ValueError('Relative bbox auxiliary requires LAV detection semantics')
     det, waypoints, light = outputs[:3]
@@ -76,13 +79,19 @@ def multitask_loss(outputs, targets, include_traffic_light=True, include_objects
             det_loss, speed_loss = _lmdrive_lav_loss(prediction, target, zero)
         else:
             det_loss, speed_loss = _mvt_l1_loss(prediction, target, zero)
-    valid_wp = targets.get("waypoint_valid", torch.ones(len(waypoints), dtype=torch.bool, device=waypoints.device))
-    wp_loss = (F.l1_loss(waypoints[valid_wp], targets["waypoints"][valid_wp])
-               if valid_wp.any() else waypoints.sum() * 0)
+    if waypoint_loss_weight:
+        valid_wp = targets.get("waypoint_valid", torch.ones(len(waypoints), dtype=torch.bool, device=waypoints.device))
+        wp_loss = (F.l1_loss(waypoints[valid_wp], targets["waypoints"][valid_wp])
+                   if valid_wp.any() else waypoints.sum() * 0)
+    else:
+        # Do not attach a zero gradient to waypoint-only parameters: AdamW
+        # could otherwise change them through weight decay or saved moments.
+        # Invalid/unused future labels must not poison perception supervision.
+        wp_loss = zero.detach()
     valid_light = targets["traffic_light"] >= 0
     light_loss = (F.cross_entropy(light[valid_light], targets["traffic_light"][valid_light])
                   if include_traffic_light and valid_light.any() else light.sum() * 0)
-    total = .5 * det_loss + .5 * wp_loss + .05 * speed_loss + .1 * light_loss
+    total = .5 * det_loss + waypoint_loss_weight * wp_loss + .05 * speed_loss + .1 * light_loss
     tasks = {"detection": det_loss, "waypoint_l1": wp_loss,
              "object_speed": speed_loss, "traffic_light_ce": light_loss}
     if geometry_aux_weight:

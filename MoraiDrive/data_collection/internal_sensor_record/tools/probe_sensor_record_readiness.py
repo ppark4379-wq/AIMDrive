@@ -35,6 +35,24 @@ def source_status(role, values, end):
     return entry, failures
 
 
+def control_status(state, topic='/ctrl_cmd'):
+    # Ego/status publishing and simulator control subscribing are independent
+    # rosbridge connections. Fresh sensors alone cannot prove drive readiness.
+    code, message, topology = state
+    row = dict(topic=topic, publishers=[], subscribers=[])
+    if code != 1:
+        row['error'] = str(message)
+        return row, ['control_topology_unavailable']
+    publishers, subscribers, _ = topology
+    row.update(publishers=list(dict(publishers).get(topic, [])),
+               subscribers=list(dict(subscribers).get(topic, [])))
+    if not row['subscribers']:
+        return row, ['missing_control_subscriber']
+    # Publisher ownership is still checked by the scenario supervisor after
+    # its bounded cleanup of a stopped expert between laps.
+    return row, []
+
+
 def clock_ingress_failure(clock_values, health, bridge_failures):
     if clock_values:
         return None
@@ -56,6 +74,7 @@ def main():
 
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--seconds',type=float,default=4.)
+    p.add_argument('--control-topic',default='/ctrl_cmd')
     p.add_argument('--raw-camera-transport',choices=('required','unrecorded','bridge_dropped','absent'),
                    default='required')
     a=p.parse_args()
@@ -93,6 +112,14 @@ def main():
     report={};failures=[]
     if not use_sim_time:
         failures.append('use_sim_time_not_true')
+    try:
+        report['control'],control_failures=control_status(
+            rospy.get_master().getSystemState(),topic=a.control_topic)
+    except Exception as error:
+        report['control']=dict(topic=a.control_topic,publishers=[],subscribers=[],
+                               error=str(error))
+        control_failures=['control_topology_unavailable']
+    failures.extend(control_failures)
     for role in required:
         # Camera headers are not exposure clocks; only receipt/view presence is required here.
         report[role],source_failures=source_status(role,snapshot.get(role,[]),end)

@@ -68,6 +68,20 @@ class MissionExpertTest(unittest.TestCase):
             scenario.prepare_full_loop_route()
         return scenario
 
+    def test_highway_temporary_60_cap_reaches_real_expert_profile(self):
+        scenario = self.make_scenario("full_loop_highway")
+        scenario.cfg["expert_speed_cap_kmh"] = 60.0
+        with redirect_stdout(io.StringIO()):
+            scenario.setup_expert_controller()
+        controller = scenario.expert_controller
+        config = json.loads(Path(controller.runtime_config_path).read_text())
+        vp = config["planning"]["velocity_profile"]
+        self.assertLessEqual(vp["max_velocity"], 60.0)
+        self.assertTrue(vp["speed_limit_zones"])
+        self.assertTrue(all(z["max_velocity"] <= 60 for z in vp["speed_limit_zones"]))
+        result = self.initialize_expert(controller, EXPERT_INITIALIZE + "\nassert max(profile) <= 60.0/3.6 + 1e-6\n")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def initialize_expert(self, controller, script=EXPERT_INITIALIZE):
         environment = os.environ.copy()
         environment.update({

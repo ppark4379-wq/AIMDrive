@@ -7,6 +7,7 @@ import csv
 import math
 from ..localization.point import Point
 from ..path.mapping import NodeTrafficLightStoplineMapper
+from ..planning.route_signal_targets import build_route_signal_targets
 
 
 class Config(object):
@@ -86,6 +87,12 @@ class Config(object):
         self._resolve_speed_limit_zones(map_data_dir)
         self["map"]["data_dir"] = map_data_dir
         self["map"]["stopline_mapper"] = stopline_mapper
+        signal_route = self["map"].get("route_signal_route_links")
+        self["map"]["route_signal_targets"] = (
+            build_route_signal_targets(self["map"]["path"], map_data_dir, signal_route,
+                                       self["map"].get("is_closed_path", False))
+            if signal_route is not None else None
+        )
         # Traffic lights are no longer injected into ACC as averaged static
         # objects.  Red-light control selects the lane-centre stop node on the
         # active global path instead.

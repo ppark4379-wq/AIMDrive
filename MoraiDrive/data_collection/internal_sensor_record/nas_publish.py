@@ -21,6 +21,7 @@ SCENARIO_FOLDERS = {
     "full_loop_dynamic": "dynamic_obstacle",
     "full_loop_static": "static_obstacle",
     "full_loop_tunnel_static": "tunnel_static_obstacle",
+    "full_loop_tunnel_normal": "tunnel_normal",
     "full_loop_roundabout": "roundabout",
     "full_loop_roundabout_nonuniform": "roundabout_nonuniform",
     "full_loop_roundabout_speed_random": "roundabout_speed_random",
