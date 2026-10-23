@@ -129,8 +129,8 @@ Inference:
   status_file: AIM2026/outputs/live/ve_status.json
   status_interval_s: 2.0
   vision:
-    checkpoint: E3
-    signal_head: false
+    checkpoint: P1
+    signal_head: true
     max_sensor_age_s: 0.5
 
 # Shared GPS/DR provider; algorithm and settings are maintained by GPSJamming.

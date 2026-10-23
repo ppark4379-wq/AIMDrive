@@ -1,6 +1,6 @@
 # AIM2026 → Expert 통합 실행
 
-`AIM2026/Expert/main.py` → `AIM2026/Expert/runtime.py` → `AIM2026/Inference/main.py` 자동 시작 → 센서 UDP 수신·E3 추론·GPS/IMU 지도 좌표변환 → 로컬 UDP 12050 → 기존 객체 추적·신호 정책 → Expert planning/control → 차량 제어 UDP.
+`AIM2026/Expert/main.py` → `AIM2026/Expert/runtime.py` → `AIM2026/Inference/main.py` 자동 시작 → 센서 UDP 수신·P1 및 신호등 헤드 추론·GPS/IMU 지도 좌표변환 → 로컬 UDP 12050 → 기존 객체 추적·신호 정책 → Expert planning/control → 차량 제어 UDP.
 
 계획·제어 소스는 Expert에 그대로 두고 실행·통신·어댑터는 AIM2026에 둔다.
 인지 시점 객체 좌표와 최신 제어 pose는 분리하며, 지도 좌표로 변환된 객체를 다시 변환하지 않는다.
@@ -54,7 +54,9 @@ bash AIM2026/Visualization/run_rviz.sh
 ```
 
 실행 설정은 기본적으로 config_local.yaml을 사용한다. 정답지 센서 기하·포트만 동기화했으며,
-E3 가중치 선택과 normal 조향 부호(-1), 기존 판제 게인은 바꾸지 않았다.
+가중치는 `AIM2026/Weights/VE/ve_p1_20261014.pth.tar`와
+`AIM2026/Weights/VE/signal_head_p1_20261014.pt`를 사용한다.
+normal 조향 부호(-1), 기존 판제 게인은 바꾸지 않았다.
 독립 GPSJamming 센서 뷰어도 같은 포트를 사용하므로 통합 Expert와 동시에 켜지 않는다.
 
 ## 검증과 기록

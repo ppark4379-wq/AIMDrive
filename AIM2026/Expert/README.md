@@ -76,5 +76,7 @@ AIM2026/Expert/main.py
 모델 추론은 자동 실행하므로 별도 인지 프로세스를 중복 실행하지 않는다.
 실행 기록은 `AIM2026/outputs/expert/`에 저장한다.
 `MoraiDrive/expert`는 이동했으며 새 진입점은 `AIM2026/Expert/main.py`다.
-지도·시나리오 생성은 기존 `MoraiDrive/scenario_runner`, 모델 가중치는 기존 `VLDrive`를 계속 사용한다.
+지도·시나리오 생성은 기존 `MoraiDrive/scenario_runner`를 사용한다.
+모델은 `AIM2026/Weights/VE/ve_p1_20261014.pth.tar`와
+`AIM2026/Weights/VE/signal_head_p1_20261014.pt`를 함께 사용한다.
 보관한 catkin build/devel 산출물은 이전 절대 경로가 포함될 수 있으므로 ROS 재빌드 시 새 위치를 사용한다.
