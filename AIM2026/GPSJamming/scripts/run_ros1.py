@@ -18,6 +18,7 @@ from gps_jamming.lidar.wall_width import WallWidthFallback
 from gps_jamming.lidar.runtime import load_config, make_assembler, DEFAULT_CONFIG
 from gps_jamming.interfaces.lidar_udp import LidarUDPReceiver, LidarUDPStream
 from gps_jamming.pipeline import LidarPipeline
+from gps_jamming.interfaces.wall_udp import WallUDPSender, line_edges, PORT
 
 
 STAGES = ('raw', 'roi', 'voxel', 'ground', 'nonground')
@@ -29,10 +30,8 @@ def boundary_markers(boundaries, header, previous_keys=None):
     current_keys = set()
     for side, color in (('left', (0.1, 0.5, 1.0)), ('right', (1.0, 0.55, 0.1))):
         edges = []
-        for segment in boundaries[side]:
-            points = segment['points']
-            for first, second in zip(points, points[1:]):
-                edges.extend([Point(x=p[0], y=p[1], z=p[2]) for p in (first, second)])
+        for pair in line_edges(boundaries, side):
+            edges.extend([Point(x=p[0], y=p[1], z=p[2]) for p in pair])
         if not edges:
             continue
         current_keys.add((side, 0))
@@ -85,6 +84,10 @@ def main():
     wall_width = WallWidthFallback(**config.get('wall_width_fallback', {}))
     display_pub = rospy.Publisher('~wall_boundaries_display', String, queue_size=1)
     marker_keys = set()
+    wall_sender = WallUDPSender(rospy.get_param('~boundary_udp_host', '127.0.0.1'),
+                               int(rospy.get_param('~boundary_udp_port', PORT)))
+    rospy.on_shutdown(wall_sender.close)
+    rospy.loginfo('RViz wall geometry -> UDP %s:%s', *wall_sender.destination)
     wall_pubs = {side: rospy.Publisher('~wall_' + side, PointCloud2, queue_size=1)
                  for side in ('left', 'right', 'representatives_left', 'representatives_right')}
     assembler = make_assembler(config)
@@ -128,6 +131,10 @@ def main():
                     display = wall_width.update(boundaries, result.receive_end_monotonic_time / 1e9)
                     display_pub.publish(String(data=json.dumps(display, allow_nan=False)))
                     markers_pub.publish(boundary_markers(display, header, marker_keys))
+                    try:
+                        wall_sender.send(display)
+                    except (OSError, ValueError, TypeError, KeyError) as exc:
+                        rospy.logerr_throttle(5, 'Wall UDP send failed: %s', exc)
                     for side in wall_pubs:
                         wall_pubs[side].publish(cloud_message(wall_clouds[side], header))
                     for stage, publisher in publishers.items():
