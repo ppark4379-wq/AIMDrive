@@ -33,6 +33,7 @@ class UDPManager:
         self.cmd = None
         self.detection = None
         self.pose = None
+        self.localization = None
         self.running = False
 
     def _validate_geometry(self):
@@ -133,10 +134,15 @@ class UDPManager:
             for name, cfg in self.sensor_config.items():
                 options = {key: cfg[key] for key in ('elevations', 'distance_scale', 'frame_policy')
                            if name == 'lidar' and key in cfg}
-                options['history_size'] = 128 if name in ('vehicle_status', 'imu', 'gps') else 16
+                options['history_size'] = 200 if name in ('vehicle_status', 'imu', 'gps') else 16
                 self.receivers[name] = factories[name](
                     cfg['dest_port'], bind=cfg.get('bind') or '0.0.0.0', name=name,
                     drop_audit=True, **options)
+            if (self.config.get('Localization') or {}).get('enabled', False):
+                from AIM2026.GPSJamming.gps_jamming.localization.service import create_localization
+                self.localization = create_localization(self, self.config)
+                if self.localization is not None:
+                    self.localization.start()
             cfg = self.cmd_config
             if cfg.get('cmd_port') is not None:
                 self.cmd = CmdSender(cfg['ip'], cfg['cmd_port'], protocol=cfg.get('protocol', 'morai'),
@@ -145,12 +151,16 @@ class UDPManager:
             cfg = self.detection_config
             if cfg.get('port') is not None:
                 host = cfg.get('ip') or '127.0.0.1'
-                self.detection = DetectionSender(cfg['checkpoint_sha256'], host, cfg['port'])
+                self.detection = DetectionSender(cfg['checkpoint_sha256'], host, cfg['port'],
+                                                  generation=cfg.get('generation'))
                 if cfg.get('pose_hz', POSE_HZ) is not None:
                     # Rule 2-6-2/2-8: GPS position, IMU heading, Competition Vehicle Status speed.
                     projector = GridProjector(self.sensor_config['gps']['pos'],
-                                              self.sensor_config['imu']['rot_deg'])
-                    self.pose = PoseSender(self.receivers['gps'], self.receivers['imu'],
+                                              self.sensor_config['imu']['rot_deg'],
+                                              **(dict(crs=self.localization.basis['crs'],
+                                                       origin_xyz=self.localization.basis['origin_xyz'])
+                                                 if self.localization is not None else {}))
+                    self.pose = PoseSender(self.localization or self.receivers['gps'], self.receivers['imu'],
                                            self.receivers['vehicle_status'], projector,
                                            cfg['checkpoint_sha256'], self.detection.generation,
                                            host, cfg['port'], hz=float(cfg.get('pose_hz', POSE_HZ))).start()
@@ -161,14 +171,23 @@ class UDPManager:
             raise
 
     def snapshot(self):
-        return {name: receiver.snapshot() for name, receiver in self.receivers.items()}
+        values = {name: receiver.snapshot() for name, receiver in self.receivers.items()}
+        if self.localization is not None:
+            values['gps'] = self.localization.snapshot()
+        return values
 
     def recent(self):
-        return {name: receiver.recent() for name, receiver in self.receivers.items()}
+        values = {name: receiver.recent() for name, receiver in self.receivers.items()}
+        if self.localization is not None:
+            values['gps'] = self.localization.recent()
+        return values
 
     def diagnostics(self):
         """Per-receiver packet/sample counts and rejection reasons."""
-        return {name: receiver.diagnostics() for name, receiver in self.receivers.items()}
+        result = {name: receiver.diagnostics() for name, receiver in self.receivers.items()}
+        if self.localization is not None:
+            result['gps']['localization'] = self.localization.diagnostics()
+        return result
 
     def send_control(self, accel, brake, steer):
         if not self.running or self.cmd is None:
@@ -193,6 +212,9 @@ class UDPManager:
         if self.pose is not None:
             self.pose.close()
             self.pose = None
+        if self.localization is not None:
+            self.localization.close()
+            self.localization = None
         for receiver in self.receivers.values():
             receiver.close()
         self.receivers.clear()

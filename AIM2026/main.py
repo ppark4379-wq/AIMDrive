@@ -2,8 +2,12 @@ import threading
 import yaml
 
 from pathlib import Path
+import sys
 
-from UDP import UDPManager
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from AIM2026.UDP import UDPManager
 
 class AIM2026:
     def __init__(self, config_path=None):

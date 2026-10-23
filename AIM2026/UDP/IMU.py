@@ -59,6 +59,9 @@ class ImuReceiver(_Receiver):
             return None
         if not packet.header.startswith(b"#IMU"):
             return None
+        if stamped and (packet.sec < 0 or not 0 <= packet.nsec < 1_000_000_000):
+            self._count('invalid_source_timestamp')
+            return None
         x, y, z, w = packet.ori_x, packet.ori_y, packet.ori_z, packet.ori_w
         if not 0.9 < math.sqrt(x * x + y * y + z * z + w * w) < 1.1:
             return None  
@@ -69,5 +72,6 @@ class ImuReceiver(_Receiver):
             "angular_velocity": (packet.ang_vel_x, packet.ang_vel_y, packet.ang_vel_z),
             "linear_acceleration": (packet.lin_acc_x, packet.lin_acc_y, packet.lin_acc_z),
             "sim_time": (packet.sec + packet.nsec / 1e9) if stamped else None,
+            "source_stamp_ns": (packet.sec * 1_000_000_000 + packet.nsec) if stamped else 0,
             "layout_bytes": self.layout_bytes,
         }

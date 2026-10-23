@@ -25,6 +25,7 @@ MAX_SPEED_MPS = 100.0
 OUTPUT_FRAME = 'projected_grid'
 SCENE_ASSUMPTION = 'unknown'
 GPS_POSITION = 'GPS'
+DR_POSITION = 'GPS_dead_reckoning'
 UDP_STATUS = 'UDP_status_speed_IMU_heading'
 
 
@@ -131,6 +132,7 @@ class Detection:
     ego_status_source: str
     signal: dict = None
     native_signal: dict = None
+    position_identity: dict = None
 
     def sensor_age_s(self, now_ns=None):
         return ((time.monotonic_ns() if now_ns is None else now_ns) - self.sensor_received_ns) / 1e9
@@ -181,11 +183,15 @@ def decode(data, now_ns=None, *, generation=None, checkpoint_sha256=None, max_ag
     sources = packet.get('ego_position_source'), packet.get('ego_status_source')
     if not all(isinstance(value, str) and value for value in sources):
         raise ValueError('Missing ego pose sources')
+    position_identity = (packet.get('selected_samples') or {}).get('gps')
+    if sources[0] == DR_POSITION and (not isinstance(position_identity, dict)
+                                    or position_identity.get('position_mode') != 'dead_reckoning'):
+        raise ValueError('DR detection requires explicit position provenance')
     return Detection(sender, sequence, digest, sent_ns, received_ns,
                      EgoPose.from_wire(packet.get('ego_pose')),
                      tuple(Box.from_wire(row) for row in boxes), *sources,
                      _signal(packet.get('signal'), 'signal'),
-                     _signal(packet.get('native_signal'), 'native_signal'))
+                     _signal(packet.get('native_signal'), 'native_signal'), position_identity)
 
 
 class DetectionSender:
@@ -223,7 +229,7 @@ class DetectionSender:
         return self.socket.sendto(encode(packet), self.target)
 
     def send(self, boxes, ego_pose, sensor_received_at, *, signal=None, native_signal=None,
-             ego_position_source=GPS_POSITION, ego_status_source=UDP_STATUS):
+             ego_position_source=GPS_POSITION, ego_status_source=UDP_STATUS, position_identity=None):
         """``sensor_received_at``: time.monotonic() receipt of the oldest sensor used.
 
         Inputs that expired during inference are sent as not ready, never as boxes.
@@ -236,6 +242,9 @@ class DetectionSender:
         signals = _signal(signal, 'signal'), _signal(native_signal, 'native_signal')
         if not all(isinstance(value, str) and value for value in (ego_position_source, ego_status_source)):
             raise ValueError('Ego pose sources must be named')
+        if ego_position_source == DR_POSITION and (not isinstance(position_identity, dict)
+                or position_identity.get('position_mode') != 'dead_reckoning'):
+            raise ValueError('DR detection requires explicit position provenance')
         now_ns = time.monotonic_ns()
         if not 0 < received_ns <= now_ns:
             raise ValueError('sensor_received_at must be a past time.monotonic() value')
@@ -245,6 +254,8 @@ class DetectionSender:
         packet.update(sensor_received_ns=received_ns, boxes=wire_boxes, ego_pose=wire_pose,
                       ego_position_source=ego_position_source, ego_status_source=ego_status_source,
                       signal=signals[0], native_signal=signals[1])
+        if position_identity is not None:
+            packet['selected_samples'] = dict(gps=dict(position_identity))
         return self._send(packet)
 
     def send_not_ready(self, reason):

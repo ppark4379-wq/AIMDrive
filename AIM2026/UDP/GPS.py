@@ -1,8 +1,6 @@
 import math
 from .Common import _Receiver, _Packet
 
-GGA_FIX_QUALITIES = ('1', '2', '4', '5')
-
 class GpsReceiver(_Receiver):
     """NMEA0183 GGA/RMC. Only checksum-valid, in-range fixes update the position."""
 
@@ -21,6 +19,8 @@ class GpsReceiver(_Receiver):
             raise ValueError('Invalid NMEA coordinate')
         degrees = float(value[: dot - 2])
         minutes = float(value[dot - 2:])
+        if not 0 <= minutes < 60:
+            raise ValueError('Invalid NMEA minutes')
         result = degrees + minutes / 60.0
         return -result if hemisphere in ("S", "W") else result
 
@@ -41,7 +41,7 @@ class GpsReceiver(_Receiver):
     def _parse(self, parts):
         """(latitude, longitude, altitude-or-None) of a usable fix, else None."""
         if parts[0].endswith("GGA") and len(parts) > 9:
-            if parts[6] not in GGA_FIX_QUALITIES:
+            if int(parts[6]) <= 0:
                 return None
             latitude = self._degrees(parts[2], parts[3], ('N', 'S'))
             longitude = self._degrees(parts[4], parts[5], ('E', 'W'))
@@ -94,5 +94,8 @@ class GpsReceiver(_Receiver):
                 self._fix["altitude"] = altitude
             updated = True
         if updated and self._fix["latitude"] is not None:
-            return dict(self._fix)
+            return dict(self._fix, raw_nmea=text)
         return None
+
+    def sample_metadata(self, sample):
+        return dict(nmea=sample['raw_nmea'])

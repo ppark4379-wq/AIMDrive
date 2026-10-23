@@ -2,6 +2,7 @@
 """GPS/IMU + VE -> existing Expert -> UDP; optional gRPC start placement only."""
 import argparse
 import contextlib
+import copy
 import datetime
 import json
 import math
@@ -36,6 +37,80 @@ def encode_planner_control(command, max_steer_rad):
         raise ValueError('현재 GPS UDP 실행은 후륜 조향을 지원하지 않습니다')
     return pack_control(command.accel, command.brake,
                         normalized_steering(command.front_steer, max_steer_rad))
+
+
+def aim2026_publisher_config(args, config, output):
+    """Private perception-only config; the existing Expert remains the sole controller."""
+    from AIM2026.UDP import UDPManager
+    config = copy.deepcopy(config)
+    if args.simulate_gps_blackout:
+        raise ValueError('--aim2026-config: set test_blackout.enabled in the Localization YAML '
+                         'instead of --simulate-gps-blackout')
+    if args.gps_latency_s != 0:
+        raise ValueError('--aim2026-config uses the aligned Localization configuration; '
+                         '--gps-latency-s must remain 0')
+    if (config.get('Localization') or {}).get('enabled', False) and not args.gps_blackout_hold:
+        raise ValueError('Localization.enabled requires --gps-blackout-hold on the common Expert')
+    detection = config['Detection']
+    if detection.get('port') != 12050 or (detection.get('ip') or '127.0.0.1') != '127.0.0.1':
+        raise ValueError('The common Expert requires Detection at 127.0.0.1:12050')
+    if detection.get('pose_hz', 50.) is None:
+        raise ValueError('The common Expert requires the independent control-pose stream')
+    # The child receives sensors and publishes perception/pose only. Even when
+    # a general config has command ports, it must not bind the Expert's sender.
+    config['Ego']['cmd_port'] = None
+    config['Ego']['cmd_source_port'] = None
+    config['Inference']['status_file'] = str(output/'aim2026_status.json')
+    if (config.get('Localization') or {}).get('enabled', False):
+        config['Localization']['record_dir'] = str(output/'localization')
+    manager = UDPManager(config)
+    manager._validate_ports()  # Configuration only: no socket creation/probe.
+    receive_ports = {row['dest_port'] for row in manager.sensor_config.values()}
+    if args.control_source_port in receive_ports or args.control_source_port == 12050:
+        raise ValueError('Expert control-source-port conflicts with an AIM2026 receive port')
+    if (config.get('Localization') or {}).get('enabled', False):
+        # Validate the actual map/mount/DR settings during --check too. These
+        # non-owning placeholders do not create sockets, threads or recordings.
+        from AIM2026.GPSJamming.gps_jamming.localization.service import create_localization
+        dry = copy.deepcopy(config)
+        dry['Localization']['record_dir'] = None
+        localization = create_localization(SimpleNamespace(receivers={
+            name: object() for name in ('gps', 'imu', 'vehicle_status')}), dry)
+        localization.close()
+    return config
+
+
+def prepare_aim2026_publisher(args, output):
+    import yaml
+    from AIM2026.Inference.settings import read_config
+    from AIM2026.Inference.vision.checkpoint import resolve
+    publisher = aim2026_publisher_config(args, read_config(args.aim2026_config), output)
+    vision = publisher['Inference']['vision']
+    weights, digest, head = resolve(vision['checkpoint'])
+    required = [weights]
+    if vision['signal_head']:
+        if head is None:
+            raise ValueError('No AIM2026 signal head is registered for '+vision['checkpoint'])
+        required.append(head)
+    missing = [str(path) for path in required if not path.is_file()]
+    if missing:
+        raise FileNotFoundError('AIM2026 weights missing: '+', '.join(missing))
+    if publisher['Detection']['checkpoint_sha256'] != digest:
+        raise ValueError('AIM2026 checkpoint identity mismatch')
+    target = output/'aim2026_publisher.yaml'
+    target.write_text(yaml.safe_dump(publisher, allow_unicode=True, sort_keys=False), encoding='utf-8')
+    return dict(path=str(weights), sha256=digest, label=vision['checkpoint'],
+                publisher_backend='aim2026', publisher_config=str(target))
+
+
+def publisher_command(args, output, python, generation):
+    """Exactly one publisher backend, with the Expert's sender identity."""
+    if getattr(args, 'aim2026_config', None):
+        return [str(python), '-u', '-B', str(REPO/'AIM2026/Inference/main.py'),
+                '--config', str(output/'aim2026_publisher.yaml'), '--generation', generation, '--seconds', '0']
+    return [str(python), '-u', '-B', str(REPO/'VLDrive/inference/ve_objects_udp.py'),
+            '--config', str(output/'publisher_config.json'), '--generation', generation, '--seconds', '0',
+            '--audit-dir', str(output)]
 
 
 def prepare(args, output):
@@ -109,6 +184,8 @@ def prepare(args, output):
                                   wide_zone=(int(zone['activation_path_index']) - slice_start, exit_index, 12.),
                                   wide_zones=tunnel_zone)
     write(output/'signal_targets.json', document)
+    if getattr(args, 'aim2026_config', None):
+        return context, controller, policy, prepare_aim2026_publisher(args, output)
     from inference.realtime_ve_objects import CHECKPOINTS
     checkpoint = CHECKPOINTS['P1']
     if not Path(checkpoint['path']).is_file() or not args.signal_head.is_file():
@@ -209,6 +286,8 @@ def main(argv=None):
     parser.add_argument('--from-start', action='store_true', help='출발 전 gRPC 설정 명령으로 공식 경로 시작 위치에 배치; 주행 입력은 GPS/VE 유지')
     parser.add_argument('--check', action='store_true', help='연결·GPU 실행 없이 경로·설정만 검사')
     parser.add_argument('--scenario-context', type=Path, help=argparse.SUPPRESS)
+    parser.add_argument('--aim2026-config', type=Path,
+                        help='Use one AIM2026 VE/localization publisher; sensor settings and weights come from this YAML')
     parser.add_argument('--output', type=Path, help=argparse.SUPPRESS)
     parser.add_argument('--seconds', type=float, default=0.)
     parser.add_argument('--startup-timeout', type=float, default=90.)
@@ -243,6 +322,9 @@ def main(argv=None):
     parser.add_argument('--simulate-gps-blackout', action='store_true',
                         help='개발용: Jamming 구간(터널) 안의 실제 GPS를 버려 음영을 흉내냄. --gps-blackout-hold 필요')
     args = parser.parse_args(argv)
+    if args.aim2026_config and args.simulate_gps_blackout:
+        parser.error('--aim2026-config: configure test_blackout.enabled in the Localization YAML; '
+                     'omit --simulate-gps-blackout')
     if args.simulate_gps_blackout and not args.gps_blackout_hold:
         parser.error('--simulate-gps-blackout requires --gps-blackout-hold')
     if not 0 <= args.gps_latency_s <= .5:
@@ -274,6 +356,13 @@ def main(argv=None):
                 control_pose_hz=50., control_pose_max_age_s=.15,
                 detection_transform_pose='unchanged_perception_snapshot',
                 output=str(output))
+    if args.aim2026_config:
+        plan.update(publisher_backend='AIM2026', aim2026_config=str(args.aim2026_config.resolve()),
+                    publisher_config=checkpoint['publisher_config'],
+                    obstacles='VE_'+checkpoint['label']+'_tracked',
+                    position='GPS_or_aligned_DR' if args.gps_blackout_hold else 'GPS',
+                    localization_allowed=args.gps_blackout_hold,
+                    sensor_socket_owner='single_AIM2026_UDPManager', control_owner='common_Expert')
     write(output/'plan.json', plan)
     if args.check:
         print(json.dumps(dict(status='CHECKED', **plan), ensure_ascii=False, indent=2))
@@ -333,12 +422,11 @@ def main(argv=None):
                 sender.sendto(pack_control(0.,1.), (args.sim_ip,args.control_port))
                 time.sleep(.03)
             reset_route_start(context, args.sim_ip)
-        process = subprocess.Popen([str(ANALYSIS_PYTHON), '-u', '-B', str(REPO/'VLDrive/inference/ve_objects_udp.py'),
-            '--config', str(output/'publisher_config.json'), '--generation', generation, '--seconds', '0',
-            '--audit-dir', str(output)], env=build_analysis_environment(ANALYSIS_PYTHON),
+        process = subprocess.Popen(publisher_command(args, output, ANALYSIS_PYTHON, generation),
+            env=build_analysis_environment(ANALYSIS_PYTHON),
             stdout=logs['publisher'], stderr=subprocess.STDOUT, start_new_session=True, cwd=REPO)
-        print('[VE+GPS] GPS 위치 · IMU 방향 · 상태 속도 · P1 장애물/기존 신호 head · 제어={}'.format(
-            'UDP' if args.drive else '송신 없음'), flush=True)
+        print('[VE+GPS] GPS/허용된 DR 위치 · IMU 방향 · 상태 속도 · {} 장애물/신호 · 제어={}'.format(
+            checkpoint.get('label', 'P1'), 'UDP' if args.drive else '송신 없음'), flush=True)
         print('[조향] MORAI 프로필={} · 방향 부호={:+.0f} · 최대각 기준 정규화'.format(
             args.sim_profile, UDP_STEERING_SIGNS[args.sim_profile]), flush=True)
         print('[자세] GPS·IMU·상태 최신값 50Hz 별도 전달 → 제어 30Hz; VE 객체 좌표 변환 시점 유지', flush=True)

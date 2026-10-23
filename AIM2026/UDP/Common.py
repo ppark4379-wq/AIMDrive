@@ -15,6 +15,9 @@ class ReceivedSample:
     sequence: int
     source_time: object
     meta: object = None
+    received_ns: object = None  # Exact monotonic receipt, before packet parsing.
+    source_stamp_ns: object = None  # Accepted source clock; raw integer remains in value.
+    clock_epoch: int = 0
 
 class _Packet(ctypes.Structure):
     _pack_ = 1
@@ -59,6 +62,7 @@ class _Receiver:
         self._stamp = 0.0
         self.packets = 0
         self.samples = 0
+        self.clock_epoch = 0
         self._running = True
         self._thread = threading.Thread(target=self._run, daemon=True, name=self.name)
         self._thread.start()
@@ -67,8 +71,10 @@ class _Receiver:
         """One datagram, or None when it must not be parsed (truncated)."""
         if self._rx_overflow_option is None:
             payload, _ = self._socket.recvfrom(self._recv_bytes)
+            self._packet_received_ns = time.monotonic_ns()
             return payload
         payload, ancillary, flags, _ = self._socket.recvmsg(self._recv_bytes, 64)
+        self._packet_received_ns = time.monotonic_ns()
         for level, kind, value in ancillary:
             if level == socket.SOL_SOCKET and kind == self._rx_overflow_option:
                 self._set_count('socket_queue_drops', struct.unpack('=I', value[:4])[0])
@@ -99,30 +105,39 @@ class _Receiver:
                 self._count('parse_exceptions')
                 continue
             if sample is not None:
-                self._store(sample)
+                self._store(sample, received_ns=self._packet_received_ns)
 
-    def _store(self, sample):
+    def _store(self, sample, received_ns=None):
+        received_ns = time.monotonic_ns() if received_ns is None else received_ns
         source_time = self.source_time(sample)
+        # Keep the original DR HistoryMixin arithmetic during migration. Parsers
+        # also preserve exact protocol ns in sample['source_stamp_ns'] for audit.
+        source_ns = round(source_time * 1e9) if source_time else 0
+        if source_ns < 0:
+            self._count('negative_source_time')
+            return
         meta = self.sample_metadata(sample)
         with self._lock:
-            previous = self._history[-1].source_time if self._history else None
+            previous = self._history[-1].source_stamp_ns if self._history else None
             # A zero stamp means "no stamp" (e.g. an unfilled IMU stamp field), as in
             # VLDrive; deduplicating it would drop every packet after the first.
-            if source_time and previous:
-                if source_time == previous:
+            if source_ns and previous:
+                if source_ns == previous:
                     # The same simulator instant again: not a new observation.
                     self._count('duplicate_source_time')
                     return
-                if source_time < previous:
+                if source_ns < previous:
                     # Simulator reset/restart: never join samples across it.
                     self._history.clear()
+                    self.clock_epoch += 1
                     self._count('source_time_resets')
             self._latest = sample
             self._stamp = time.time()
-            self._monotonic_stamp = time.monotonic()
+            self._monotonic_stamp = received_ns / 1e9
             self.samples += 1
             self._history.append(ReceivedSample(sample, self._monotonic_stamp,
-                                                self.samples, source_time, meta))
+                                                self.samples, source_time, meta,
+                                                received_ns, source_ns, self.clock_epoch))
 
     def source_time(self, sample):
         return sample.get('sim_time') if isinstance(sample, dict) else None
@@ -157,7 +172,7 @@ class _Receiver:
         with self._lock:
             if self._latest is None:
                 return None, float("inf")
-            return self._latest, time.time() - self._stamp
+            return self._latest, time.monotonic() - self._monotonic_stamp
 
     def snapshot(self):
         """Atomic sample, age, sequence and monotonic receipt time (not sim time)."""
