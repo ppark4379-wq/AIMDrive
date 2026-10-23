@@ -1,0 +1,17 @@
+{
+  "description": "Test-only immutable improved DR oracle. Never imported by production. Import paths are remapped only inside the differential test loader.",
+  "sources": {
+    "gps_blackout_hold.py": {
+      "original_path": "VLDrive/inference/sensors/gps_blackout_hold.py",
+      "sha256": "5f48c4efab86b5caf39a3f1764e6cdaae5a230457b4c8656b2fd0d13bd6d2d4b"
+    },
+    "gps_aligned_hold.py": {
+      "original_path": "VLDrive/inference/sensors/gps_aligned_hold.py",
+      "sha256": "45b671b83b1e05ce6751a78a9d82a7cd3bc5b40062eeca205bd568a7d049416b"
+    },
+    "map_geometry.py": {
+      "original_path": "VLDrive/data/src/loaders/morai_map_geometry.py",
+      "sha256": "41601ceda889951f8aeaa5c9b20fd547539a8649e768ce903fd09ba292ff5f41"
+    }
+  }
+}

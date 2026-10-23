@@ -21,7 +21,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .Detection import NotReady, _finite, _monotonic_ns, OUTPUT_FRAME, DEFAULT_PORT, GPS_POSITION, UDP_STATUS
+from .Detection import (NotReady, _finite, _monotonic_ns, OUTPUT_FRAME, DEFAULT_PORT,
+                        GPS_POSITION, DR_POSITION, UDP_STATUS)
 
 SCHEMA = 'morai_ve_control_pose_v1'
 MAX_AGE_S = 0.15
@@ -106,6 +107,8 @@ class ControlPose:
     yaw_grid_rad: float
     speed_mps: float          # signed; negative while reversing
     ego_control: dict = None  # accel/brake/steer/gear the vehicle reports
+    ego_position_source: str = GPS_POSITION
+    position_identity: dict = None
 
     def sensor_age_s(self, now_ns=None):
         return ((time.monotonic_ns() if now_ns is None else now_ns) - self.sensor_received_ns) / 1e9
@@ -129,7 +132,7 @@ def decode_pose(data, now_ns=None, *, generation=None, checkpoint_sha256=None, m
     if ((generation is not None and sender != generation)
             or (checkpoint_sha256 is not None and digest != checkpoint_sha256)):
         raise ValueError('Control pose sender identity mismatch')
-    if (packet.get('output_frame') != OUTPUT_FRAME or packet.get('ego_position_source') != GPS_POSITION
+    if (packet.get('output_frame') != OUTPUT_FRAME or packet.get('ego_position_source') not in (GPS_POSITION, DR_POSITION)
             or packet.get('ego_status_source') != UDP_STATUS):
         raise ValueError('Control pose frame/source mismatch')
     sequence = packet.get('sequence')
@@ -151,6 +154,10 @@ def decode_pose(data, now_ns=None, *, generation=None, checkpoint_sha256=None, m
     if abs(values['speed_mps']) > MAX_SPEED_MPS:
         raise ValueError('Invalid control speed')
     samples = packet.get('selected_samples') or {}
+    position_identity = samples.get('gps', {})
+    if (packet['ego_position_source'] == DR_POSITION
+            and position_identity.get('position_mode') != 'dead_reckoning'):
+        raise ValueError('DR control pose requires explicit position provenance')
     receipts = [samples.get('gps', {}).get('received_ns'),
                 samples.get('vehicle_status', {}).get('received_ns'),
                 samples.get('vehicle_status', {}).get('imu_received_ns')]
@@ -159,7 +166,25 @@ def decode_pose(data, now_ns=None, *, generation=None, checkpoint_sha256=None, m
     if min(receipts) != received_ns:
         raise ValueError('Control pose oldest sample mismatch')
     return ControlPose(sender, sequence, sent_ns, received_ns, **values,
-                       ego_control=packet.get('ego_control'))
+                       ego_control=packet.get('ego_control'),
+                       ego_position_source=packet['ego_position_source'],
+                       position_identity=position_identity)
+
+
+def _sensor_snapshot(receiver):
+    """Preserve provider identity; bridge legacy Common's four-field snapshot."""
+    if callable(getattr(receiver, 'latest_snapshot', None)):
+        return receiver.latest_snapshot()
+    value, age, sequence, at = receiver.snapshot()
+    identity = dict(sample_id=sequence, received_ns=round(at*1e9) if at is not None else 0,
+                    source_stamp_ns=round(value.get('sim_time', 0)*1e9)
+                    if isinstance(value, dict) and value.get('sim_time') else 0)
+    if callable(getattr(receiver, 'recent', None)):
+        record = next((r for r in reversed(receiver.recent()) if r.sequence == sequence), None)
+        if record is not None:
+            identity['received_ns'] = getattr(record, 'received_ns', None) or identity['received_ns']
+            identity['source_stamp_ns'] = getattr(record, 'source_stamp_ns', None) or identity['source_stamp_ns']
+    return value, age, identity
 
 
 class PoseSender:
@@ -201,23 +226,23 @@ class PoseSender:
                     selected_samples=samples)
 
     def _body(self):
-        gps, gps_age, gps_seq, gps_at = self.gps.snapshot()
-        imu, imu_age, imu_seq, imu_at = self.imu.snapshot()
-        status, status_age, status_seq, status_at = self.status.snapshot()
-        ns = lambda at: int(round(at * 1e9)) if at is not None else 0
+        gps, gps_age, gps_id = _sensor_snapshot(self.gps)
+        imu, imu_age, imu_id = _sensor_snapshot(self.imu)
+        status, status_age, status_id = _sensor_snapshot(self.status)
+        gps_id = dict(gps_id)
+        gps_id.setdefault('position_mode', 'gps')
         samples = dict(
-            gps=dict(sample_id=gps_seq, received_ns=ns(gps_at), source_stamp_ns=0),
-            vehicle_status=dict(sample_id=status_seq, received_ns=ns(status_at),
-                                source_stamp_ns=int(round(status['sim_time'] * 1e9)) if status else 0,
-                                imu_received_ns=ns(imu_at),
-                                imu_source_stamp_ns=int(round(imu['sim_time'] * 1e9))
-                                if imu and imu.get('sim_time') else 0))
+            gps=gps_id,
+            vehicle_status=dict(status_id, imu_received_ns=imu_id['received_ns'],
+                                imu_source_stamp_ns=imu_id['source_stamp_ns']))
         for name, value, age in (('gps', gps, gps_age), ('imu', imu, imu_age),
                                  ('vehicle_status', status, status_age)):
             if value is None:
                 return self._not_ready('missing_' + name, samples)
             if not 0 <= age <= self.max_age_s:
                 return self._not_ready('stale_' + name, samples)
+        if gps_id['position_mode'] not in ('gps', 'dead_reckoning'):
+            return self._not_ready('invalid_position_mode', samples)
         if not (status.get('competition_variant') is True or status.get('local_status_allowed') is True):
             return self._not_ready('competition_status_required', samples)
         speed = status['speed']  # Competition Vehicle Status signed_vel / 3.6
@@ -229,7 +254,8 @@ class PoseSender:
             return self._not_ready('projection_failed: ' + str(exc), samples)
         self.reason = None
         return dict(ready=True, reason=None,
-                    sensor_received_ns=min(ns(gps_at), ns(imu_at), ns(status_at)),
+                    sensor_received_ns=min(gps_id['received_ns'], imu_id['received_ns'], status_id['received_ns']),
+                    ego_position_source=DR_POSITION if gps_id['position_mode']=='dead_reckoning' else GPS_POSITION,
                     ego_pose=dict(x=pose['x'], y=pose['y'], yaw_raw_deg=math.degrees(pose['yaw_raw_rad']),
                                   yaw_grid_rad=pose['yaw_grid_rad'], speed_mps=float(speed)),
                     ego_control={key: status[key] for key in ('accel', 'brake', 'steer', 'gear')},

@@ -1,3 +1,40 @@
+wall_ema:
+  time_constant: 0.15
+  hold_seconds: 0.3
+  sample_step: 0.5
+  reset_jump: 1.0
+wall_width_fallback:
+  max_age_s: 2.0
+  confirm_frames: 3
+  max_angle_deg: 10.0
+  max_width_jump_m: 0.5
+  min_overlap_m: 3.0
+walls:
+  observed_extent: true  # Fit across current nonground support, within its observed ends.
+  angular_gap_deg: 1.2   # Three 0.4-degree firings; split larger unobserved sectors.
+  clearance_m: 0.30  # BEV perpendicular clearance inward from the nearest wall support.
+  boundary_support_distance: 0.80  # Include nearby protrusions; separate from direction fitting.
+  curve_bin_size: 0.5
+  curve_quantile: 0.25
+  connect_max_gap: 2.5
+  connect_max_offset: 0.5
+  connect_max_angle_deg: 20.0
+  x_min: null            # Use the supplied nonground extent, including rear returns.
+  x_max: null
+  segment_length: 5.0
+  sample_step: 0.5
+  min_lateral: 1.5
+  min_height: 0.3
+  max_height: null       # No upper clipping of wall support in observed-extent mode.
+  min_height_span: 0.5
+  min_length: 2.0
+  distance_threshold: 0.35 #0.25
+  max_slope: 1.0
+  min_inliers: 8
+  min_ratio: 0.20
+  max_observation_gap: 2.0
+  iterations: 100
+  seed: 0
 ego:
   enabled: true
   udp:

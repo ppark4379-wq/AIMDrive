@@ -93,7 +93,8 @@ class VehicleStatusReceiver(_Receiver):
             self.layout_bytes=len(payload)
             return dict(competition_variant=False, local_status_allowed=True,
                         layout_bytes=len(payload), speed=speed/3.6, signed_speed=speed,
-                        accel=accel, brake=brake, steer=steer, gear=payload[36], sim_time=sec+nsec/1e9)
+                        accel=accel, brake=brake, steer=steer, gear=payload[36], sim_time=sec+nsec/1e9,
+                        source_stamp_ns=sec*1_000_000_000+nsec)
 
         if len(payload) != COMPETITION_STATUS_BYTES:
             # e.g. 229/245-byte full Ego Vehicle Status from a non-competition build.
@@ -122,4 +123,5 @@ class VehicleStatusReceiver(_Receiver):
             "steer": float(packet.steer),
             "gear": int(packet.gear),
             "sim_time": packet.sec + packet.nsec / 1e9,
+            "source_stamp_ns": packet.sec * 1_000_000_000 + packet.nsec,
         }

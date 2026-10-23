@@ -78,6 +78,24 @@ class Inputs:
                    for p, age in ((self.packet, 500_000_000), (self.pose, 150_000_000)))
 
 
+def publisher_config(config, output, generation):
+    """Isolate inference ownership and validate the unchanged shared DR provider."""
+    child_cfg = json.loads(json.dumps(config))
+    child_cfg['Ego']['cmd_port'] = None  # Only the parent can own vehicle control.
+    child_cfg['Ego']['cmd_source_port'] = None
+    if (child_cfg.get('Localization') or {}).get('enabled', False):
+        child_cfg['Localization']['record_dir'] = str(output/'localization')
+        from AIM2026.GPSJamming.gps_jamming.localization.service import create_localization
+        from types import SimpleNamespace
+        validation_cfg = json.loads(json.dumps(child_cfg))
+        validation_cfg['Localization']['record_dir'] = None
+        validation = create_localization(SimpleNamespace(receivers={name: object() for name in ('gps', 'imu', 'vehicle_status')}), validation_cfg)
+        validation.close()
+    child_cfg['Detection']['generation'] = generation
+    child_cfg['Inference']['status_file'] = str(output/'inference_status.json')
+    return child_cfg
+
+
 def main(argv=None, control_tick=None):
     import yaml
     from AIM2026.Inference.settings import read_config
@@ -114,10 +132,7 @@ def main(argv=None, control_tick=None):
     output.mkdir(parents=True, exist_ok=False)
     context, controller, policy = prepare(args, output)
     generation = str(uuid.uuid4())
-    child_cfg = json.loads(json.dumps(cfg))
-    child_cfg['Ego']['cmd_port'] = None  # Only the parent can own vehicle control.
-    child_cfg['Detection']['generation'] = generation
-    child_cfg['Inference']['status_file'] = str(output/'inference_status.json')
+    child_cfg = publisher_config(cfg, output, generation)
     config_path = output/'inference.yaml'
     config_path.write_text(yaml.safe_dump(child_cfg, sort_keys=False), encoding='utf-8')
     print(json.dumps(dict(output=str(output), model=label, weights=str(weights),
@@ -193,7 +208,8 @@ def main(argv=None, control_tick=None):
             if fresh:
                 if policy.reason == 'off_route':
                     raise RuntimeError('GPS pose outside route corridor')
-                vehicle, objects = planner_inputs(inputs.packet, inputs.pose)
+                vehicle, objects = planner_inputs(inputs.packet, inputs.pose, position_sources=('GPS', 'GPS_dead_reckoning')
+                    if (cfg.get('Localization') or {}).get('enabled', False) else ('GPS',))
                 traffic = [policy.target_id, code, 0, now]
                 with contextlib.redirect_stdout(expert_log):
                     tick = control_tick or (lambda d,*a,**kw: d.execute(*a,**kw))

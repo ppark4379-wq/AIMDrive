@@ -1,5 +1,11 @@
 TargetHz: 30
 
+# Position only. Shared sensors -> improved DR -> the common Expert.
+Localization:
+  enabled: true
+  config: GPSJamming/configs/localization.yaml
+  record_dir: null  # optional new directory, relative to AIM2026; never overwrite logs
+
 Ego:
   ip:
   vehicle_status_port: 8000  # Competition Vehicle Status (MORAI Host 8001 -> here)

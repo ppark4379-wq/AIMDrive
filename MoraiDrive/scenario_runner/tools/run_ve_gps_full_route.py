@@ -21,6 +21,7 @@ from scenario_runner.scenarios.full_loop_scenario import FullLoopScenario
 from scenario_runner.scenarios.segment_modes.modes import MISSION_MODES
 from scenario_runner.scenarios.segment_modes.scenario import MissionScenario
 from scenario_runner.utils.map_loader import MGeoMapLoader
+from scenario_runner.tools.ve_full_route_campaign import validate_aim2026_options
 from run_ve_gps_expert import stop_child
 from run_gt_udp_expert import running_controllers, write
 
@@ -107,6 +108,7 @@ class GpsController:
                 '--status-port', str(args.status_port), '--gps-port', str(args.gps_port),
                 '--imu-port', str(args.imu_port), '--control-port', str(args.control_port),
                 '--control-source-port', str(args.control_source_port)] + (
+                    ['--aim2026-config', str(args.aim2026_config)] if getattr(args, 'aim2026_config', None) else []) + (
                     ['--static-geometry-fusion'] if getattr(args, 'static_geometry_fusion', False) else []) + (
                     ['--moving-carry-s', str(args.moving_carry_s)] if getattr(args, 'moving_carry_s', 0.) else []) + (
                     ['--slow-window-s', str(args.slow_window_s)] if getattr(args, 'slow_window_s', 0.) else []) + (
@@ -351,6 +353,8 @@ def main(argv=None):
                         help='full_loop_tunnel_vehicle 미션의 터널 안 차량 행동 하나를 고정')
     parser.add_argument('--tunnel-vehicle-random', action='store_true',
                         help='full_loop_tunnel_vehicle 미션에서 --seed로 행동을 무작위 선택')
+    parser.add_argument('--aim2026-config', type=Path,
+                        help='Optional AIM2026 YAML sensor/DR backend for the existing common Expert.')
     parser.add_argument('--gps-blackout-hold', action='store_true',
                         help='GPS 음영 동안 IMU 방향 + 상태 속도로 위치 유지 (터널 통과 시험에는 --stop-before-tunnel 없이 사용)')
     parser.add_argument('--gps-latency-s', type=float, default=0.,
@@ -362,6 +366,7 @@ def main(argv=None):
     for name, port in (('status',8000), ('gps',10506), ('imu',10507), ('control',7601), ('control-source',7600)):
         parser.add_argument('--'+name+'-port', type=int, default=port)
     args = parser.parse_args(argv)
+    validate_aim2026_options(args, parser)
     if args.simulate_gps_blackout and not args.gps_blackout_hold:
         parser.error('--simulate-gps-blackout requires --gps-blackout-hold')
     if not 0 <= args.gps_latency_s <= .5:
@@ -383,7 +388,7 @@ def main(argv=None):
     from scenario_runner.adapters.expert_controller import validate_max_velocity_kmh
     args.speed_cap_kmh = validate_max_velocity_kmh(args.speed_cap_kmh)
     args.signal_head = args.signal_head.expanduser().resolve()
-    if not args.signal_head.is_file():
+    if not args.aim2026_config and not args.signal_head.is_file():
         parser.error('신호 head 없음: '+str(args.signal_head))
     ports = [args.status_port,args.gps_port,args.imu_port,args.control_port,args.control_source_port,
              10501,10502,10503,10504,2368,12050]
@@ -407,6 +412,7 @@ def main(argv=None):
                 speed_cap_kmh=args.speed_cap_kmh, stop_before_tunnel=args.stop_before_tunnel,
                 gps_blackout_hold=args.gps_blackout_hold, gps_latency_s=args.gps_latency_s,
                 simulate_gps_blackout=args.simulate_gps_blackout,
+                aim2026_config=str(args.aim2026_config) if args.aim2026_config else None,
                 mission=args.mission, tunnel_vehicle_behavior=args.tunnel_vehicle_behavior,
                 tunnel_dynamic_speed=args.tunnel_dynamic_speed,
                 tunnel_candidate_id=args.tunnel_candidate_id,

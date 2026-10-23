@@ -43,6 +43,7 @@ def test_shared_destination_isolates_interleaved_camera_gps_and_imu():
     cfg = yaml.safe_load((ROOT/'config_local.yaml').read_text(encoding='utf8'))
     cfg['Ego']['cmd_port'] = cfg['Ego']['cmd_source_port'] = None
     cfg['Detection'] = {}
+    cfg['Localization']['enabled'] = False
     senders = [udp_socket() for _ in range(7)]
     reservations = [udp_socket() for _ in range(3)]
     ports = [s.getsockname()[1] for s in reservations]

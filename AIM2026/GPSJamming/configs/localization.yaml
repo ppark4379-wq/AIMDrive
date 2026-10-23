@@ -1,0 +1,21 @@
+# Existing improved DR defaults. No driving policy or speed cap is set here.
+map_basis:
+  schema: morai_projected_grid_basis_v1
+  position_frame: projected_grid
+  source_orientation_frame: true_enu
+  orientation_frame: projected_grid
+  crs: '+proj=utm +zone=52 +datum=WGS84 +units=m +no_defs'
+  origin_xyz: [302595.0, 4124145.0, 0.0]
+
+anchor_window_s: 1.0
+max_hold_s: 120.0
+max_distance_m: 250.0
+
+# Development test only; actual competition boundaries are not known.
+# When enabled, real GPS within this rectangle is logged for comparison only.
+test_blackout:
+  enabled: false
+  start_xy: [29.589355843083467, -487.65027253562585]
+  end_xy: [-74.86074459552765, -544.5780326710083]
+  half_width_m: 15.0
+  margin_m: 0.0

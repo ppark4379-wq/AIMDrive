@@ -1,0 +1,5 @@
+*.sh text eol=lf
+*.rviz text eol=lf
+
+# Frozen oracle hashes require identical bytes on Windows and Linux.
+tests/fixtures/dr_baseline/*.txt text eol=lf

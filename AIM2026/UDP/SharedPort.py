@@ -48,12 +48,13 @@ class SharedPort:
                 continue
             except OSError:
                 break
+            received_ns = time.monotonic_ns()
             with self.lock:
                 routes = tuple(self.routes)
             for ip, port, channel, on_drop in routes:
                 if (ip is None or peer[0] == ip) and (port is None or peer[1] == port):
                     try:
-                        channel.put_nowait((payload, time.monotonic()))
+                        channel.put_nowait((payload, received_ns))
                     except queue.Full:
                         on_drop('shared_queue_drops')
                     break

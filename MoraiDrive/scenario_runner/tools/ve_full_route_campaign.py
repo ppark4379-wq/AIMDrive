@@ -155,6 +155,79 @@ def trial_seeds(runs, seed=None):
     return seed, random.Random(seed).sample(range(1, 2**31), runs)
 
 
+def validate_aim2026_options(args, parser):
+    """Resolve only the explicitly selected backend and reject conflicting DR switches."""
+    selected = getattr(args, 'aim2026_config', None)
+    if selected is None:
+        return
+    path = Path(selected).expanduser()
+    if not path.is_absolute():
+        path = REPO/path
+    path = path.resolve()
+    if not path.is_file():
+        parser.error('--aim2026-config file not found: '+str(path))
+    if args.simulate_gps_blackout:
+        parser.error('--aim2026-config uses explicit Localization test_blackout settings; omit --simulate-gps-blackout')
+    if args.gps_latency_s != 0.:
+        parser.error('--aim2026-config aligned localization requires --gps-latency-s 0')
+    if getattr(args, 'gt_expert', False):
+        parser.error('--aim2026-config uses the common GPS Expert and cannot be combined with --gt-expert')
+    import yaml
+    try:
+        config = yaml.safe_load(path.read_text(encoding='utf-8'))
+        if not isinstance(config, dict):
+            raise ValueError('expected a YAML mapping')
+        localization = config.get('Localization')
+        if localization is None:
+            localization = {}
+        if not isinstance(localization, dict):
+            raise ValueError('Localization must be a YAML mapping')
+        enabled = localization.get('enabled', False)
+        if type(enabled) is not bool:
+            raise ValueError('Localization.enabled must be boolean')
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        parser.error('--aim2026-config: '+str(exc))
+    if enabled and not args.gps_blackout_hold:
+        parser.error('enabled AIM2026 Localization requires --gps-blackout-hold')
+    args.aim2026_config = path
+
+
+def trial_command(args, seed, trace):
+    command = ['bash', str(REPO/'MoraiDrive/scenario_runner/tools/run_ve_full_route.sh'),
+               '--seed', str(seed), '--ego-trace', str(trace)]
+    if getattr(args, 'aim2026_config', None):
+        command += ['--aim2026-config', str(args.aim2026_config)]
+    if args.stop_before_tunnel:
+        command.append('--stop-before-tunnel')
+    if args.static_geometry_fusion:
+        command.append('--static-geometry-fusion')
+    if args.moving_carry_s:
+        command += ['--moving-carry-s', str(args.moving_carry_s)]
+    if args.slow_window_s:
+        command += ['--slow-window-s', str(args.slow_window_s)]
+    if args.stationary_hold_s:
+        command += ['--stationary-hold-s', str(args.stationary_hold_s)]
+    if args.ignore_signals:
+        command += ['--ignore-signals', args.ignore_signals]
+    if args.speed_cap_kmh != 60.:
+        command += ['--speed-cap-kmh', str(args.speed_cap_kmh)]
+    if args.mission:
+        command += ['--mission', args.mission]
+    if args.tunnel_vehicle_behavior:
+        command += ['--tunnel-vehicle-behavior', args.tunnel_vehicle_behavior]
+    if args.tunnel_dynamic_speed is not None:
+        command += ['--tunnel-dynamic-speed', str(args.tunnel_dynamic_speed)]
+    if args.tunnel_candidate_id:
+        command += ['--tunnel-candidate-id', args.tunnel_candidate_id]
+    if args.tunnel_layout is not None:
+        command += ['--tunnel-layout', str(args.tunnel_layout)]
+    if args.gps_blackout_hold:
+        command += ['--gps-blackout-hold', '--gps-latency-s', str(args.gps_latency_s)]
+    if args.simulate_gps_blackout:
+        command.append('--simulate-gps-blackout')
+    return command
+
+
 def parse_arguments(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument('--runs', type=int, default=30)
@@ -190,6 +263,8 @@ def parse_arguments(argv=None):
                         help='With --mission full_loop_tunnel_dynamic: pedestrian speed in m/s (0 < v <= 5, default 2.5).')
     parser.add_argument('--tunnel-vehicle-behavior', default='',
                         help='With --mission full_loop_tunnel_vehicle: fix the tunnel vehicle behavior (vehicle_slow, vehicle_sudden_brake, vehicle_oncoming, vehicle_cut_in).')
+    parser.add_argument('--aim2026-config', type=Path,
+                        help='Optional AIM2026 YAML backend for the existing common Expert; defaults remain unchanged.')
     parser.add_argument('--gps-blackout-hold', action='store_true',
                         help='Hold the position through a GPS blackout with IMU heading + status speed (needed to drive the tunnel).')
     parser.add_argument('--gps-latency-s', type=float, default=0.,
@@ -198,6 +273,7 @@ def parse_arguments(argv=None):
                         help='Development: discard real GPS fixes inside the tunnel (Jamming section) to imitate the blackout.')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args(argv)
+    validate_aim2026_options(args, parser)
     if args.mission:
         args.stop_before_tunnel = False
     if args.simulate_gps_blackout and not args.gps_blackout_hold:
@@ -235,6 +311,7 @@ def main():
                   moving_carry_s=args.moving_carry_s, slow_window_s=args.slow_window_s, stationary_hold_s=args.stationary_hold_s,
                   gps_blackout_hold=args.gps_blackout_hold, gps_latency_s=args.gps_latency_s,
                   simulate_gps_blackout=args.simulate_gps_blackout,
+                  aim2026_config=str(args.aim2026_config) if args.aim2026_config else None,
                   static_stuck_seconds=args.static_stuck_seconds,
                   ignored_signals=[x for x in args.ignore_signals.split(',') if x],
                   campaign_seed=campaign_seed, trial_seeds=seeds,
@@ -276,36 +353,7 @@ def main():
             trial.mkdir()
             trace = trial/'ego.csv'
             console = trial/'console.log'
-            command = ['bash', str(REPO/'MoraiDrive/scenario_runner/tools/run_ve_full_route.sh'),
-                       '--seed', str(seed), '--ego-trace', str(trace)]
-            if args.stop_before_tunnel:
-                command.append('--stop-before-tunnel')
-            if args.static_geometry_fusion:
-                command.append('--static-geometry-fusion')
-            if args.moving_carry_s:
-                command += ['--moving-carry-s', str(args.moving_carry_s)]
-            if args.slow_window_s:
-                command += ['--slow-window-s', str(args.slow_window_s)]
-            if args.stationary_hold_s:
-                command += ['--stationary-hold-s', str(args.stationary_hold_s)]
-            if args.ignore_signals:
-                command += ['--ignore-signals', args.ignore_signals]
-            if args.speed_cap_kmh != 60.:
-                command += ['--speed-cap-kmh', str(args.speed_cap_kmh)]
-            if args.mission:
-                command += ['--mission', args.mission]
-            if args.tunnel_vehicle_behavior:
-                command += ['--tunnel-vehicle-behavior', args.tunnel_vehicle_behavior]
-            if args.tunnel_dynamic_speed is not None:
-                command += ['--tunnel-dynamic-speed', str(args.tunnel_dynamic_speed)]
-            if args.tunnel_candidate_id:
-                command += ['--tunnel-candidate-id', args.tunnel_candidate_id]
-            if args.tunnel_layout is not None:
-                command += ['--tunnel-layout', str(args.tunnel_layout)]
-            if args.gps_blackout_hold:
-                command += ['--gps-blackout-hold', '--gps-latency-s', str(args.gps_latency_s)]
-            if args.simulate_gps_blackout:
-                command.append('--simulate-gps-blackout')
+            command = trial_command(args, seed, trace)
             save(trial/'command.json', command)
             report['active_trial'] = number
             report['active_seed'] = seed
