@@ -54,3 +54,8 @@ MoraiDrive/data_collection/internal_sensor_record/proven_three_lap_runtime/scena
 /docs/reports/MORAI_GT_CAMERA_PROJECTION_20260928.md
 /docs/reports/morai_gt_camera_projection_20260928/evidence.json
 /MoraiDrive/.runtime/
+
+# Model weights placed locally for AIM2026 (hundreds of MB each)
+/AIM2026/Weights/**/*.pt
+/AIM2026/Weights/**/*.pth
+/AIM2026/Weights/**/*.pth.tar
