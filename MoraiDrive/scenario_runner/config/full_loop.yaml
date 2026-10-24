@@ -263,9 +263,13 @@ scenarios:
     roundabout_npc:
       min_count: 3
       max_count: 5
+      # Basic full_loop_roundabout: choose once per run, shared by every NPC.
+      common_speed_choices_kph: [10.0, 15.0, 20.0, 25.0]
+      # Legacy fixed-speed setting for the other roundabout modes.
       speed_mps: 4.0
       route_laps: 100
-      # Verified spawnable model names (queried live via
+      # Commented models lacked vehicle assets in the tested v.R1.260701.H3 installation.
+      # Active model names are filtered against the simulator catalog via
       # get_available_surround_vehicle_models(); Bundle filenames often
       # differ from the registered model name).
       models:
@@ -278,7 +282,7 @@ scenarios:
         - 2014_Kia_K7
         - 2016_Hyundai_Genesis_DH
         - 2019_Toyota_Prius
-        - 2021_Volkswagen_Golf_GTI
+        # - 2021_Volkswagen_Golf_GTI
         - 2020_Kia_Stinger
         - 2016_Hyundai_Ioniq
         - 2023_Hyundai_Ioniq5
@@ -289,19 +293,19 @@ scenarios:
         - "2016_Kia_Soul(EV)"
         - "2020_Kia_Soul(EV)"
         - 2021_Hyundai_G80
-        - 2019_hyundai_genesis_g90
+        # - 2019_hyundai_genesis_g90
         - 2019_hyundai_genesis_g90_4WS
         - DEFAULT_SUV
         - 2016_Hyundai_Santafe
         - 2017_Kia_Sorento
-        - 2020_volvo_xc90
-        - 2021_Hyundai_Genesis_GV80
+        # - 2020_volvo_xc90
+        # - 2021_Hyundai_Genesis_GV80
         - 2021_Hyundai_GV70
         - 2019_Hyundai_Nexo
         - DEFAULT_MPV
         - DEFAULT_WAGON
         - 2019_kia_sedona
-        - 2021_Kia_Carnival
+        # - 2021_Kia_Carnival
         - 2020_chrysler_pacifica_hybrid
         - 2017_hyundai_solati_h350
         - DR_KGTorres_EVX_2024
@@ -405,7 +409,7 @@ scenarios:
       # Highway-only native SpawnPoints copied from the competition sample.
       # competition_spawn_4 starts beside/through the roundabout, so it is
       # intentionally excluded: roundabout traffic is owned exclusively by
-      # roundabout_npc and remains exactly three equally spaced vehicles.
+      # roundabout_npc, which owns its population and placement policy.
       # Enum values follow scenario_enum.proto:
       #   vehicle length 2=MIDDLE_SIZE, parameter 2=VARIABLE,
       #   velocity type 2=CUSTOM, lateral bias 1=FIX.
@@ -640,13 +644,9 @@ scenarios:
 
     drive_control_mode: aimdrive_expert
     expert_map_name: R_KR_PR_K-city_2025
-    expert_max_velocity_kmh: 60.0
     expert_traffic_light_control: false
     expert_is_closed_path: true
-    # 기본값 50(~25m 반경 창)은 체크포인트1 직후 급커브(반경 약 15m)를
-    # 감지하기엔 너무 넓어서 감속이 부족했다. 더 좁은 창으로 곡률을 더
-    # 국소적으로 계산해 진입 전에 충분히 감속하도록 함.
-    expert_velocity_profile_window_size: 15
+    # Speed maximum and curvature window inherit the external Expert config.
     expert_ros_remaps:
       - /ctrl_cmd:=/ctrl_cmd
     expert_arrival_stop_distance_m: 2.0

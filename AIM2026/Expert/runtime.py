@@ -20,11 +20,21 @@ from AIM2026.UDP.Detection import decode, NotReady
 from AIM2026.UDP.Pose import decode_pose, SCHEMA as POSE_SCHEMA
 from AIM2026.UDP.Cmd import CmdSender, Command
 from AIM2026.Expert.adapter import prepare, planner_inputs
+from AIM2026.Inference.timer_resolution import high_resolution_timer
+
+# VE not-ready reasons that must stop using the last detection at once.
+HARD_NOT_READY = ('publisher_stopped', 'position_unavailable')
 
 
-def wire_command(command, max_steering):
+def wire_command(command, max_steering, hold_steer=0.):
+    """Expert command -> MORAI wire values. ``None`` brakes fully.
+
+    While braking for missing inputs the wheel stays at ``hold_steer`` (the last
+    sent value) instead of snapping to centre, which jerked the vehicle sideways.
+    """
     if command is None:
-        return Command(brake=1.)
+        hold = float(hold_steer) if math.isfinite(hold_steer) else 0.
+        return Command(brake=1., steer=max(-1., min(1., hold)))
     if command.rear_steer != 0 or not math.isfinite(max_steering) or max_steering <= 0:
         raise ValueError('Invalid steering contract')
     steer = command.front_steer / max_steering
@@ -39,7 +49,7 @@ class Inputs:
         self.generation, self.digest, self.tracker = generation, digest, tracker
         self.packet = self.pose = None
         self.sequences = {False: 0, True: 0}
-        self.frames = self.pose_frames = 0
+        self.frames = self.pose_frames = self.held_frames = 0
         self.reason = 'waiting_for_inference'
 
     def accept(self, data):
@@ -56,6 +66,19 @@ class Inputs:
         try:
             (decode_pose if is_pose else decode)(data, generation=self.generation,
                                                  checkpoint_sha256=self.digest)
+        except NotReady as exc:
+            self.sequences[is_pose] = seq
+            self.reason = str(exc)
+            if is_pose or exc.reason in HARD_NOT_READY:
+                if is_pose:
+                    self.pose = None
+                else:
+                    self.packet = None
+                return 'invalid_pose' if is_pose else 'invalid_detection'
+            # One skipped VE frame (e.g. no IMU sample in its window) keeps the
+            # previous detection; ready() still drops it once its sensors are 0.5 s old.
+            self.held_frames += 1
+            return 'held_detection'
         except (ValueError, KeyError, TypeError) as exc:
             if is_pose:
                 self.pose = None
@@ -188,7 +211,8 @@ def main(argv=None, control_tick=None):
         receiver.bind((cfg['Detection']['ip'], cfg['Detection']['port']))
         receiver.setblocking(False)
         if args.drive:
-            sender = CmdSender(cfg['Ego']['ip'], cfg['Ego']['cmd_port'], source_port=cfg['Ego'].get('cmd_source_port'))
+            sender = CmdSender(cfg['Ego']['ip'], cfg['Ego']['cmd_port'], source_port=cfg['Ego'].get('cmd_source_port'),
+                               layout=cfg['Ego'].get('cmd_layout'))
             sender.send(Command(brake=1.))
         publisher_log = (output/'inference.log').open('w', encoding='utf-8', buffering=1); logs.append(publisher_log)
         control_log = (output/'control.jsonl').open('w', encoding='utf-8', buffering=1); logs.append(control_log)
@@ -200,8 +224,17 @@ def main(argv=None, control_tick=None):
         child_options = {'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == 'nt' else {'start_new_session': True}
         process = subprocess.Popen([sys.executable, '-u', '-B', str(ROOT/'AIM2026/Inference/main.py'), '--config', str(config_path)],
                                    cwd=ROOT, stdout=publisher_log, stderr=subprocess.STDOUT, **child_options)
-        started = last_tick = next_status = time.monotonic()
+        started = next_status = time.monotonic()
         next_snapshot = 0.
+        last_steer = 0.
+        # Loop pacing and the PID's control_dt use perf_counter: on Windows/Python 3.10
+        # time.monotonic() only advances in 15.6 ms steps, which made dt jump between
+        # 0, 16, 31 and 47 ms. Packet ages keep the shared monotonic_ns contract.
+        timer = high_resolution_timer()
+        timer_active = timer.__enter__()
+        print('[Expert] 1 ms timer resolution: %s' % timer_active, flush=True)
+        period = 1. / driving.realtime_sampling_rate
+        last_tick = next_tick = time.perf_counter()
         while not stop and not (args.seconds and time.monotonic()-started >= args.seconds):
             if process.poll() is not None:
                 raise RuntimeError('Inference exited; see '+str(output/'inference.log'))
@@ -226,6 +259,8 @@ def main(argv=None, control_tick=None):
                     policy.output(time.monotonic())
                     policy.accept(inputs.packet, context.route_points, time.monotonic())
             now = time.monotonic()
+            tick_time = time.perf_counter()
+            control_dt = max(.001, tick_time - last_tick)
             fresh = inputs.ready()
             command = None
             code = policy.output(now)
@@ -238,7 +273,7 @@ def main(argv=None, control_tick=None):
                 with contextlib.redirect_stdout(expert_log):
                     tick = control_tick or (lambda d,*a,**kw: d.execute(*a,**kw))
                     command, path = tick(driving, vehicle, objects, traffic, sync_mode=False,
-                        control_dt=max(.001,now-last_tick), ego_header_seq=inputs.sequences[True],
+                        control_dt=control_dt, ego_header_seq=inputs.sequences[True],
                         ego_source_ns=inputs.pose['selected_samples']['vehicle_status'].get('source_stamp_ns'))
                 if path_log:
                     points = [[float(p.x),float(p.y)] if hasattr(p,'x') else [float(p[0]),float(p[1])]
@@ -253,10 +288,12 @@ def main(argv=None, control_tick=None):
                         except (OSError, TypeError, ValueError, AttributeError) as exc:
                             print('[RViz snapshot] '+str(exc), file=expert_log)
                         next_snapshot = now+.2
-            encoded = wire_command(command, driving.max_steering)
+            encoded = wire_command(command, driving.max_steering, hold_steer=last_steer)
+            last_steer = encoded.steer
             if sender:
                 sender.send(encoded)
             row = dict(status='RUNNING' if fresh else 'WAITING', VE_frames=inputs.frames,
+                       VE_held=inputs.held_frames,
                        control_pose_frames=inputs.pose_frames, reason=None if fresh else inputs.reason,
                        accel=encoded.accel, brake=encoded.brake, steer=encoded.steer, control_sent=bool(sender),
                        # Traffic-signal decision as delivered to the Expert (why it may be holding at a light).
@@ -266,15 +303,23 @@ def main(argv=None, control_tick=None):
             # Record the exact pose used by this control tick for timing/jitter
             # diagnosis. This does not alter inputs, planning, or commands.
             control_log.write(json.dumps(dict(row, monotonic_ns=time.monotonic_ns(),
-                control_dt_s=max(.001, now-last_tick),
+                control_dt_s=control_dt,
+                # Signal decision of this tick (VE phase after policy; 0 = unknown -> stop).
+                signal=dict(id=policy.target_id, code=code, head=getattr(policy, 'head_source', None),
+                            reason=getattr(policy, 'reason', None), green_samples=policy.allow_samples,
+                            phase_age_ms=round((now - policy.received) * 1e3, 1) if policy.received else None),
                 control_pose=inputs.pose))+'\n')
             if now >= next_status:
                 print(json.dumps(row), flush=True)
                 next_status = now+2.
-            last_tick = now
-            time.sleep(max(0.,1./driving.realtime_sampling_rate-(time.monotonic()-now)))
+            last_tick = tick_time
+            # Fixed schedule: a late tick does not shift every following tick.
+            next_tick = max(next_tick + period, time.perf_counter())
+            time.sleep(max(0., next_tick - time.perf_counter()))
         return 0
     finally:
+        if 'timer' in locals():
+            timer.__exit__(None, None, None)
         if sender:
             try:
                 sender.send(Command(brake=1.))

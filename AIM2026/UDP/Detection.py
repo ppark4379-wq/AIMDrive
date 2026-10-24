@@ -214,6 +214,7 @@ class DetectionSender:
         self.generation = generation or str(uuid.uuid4())
         self.max_age_ns = int(max_age_s * 1e9)
         self.sequence = 0
+        self.last_ready, self.last_reason = None, None
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     def _header(self, ready, reason):
@@ -226,6 +227,8 @@ class DetectionSender:
     def _send(self, packet):
         packet['datagram_sequence'] = self.sequence
         packet['sent_ns'] = time.monotonic_ns()
+        # What the planner actually received (send() may downgrade boxes to not ready).
+        self.last_ready, self.last_reason = packet['ready'], packet['reason']
         return self.socket.sendto(encode(packet), self.target)
 
     def send(self, boxes, ego_pose, sensor_received_at, *, signal=None, native_signal=None,

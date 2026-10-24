@@ -242,7 +242,7 @@ class UDPManager:
             cfg = self.cmd_config
             if cfg.get('cmd_port') is not None:
                 self.cmd = CmdSender(cfg['ip'], cfg['cmd_port'], protocol=cfg.get('protocol', 'morai'),
-                                     source_port=cfg.get('cmd_source_port'),
+                                     source_port=cfg.get('cmd_source_port'), layout=cfg.get('cmd_layout'),
                                      bind=cfg.get('bind') or '0.0.0.0')
             cfg = self.detection_config
             if cfg.get('port') is not None:

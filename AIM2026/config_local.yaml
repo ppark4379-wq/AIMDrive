@@ -1,13 +1,14 @@
 TargetHz: 30
 Ego:
   ip: 127.0.0.1
-  vehicle_status_port: 8000
-  cmd_port: 9097
+  vehicle_status_port: 9099 # Competition Vehicle Status, 181 B (MORAI Host 9088 -> here)
+  cmd_port: 9093
   ctrl_mode: 2
   cmd_type: 1
   gear: 4
-  cmd_source_port: 9098
-  local_status_bytes: 245
+  cmd_source_port: 9094 # = MORAI Ego Ctrl Cmd "Destination" port (MORAI Host 9093 receives)
+  cmd_layout: single_steer55 # competition build 25.S4: 55 B (front steer only). 26.R1: front_rear59
+  # local_status_bytes: 245  # only for a non-competition build sending full 245 B Ego status
 Weight_Path:
   VE: null
   Connector: null
@@ -18,39 +19,39 @@ GPS:
   host_port: 7506
   dest_port: 9090
   pos:
-  - 0.0
-  - 0.0
-  - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
   rot_deg:
-  - 0.0
-  - 0.0
-  - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
 IMU:
   ip: 127.0.0.1
   bind: 127.0.0.1
   host_port: 7507
   dest_port: 9090
   pos:
-  - 0.0
-  - 0.0
-  - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
   rot_deg:
-  - 0.0
-  - 0.0
-  - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
 LiDAR:
   ip: 127.0.0.1
   bind: 127.0.0.1
   host_port: 2369
   dest_port: 2368
   pos:
-  - 1.0
-  - 0.0
-  - 1.48
+    - 1.0
+    - 0.0
+    - 1.48
   rot_deg:
-  - 0.0
-  - 0.0
-  - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
 Camera:
   Cam_Front:
     ip: 127.0.0.1
@@ -61,13 +62,13 @@ Camera:
     height: 720
     fov: 90
     pos:
-    - 1.9
-    - 0.0
-    - 1.2
+      - 1.9
+      - 0.0
+      - 1.2
     rot_deg:
-    - 0.0
-    - 2.0
-    - 0.0
+      - 0.0
+      - 2.0
+      - 0.0
   Cam_Left:
     ip: 127.0.0.1
     bind: 127.0.0.1
@@ -77,13 +78,13 @@ Camera:
     height: 480
     fov: 130
     pos:
-    - 1.15
-    - 0.65
-    - 1.2
+      - 1.15
+      - 0.65
+      - 1.2
     rot_deg:
-    - 0.0
-    - 10.0
-    - 70.0
+      - 0.0
+      - 10.0
+      - 70.0
   Cam_Right:
     ip: 127.0.0.1
     bind: 127.0.0.1
@@ -93,13 +94,13 @@ Camera:
     height: 480
     fov: 130
     pos:
-    - 1.15
-    - -0.65
-    - 1.2
+      - 1.15
+      - -0.65
+      - 1.2
     rot_deg:
-    - 0.0
-    - 10.0
-    - 290.0
+      - 0.0
+      - 10.0
+      - 290.0
   Cam_Rear:
     ip: 127.0.0.1
     bind: 127.0.0.1
@@ -109,15 +110,15 @@ Camera:
     height: 480
     fov: 90
     pos:
-    - -0.14
-    - 0.0
-    - 1.2
+      - -0.14
+      - 0.0
+      - 1.2
     rot_deg:
-    - 0.0
-    - 2.0
-    - 180.0
+      - 0.0
+      - 2.0
+      - 180.0
 Control:
-  positive_steer: right  # Local 26.R1.H3: positive command decreased GPS/IMU yaw in the recorded run.
+  positive_steer: left # Local 26.R1.H3: positive command decreased GPS/IMU yaw in the recorded run.
   max_speed_mps: null
 Detection:
   ip: 127.0.0.1

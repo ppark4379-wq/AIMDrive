@@ -1285,12 +1285,27 @@ class MissionModesTest(unittest.TestCase):
         )
         trigger_s = scenario.path_s_at_index(entry["path_index"]) - 100.0
         random_state = scenario.random.getstate()
-        roundabout.update_roundabout_npcs(
-            scenario,
-            elapsed=1.0,
-            ego_state={"x": 0.0, "y": 0.0},
-            current_s=trigger_s,
-        )
+        with patch.object(
+            scenario.random, "choice", wraps=scenario.random.choice
+        ) as choose_speed:
+            roundabout.update_roundabout_npcs(
+                scenario,
+                elapsed=1.0,
+                ego_state={"x": 0.0, "y": 0.0},
+                current_s=trigger_s,
+            )
+            selected_speed = scenario.roundabout_common_speed_kph
+            for elapsed in (2.0, 3.0, 5.0):
+                roundabout.update_roundabout_npcs(
+                    scenario,
+                    elapsed=elapsed,
+                    ego_state={"x": 0.0, "y": 0.0},
+                    current_s=trigger_s,
+                )
+                self.assertEqual(
+                    scenario.roundabout_common_speed_kph, selected_speed
+                )
+            choose_speed.assert_called_once()
         spawned_count = len(scenario.roundabout_npcs)
         self.assertGreaterEqual(spawned_count, 3)
         self.assertLessEqual(spawned_count, 5)
@@ -1303,20 +1318,41 @@ class MissionModesTest(unittest.TestCase):
                 set(scenario.cfg["roundabout_npc"]["models"])
             )
         )
+        self.assertIn(selected_speed, (10.0, 15.0, 20.0, 25.0))
         for call in spawn_calls:
-            self.assertEqual(call.kwargs["velocity"], 4.0)
+            self.assertEqual(call.kwargs["velocity"], selected_speed)
         self.assertEqual(scenario.grpc.set_vehicle_route.call_count, spawned_count)
         self.assertEqual(scenario.grpc.set_vehicle_ai.call_count, spawned_count)
         self.assertEqual(
             scenario.grpc.set_vehicle_speed_limit.call_count, spawned_count
         )
         self.assertEqual(scenario.grpc.set_vehicle_velocity.call_count, spawned_count)
+        for call in scenario.grpc.set_vehicle_speed_limit.call_args_list:
+            # MORAI's AI speed limit uses m/s; spawn/velocity use km/h.
+            self.assertAlmostEqual(call.args[1], selected_speed / 3.6)
+            self.assertEqual(call.kwargs, {"enabled": True})
+        for call in scenario.grpc.set_vehicle_velocity.call_args_list:
+            self.assertEqual(call.args[1], selected_speed)
+        for item in scenario.roundabout_npcs:
+            self.assertAlmostEqual(item["desired_speed_mps"], selected_speed / 3.6)
+            self.assertAlmostEqual(item["command_speed_mps"], selected_speed / 3.6)
+            self.assertEqual(item["command_speed_kph"], selected_speed)
+        positions = sorted(item["loop_s"] for item in scenario.roundabout_npcs)
+        loop_length = scenario.roundabout_loop_length_m
+        circular_gaps = [
+            (positions[(index + 1) % spawned_count] - position) % loop_length
+            for index, position in enumerate(positions)
+        ]
+        for gap in circular_gaps:
+            self.assertAlmostEqual(gap, loop_length / spawned_count)
+        self.assertEqual(scenario.roundabout_variant, "uniform")
 
         original = self.make_scenario("full_loop_roundabout")
         original.grpc.get_available_surround_vehicle_models.return_value = list(
             original.cfg["roundabout_npc"]["models"]
         )
         original.route_definition = scenario.route_definition
+        original.mission_mode = scenario.mission_mode
         original.roundabout_npcs, original.scenario_actors = [], []
         original.random = random.Random()
         original.random.setstate(random_state)
@@ -1335,6 +1371,69 @@ class MissionModesTest(unittest.TestCase):
         self.assertEqual(
             [call.args[1] for call in scenario.grpc.set_vehicle_route.call_args_list],
             [call.args[1] for call in original.grpc.set_vehicle_route.call_args_list],
+        )
+        self.assertEqual(original.roundabout_common_speed_kph, selected_speed)
+        self.assertEqual(
+            [call.kwargs["velocity"] for call in actual],
+            [call.kwargs["velocity"] for call in baseline],
+        )
+
+    def test_roundabout_seeded_common_speeds_cover_all_four_choices(self):
+        observed_speeds = set()
+        for seed in range(32):
+            with self.subTest(seed=seed):
+                scenario = self.make_scenario("full_loop_roundabout", seed=seed)
+                scenario.cfg["profile_state_path"] = str(
+                    Path(self.tmp.name) / f"speed-{seed}.json"
+                )
+                scenario.grpc.get_available_surround_vehicle_models.return_value = list(
+                    scenario.cfg["roundabout_npc"]["models"]
+                )
+                self.setup_scenario(scenario)
+                with redirect_stdout(io.StringIO()):
+                    roundabout.spawn_roundabout_npcs_now(scenario)
+                speed = scenario.roundabout_common_speed_kph
+                observed_speeds.add(speed)
+                self.assertIn(speed, (10.0, 15.0, 20.0, 25.0))
+                self.assertEqual(
+                    {call.kwargs["velocity"] for call in
+                     scenario.grpc.spawn_vehicle.call_args_list},
+                    {speed},
+                )
+        self.assertEqual(observed_speeds, {10.0, 15.0, 20.0, 25.0})
+
+    def test_full_loop_retains_legacy_roundabout_speed_commands(self):
+        global_cfg = copy.deepcopy(self.global_cfg)
+        cfg = copy.deepcopy(self.base_cfg)
+        scenario = FullLoopScenario(
+            make_grpc(cfg), self.map_loader, global_cfg, cfg,
+        )
+        scenario.grpc.get_available_surround_vehicle_models.return_value = list(
+            cfg["roundabout_npc"]["models"]
+        )
+        scenario.route_definition = scenario.load_route_definition()
+        scenario.random = random.Random(7)
+        scenario.roundabout_npcs, scenario.scenario_actors = [], []
+        with redirect_stdout(io.StringIO()):
+            roundabout.spawn_roundabout_npcs_now(scenario)
+        self.assertEqual(
+            {call.kwargs["velocity"] for call in
+             scenario.grpc.spawn_vehicle.call_args_list},
+            {4.0},
+        )
+        self.assertEqual(
+            {item["desired_speed_mps"] for item in scenario.roundabout_npcs},
+            {4.0},
+        )
+        self.assertEqual(
+            {call.args[1] for call in
+             scenario.grpc.set_vehicle_speed_limit.call_args_list},
+            {4.0},
+        )
+        self.assertEqual(
+            {call.args[1] for call in
+             scenario.grpc.set_vehicle_velocity.call_args_list},
+            {4.0},
         )
 
     def test_roundabout_variant_spawn_contracts_remain_separate(self):
@@ -1364,6 +1463,23 @@ class MissionModesTest(unittest.TestCase):
                     item["desired_speed_mps"]
                     for item in scenario.roundabout_npcs
                 ]
+                legacy_commands = (
+                    desired if variant == "nonuniform"
+                    else [speed * 3.6 for speed in desired]
+                )
+                self.assertEqual(
+                    [call.kwargs["velocity"] for call in
+                     scenario.grpc.spawn_vehicle.call_args_list],
+                    legacy_commands,
+                )
+                for method in (
+                    scenario.grpc.set_vehicle_speed_limit,
+                    scenario.grpc.set_vehicle_velocity,
+                ):
+                    self.assertEqual(
+                        [call.args[1] for call in method.call_args_list],
+                        legacy_commands,
+                    )
                 if variant == "nonuniform":
                     self.assertEqual(set(desired), {4.0})
                 elif variant == "speed_random":
@@ -1520,6 +1636,21 @@ class MissionModesTest(unittest.TestCase):
                 self.assertNotIn("training_visible", fields)
             if name == "roundabout_spawn_contract":
                 self.assertIs(fields.get("training_visible"), False)
+                selected_speed = scenario.roundabout_common_speed_kph
+                self.assertEqual(fields["common_speed_kph"], selected_speed)
+                self.assertAlmostEqual(
+                    fields["target_speed_mps"], selected_speed / 3.6
+                )
+                self.assertEqual(
+                    len(fields["actor_motion_contracts"]), spawned_count
+                )
+                for contract in fields["actor_motion_contracts"]:
+                    self.assertEqual(
+                        contract["initial_command_speed_kph"], selected_speed
+                    )
+                    self.assertAlmostEqual(
+                        contract["initial_command_speed_mps"], selected_speed / 3.6
+                    )
 
     def test_dynamic_placement_bounds_check_both_endpoints_not_only_conflict(self):
         zone = {"placement_bounds": dict(min_x=-74, max_x=-49.5, min_y=-49,

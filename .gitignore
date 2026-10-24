@@ -4,6 +4,17 @@ __pycache__/
 *.pyo
 .vscode/
 
+# Local catkin artifacts left behind when Expert moved to AIM2026/Expert.
+# Keep these rules here because the old workspace no longer has a .gitignore.
+/MoraiDrive/expert/build/
+/MoraiDrive/expert/devel/
+/MoraiDrive/expert/install/
+/MoraiDrive/expert/log/
+/MoraiDrive/expert/logs/
+/MoraiDrive/expert/.runtime/
+/MoraiDrive/expert/.catkin_tools/
+/MoraiDrive/expert/.catkin_workspace
+
 # Data collection outputs (not code)
 MoraiDrive/dataset
 MoraiDrive/dataset/
