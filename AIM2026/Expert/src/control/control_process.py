@@ -1,4 +1,4 @@
-"""Existing PID/Pure Pursuit execution; transport encoding stays in network."""
+"""Existing PID/Pure Pursuit execution; transport encoding stays in AIM2026.UDP."""
 from ..interfaces.control_command import ControlInput
 from ..utils.driving_log import log_control
 

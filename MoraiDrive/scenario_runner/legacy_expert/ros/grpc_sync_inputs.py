@@ -9,8 +9,8 @@ import struct
 import sys
 import time
 
-from ...obstacle.object_info import ObjectInfo
-from ...vehicle_state import VehicleState
+from AIM2026.Expert.src.obstacle.object_info import ObjectInfo
+from AIM2026.Expert.src.vehicle_state import VehicleState
 
 
 _OBJECT_TYPE_VEHICLE = 1
@@ -35,8 +35,8 @@ class GrpcPlanningSnapshot:
 
 
 def _default_sdk_root():
-    # .../AIM2026/Expert/src/network/ros/<this file>
-    morai_drive_root = Path(__file__).resolve().parents[5] / "MoraiDrive"
+    # .../MoraiDrive/scenario_runner/legacy_expert/ros/<this file>
+    morai_drive_root = Path(__file__).resolve().parents[3]
     return (
         morai_drive_root
         / "data_collection"

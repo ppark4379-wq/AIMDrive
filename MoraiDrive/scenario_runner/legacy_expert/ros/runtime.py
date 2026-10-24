@@ -11,7 +11,7 @@ import threading
 
 from pathlib import Path
 
-WORKSPACE_ROOT = str(Path(__file__).resolve().parents[2])
+WORKSPACE_ROOT = str(Path(__file__).resolve().parents[4] / "AIM2026" / "Expert")
 CATKIN_SOURCE = str(Path(WORKSPACE_ROOT).parents[1])
 if CATKIN_SOURCE not in sys.path:
     sys.path.insert(0, CATKIN_SOURCE)
@@ -23,7 +23,7 @@ if os.environ.get("GT_BEV_DIRECT_USE_ENV_CONFIG", "0") != "1":
     os.environ.pop("GT_BEV_MAP_DIR", None)
 
 from AIM2026.Expert.src.autonomous_driving import AutonomousDriving
-from AIM2026.Expert.src.network.ros.ros_manager import RosManager
+from MoraiDrive.scenario_runner.legacy_expert.ros.ros_manager import RosManager
 
 
 class _TeeStream(object):
@@ -84,8 +84,7 @@ def _setup_debug_output():
 
 def main(argv=None):
     if argv is not None:
-        # Keep ROS topic/node remapping arguments for rospy.init_node, without
-        # the outer entry's --transport selector.
+        # Keep ROS topic/node remapping arguments for rospy.init_node.
         sys.argv = [sys.argv[0], *argv]
     _setup_debug_output()
     RosManager(AutonomousDriving()).execute()

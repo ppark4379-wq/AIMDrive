@@ -3,7 +3,7 @@ import copy
 import math
 import numpy as np
 from scipy.interpolate import CubicSpline
-from ...localization.point import Point
+from ...interfaces.geometry import Point
 from ..static_obstacle.recorded_planner import connector, MAX_CURVATURE
 
 from ...config.parameters.jamming import (

@@ -106,8 +106,8 @@ def main():
         sys.path.insert(0, expert_source)
 
     from AIM2026.Expert.src.autonomous_driving import AutonomousDriving
-    from AIM2026.Expert.src.localization.path_manager import PathManager
-    from AIM2026.Expert.src.network.ros_manager import RosManager
+    from AIM2026.Expert.src.planning.common.reference_path import PathManager
+    from MoraiDrive.scenario_runner.legacy_expert.ros.ros_manager import RosManager
     import morai_msgs.msg
     from morai_msgs.msg import CtrlCmd, EgoVehicleStatus
 
@@ -124,12 +124,16 @@ def main():
         ).resolve(),
     }
     for name, module_path in modules.items():
+        expected_root = (
+            root.parents[1] / "MoraiDrive/scenario_runner/legacy_expert/ros"
+            if name == "ros_manager" else root
+        )
         try:
-            module_path.relative_to(root)
+            module_path.relative_to(expected_root)
         except ValueError:
             raise RuntimeError(
                 f"External Expert import escaped configured root: "
-                f"{name}={module_path}, root={root}"
+                f"{name}={module_path}, root={expected_root}"
             )
 
     print(f"[Expert] mode={os.environ.get('MORAI_EXPERT_MODE', 'unknown')}", flush=True)

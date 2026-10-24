@@ -12,7 +12,7 @@ from concurrent.futures import Future
 import numpy as np
 from scipy.interpolate import CubicSpline
 
-from ...localization.point import Point
+from ...interfaces.geometry import Point
 from ..highway.planner import HighwayLanePlanner
 from ..highway.lane_change_safety import LaneChangeSafety
 from ..highway import parameters as hp

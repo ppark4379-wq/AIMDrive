@@ -13,17 +13,13 @@ AIM2026/Expert/
 │   ├── control/               # PID·Pure Pursuit·ControlProcess
 │   ├── config/                # config.json, 구간별 parameters/
 │   ├── interfaces/            # 자차·객체·경로·제어 자료형
-│   ├── localization/          # 지도상의 경로 위치와 호환 자료형
 │   ├── path/                  # 지도 로딩·경로 생성
 │   ├── obstacle/              # 기존 객체 자료형 호환
 │   ├── visualization/         # RViz 마커 생성
-│   ├── network/ros/           # 보관된 ROS 통신
-│   ├── runtime/               # ROS 실행
 │   └── utils/
 ├── data/recorded_paths/       # 직접 기록한 정적·재밍 경로
 ├── map_data/                  # Expert 지도
 ├── tools/paths/               # 경로 기록·재밍 경로 가공
-├── tools/run/                 # ROS 실행 명령
 ├── ros/                       # ROS 메시지 소스·RViz 설정
 └── docs/                      # 구조·주행·통신 설명
 ```
@@ -73,15 +69,6 @@ main.py → runtime.py
 
 자세한 입출력 단위와 처리 순서는 [구조 설명](docs/architecture.md), 센서·포트는 [통합 실행 안내](docs/udp_runtime.md)를 참고한다.
 
-## 보관된 ROS 실행
+센서 수신·명령 송신은 `AIM2026/UDP`, 위치 추정·좌표변환은 `AIM2026/GPSJamming`이 담당한다. Expert 안의 `network`, `localization` 폴더는 제거했다. `Point`는 `src/interfaces/geometry.py`, `PathManager`는 `src/planning/common/reference_path.py`에서 직접 가져온다. `interfaces`는 통신 구현이 아니라 판제에 필요한 자료형이다.
 
-ROS가 설치된 WSL에서 메시지를 처음 빌드할 때:
-
-```bash
-source /opt/ros/noetic/setup.bash
-cd AIM2026/Expert/ros
-catkin_make
-source devel/setup.bash
-```
-
-저장소 루트에서 `bash AIM2026/Expert/tools/run/run_ros_expert.sh`로 실행한다. UDP 통합 실행에는 이 빌드가 필요하지 않다.
+기존 시나리오 도구가 사용하는 ROS 구현·실행기는 [legacy_expert/ros](../../MoraiDrive/scenario_runner/legacy_expert/ros/README.md)로 옮겼다. 현재 UDP 실행에서는 불러오지 않는다. `ros/`와 `src/visualization/`은 RViz 시각화에 필요하므로 유지한다.

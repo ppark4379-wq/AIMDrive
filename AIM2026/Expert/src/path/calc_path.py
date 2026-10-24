@@ -5,7 +5,7 @@ import io
 import os
 import sys
 
-from ..localization.point import Point
+from ..interfaces.geometry import Point
 from .lib.class_defs import *
 from .e_dijkstra import Dijkstra
 

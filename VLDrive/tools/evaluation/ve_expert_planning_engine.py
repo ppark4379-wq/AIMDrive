@@ -22,7 +22,7 @@ def _load_planner():
     if root not in sys.path:
         sys.path.insert(0, root)
     import AIM2026.Expert.src.planning.lattice.lattice_planner as implementation
-    from AIM2026.Expert.src.localization.point import Point
+    from AIM2026.Expert.src.interfaces.geometry import Point
     from AIM2026.Expert.src.obstacle.object_info import ObjectInfo
     from AIM2026.Expert.src.vehicle_state import VehicleState
 

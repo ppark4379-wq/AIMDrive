@@ -4,7 +4,7 @@ import bisect
 import math
 import numpy as np
 
-from ...localization.point import Point
+from ...interfaces.geometry import Point
 from ...vehicle_state import VehicleState
 from ...config.parameters import lattice as p
 from ..lattice.structures import CandidatePath, LatticePlanningResult

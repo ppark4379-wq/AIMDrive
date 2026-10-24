@@ -108,7 +108,7 @@ def verify_source_boundary(package_root):
         "AIMDrive expert is not imported by the scenario-owned entrypoint",
     )
     require(
-        "from AIM2026.Expert.src.network.ros_manager import RosManager"
+        "from MoraiDrive.scenario_runner.legacy_expert.ros.ros_manager import RosManager"
         in entrypoint_source,
         "AIMDrive RosManager is not imported by the scenario-owned entrypoint",
     )

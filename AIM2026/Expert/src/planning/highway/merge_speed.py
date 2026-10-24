@@ -4,7 +4,7 @@ HighwayLanePlanner의 동일 인스턴스 상태를 사용하는 메서드 묶�
 생성자나 별도 상태를 추가하지 않으며, 기존 메서드 본문과 호출 순서를 유지한다.
 """
 import math
-from ...localization.point import Point
+from ...interfaces.geometry import Point
 from . import parameters
 
 

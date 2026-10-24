@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import numpy as np
 from scipy.interpolate import CubicSpline
 
-from ...localization.point import Point
+from ...interfaces.geometry import Point
 from ...vehicle_state import VehicleState
 from ..static_obstacle.recorded_planner import RecordedStaticPlanner, connector
 from ..static_obstacle.corridor_graph import search_corridor

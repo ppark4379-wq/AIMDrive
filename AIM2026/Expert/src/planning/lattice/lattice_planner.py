@@ -11,7 +11,7 @@ import math
 
 import numpy as np
 
-from ...localization.point import Point
+from ...interfaces.geometry import Point
 from . import parameters
 from .structures import CandidatePath, LatticePlanningResult, PolynomialCoefficients
 

@@ -2,9 +2,8 @@
 """Planning/control entry. AIM2026 owns inference, coordinates and UDP.
 
 Call on_control_tick with already adapted Expert interface objects.
-The CLI delegates unified execution to AIM2026. Legacy ROS is explicit.
+The CLI delegates unified UDP execution to AIM2026.
 """
-import argparse
 from pathlib import Path
 import sys
 
@@ -20,15 +19,8 @@ def on_control_tick(driving, vehicle, objects, traffic, **timing):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument('--transport', choices=('ros',), default=None)
-    entry, runtime_arguments = parser.parse_known_args(argv)
-    if entry.transport == 'ros':
-        from AIM2026.Expert.src.runtime.ros_runtime import main as run_ros
-        return run_ros(runtime_arguments)
-
     from AIM2026.Expert.runtime import main as run_aim
-    return run_aim(runtime_arguments, control_tick=on_control_tick)
+    return run_aim(argv, control_tick=on_control_tick)
 
 
 if __name__ == '__main__':

@@ -11,7 +11,7 @@ import math
 
 import numpy as np
 
-from ...localization.point import Point
+from ...interfaces.geometry import Point
 from ...obstacle.object_info import is_ve_tracked_unknown
 from ..lattice.lattice_planner import LatticePlanner
 from ..lattice import parameters

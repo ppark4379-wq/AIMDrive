@@ -5,7 +5,7 @@ import math
 import os
 from types import SimpleNamespace
 
-from ...localization.point import Point
+from ...interfaces.geometry import Point
 from ...obstacle.object_info import is_ve_tracked_unknown
 from ..highway.lane_map import HighwayLaneMap
 from ..highway.planner import HighwayLanePlanner

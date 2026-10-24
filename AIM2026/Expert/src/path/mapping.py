@@ -24,7 +24,7 @@ import json
 
 import numpy as np
 
-from ..localization.point import Point
+from ..interfaces.geometry import Point
 
 
 TRAFFIC_LIGHT_TYPES = {"car", "bus"}

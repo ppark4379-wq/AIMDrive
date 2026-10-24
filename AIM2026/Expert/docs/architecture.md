@@ -12,7 +12,6 @@ AIM2026/Expert/
 │   └── jamming/                     # recordings, prepared, routes.json
 ├── tools/paths/                     # 경로 기록·가공
 ├── ros/                            # ROS 메시지 소스·RViz 설정
-├── tools/run/run_ros_expert.sh      # 보관된 ROS 실행
 └── src/
     ├── autonomous_driving.py        # 상태 소유, execute() 호환
     ├── interfaces/                 # 입출력 자료형
@@ -29,13 +28,15 @@ AIM2026/Expert/
     │   └── ve_planning.py           # 기존 인지 기반 계획 분기
     ├── control/                    # ControlProcess, PID, Pure Pursuit
     ├── config/parameters/          # 구간별 설명·단위·파라미터
-    ├── localization/               # 기존 Point/PathManager 호환 import
-    ├── network/ros/                # 보관된 ROS 통신
-    ├── runtime/ros_runtime.py
+    ├── path/                       # 지도 로딩·경로 생성
+    ├── obstacle/                   # 기존 객체 자료형 호환
+    ├── visualization/              # RViz 마커 생성
     └── utils/
 ```
 
 `on_control_tick`은 `driving.planning.run()` 다음에 `driving.control.run()`을 호출한다. `AutonomousDriving.execute()`도 같은 순서다. PID 누적값, 이전 조향·속도, 합류 유지값, 기록 경로 상태는 같은 인스턴스에 유지한다.
+
+Expert에는 센서 수신용 `network`나 위치 추정용 `localization` 폴더가 없다. 통신은 `AIM2026/UDP`, GPS/DR은 `AIM2026/GPSJamming`을 사용한다. `interfaces/geometry.py`의 `Point`와 `planning/common/reference_path.py`의 `PathManager`를 직접 import한다. `interfaces`는 판제 자료형을 정의하므로 유지한다. 기존 시나리오용 ROS 코드는 `MoraiDrive/scenario_runner/legacy_expert/ros/`에 있으며 UDP 실행에서는 사용하지 않는다.
 
 | 경계 | 값 |
 |---|---|

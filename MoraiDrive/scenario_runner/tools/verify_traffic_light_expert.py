@@ -90,7 +90,7 @@ def verify_traffic_light_expert(global_cfg, scenario_cfg):
     expert_source = expert_root / "src"
     source_files = [expert_source / relative for relative in (
         "config/config.json", "config/config.py", "planning/traffic/stop_controller.py",
-        "planning/traffic/route_targets.py", "path/mapping.py", "localization/point.py")]
+        "planning/traffic/route_targets.py", "path/mapping.py", "interfaces/geometry.py")]
     source_files += [Path(cfg["global_path"]), Path(cfg["route_definition_path"])]
     before = {str(path): _digest(path) for path in source_files}
     logs = io.StringIO()

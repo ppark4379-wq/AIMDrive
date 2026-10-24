@@ -271,7 +271,7 @@ class TrialContext:
                  Path(__file__).with_name("expert.py"), Path(__file__).with_name("tunnel_static_startup.py")]
         expert_root = self.global_cfg.get("paths", {}).get("expert_root")
         if expert_root:
-            files.append(Path(expert_root)/"src/network/ros_manager.py")
+            files.append(package/"legacy_expert/ros/ros_manager.py")
         self.runtime_sources = {str(path.resolve()): hashlib.sha256(path.read_bytes()).hexdigest() for path in files}
         self.report["runtime_source_sha256"] = self.runtime_sources
         from shapely.geometry import mapping

@@ -51,7 +51,7 @@ class GpsExpertInputTests(unittest.TestCase):
     def test_left_and_right_path_errors_produce_corrective_udp_steering(self):
         from AIM2026.Expert.src.control.path_controller import PathController
         from AIM2026.Expert.src.vehicle_state import VehicleState
-        from AIM2026.Expert.src.localization.point import Point
+        from AIM2026.Expert.src.interfaces.geometry import Point
         config = json.loads((ROOT/'AIM2026/Expert/src/config/config.json').read_text())
         for profile, physical_left_sign in (('normal', -1.), ('competition', 1.)):
             configure_udp_steering(config, profile)

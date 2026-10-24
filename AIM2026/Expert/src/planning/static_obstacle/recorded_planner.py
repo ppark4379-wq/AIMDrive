@@ -17,7 +17,7 @@ import numpy as np
 from scipy.interpolate import CubicHermiteSpline, CubicSpline, UnivariateSpline
 
 from ...config.paths import STATIC_OBSTACLE_PATHS, RECORDINGS_DIRECTORY_NAME
-from ...localization.point import Point
+from ...interfaces.geometry import Point
 from ...vehicle_state import VehicleState
 from ..lattice import parameters as p
 from ..lattice.structures import CandidatePath, LatticePlanningResult

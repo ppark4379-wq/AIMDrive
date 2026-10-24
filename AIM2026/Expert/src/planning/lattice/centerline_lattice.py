@@ -3,7 +3,7 @@ import json
 import math
 from pathlib import Path
 
-from ...localization.point import Point
+from ...interfaces.geometry import Point
 from .lattice_planner import LatticePlanner
 from ..static_obstacle.avoidance import StaticAvoidance
 from .structures import LatticePlanningResult

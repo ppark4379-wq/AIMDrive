@@ -18,12 +18,12 @@ from morai_msgs.msg import (
 from nav_msgs.msg import Odometry, Path
 from std_msgs.msg import Bool, Float32, String
 
-from ...config.config import Config
-from ...obstacle.object_info import ObjectInfo
-from ...planning.ve_planning import VeInputGate, perception_source
-from ...planning.roundabout import diagnostics as roundabout_debug
-from ...visualization.rviz_visualizer import LatticeRvizVisualizer
-from ...vehicle_state import VehicleState
+from AIM2026.Expert.src.config.config import Config
+from AIM2026.Expert.src.obstacle.object_info import ObjectInfo
+from AIM2026.Expert.src.planning.ve_planning import VeInputGate, perception_source
+from AIM2026.Expert.src.planning.roundabout import diagnostics as roundabout_debug
+from AIM2026.Expert.src.visualization.rviz_visualizer import LatticeRvizVisualizer
+from AIM2026.Expert.src.vehicle_state import VehicleState
 from .grpc_sync_inputs import MoraiGrpcSyncInputs
 from .synchronized_inputs import (
     control_dt,

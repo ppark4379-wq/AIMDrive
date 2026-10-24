@@ -123,7 +123,7 @@ def _expert_search():
     importlib.import_module("AIM2026.Expert.src.planning.lattice")
     module = importlib.import_module("AIM2026.Expert.src.planning.jamming.recorded_planner")
     boundary = importlib.import_module("AIM2026.Expert.src.planning.jamming.road_boundary")
-    point = importlib.import_module("AIM2026.Expert.src.localization.point").Point
+    point = importlib.import_module("AIM2026.Expert.src.interfaces.geometry").Point
     state = importlib.import_module("AIM2026.Expert.src.vehicle_state").VehicleState
     object_info = importlib.import_module("AIM2026.Expert.src.obstacle.object_info").ObjectInfo
     return module.JammingPlanner, boundary.RoadBoundary, point, state, object_info
@@ -310,7 +310,7 @@ def _initial_alignment(complete, ego, np):
 
 def _production_views(path, ego):
     """Use the ordinary PathManager's measured-pose local window."""
-    manager_type = importlib.import_module("AIM2026.Expert.src.localization.path_manager").PathManager
+    manager_type = importlib.import_module("AIM2026.Expert.src.planning.common.reference_path").PathManager
     config = json.loads((EXPERT_CODE / "config/config.json").read_text())
     manager = manager_type(path, False, int(config["map"]["local_path_size"]))
     # Velocity is not an input to the fixed recorded-route selection. Supply

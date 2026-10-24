@@ -5,7 +5,7 @@ import os
 import io
 import csv
 import math
-from ..localization.point import Point
+from ..interfaces.geometry import Point
 from ..path.mapping import NodeTrafficLightStoplineMapper
 from ..planning.traffic.route_targets import build_route_signal_targets
 

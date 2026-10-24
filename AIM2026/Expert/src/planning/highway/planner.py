@@ -7,7 +7,7 @@ import time
 
 import numpy as np
 
-from ...localization.point import Point
+from ...interfaces.geometry import Point
 from . import parameters
 from .lane_map import HighwayLaneMap
 from .merge_safety import MergeSafety

@@ -97,7 +97,7 @@ def current_runtime_sources():
              PACKAGE_ROOT/"adapters/expert_process.py", PACKAGE_ROOT/"adapters/expert_controller.py",
              PACKAGE_ROOT/"core/full_loop_drive_base.py", PACKAGE_ROOT/"scenarios/segment_modes/scenario.py",
              PACKAGE_ROOT/"scenarios/segment_modes/expert.py", PACKAGE_ROOT/"scenarios/segment_modes/tunnel_static_startup.py",
-             PROJECT_ROOT.parent/"AIM2026/Expert/src/network/ros_manager.py"]
+             PROJECT_ROOT/"scenario_runner/legacy_expert/ros/ros_manager.py"]
     return {str(path.resolve()):digest(path) for path in files}
 
 

@@ -1,7 +1,7 @@
 """Highway-only motion history; never change the simulator's object labels."""
 
 from . import parameters as p
-from ...localization.point import Point
+from ...interfaces.geometry import Point
 
 
 class ObstacleMotion:
