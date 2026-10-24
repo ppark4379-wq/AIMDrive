@@ -56,7 +56,7 @@ class ExpertController:
         route_points,
         start_link=None,
         end_link=None,
-        max_velocity_kmh=60.0,
+        max_velocity_kmh=None,
         traffic_light_control=False,
         python_executable=None,
         ros_remaps=None,

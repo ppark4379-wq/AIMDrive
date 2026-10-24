@@ -11,6 +11,7 @@ from .Cmd import CmdSender, Command
 from .Detection import DetectionSender
 from .Pose import PoseSender, GridProjector, DEFAULT_HZ as POSE_HZ
 from .SharedPort import SharedPort
+from .ProcessReceiver import ProcessReceiverGroup
 
 
 class UDPManager:
@@ -32,6 +33,7 @@ class UDPManager:
         self._validate_geometry()
         self.receivers = {}
         self.shared_ports = {}
+        self.process_groups = []
         self.cmd = None
         self.detection = None
         self.pose = None
@@ -112,6 +114,49 @@ class UDPManager:
                 or self.cmd_config.get('protocol', 'morai') != 'morai'):
             raise ValueError('Competition permits only MORAI cmd_type=1, ctrl_mode=2')
 
+    HEAVY_GROUPS = (('rgb_front', 'rgb_left', 'rgb_right', 'rgb_rear'), ('lidar',))
+
+    def _isolated_groups(self):
+        """Heavy sensors received in their own process (config ``UDP.isolate_heavy_sensors``, default on).
+
+        Sensors that share a heavy sensor's destination port (the MORAI default sends cameras, GPS and IMU to one
+        port, told apart by sender port) are demultiplexed in that child too. The light ones (GPS/IMU) are passed
+        on unchanged to a loopback port where their ordinary in-process receiver reads them, so Localization, the
+        control pose and every alignment window keep working on the same objects.
+        """
+        options = self.config.get('UDP') or {}
+        if not options.get('isolate_heavy_sensors', True):
+            return dict(names=set(), forwarded=set(), groups=[])
+        key = lambda name: (self.sensor_config[name].get('bind') or '0.0.0.0', self.sensor_config[name]['dest_port'])
+        groups, taken = [], set()
+        for members in self.HEAVY_GROUPS:
+            heavy = [name for name in members if name in self.sensor_config]
+            if not heavy:
+                continue
+            ports = {key(name) for name in heavy}
+            forwarded = [name for name in self.sensor_config
+                         if name not in heavy and name not in taken and key(name) in ports]
+            if any(name in self.HEAVY_NAMES for name in forwarded):
+                # Another heavy sensor on this port: host it in the same child.
+                heavy += [name for name in forwarded if name in self.HEAVY_NAMES]
+                forwarded = [name for name in forwarded if name not in self.HEAVY_NAMES]
+            groups.append(dict(heavy=heavy, forwarded=forwarded))
+            taken.update(heavy)
+            taken.update(forwarded)
+        return dict(names={n for g in groups for n in g['heavy']},
+                    forwarded={n for g in groups for n in g['forwarded']}, groups=groups)
+
+    HEAVY_NAMES = ('rgb_front', 'rgb_left', 'rgb_right', 'rgb_rear', 'lidar')
+
+    @staticmethod
+    def _free_loopback_port():
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            probe.bind(('127.0.0.1', 0))
+            return probe.getsockname()[1]
+        finally:
+            probe.close()
+
     def _probe_ports(self):
         """Fail if another process already owns a port.
 
@@ -148,24 +193,47 @@ class UDPManager:
                           ('rgb_front', 'rgb_left', 'rgb_right', 'rgb_rear')})
         self._validate_ports()
         self._probe_ports()
+        isolated = self._isolated_groups()
         try:
-            for cfg in self.sensor_config.values():
+            handled = isolated['names'] | isolated['forwarded']
+            for name, cfg in self.sensor_config.items():
                 key = (cfg.get('bind') or '0.0.0.0', cfg['dest_port'])
-                if key not in self.shared_ports:
+                if key not in self.shared_ports and name not in handled:
                     self.shared_ports[key] = SharedPort(*key)
+            specs, forward_ports = {}, {}
             for name, cfg in self.sensor_config.items():
                 options = {key: cfg[key] for key in ('elevations', 'distance_scale', 'frame_policy')
                            if name == 'lidar' and key in cfg}
                 if name == 'vehicle_status':
                     options['local_status_bytes'] = self.config['Ego'].get('local_status_bytes')
                 options['history_size'] = 200 if name in ('vehicle_status', 'imu', 'gps') else 16
+                bind = cfg.get('bind') or '0.0.0.0'
+                if name in isolated['names']:
+                    specs[name] = dict(name=name, factory=factories[name], port=cfg['dest_port'], bind=bind,
+                                       source_ip=cfg.get('ip'), source_port=cfg.get('host_port'), options=options)
+                    continue
+                if name in isolated['forwarded']:
+                    forward_ports[name] = self._free_loopback_port()
+                    specs[name] = dict(name=name, factory=factories[name], port=cfg['dest_port'], bind=bind,
+                                       source_ip=cfg.get('ip'), source_port=cfg.get('host_port'), options=options,
+                                       forward=('127.0.0.1', forward_ports[name]))
+                    # The parent keeps the ordinary receiver, fed over loopback instead of the shared port.
+                    self.receivers[name] = factories[name](
+                        forward_ports[name], bind='127.0.0.1', name=name, drop_audit=True, **options)
+                    continue
                 self.receivers[name] = factories[name](
-                    cfg['dest_port'], bind=cfg.get('bind') or '0.0.0.0', name=name,
+                    cfg['dest_port'], bind=bind, name=name,
                     drop_audit=True,
-                    shared_port=self.shared_ports[(cfg.get('bind') or '0.0.0.0', cfg['dest_port'])],
+                    shared_port=self.shared_ports[(bind, cfg['dest_port'])],
                     source_ip=cfg.get('ip'), source_port=cfg.get('host_port'), **options)
             for shared in self.shared_ports.values():
                 shared.start()
+            for group_plan in isolated['groups']:
+                members = group_plan['heavy'] + group_plan['forwarded']
+                group = ProcessReceiverGroup([specs[name] for name in members],
+                                             {name: specs[name]['options']['history_size'] for name in members})
+                self.process_groups.append(group.start())
+                self.receivers.update(group.proxies)
             if (self.config.get('Localization') or {}).get('enabled', False):
                 from AIM2026.GPSJamming.gps_jamming.localization.service import create_localization
                 self.localization = create_localization(self, self.config)
@@ -246,6 +314,9 @@ class UDPManager:
         for receiver in self.receivers.values():
             receiver.close()
         self.receivers.clear()
+        for group in getattr(self, 'process_groups', ()):
+            group.close()
+        self.process_groups = []
         for shared in self.shared_ports.values():
             shared.close()
         self.shared_ports.clear()

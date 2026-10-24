@@ -131,6 +131,7 @@ def test_manager_starts_one_service_over_existing_receivers(monkeypatch):
     service = Mock()
     create = Mock(return_value=service)
     monkeypatch.setattr(service_module, 'create_localization', create)
+    config['UDP'] = {'isolate_heavy_sensors': False}  # receivers are mocked in-process
     manager = UDPManager(config)
     monkeypatch.setattr(manager, '_probe_ports', lambda: None)
     manager.start()

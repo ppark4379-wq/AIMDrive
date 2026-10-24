@@ -29,6 +29,31 @@ def _roundabout_variant(self):
     return variant
 
 
+def _select_common_speed_kph(self, npc_cfg):
+    """Choose one run-scoped speed for the basic roundabout mission only."""
+    if getattr(getattr(self, "mission_mode", None), "name", None) != "full_loop_roundabout":
+        return None
+    selected = getattr(self, "roundabout_common_speed_kph", None)
+    if selected is None:
+        configured = npc_cfg.get("common_speed_choices_kph", [10.0, 15.0, 20.0, 25.0])
+        if not isinstance(configured, (list, tuple)) or not configured:
+            raise RuntimeError("roundabout_npc common_speed_choices_kph must be a nonempty list")
+        try:
+            choices = [float(value) for value in configured]
+        except (TypeError, ValueError) as error:
+            raise RuntimeError("roundabout_npc common speeds must be positive finite km/h values") from error
+        if any(not math.isfinite(speed) or speed <= 0.0 for speed in choices):
+            raise RuntimeError("roundabout_npc common speeds must be positive finite km/h values")
+        selected = float(self.random.choice(choices))
+        self.roundabout_common_speed_kph = selected
+        print(
+            "[FullLoop] roundabout common speed selected once: "
+            f"run_seed={getattr(self, 'run_seed', None)}, "
+            f"choices_kph={choices}, common_speed_kph={selected:.1f}"
+        )
+    return selected
+
+
 def _nonuniform_loop_positions(
     random_source,
     count,
@@ -288,6 +313,7 @@ def _safe_command_speed(
 def arm_roundabout_npcs(self):
     lifecycle = actor_lifecycle.policy(self)
     self.roundabout_lifecycle_state = "armed"
+    self.roundabout_common_speed_kph = None
     self.nearby_roundabout_state = "armed"
     self.roundabout_spawn_elapsed = None
     self.roundabout_progress_anchor_elapsed = None
@@ -411,7 +437,12 @@ def spawn_roundabout_npcs_now(self):
         )
 
     route_laps = int(npc_cfg.get("route_laps", 30))
-    traffic_speed = float(npc_cfg["speed_mps"])
+    common_speed_kph = _select_common_speed_kph(self, npc_cfg)
+    traffic_speed = (
+        common_speed_kph / 3.6
+        if common_speed_kph is not None
+        else float(npc_cfg["speed_mps"])
+    )
     if traffic_speed <= 0.0:
         raise RuntimeError("roundabout_npc speed_mps must be greater than 0")
     if (
@@ -475,7 +506,11 @@ def spawn_roundabout_npcs_now(self):
                 local_s = loop_s - start_s
                 x, y, z, yaw = interpolate_on_polyline(points, local_s)
                 break
-        morai_speed_kph = _morai_speed_command_kph(variant, desired_speed)
+        morai_speed_kph = (
+            common_speed_kph
+            if common_speed_kph is not None
+            else _morai_speed_command_kph(variant, desired_speed)
+        )
         actor = self.grpc.spawn_vehicle(
             transform=self.grpc.make_transform(x, y, z, yaw),
             model_name=model,
@@ -497,8 +532,13 @@ def spawn_roundabout_npcs_now(self):
 
         pause_ok = actor.set_pause(False)
         ai_ok = self.grpc.set_vehicle_ai(actor, True)
+        # MORAI AI speed limits use m/s; spawn/set_velocity use km/h.
+        # Keep legacy mode transport unchanged outside the basic mission.
+        speed_limit_command = (
+            desired_speed if common_speed_kph is not None else morai_speed_kph
+        )
         limit_ok = self.grpc.set_vehicle_speed_limit(
-            actor, morai_speed_kph, enabled=True
+            actor, speed_limit_command, enabled=True
         )
         velocity_ok = self.grpc.set_vehicle_velocity(actor, morai_speed_kph)
         if not (pause_ok and limit_ok and velocity_ok):
@@ -517,6 +557,7 @@ def spawn_roundabout_npcs_now(self):
                 "speed_profile": speed_profile,
                 "interaction_role": interaction_role,
                 "command_speed_mps": desired_speed,
+                "command_speed_kph": morai_speed_kph,
                 "current_speed_mps": desired_speed,
                 "sdk_raw_speed": None,
                 "sdk_speed_if_kph_mps": None,
@@ -998,6 +1039,7 @@ def update_roundabout_npcs(self, elapsed, ego_state, current_s):
                     "initial_command_speed_mps": float(
                         item["command_speed_mps"]
                     ),
+                    "initial_command_speed_kph": float(item["command_speed_kph"]),
                     "ai_enable_acknowledged": bool(
                         item.get("ai_enable_acknowledged", False)
                     ),
@@ -1024,8 +1066,11 @@ def update_roundabout_npcs(self, elapsed, ego_state, current_s):
             interaction_pair=getattr(
                 self, "roundabout_interaction_pair", None
             ),
-            target_speed_mps=float(
-                self.cfg.get("roundabout_npc", {}).get("speed_mps", 0.0)
+            common_speed_kph=getattr(self, "roundabout_common_speed_kph", None),
+            target_speed_mps=(
+                float(self.roundabout_common_speed_kph) / 3.6
+                if getattr(self, "roundabout_common_speed_kph", None) is not None
+                else float(self.cfg.get("roundabout_npc", {}).get("speed_mps", 0.0))
             ),
             stall_window_s=float(lifecycle["roundabout_stall_window_s"]),
             stall_min_progress_m=float(

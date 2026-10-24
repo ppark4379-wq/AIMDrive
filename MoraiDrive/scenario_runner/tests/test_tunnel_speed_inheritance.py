@@ -94,11 +94,11 @@ class TunnelSpeedInheritanceTests(unittest.TestCase):
                                                            "mgeo_root":str(self.root/"map")}},
                                route_points=[[0.,0.],[1.,0.]],start_link="start",end_link="end")
 
-    def test_core_passes_none_for_tunnel_and_keeps_other_zone_explicit_values(self):
+    def test_core_inherits_missing_speed_and_keeps_explicit_values(self):
         for mode,speed,expected in (("full_loop_tunnel_static",None,None),
                                    ("full_loop_tunnel_static","missing",None),
                                    ("full_loop_static",60,60.),("full_loop_dynamic",37,37.),
-                                   ("full_loop_roundabout","missing",60.)):
+                                   ("full_loop_roundabout","missing",None)):
             with self.subTest(mode=mode,speed=speed),patch("scenario_runner.core.full_loop_drive_base.ExpertController") as constructor:
                 context=self.context(mode,speed)
                 FullLoopDriveBase.setup_expert_controller(context)

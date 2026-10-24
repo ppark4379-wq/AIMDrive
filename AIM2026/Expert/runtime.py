@@ -134,7 +134,24 @@ def main(argv=None, control_tick=None):
     parser.add_argument('--speed-cap-kmh', type=float, default=60.)
     parser.add_argument('--sim-profile', choices=('normal','competition'), default=None,
                         help='Override the configured simulator steering direction')
+    parser.add_argument('--competition', action='store_true',
+                        help='Competition configuration: no development signal ignores unless --ignore-signals is given')
+    parser.add_argument('--ignore-signals', type=lambda text: [x for x in text.split(',') if x], default=None,
+                        help='Comma-separated map signal IDs the Expert ignores (development default LCS01: no signal '
+                             'stands at the tunnel entrance; none with --competition)')
+    parser.add_argument('--scenario-context', type=Path,
+                        help='Route/scenario configuration written by the scenario runner (ve_gps_scenario_context_v1)')
+    parser.add_argument('--static-geometry-fusion', action='store_true',
+                        help='Tracker: publish fused footprints for stationary VE boxes')
+    parser.add_argument('--moving-carry-s', type=float, default=0.,
+                        help='Tracker: seconds a confirmed mover keeps its speed (0 = off)')
+    parser.add_argument('--slow-window-s', type=float, default=0.,
+                        help='Tracker: slow-mover confirmation window in seconds (0 = off)')
+    parser.add_argument('--stationary-hold-s', type=float, default=0.,
+                        help='Tracker: seconds a long-stopped object stays stationary (0 = off)')
     args = parser.parse_args(argv)
+    if args.ignore_signals is None:
+        args.ignore_signals = [] if args.competition else ['LCS01']
     if not math.isfinite(args.seconds) or args.seconds < 0:
         parser.error('seconds must be finite and nonnegative')
     cfg = read_config(args.config)
@@ -171,7 +188,9 @@ def main(argv=None, control_tick=None):
     UDPManager(child_cfg)._probe_ports()
     from inference.ve_object_tracking import VeObjectTracker
     from AIM2026.Expert.src.autonomous_driving import AutonomousDriving
-    inputs = Inputs(generation, sha, VeObjectTracker(static_geometry_fusion=False))
+    inputs = Inputs(generation, sha, VeObjectTracker(
+        static_geometry_fusion=args.static_geometry_fusion, moving_carry_s=args.moving_carry_s,
+        slow_window_s=args.slow_window_s, stationary_hold_s=args.stationary_hold_s))
     stop = []
     old_handlers = {sig: signal.signal(sig, lambda *_: stop.append(True))
                     for sig in (signal.SIGINT, signal.SIGTERM)}
@@ -181,6 +200,11 @@ def main(argv=None, control_tick=None):
         expert_log = (output/'expert.log').open('w', encoding='utf-8', buffering=1); logs.append(expert_log)
         with contextlib.redirect_stdout(expert_log):
             driving = AutonomousDriving()
+        if os.environ.get('VE_CORRIDOR_TIMEOUT_S'):
+            # Development experiment only: corridor search time budget of the recorded static planner.
+            jam = getattr(driving.lattice_planning_process, 'recorded_jamming', None)
+            if jam is not None:
+                jam.local.corridor_search_timeout = float(os.environ['VE_CORRIDOR_TIMEOUT_S'])
         receiver = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         if hasattr(socket, 'SO_EXCLUSIVEADDRUSE'):
             receiver.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
@@ -271,7 +295,11 @@ def main(argv=None, control_tick=None):
             row = dict(status='RUNNING' if fresh else 'WAITING', VE_frames=inputs.frames,
                        VE_held=inputs.held_frames,
                        control_pose_frames=inputs.pose_frames, reason=None if fresh else inputs.reason,
-                       accel=encoded.accel, brake=encoded.brake, steer=encoded.steer, control_sent=bool(sender))
+                       accel=encoded.accel, brake=encoded.brake, steer=encoded.steer, control_sent=bool(sender),
+                       # Traffic-signal decision as delivered to the Expert (why it may be holding at a light).
+                       signal=dict(target=policy.target_id, code=code, bound=policy.bound,
+                                   head_confidence=policy.confidence, binding=getattr(policy, 'reason', None),
+                                   age_s=None if policy.received is None else round(now-policy.received, 3)))
             # Record the exact pose used by this control tick for timing/jitter
             # diagnosis. This does not alter inputs, planning, or commands.
             control_log.write(json.dumps(dict(row, monotonic_ns=time.monotonic_ns(),

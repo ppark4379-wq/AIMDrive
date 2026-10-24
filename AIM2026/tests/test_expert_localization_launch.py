@@ -51,6 +51,7 @@ def test_manager_gives_pose_and_detection_same_generation(monkeypatch):
     module = importlib.import_module('AIM2026.UDP.Manager')
     config = read_config(ROOT/'AIM2026/config.yaml')
     config['Localization']['enabled'] = False
+    config['UDP'] = {'isolate_heavy_sensors': False}  # receivers are mocked in-process
     config['Detection']['generation'] = 'shared-generation'
     for name in ('CameraReceiver', 'GpsReceiver', 'ImuReceiver', 'LidarReceiver', 'VehicleStatusReceiver'):
         monkeypatch.setattr(module, name, Mock())
