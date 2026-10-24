@@ -12,7 +12,7 @@ PlanningProcess.run → ControlProcess.run
 AIM2026: 단위·부호 처리 / 제어 송신
 ```
 
-통합 실행은 `AIM2026/Expert/runtime.py`가 담당한다. Expert `main.py`가 이 실행기를 호출하면 AIM2026 인지 송신기가 자동으로 시작된다. 기존 `AIM2026/main.py`의 센서 수신 전용 예제 대신 아래 명령을 사용한다. 이전 `--external-perception --drive` 명령과 `tools/run/run_expert.*`는 더 이상 사용하지 않는다.
+통합 실행은 `AIM2026/Expert/runtime.py`가 담당한다. Expert `main.py`가 이 실행기를 호출하면 AIM2026 인지 송신기가 자동으로 시작된다. 센서 수신 전용 예제였던 `AIM2026/main.py`는 삭제했고, 아래 명령이 유일한 실행 진입점이다. 이전 `--external-perception --drive` 명령과 `tools/run/run_expert.*`는 더 이상 사용하지 않는다.
 
 PowerShell에서 기존 인지 실행기를 종료한 후 실행한다. 별도 모델 실행 명령은 필요 없다.
 

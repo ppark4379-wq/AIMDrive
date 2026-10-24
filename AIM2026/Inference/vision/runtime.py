@@ -33,14 +33,56 @@ class Perception:
     inference_ms: float
 
 
-def forward_perception(model, inputs):
+def _view_tokens(model, tokens, global_token, view_index, global_index):
+    """VisionEncoder._camera_tokens after its patch embedding, unchanged."""
+    if model.use_view_embed:
+        tokens = tokens + model.view_embed[:, :, view_index:view_index + 1, :] + model.position_encoding(tokens)
+    else:
+        tokens = tokens + model.position_encoding(tokens)
+    tokens = tokens.flatten(2).permute(2, 0, 1)
+    global_token = (global_token + model.view_embed[:, :, view_index, :]
+                    + model.global_embed[:, :, global_index:global_index + 1])
+    return [tokens, global_token.permute(2, 0, 1)]
+
+
+def forward_features_batched(model, inputs):
+    """VisionEncoder.forward_features with the four 128 px views in one backbone call.
+
+    Left, right, centre and rear share one shape, so they run as a batch of four
+    instead of four batch-1 ResNet calls (the call overhead dominated on a GPU the
+    simulator also renders on). Eval-mode BatchNorm uses stored statistics, so each
+    view's features are those of a separate call; token order and view/global
+    embedding slots are exactly those of forward_features.
+    """
+    if not (model.with_right_left_sensors and model.with_center_sensor and model.with_rear_sensor):
+        return model.forward_features(inputs['rgb_front'], inputs['rgb_left'], inputs['rgb_right'],
+                                      inputs['rgb_rear'], inputs['rgb_center'], inputs['lidar'], inputs['num_points'])
+    batch = inputs['rgb_front'].shape[0]
+    front_tokens, front_global = model.rgb_patch_embed(inputs['rgb_front'])
+    side = torch.cat([inputs['rgb_left'], inputs['rgb_right'], inputs['rgb_center'], inputs['rgb_rear']], 0)
+    side_tokens, side_global = model.rgb_patch_embed(side)
+    features = _view_tokens(model, front_tokens, front_global, 0, 0)
+    # (view_index, global_index) as in forward_features; the rear uses global slot 5.
+    for k, (view, slot) in enumerate(((1, 1), (2, 2), (3, 3), (4, 5))):
+        rows = slice(k * batch, (k + 1) * batch)
+        features += _view_tokens(model, side_tokens[rows], side_global[rows], view, slot)
+    lidar_token = model.lidar_backbone(inputs['lidar'], inputs['num_points'])
+    lidar_token = lidar_token + model.position_encoding(lidar_token)
+    lidar_token = lidar_token.flatten(2).permute(2, 0, 1)
+    return torch.cat(features, 0), lidar_token
+
+
+def forward_perception(model, inputs, *, batch_cameras=True):
     """Same trained feature/decoder/heads as VisionEncoder.forward; no waypoint branch."""
     if model.return_feature:
         raise ValueError('Perception needs the trained prediction heads enabled')
     velocity = inputs['velocity'].view(1, -1, 1)
-    features, lidar_token = model.forward_features(
-        inputs['rgb_front'], inputs['rgb_left'], inputs['rgb_right'], inputs['rgb_rear'],
-        inputs['rgb_center'], inputs['lidar'], inputs['num_points'])
+    if batch_cameras:
+        features, lidar_token = forward_features_batched(model, inputs)
+    else:
+        features, lidar_token = model.forward_features(
+            inputs['rgb_front'], inputs['rgb_left'], inputs['rgb_right'], inputs['rgb_rear'],
+            inputs['rgb_center'], inputs['lidar'], inputs['num_points'])
     batch = inputs['rgb_front'].shape[0]
     target = model.position_encoding(torch.ones((batch, 1, 50, 50), device=inputs['rgb_front'].device))
     target = torch.cat([target.flatten(2), model.query_pos_embed.repeat(batch, 1, 1)], 2).permute(2, 0, 1)

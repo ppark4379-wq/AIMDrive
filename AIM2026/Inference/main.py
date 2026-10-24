@@ -12,6 +12,7 @@ Missing or stale inputs send a not-ready packet, never old boxes. This process
 never sends vehicle control; the Expert does.
 """
 import argparse
+import dataclasses
 import json
 import math
 from pathlib import Path
@@ -29,6 +30,10 @@ from AIM2026.Inference.sensors.position import position_at_frame, position_ident
 CAMERAS = ('rgb_front', 'rgb_left', 'rgb_right', 'rgb_rear')
 SPEED_ALIGNMENT_S = 0.05  # status/IMU sample at or before the LiDAR source time
 LIDAR_STAMP_RESOLUTION_S = 1e-6  # LiDAR stamps are whole microseconds; status stamps are ns
+# MORAI IMU arrives at ~40 Hz with source gaps up to ~80 ms (p99 62 ms measured), so a
+# 50 ms window misses ~5% of LiDAR frames. An older sample (<= 100 ms) is rotated to
+# the LiDAR time with its own body gyro rate instead of declaring the frame unusable.
+IMU_PROPAGATION_S = 0.10
 
 
 def _causal(records, source_time, tolerance=SPEED_ALIGNMENT_S):
@@ -42,6 +47,44 @@ def _causal(records, source_time, tolerance=SPEED_ALIGNMENT_S):
     return max(candidates, key=lambda r: r.source_time) if candidates else None
 
 
+def propagate_imu(value, dt):
+    """IMU sample rotated forward by dt seconds with its body angular velocity.
+
+    q(t+dt) = q(t) * exp(0.5 * omega * dt), omega in the body frame (rad/s),
+    quaternion ordered (x, y, z, w). Only orientation fields change.
+    """
+    omega = value.get('angular_velocity')
+    if dt <= 0 or not omega:
+        return value
+    wx, wy, wz = (float(v) for v in omega)
+    rate = math.sqrt(wx * wx + wy * wy + wz * wz)
+    if not math.isfinite(rate):
+        raise ValueError('Non-finite IMU angular velocity')
+    if rate * dt < 1e-12:
+        return value
+    half = .5 * rate * dt
+    s = math.sin(half) / rate
+    a, b, c, d = wx * s, wy * s, wz * s, math.cos(half)
+    x, y, z, w = value['quaternion']
+    q = (w * a + x * d + y * c - z * b, w * b - x * c + y * d + z * a,
+         w * c + x * b - y * a + z * d, w * d - x * a - y * b - z * c)
+    nx, ny, nz, nw = q
+    return dict(value, quaternion=q, propagated_s=dt,
+                yaw=math.atan2(2. * (nw * nz + nx * ny), 1. - 2. * (ny * ny + nz * nz)))
+
+
+def causal_imu(records, source_time):
+    """(IMU value at source_time, method) from the causal window, else (None, None)."""
+    record = _causal(records, source_time)
+    if record is not None:
+        return record, 'causal_50ms'
+    record = _causal(records, source_time, IMU_PROPAGATION_S)
+    if record is None:
+        return None, None
+    dt = max(0., source_time - record.source_time)
+    return dataclasses.replace(record, value=propagate_imu(record.value, dt)), 'gyro_propagated'
+
+
 class VePublisher:
     """One VE inference per new LiDAR frame, published as a Detection packet."""
 
@@ -49,9 +92,11 @@ class VePublisher:
         self.udp, self.runtime, self.projector = udp, runtime, projector
         self.max_age_s = max_age_s
         self.last_lidar = 0
-        self.frames = self.ready_frames = 0
+        self.frames = self.ready_frames = self.expired_frames = 0
         self.reason = 'waiting_for_lidar'
         self.last = None
+        self.imu_method = None
+        self.imu_methods = {}
 
     def _fresh(self, record, now):
         return record is not None and record.value is not None and 0 <= now - record.received_at <= self.max_age_s
@@ -87,11 +132,14 @@ class VePublisher:
                 missing.append('vehicle_status_source_alignment')
         if not self._fresh(chosen['vehicle_status'], now) and 'vehicle_status_source_alignment' not in missing:
             missing.append('vehicle_status')
-        # A stamped IMU uses the same causal window; the 107-byte IMU has no stamp.
+        # A stamped IMU uses the causal window (gyro-propagated up to 100 ms); the
+        # 107-byte IMU has no stamp.
         newest_imu = imus[-1] if imus else None
-        imu = _causal(imus, lidar_time) if lidar_time else None
+        imu, self.imu_method = causal_imu(imus, lidar_time) if lidar_time else (None, None)
         if imu is None and newest_imu is not None and not newest_imu.source_time:
-            imu = newest_imu
+            imu, self.imu_method = newest_imu, 'receipt'
+        if self.imu_method:
+            self.imu_methods[self.imu_method] = self.imu_methods.get(self.imu_method, 0) + 1
         chosen['imu'] = imu
         if not self._fresh(imu, now):
             missing.append('imu')
@@ -121,23 +169,35 @@ class VePublisher:
                                         lidar.value, speed, pose)
         except ValueError as exc:
             return self._not_ready('input_rejected: ' + str(exc))
-        oldest = min(chosen[name].received_at for name in (*CAMERAS, 'lidar', 'vehicle_status', 'gps', 'imu'))
+        received = {name: chosen[name].received_at for name in (*CAMERAS, 'lidar', 'vehicle_status', 'gps', 'imu')}
+        oldest_name = min(received, key=received.get)
+        oldest = received[oldest_name]
         identity = position_identity(chosen['gps'])
         if identity['position_mode'] not in ('gps', 'dead_reckoning'):
             return self._not_ready('position_unavailable')
         ego_pose = EgoPose(pose['x'], pose['y'], math.degrees(pose['yaw_raw_rad']), pose['yaw_grid_rad'], speed)
+        sent_at = time.monotonic()
         self.udp.send_detection(result.boxes, ego_pose, oldest, signal=result.signal,
                                 native_signal=result.native_signal, position_identity=identity,
                                 ego_position_source='GPS_dead_reckoning'
                                 if identity['position_mode']=='dead_reckoning' else 'GPS')
-        self.ready_frames += 1
-        self.reason = None
+        # The sender downgrades a frame whose sensors aged past 0.5 s during inference.
+        sender = getattr(self.udp, 'detection', None)
+        delivered = getattr(sender, 'last_ready', True) is not False
+        self.reason = None if delivered else getattr(sender, 'last_reason', 'not_ready')
+        if delivered:
+            self.ready_frames += 1
+        else:
+            self.expired_frames += 1
         self.last = dict(objects=len(result.boxes), inference_ms=round(result.inference_ms, 1),
-                         signal=result.signal, native_signal=result.native_signal,
-                         speed_alignment=detail, sensor_age_ms=round((time.monotonic() - oldest) * 1e3, 1),
+                         signal=result.signal, native_signal=result.native_signal, delivered=delivered,
+                         speed_alignment=detail, sensor_age_ms=round((sent_at - oldest) * 1e3, 1),
+                         # Age budget: which input was oldest and how old each was when inference began.
+                         oldest_input=oldest_name,
+                         input_age_ms={name: round((now - at) * 1e3, 1) for name, at in received.items()},
                          position_identity=identity,
                          pose=dict(x=round(pose['x'], 2), y=round(pose['y'], 2)))
-        return 'ready'
+        return 'ready' if delivered else self.reason
 
     def _not_ready(self, reason):
         self.reason = reason
@@ -148,8 +208,9 @@ class VePublisher:
         streams = {name: dict(packets=d['packets'], samples=d['samples'],
                               **({'rejected': d['counters']} if d['counters'] else {}))
                    for name, d in self.udp.diagnostics().items()}
-        return dict(frames=self.frames, ready_frames=self.ready_frames, reason=self.reason,
-                    last=self.last, pose_reason=getattr(self.udp.pose, 'reason', None), streams=streams,
+        return dict(frames=self.frames, ready_frames=self.ready_frames, expired_frames=self.expired_frames,
+                    reason=self.reason,
+                    last=self.last, imu_alignment=dict(self.imu_methods), pose_reason=getattr(self.udp.pose, 'reason', None), streams=streams,
                     localization=self.udp.localization.diagnostics()
                     if getattr(self.udp, 'localization', None) is not None else None)
 
@@ -196,6 +257,9 @@ def main():
     stop = []
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stop.append(True))
+    from AIM2026.Inference.timer_resolution import high_resolution_timer
+    timer = high_resolution_timer()
+    timer.__enter__()
     udp.start()
     try:
         publisher = VePublisher(udp, runtime, udp.pose.projector, max_age_s=vision['max_sensor_age_s'])
@@ -221,6 +285,7 @@ def main():
                 udp.send_detection_not_ready('publisher_stopped')
         finally:
             udp.close()
+            timer.__exit__(None, None, None)
     return 0
 
 
