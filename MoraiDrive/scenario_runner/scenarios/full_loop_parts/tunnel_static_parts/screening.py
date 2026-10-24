@@ -19,9 +19,9 @@ from .layout import MAP_NAME, bbox_world, validate_candidate
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
-EXPERT_ROOT = PROJECT_ROOT / "expert" / "src"
-EXPERT_CODE = EXPERT_ROOT / "expert" / "src"
-JAMMING_ROOT = PROJECT_ROOT / "expert" / "data" / "recorded_paths" / "jamming"
+EXPERT_ROOT = PROJECT_ROOT.parent / "AIM2026" / "Expert"
+EXPERT_CODE = EXPERT_ROOT / "src"
+JAMMING_ROOT = EXPERT_ROOT / "data" / "recorded_paths" / "jamming"
 ROUTE_PATH = PROJECT_ROOT / "scenario_runner/data/R_KR_PR_K-city_2025/2026_molit_comp_global_path.txt"
 POLICY = {
     "planner": "production_JammingPlanner",
@@ -61,7 +61,7 @@ def _file_hash(path):
 
 
 def _relative(path):
-    return Path(path).resolve().relative_to(PROJECT_ROOT.resolve()).as_posix()
+    return Path(os.path.relpath(Path(path).resolve(), PROJECT_ROOT.resolve())).as_posix()
 
 
 def screening_provenance():
@@ -119,13 +119,13 @@ def validate_screening_settings(settings):
 
 def _expert_search():
     """Import only inside the disposable worker; no highway search fallback."""
-    sys.path.insert(0, str(EXPERT_ROOT))
-    importlib.import_module("expert.src.planning.lattice")
-    module = importlib.import_module("expert.src.planning.jamming.recorded_planner")
-    boundary = importlib.import_module("expert.src.planning.jamming.road_boundary")
-    point = importlib.import_module("expert.src.localization.point").Point
-    state = importlib.import_module("expert.src.vehicle_state").VehicleState
-    object_info = importlib.import_module("expert.src.obstacle.object_info").ObjectInfo
+    sys.path.insert(0, str(EXPERT_ROOT.parents[1]))
+    importlib.import_module("AIM2026.Expert.src.planning.lattice")
+    module = importlib.import_module("AIM2026.Expert.src.planning.jamming.recorded_planner")
+    boundary = importlib.import_module("AIM2026.Expert.src.planning.jamming.road_boundary")
+    point = importlib.import_module("AIM2026.Expert.src.localization.point").Point
+    state = importlib.import_module("AIM2026.Expert.src.vehicle_state").VehicleState
+    object_info = importlib.import_module("AIM2026.Expert.src.obstacle.object_info").ObjectInfo
     return module.JammingPlanner, boundary.RoadBoundary, point, state, object_info
 
 
@@ -310,8 +310,8 @@ def _initial_alignment(complete, ego, np):
 
 def _production_views(path, ego):
     """Use the ordinary PathManager's measured-pose local window."""
-    manager_type = importlib.import_module("expert.src.localization.path_manager").PathManager
-    config = json.loads((EXPERT_ROOT / "expert/src/config/config.json").read_text())
+    manager_type = importlib.import_module("AIM2026.Expert.src.localization.path_manager").PathManager
+    config = json.loads((EXPERT_CODE / "config/config.json").read_text())
     manager = manager_type(path, False, int(config["map"]["local_path_size"]))
     # Velocity is not an input to the fixed recorded-route selection. Supply
     # a benign profile only so the actual PathManager can return its window.

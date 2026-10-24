@@ -13,7 +13,7 @@ import time
 import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
-for path in (ROOT, ROOT/'MoraiDrive', ROOT/'AIM2026/Expert/src', ROOT/'VLDrive'):
+for path in (ROOT, ROOT/'MoraiDrive', ROOT/'VLDrive'):
     sys.path.insert(0, str(path))
 
 from AIM2026.UDP.Detection import decode, NotReady
@@ -170,7 +170,7 @@ def main(argv=None, control_tick=None):
     # inference process still owns the sensor ports.
     UDPManager(child_cfg)._probe_ports()
     from inference.ve_object_tracking import VeObjectTracker
-    from expert.src.autonomous_driving import AutonomousDriving
+    from AIM2026.Expert.src.autonomous_driving import AutonomousDriving
     inputs = Inputs(generation, sha, VeObjectTracker(static_geometry_fusion=False))
     stop = []
     old_handlers = {sig: signal.signal(sig, lambda *_: stop.append(True))

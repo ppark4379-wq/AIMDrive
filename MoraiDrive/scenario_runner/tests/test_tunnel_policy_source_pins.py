@@ -14,10 +14,10 @@ class TunnelPolicySourcePinsTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         self.expert = self.root/"expert"
-        original = self.expert/"src/expert/src/config/config.json"
+        original = self.expert/"src/config/config.json"
         original.parent.mkdir(parents=True)
         original.write_text(json.dumps({"planning":{"velocity_profile":{"max_velocity":37.}}}))
-        self.controller = self.expert/"src/expert/src/control/path_controller.py"
+        self.controller = self.expert/"src/control/path_controller.py"
         self.controller.parent.mkdir(parents=True)
         self.controller.write_text("# reviewed controller revision\n")
         self.map = self.root/"map"

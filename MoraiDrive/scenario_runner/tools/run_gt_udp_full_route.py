@@ -13,7 +13,7 @@ import time
 from types import SimpleNamespace
 
 REPO = Path(__file__).resolve().parents[3]
-sys.path[:0] = [str(REPO / 'MoraiDrive'), str(REPO / 'AIM2026/Expert/tools')]
+sys.path[:0] = [str(REPO / 'MoraiDrive'), str(REPO / 'MoraiDrive/scenario_runner/legacy_expert')]
 from scenario_runner.main_runner import load_configuration
 from scenario_runner.adapters.expert_controller import ExpertController
 from scenario_runner.scenarios.full_loop_scenario import FullLoopScenario
@@ -70,7 +70,7 @@ class UdpController:
         if self.before_start is not None:
             self.before_start()
         self.output.mkdir(parents=True, exist_ok=True)
-        command = [sys.executable, '-u', '-B', str(REPO / 'AIM2026/Expert/tools/run_gt_udp_expert.py'),
+        command = [sys.executable, '-u', '-B', str(REPO / 'MoraiDrive/scenario_runner/legacy_expert/run_gt_udp_expert.py'),
                    '--config', self.base.runtime_config_path, '--path', self.base.runtime_path_csv,
                    '--output', str(self.output), *network_args(self.args)]
         self.log = (self.output / 'expert.log').open('w', buffering=1)
@@ -208,7 +208,7 @@ def main(argv=None):
                       '--path', context.expert_controller.runtime_path_csv, *network_args(args)])
     if args.check:
         context = prepare_controller(global_config, config, args, output)
-        result = subprocess.run([sys.executable, '-B', str(REPO / 'AIM2026/Expert/tools/run_gt_udp_expert.py'),
+        result = subprocess.run([sys.executable, '-B', str(REPO / 'MoraiDrive/scenario_runner/legacy_expert/run_gt_udp_expert.py'),
             '--check', '--config', context.expert_controller.runtime_config_path,
             '--path', context.expert_controller.runtime_path_csv, *network_args(args)], cwd=REPO)
         if result.returncode:

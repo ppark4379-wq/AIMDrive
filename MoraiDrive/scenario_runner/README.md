@@ -700,7 +700,7 @@ source expert/devel/setup.bash
 export SCENARIO_MGEO_ROOT=$PWD/scenario_runner/data/R_KR_PR_K-city_2025
 export SCENARIO_ROUTE_PATH_TXT=$PWD/scenario_runner/.runtime/expert/path_scenario_runner_current.txt
 
-SDL_AUDIODRIVER=dummy python3 expert/src/expert/src/path/mgeo_visualization.py
+SDL_AUDIODRIVER=dummy python3 expert/src/path/mgeo_visualization.py
 ```
 ## 정적 장애물 배치 편집기
 

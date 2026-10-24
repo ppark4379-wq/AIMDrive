@@ -103,12 +103,12 @@ def verify_source_boundary(package_root):
         package_root / "adapters" / "expert_process.py"
     ).read_text(encoding="utf-8")
     require(
-        "from expert.src.autonomous_driving import AutonomousDriving"
+        "from AIM2026.Expert.src.autonomous_driving import AutonomousDriving"
         in entrypoint_source,
         "AIMDrive expert is not imported by the scenario-owned entrypoint",
     )
     require(
-        "from expert.src.network.ros_manager import RosManager"
+        "from AIM2026.Expert.src.network.ros_manager import RosManager"
         in entrypoint_source,
         "AIMDrive RosManager is not imported by the scenario-owned entrypoint",
     )
@@ -167,8 +167,6 @@ def verify_configuration(package_root, global_cfg, scenario_cfg):
     require(
         (
             expert_root
-            / "src"
-            / "expert"
             / "src"
             / "config"
             / "config.json"

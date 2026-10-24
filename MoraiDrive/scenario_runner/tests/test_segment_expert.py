@@ -29,8 +29,8 @@ from .test_segment_modes import make_grpc
 
 EXPERT_INITIALIZE = """
 import numpy as np
-from expert.src.autonomous_driving import AutonomousDriving
-from expert.src.config.config import Config
+from AIM2026.Expert.src.autonomous_driving import AutonomousDriving
+from AIM2026.Expert.src.config.config import Config
 driver = AutonomousDriving()
 profile = driver.path_manager.velocity_profile
 assert len(profile) == len(driver.path)
@@ -85,7 +85,7 @@ class MissionExpertTest(unittest.TestCase):
     def initialize_expert(self, controller, script=EXPERT_INITIALIZE):
         environment = os.environ.copy()
         environment.update({
-            "PYTHONPATH": controller.expert_source + os.pathsep + environment.get("PYTHONPATH", ""),
+            "PYTHONPATH": str(Path(controller.expert_root).parents[1]) + os.pathsep + environment.get("PYTHONPATH", ""),
             "PYTHONDONTWRITEBYTECODE": "1",
             "GT_BEV_CONFIG_PATH": controller.runtime_config_path,
             "GT_BEV_PATH_CSV": controller.runtime_path_csv,
@@ -209,7 +209,7 @@ class MissionExpertTest(unittest.TestCase):
         # Jamming alone is insufficient if the mission crop omits its rejoin.
         script = EXPERT_INITIALIZE + """
 import math
-from expert.src.vehicle_state import VehicleState
+from AIM2026.Expert.src.vehicle_state import VehicleState
 planner = driver.lattice_planning_process.recorded_jamming
 assert planner is not None
 ego = VehicleState(-12.50, -511.28, math.radians(-151.55), 1.22)

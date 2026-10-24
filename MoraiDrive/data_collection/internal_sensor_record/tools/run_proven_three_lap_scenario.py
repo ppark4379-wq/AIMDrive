@@ -146,7 +146,7 @@ def expert_provenance(mode, expert_root):
             hashes, sort_keys=True, separators=(',', ':'),
         ).encode('utf-8')
     ).hexdigest()
-    base_config = expert_root / 'src/expert/src/config/config.json'
+    base_config = expert_root / 'src/config/config.json'
     status = _git_value('status', '--porcelain', '--', '../AIM2026/Expert')
     return dict(
         mode=mode,
@@ -163,7 +163,7 @@ def require_expert_root(mode):
     if mode != 'current':
         raise ValueError('Only current is supported; the proven runtime was removed')
     root = (PROJECT_ROOT.parent / 'AIM2026' / 'Expert').resolve()
-    marker = root / 'src/expert/src/config/config.json'
+    marker = root / 'src/config/config.json'
     if not marker.is_file():
         raise RuntimeError(
             'Selected external Expert is incomplete: ' + str(marker)

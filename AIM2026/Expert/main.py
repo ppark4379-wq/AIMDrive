@@ -10,7 +10,7 @@ import sys
 
 
 EXPERT_ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(EXPERT_ROOT / 'src'))
+sys.path.insert(0, str(EXPERT_ROOT.parents[1]))
 
 
 def on_control_tick(driving, vehicle, objects, traffic, **timing):
@@ -24,10 +24,9 @@ def main(argv=None):
     parser.add_argument('--transport', choices=('ros',), default=None)
     entry, runtime_arguments = parser.parse_known_args(argv)
     if entry.transport == 'ros':
-        from expert.src.runtime.ros_runtime import main as run_ros
+        from AIM2026.Expert.src.runtime.ros_runtime import main as run_ros
         return run_ros(runtime_arguments)
 
-    sys.path.insert(0, str(EXPERT_ROOT.parents[1]))
     from AIM2026.Expert.runtime import main as run_aim
     return run_aim(runtime_arguments, control_tick=on_control_tick)
 

@@ -16,11 +16,11 @@ import json
 
 
 EXPERT_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(EXPERT_ROOT / "src"))
-from expert.src.planning.jamming.section import (
+sys.path.insert(0, str(EXPERT_ROOT.parents[1]))
+from AIM2026.Expert.src.planning.jamming.section import (
     JammingSection, next_route_name, register_route, ROOT as JAMMING_ROOT, ROUTE_DIRECTORY,
 )
-from expert.src.config.paths import STATIC_OBSTACLE_PATHS
+from AIM2026.Expert.src.config.paths import STATIC_OBSTACLE_PATHS
 
 DEFAULT_OUTPUT = JAMMING_ROOT / ROUTE_DIRECTORY
 STATIC_OUTPUT = STATIC_OBSTACLE_PATHS / ROUTE_DIRECTORY

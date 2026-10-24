@@ -10,9 +10,10 @@ AIM2026/Expert/
 ├── data/recorded_paths/
 │   ├── static_obstacle/             # recordings, routes.json
 │   └── jamming/                     # recordings, prepared, routes.json
-├── tools/paths/                     # 경로 기록·검사·가공
+├── tools/paths/                     # 경로 기록·가공
+├── ros/                            # ROS 메시지 소스·RViz 설정
 ├── tools/run/run_ros_expert.sh      # 보관된 ROS 실행
-└── src/expert/src/
+└── src/
     ├── autonomous_driving.py        # 상태 소유, execute() 호환
     ├── interfaces/                 # 입출력 자료형
     ├── planning/

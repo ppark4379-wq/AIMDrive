@@ -18,15 +18,15 @@ _EXPERT_PACKAGE_ROOT = _REPOSITORY / "AIM2026/Expert/src"
 
 def _load_planner():
     # Imports the real repository implementation rather than a copied planner.
-    root = str(_EXPERT_PACKAGE_ROOT)
+    root = str(_REPOSITORY)
     if root not in sys.path:
         sys.path.insert(0, root)
-    import expert.src.planning.lattice.lattice_planner as implementation
-    from expert.src.localization.point import Point
-    from expert.src.obstacle.object_info import ObjectInfo
-    from expert.src.vehicle_state import VehicleState
+    import AIM2026.Expert.src.planning.lattice.lattice_planner as implementation
+    from AIM2026.Expert.src.localization.point import Point
+    from AIM2026.Expert.src.obstacle.object_info import ObjectInfo
+    from AIM2026.Expert.src.vehicle_state import VehicleState
 
-    expected = _EXPERT_PACKAGE_ROOT / "expert/src/planning/lattice/lattice_planner.py"
+    expected = _EXPERT_PACKAGE_ROOT / "planning/lattice/lattice_planner.py"
     if Path(implementation.__file__).resolve() != expected.resolve():
         raise RuntimeError("An unrelated Expert package shadows this repository")
     return implementation.LatticePlanner, Point, ObjectInfo, VehicleState, expected

@@ -35,7 +35,7 @@ def _speed_contract(path, raw, requested):
 
 def expert_max_velocity_contract(expert_root, requested=None):
     """Read the original Expert speed and its source pin for this invocation."""
-    path = os.path.join(os.path.abspath(expert_root), "src", "expert", "src", "config", "config.json")
+    path = os.path.join(os.path.abspath(expert_root), "src", "config", "config.json")
     with open(path, "rb") as source:
         return _speed_contract(path, source.read(), requested)
 
@@ -98,8 +98,6 @@ class ExpertController:
         self.expert_source = os.path.join(self.expert_root, "src")
         self.base_config_path = os.path.join(
             self.expert_source,
-            "expert",
-            "src",
             "config",
             "config.json",
         )

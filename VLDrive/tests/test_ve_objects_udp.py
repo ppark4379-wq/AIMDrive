@@ -13,7 +13,7 @@ from inference.ve_object_tracking import VeObjectTracker
 
 REPO = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location('udp_expert_launcher',
-    REPO / 'AIM2026/Expert/tools/run_ve_udp_expert.py')
+    REPO / 'MoraiDrive/scenario_runner/legacy_expert/run_ve_udp_expert.py')
 launcher = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(launcher)
 
@@ -133,7 +133,7 @@ class UdpObjectsTests(unittest.TestCase):
             self.assertTrue(launcher.input_status(packet, dict(ego, x=position[0], y=position[1]), 1300000000)[0])
 
     def test_expert_uses_original_planning_and_control_with_object_remap(self):
-        original = json.loads((REPO / 'AIM2026/Expert/src/expert/src/config/config.json').read_text())
+        original = json.loads((REPO / 'AIM2026/Expert/src/config/config.json').read_text())
         with tempfile.TemporaryDirectory() as tmp, patch.object(Path, 'is_file', return_value=True):
             config_path, path = launcher.prepare_expert(Path(tmp))
             config = json.loads(config_path.read_text())

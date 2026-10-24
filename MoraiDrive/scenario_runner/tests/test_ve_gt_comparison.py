@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace as NS
 
-from AIM2026.Expert.tools.ve_gt_comparison import (
+from MoraiDrive.scenario_runner.legacy_expert.ve_gt_comparison import (
     analyze, gt_motion_check, in_roi, match_centers, nearest, residual_jitter,
     roi, score_frame, serialize_gt, summarize, timeline)
 

@@ -194,10 +194,10 @@ def main(argv=None):
     if coordinate_config:
         if not gps_mode or config['runtime'].get('gps_blackout_hold', {}).get('enabled'):
             raise ValueError('Fixed ENU requires GPS/IMU UDP without blackout hold')
-        sys.path.insert(0, str(ROOT.parent/'AIM2026/Expert/src'))
-        from expert.src.localization.coordinate_transform import CoordinateTransform
-        from expert.src.localization.gps_imu_localization import GpsImuLocalization
-        from expert.src.network.udp.udp_manager import UdpManager, load_network_config
+        sys.path.insert(0, str(ROOT.parent))
+        from AIM2026.Expert.src.localization.coordinate_transform import CoordinateTransform
+        from AIM2026.Expert.src.localization.gps_imu_localization import GpsImuLocalization
+        from AIM2026.Expert.src.network.udp.udp_manager import UdpManager, load_network_config
         coordinates = CoordinateTransform(coordinate_config)
         network_config = load_network_config(config['runtime']['competition_network'])
         if network_config['bind_ip'] != config['runtime']['bind']:

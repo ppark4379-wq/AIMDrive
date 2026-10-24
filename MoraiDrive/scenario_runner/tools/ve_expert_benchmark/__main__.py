@@ -15,7 +15,7 @@ import time
 from .runtime import REPO, PerceptionSession, write
 from .metrics import score, compare_pair
 from inference.realtime_ve_objects import CHECKPOINTS
-from AIM2026.Expert.tools.run_ve_udp_expert import capture_guard, require_ros_master
+from MoraiDrive.scenario_runner.legacy_expert.run_ve_udp_expert import capture_guard, require_ros_master
 
 CASES={
     'empty':dict(mission_mode='full_loop_tunnel_normal'),
@@ -67,14 +67,14 @@ def prepare(args,output):
         raise FileNotFoundError(checkpoint['path'])
     source_files=[REPO/'VLDrive/inference/ve_object_tracking.py',REPO/'VLDrive/inference/ve_objects_udp.py',
                   REPO/'VLDrive/inference/realtime_ve_objects.py',
-                  REPO/'AIM2026/Expert/src/expert/src/config/config.json',Path(base['route_definition_path']),
+                  REPO/'AIM2026/Expert/src/config/config.json',Path(base['route_definition_path']),
                   Path(base['global_path']),PACKAGE_ROOT/'config/full_loop.yaml',PACKAGE_ROOT/'config/global.yaml']
     if (PACKAGE_ROOT/'config/local.yaml').is_file():
         source_files.append(PACKAGE_ROOT/'config/local.yaml')
     source_files+=list(Path(__file__).parent.glob('*.py'))
-    source_files+=[REPO/'AIM2026/Expert/tools/ve_udp_session.py',
+    source_files+=[REPO/'MoraiDrive/scenario_runner/legacy_expert/ve_udp_session.py',
                    REPO/'VLDrive/inference/sensors/live_frame.py']
-    source_files+=list((REPO/'AIM2026/Expert/src/expert/src').rglob('*.py'))
+    source_files+=list((REPO/'AIM2026/Expert/src').rglob('*.py'))
     source_hashes={str(p.relative_to(REPO)):hashlib.sha256(p.read_bytes()).hexdigest() for p in source_files}
     specs=[]
     for repeat in range(args.repeats):

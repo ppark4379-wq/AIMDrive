@@ -19,8 +19,8 @@ IP는 모두 127.0.0.1이며 현재 WSL 명령도 Windows Python을 실행한다
 | GPS | 7506 | 9090 |
 | IMU | 7507 | 9090 |
 | LiDAR | 2369 | 2368 |
-| 차량 상태(기존 별도 설정) | 8001 | 8000 |
-| 차량 제어(기존 별도 설정) | 9097 | 9098 |
+| 차량 상태(config_local.yaml 대회판 설정) | 9088 | 9099 |
+| 차량 제어(config_local.yaml 대회판 설정) | 9093 | 9094 |
 
 카메라/GPS/IMU는 하나의 9090 수신 소켓을 공유한다.
 `UDP/SharedPort.py`가 송신 IP/Host Port로 분리한 뒤 기존 센서별 파서 스레드로 전달한다.
@@ -30,7 +30,7 @@ IP는 모두 127.0.0.1이며 현재 WSL 명령도 Windows Python을 실행한다
 
 차량 제어는 **MoraiCmdController / UDP / AV-ExternalCtrl**로 설정한다.
 TrajectoryTrackingCmd는 현재 가속·브레이크·조향 패킷과 다른 프로토콜이다.
-제어 데이터는 Python 9098 → MORAI 9097로 간다.
+제어 데이터는 Python 9094 → MORAI 9093으로 간다.
 센서 JSON에는 차량 상태/제어 포트가 없으므로 이 값은 JSON에서 가져온 것으로 표시하지 않는다.
 내부 인지·pose 브리지 12050도 JSON에 없으며 MORAI에서 설정하지 않는다.
 JSON의 rosConfig/RosBridgePort는 UDP 수신 설정이 아니다.
@@ -56,7 +56,7 @@ bash AIM2026/Visualization/run_rviz.sh
 실행 설정은 기본적으로 config_local.yaml을 사용한다. 정답지 센서 기하·포트만 동기화했으며,
 가중치는 `AIM2026/Weights/VE/ve_p1_20261014.pth.tar`와
 `AIM2026/Weights/VE/signal_head_p1_20261014.pt`를 사용한다.
-normal 조향 부호(-1), 기존 판제 게인은 바꾸지 않았다.
+조향 부호는 현재 `config_local.yaml`의 대회판 설정을 따른다. 폴더 정리는 이 설정과 판제 게인을 변경하지 않는다.
 독립 GPSJamming 센서 뷰어도 같은 포트를 사용하므로 통합 Expert와 동시에 켜지 않는다.
 
 ## 검증과 기록
@@ -66,5 +66,5 @@ control.jsonl에는 실제 사용한 pose와 시각/dt도 기록한다.
 새 공용 포트 구성은 임시 포트의 실제 UDP 분배 테스트와 설정 대조를 통과했으며,
 이 구성으로 MORAI 실주행한 결과는 아직 확인하지 않았다.
 
-판제 비교·기존 테스트 실패·좌표변환 검증 결과는
-`AIM2026/Expert/docs/verification.md`를 참고한다.
+Expert 내부의 과거 검사 스크립트와 검증 문서는 폴더 정리에서 제거했다.
+현재 진입점과 폴더별 역할은 `AIM2026/Expert/README.md`를 참고한다.
