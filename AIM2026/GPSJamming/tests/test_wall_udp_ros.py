@@ -3,7 +3,7 @@ import importlib.util
 from pathlib import Path
 import unittest
 
-from test_wall_udp import WallTransportTest
+import test_wall_udp
 
 try:
     from std_msgs.msg import Header
@@ -14,11 +14,11 @@ except ImportError:
 @unittest.skipIf(Header is None, 'Requires ROS Noetic environment')
 class MarkerTransportTest(unittest.TestCase):
     def test_actual_marker_coordinates_equal_udp(self):
-        path = Path(__file__).resolve().parents[1] / 'scripts' / 'run_ros1.py'
+        path = Path(__file__).resolve().parents[1] / 'visualization' / 'ros1_publisher.py'
         spec = importlib.util.spec_from_file_location('wall_node', path)
         node = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(node)
-        fixture = WallTransportTest()
+        fixture = test_wall_udp.WallTransportTest()
         fixture.setUp()
         try:
             fixture.sender.send(fixture.display)
