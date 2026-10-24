@@ -9,6 +9,23 @@ import threading
 import time
 
 
+class _Forward:
+    """Queue-like route target that re-sends the datagram to a loopback address."""
+
+    def __init__(self, address):
+        self.address = address
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+    def put_nowait(self, item):
+        try:
+            self.socket.sendto(item[0], self.address)
+        except OSError:
+            pass
+
+    def close(self):
+        self.socket.close()
+
+
 class SharedPort:
     def __init__(self, bind, port):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -25,6 +42,13 @@ class SharedPort:
         self.lock = threading.Lock()
         self.stop = threading.Event()
         self.thread = None
+
+    def subscribe_forward(self, source_ip, source_port, address):
+        """Route a source's datagrams unchanged to ``address`` (another process' loopback receiver)."""
+        channel = _Forward(address)
+        with self.lock:
+            self.routes.append((source_ip, source_port, channel, lambda *_: None))
+        return channel
 
     def subscribe(self, source_ip, source_port, on_drop):
         channel = queue.Queue(maxsize=128)
@@ -61,6 +85,9 @@ class SharedPort:
 
     def close(self):
         self.stop.set()
+        for _ip, _port, channel, _drop in self.routes:
+            if isinstance(channel, _Forward):
+                channel.close()
         self.socket.close()
         if self.thread is not None:
             self.thread.join(timeout=1.)
