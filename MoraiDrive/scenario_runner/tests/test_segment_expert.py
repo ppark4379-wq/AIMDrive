@@ -68,6 +68,23 @@ class MissionExpertTest(unittest.TestCase):
             scenario.prepare_full_loop_route()
         return scenario
 
+    def test_roundabout_uses_original_expert_maximum_and_curvature_window(self):
+        source = Path(self.global_cfg["paths"]["expert_root"]) / "src/expert/src/config/config.json"
+        before = source.read_bytes()
+        original = json.loads(before)["planning"]["velocity_profile"]
+        scenario = self.make_scenario("full_loop_roundabout")
+        with redirect_stdout(io.StringIO()):
+            scenario.setup_expert_controller()
+        controller = scenario.expert_controller
+        runtime = json.loads(Path(controller.runtime_config_path).read_text())
+        profile = runtime["planning"]["velocity_profile"]
+        self.assertEqual(profile["max_velocity"], original["max_velocity"])
+        self.assertEqual(profile["window_size"], original["window_size"])
+        self.assertTrue(controller.speed_contract["inherited"])
+        self.assertIsNone(controller.speed_cap_kmh)
+        self.assertEqual(Path(controller.expert_root), source.parents[4])
+        self.assertEqual(source.read_bytes(), before)
+
     def test_highway_temporary_60_cap_reaches_real_expert_profile(self):
         scenario = self.make_scenario("full_loop_highway")
         scenario.cfg["expert_speed_cap_kmh"] = 60.0

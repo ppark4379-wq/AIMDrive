@@ -394,8 +394,6 @@ class FullLoopDriveBase(BaseScenario):
 
     def setup_expert_controller(self):
         paths = self.global_cfg["paths"]
-        tunnel_static = self.cfg.get("mission_mode") == "full_loop_tunnel_static"
-        velocity = self.cfg.get("expert_max_velocity_kmh", None if tunnel_static else 60.0)
         self.expert_controller = ExpertController(
             expert_root=paths["expert_root"],
             runtime_root=os.path.join(paths["runtime_root"], "expert"),
@@ -408,7 +406,7 @@ class FullLoopDriveBase(BaseScenario):
             route_signal_route_links=getattr(self, "route_definition", {}).get("route_links"),
             start_link=self.start_link,
             end_link=self.end_link,
-            max_velocity_kmh=None if tunnel_static and velocity is None else float(velocity),
+            max_velocity_kmh=self.cfg.get("expert_max_velocity_kmh"),
             speed_cap_kmh=self.cfg.get("expert_speed_cap_kmh"),
             traffic_light_control=bool(
                 self.cfg.get("expert_traffic_light_control", False)

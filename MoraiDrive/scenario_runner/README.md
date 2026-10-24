@@ -59,10 +59,26 @@ python3 -m scenario_runner.main_runner \
 | `full_loop_static` | 인덱스 483 → 753 (132.4m) | 정적 장애물만 랜덤 생성 |
 | `full_loop_dynamic` | 인덱스 753 → 1081 (160.0m) | 좁힌 NPC 배치 영역에서 승인된 동적 횡단을 1~2개 순차 실행 |
 | `full_loop_traffic_light` | 인덱스 1031 → 1348 (155.3m), 기존 동적 종료점 약 25m 전 직선 → 우회전 → 좌회전 완료 후 약 25m | 장애물·NPC 없음, 빨강·직진 초록 대기 후 좌회전 화살표 출발 |
-| `full_loop_roundabout` | 인덱스 1668 → 1975 (150.0m) | NPC 3대, 진입 100m 전 생성, 출구 30m 후 제거 |
+| `full_loop_roundabout` | 인덱스 1668 → 1975 (150.0m) | 차종·대수(3~5대) 랜덤, 초기 균등 배치, 공통 속도 10·15·20·25km/h 중 회차별 1회 선택. 진입 100m 전 생성, 출구 30m 후 제거 |
 | `full_loop_highway` | 인덱스 1975 → 3638 (825.0m) | 기존 SpawnPoint 3개(각 4대, 총 12대, 5초 주기) 활성화 시점에 합류 링크 시작 70m 지점에 실주행 확인된 승용차 13종 중 정지 차량 1대를 시드 기반 랜덤 생성 |
 | `full_loop_tunnel_normal` | 인덱스 3723 → 4107 (189.7m), 터널 진입 40.2m 전 → 이탈 30.5m 후 | 장애물·NPC·급제동 이벤트 없음, 도로 비움 검사, 단회 검증 |
 | `full_loop_tunnel_static` | 같은 터널 전후 시험 경로 | 승인된 활성 배치 121개 중 랜덤 선택, 실측·Expert 재검사 후 주행 |
+
+기본 `full_loop_roundabout`은 `common_speed_choices_kph`에서 공통 속도를 시드 기반으로 한 번 선택하고 모든 NPC에 적용합니다. 생성·속도 명령은 km/h, MORAI AI 속도 제한은 m/s로 전달합니다. 초기 경로상 배치는 균등하지만, 실제 속도와 주행 중 간격은 MORAI 차량 모델·AI 동작에 따라 달라질 수 있습니다. 기본 실행에서 Ego의 최고속도와 곡률 계산 `window_size`는 외부 Expert 원본 설정을 그대로 사용합니다.
+
+회전교차로는 아래 명령어로 실행합니다. 공통 속도는 10·15·20·25km/h 중 실행마다 한 번 랜덤 선택되며, 차종·대수(3~5대) 랜덤과 초기 균등 배치를 유지합니다.
+
+```bash
+cd ~/AIMDrive/MoraiDrive
+source /opt/ros/noetic/setup.bash
+source ../AIM2026/Expert/devel/setup.bash
+
+/usr/bin/python3 -m scenario_runner.main_runner \
+  --zone full_loop \
+  --scenario full_loop_roundabout \
+  --once \
+  --no-sync-runtime
+```
 
 예: 장애물·NPC 없는 전체 주행을 3회 실행:
 

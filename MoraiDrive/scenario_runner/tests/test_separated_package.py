@@ -198,7 +198,6 @@ class SeparatedPackageTest(unittest.TestCase):
                 "2014_Kia_K7",
                 "2016_Hyundai_Genesis_DH",
                 "2019_Toyota_Prius",
-                "2021_Volkswagen_Golf_GTI",
                 "2020_Kia_Stinger",
                 "2016_Hyundai_Ioniq",
                 "2023_Hyundai_Ioniq5",
@@ -209,25 +208,26 @@ class SeparatedPackageTest(unittest.TestCase):
                 "2016_Kia_Soul(EV)",
                 "2020_Kia_Soul(EV)",
                 "2021_Hyundai_G80",
-                "2019_hyundai_genesis_g90",
                 "2019_hyundai_genesis_g90_4WS",
                 "DEFAULT_SUV",
                 "2016_Hyundai_Santafe",
                 "2017_Kia_Sorento",
-                "2020_volvo_xc90",
-                "2021_Hyundai_Genesis_GV80",
                 "2021_Hyundai_GV70",
                 "2019_Hyundai_Nexo",
                 "DEFAULT_MPV",
                 "DEFAULT_WAGON",
                 "2019_kia_sedona",
-                "2021_Kia_Carnival",
                 "2020_chrysler_pacifica_hybrid",
                 "2017_hyundai_solati_h350",
                 "DR_KGTorres_EVX_2024",
             ],
         )
+        self.assertNotIn("expert_max_velocity_kmh", scenario_cfg)
+        self.assertNotIn("expert_velocity_profile_window_size", scenario_cfg)
         self.assertEqual(roundabout_cfg["speed_mps"], 4.0)
+        self.assertEqual(
+            roundabout_cfg["common_speed_choices_kph"], [10.0, 15.0, 20.0, 25.0]
+        )
         self.assertEqual(roundabout_cfg["route_laps"], 100)
         self.assertEqual(
             roundabout_cfg["nonuniform_position"]["min_spawn_gap_m"],

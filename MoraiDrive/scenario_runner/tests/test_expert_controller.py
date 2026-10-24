@@ -30,6 +30,24 @@ class ExpertSignalRouteExportTests(unittest.TestCase):
             route_points=[(0, 0), (1, 0)], route_signal_route_links=links, speed_cap_kmh=speed_cap,
         )
 
+    def test_defaults_follow_current_expert_speed_settings_without_changing_source(self):
+        source = self.root / "expert/src/expert/src/config/config.json"
+        for maximum, window in ((37, 23), (43, 31)):
+            with self.subTest(maximum=maximum, window=window):
+                original = json.loads(source.read_text())
+                original["planning"]["velocity_profile"].update(
+                    max_velocity=maximum, window_size=window,
+                )
+                source.write_text(json.dumps(original))
+                before = source.read_bytes()
+                controller = self.controller()
+                runtime = json.loads(Path(controller.runtime_config_path).read_text())
+                self.assertEqual(runtime["planning"], original["planning"])
+                self.assertTrue(controller.speed_contract["inherited"])
+                self.assertIsNone(controller.requested_max_velocity_kmh)
+                self.assertIsNone(controller.speed_cap_kmh)
+                self.assertEqual(source.read_bytes(), before)
+
     def test_runtime_speed_cap_limits_highway_preserves_lower_limits_and_source(self):
         source = self.root / "expert/src/expert/src/config/config.json"
         config = json.loads(source.read_text())
@@ -47,6 +65,7 @@ class ExpertSignalRouteExportTests(unittest.TestCase):
         self.assertEqual(source.read_bytes(), before)
         unbounded = self.controller()
         profile = json.loads(Path(unbounded.runtime_config_path).read_text())["planning"]["velocity_profile"]
+        self.assertEqual(profile["max_velocity"], 100)
         self.assertEqual([z["max_velocity"] for z in profile["speed_limit_zones"]], [100, 20])
 
     def test_invalid_speed_cap_rejected(self):
