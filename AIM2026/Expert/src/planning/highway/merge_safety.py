@@ -33,6 +33,12 @@ class MergeSafety:
             ("FIRST_PREDICTIVE", p.PREDICTIVE_MERGE_SUCCESSORS, p.PREDICTIVE_MERGE_POINT),
             ("SECOND_ENTRY", p.CONSERVATIVE_MERGE_SUCCESSORS, p.CONSERVATIVE_MERGE_POINT),
         ):
+            # The first merge ends on its common downstream link. Once the
+            # entire car has cleared the junction, ordinary ACC/cut-in and
+            # lane-change checks own traffic; a 130 m circle is not a yield zone.
+            if (name == 'FIRST_PREDICTIVE' and link_id in shared
+                    and ego_match.s > p.VEHICLE_LENGTH + p.MERGE_BUMPER_CLEARANCE):
+                continue
             if (link_id in shared or successors.intersection(shared)) and math.hypot(
                 ego_match.x - center[0], ego_match.y - center[1]
             ) < 130.0:
@@ -42,6 +48,21 @@ class MergeSafety:
     def _pose(self, obj, match, time_value):
         yaw = math.radians(obj.heading_deg)
         speed = max(0.0, obj.velocity)
+        if getattr(obj, 'speed_unknown', False):
+            # Missing speed is neither a measured zero nor a reason to brake
+            # for an unrelated object. Sample its reachable longitudinal band
+            # densely enough for overlapping body checks on this actual route.
+            count = max(1, int(math.ceil(speed * max(0., time_value) / max(1., obj.size_x / 2.))))
+            return [pose for i in range(count+1)
+                    for pose in self._pose_at_speed(obj, match, time_value, speed*i/count)]
+        # Detection confidence and motion-history maturity are different.
+        # A provisional but available speed is still a measurement: do not
+        # invent an additional stationary vehicle at every new track's origin.
+        # Measured zero speed and unavailable speed retain their own checks.
+        return self._pose_at_speed(obj, match, time_value, speed)
+
+    def _pose_at_speed(self, obj, match, time_value, speed):
+        yaw = math.radians(obj.heading_deg)
         if match is None or speed < 0.05:
             return [(Point(obj.position.x + speed * time_value * math.cos(yaw),
                            obj.position.y + speed * time_value * math.sin(yaw)), yaw)]

@@ -13,7 +13,7 @@ from .lane_map import HighwayLaneMap
 from .merge_safety import MergeSafety
 from .lane_change_safety import LaneChangeSafety
 from .obstacle_motion import ObstacleMotion
-from .multi_lane_planning import MultiLanePlanning
+from .entry_merge import EntryMerge
 from .static_corridor import HighwayStaticCorridor
 from .structures import HighwayCandidatePath, HighwayPlanningResult
 
@@ -68,7 +68,7 @@ class HighwayLanePlanner(
         self._front_lead_speed = None
         self.obstacle_motion = ObstacleMotion()
         self.lane_change_safety = LaneChangeSafety(self)
-        self.multi_lane_planning = MultiLanePlanning(self)
+        self.entry_merge = EntryMerge(self)
         self.static_corridor = None
         self._requested_speed = 0.0
         self.search_time_budget = None
@@ -113,6 +113,10 @@ class HighwayLanePlanner(
         self.obstacle_motion.update(vehicle_entries, self.control_dt)
         object_matches = self._match_objects(vehicle_entries)
         predicted_paths = self._prediction_paths(object_matches)
+        entry_result = self.entry_merge.plan(vehicle_state, ego_match, vehicle_entries,
+                                              object_matches, allow_lane_change)
+        if entry_result is not None:
+            return entry_result
         keep_candidate = self._build_candidate(
             vehicle_state, current_link, ego_match, direction="keep"
         )
@@ -284,8 +288,6 @@ class HighwayLanePlanner(
             )
 
         if self.state in (self.CHANGE_LEFT, self.CHANGE_RIGHT):
-            compact = (getattr(self.active_candidate, "compact_static", False)
-                       or getattr(self.active_candidate, "lane_change_count", 1) == 2)
             heading_aligned = abs(self.lane_map._angle_difference(vehicle_state.yaw, ego_match.yaw)) < math.radians(5.0)
             corridor_complete = (not getattr(self.active_candidate, 'static_corridor', False)
                                  or vehicle_state.position.distance(self.active_candidate.transition_end) < 1.0)
@@ -310,16 +312,6 @@ class HighwayLanePlanner(
                     self._evaluate_lane_change(active_candidate, vehicle_state,
                                                change_entries, change_matches, committed=True)
                     conflict = getattr(active_candidate, "prediction_conflict", None)
-                    if (conflict is None and getattr(active_candidate, "lane_change_count", 1) == 2):
-                        conflict = getattr(active_candidate, "requested_conflict", None)
-                    if conflict:
-                        intermediate = self.multi_lane_planning.hold_intermediate(
-                            vehicle_state, active_candidate, change_entries, change_matches)
-                        if intermediate is not None:
-                            active_candidate = intermediate
-                            conflict = None
-                            common["target_link_id"] = self.target_link_id
-                            debug_details["multi_lane_held_intermediate"] = True
                     if getattr(active_candidate, "prediction_conflict", None) and conflict and conflict.get("rear"):
                         aborted = self._safe_return_to_source(vehicle_state, change_entries, change_matches)
                         if aborted is not None:
@@ -328,7 +320,6 @@ class HighwayLanePlanner(
                             debug_details["returned_to_source_for_rear_vehicle"] = True
                 debug_details["lane_change_conflict"] = getattr(active_candidate, "prediction_conflict", None)
                 self._describe_static_change(active_candidate, debug_details)
-                self.multi_lane_planning.describe(active_candidate, debug_details)
                 if getattr(active_candidate, "lane_change_verified", False) and (
                         getattr(active_candidate, "static_escape", False)
                         or getattr(active_candidate, "minimum_prediction_time", 0.0) >= parameters.MERGE_SAFETY_HORIZON):
@@ -563,22 +554,6 @@ class HighwayLanePlanner(
                     # the source obstruction makes the normal path infeasible.
                     break
 
-        # Preserve the existing adjacent-lane choice. Look two lanes away only
-        # when neither legal adjacent lane supplies a safe maneuver.
-        if not valid_changes:
-            for direction, target_link in neighbors:
-                change_state = self.CHANGE_LEFT if direction == "left" else self.CHANGE_RIGHT
-                if (lane_change_cooldown_active and not static_avoidance
-                        and change_state != self._last_lane_change_direction):
-                    continue
-                if self.search_timed_out():
-                    break
-                extensions = self.multi_lane_planning.candidates(
-                    vehicle_state, current_link, target_link, direction,
-                    change_entries, change_matches, static_avoidance)
-                candidates.extend(extensions)
-                valid_changes.extend(candidate for candidate in extensions if candidate.valid)
-
         if not valid_changes and static_avoidance and not self.search_timed_out():
             # The ordinary highway choices above retain priority. Only a
             # confirmed static obstruction enables the static-zone search.
@@ -641,7 +616,7 @@ class HighwayLanePlanner(
         self.state = self.CHANGE_LEFT if best.direction == "left" else self.CHANGE_RIGHT
         common["target_link_id"] = self.target_link_id
         self._describe_static_change(best, debug_details)
-        self.multi_lane_planning.describe(best, debug_details)
+        self._describe_change_speed(best, debug_details)
         speed_limit = getattr(best, "safety_speed", float("inf"))
         return HighwayPlanningResult(
             best.points,
@@ -667,6 +642,7 @@ class HighwayLanePlanner(
 
 
     def reset_lateral_state(self):
+        self.entry_merge.reset()
         if self.static_corridor is not None:
             self.static_corridor.reset()
         self.state = self.KEEP

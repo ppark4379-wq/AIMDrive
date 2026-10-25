@@ -89,6 +89,22 @@ def prepare(args, output):
     return context, controller, policy
 
 
+def object_alignment_seconds(packet, control_pose):
+    """Receipt-clock approximation from the object frame to control position time.
+
+    Old publishers have no object-frame stamp: do not guess using their oldest
+    camera/IMU receipt or inference send time. Input expiry remains enforced by
+    Inputs.ready(); never extend it here or extrapolate beyond that 0.5 s budget.
+    """
+    if control_pose is None:
+        return 0.
+    observed = packet.get('object_received_ns')
+    position = (control_pose.get('selected_samples') or {}).get('gps', {}).get('received_ns')
+    if type(observed) is not int or type(position) is not int:
+        return 0.
+    return min(.5, max(0., (position - observed) / 1e9))
+
+
 def planner_inputs(packet, control_pose=None, position_sources=('GPS',), coordinates=None):
     from AIM2026.Expert.src.vehicle_state import VehicleState
     from AIM2026.Expert.src.obstacle.object_info import ObjectInfo
@@ -104,8 +120,31 @@ def planner_inputs(packet, control_pose=None, position_sources=('GPS',), coordin
     if not all(math.isfinite(float(v)) for v in values):
         raise ValueError('자차 위치·방향·속도가 유효하지 않습니다')
     vehicle = VehicleState(*values)
-    objects = [ObjectInfo(*box['center_world'], box['planning_speed_mps'], -1,
+    alignment_s = object_alignment_seconds(packet, control_pose)
+    from AIM2026.Expert.src.config.parameters.highway import UNKNOWN_OBJECT_SPEED_BOUND
+    objects = [ObjectInfo(*box['center_world'],
+        box['planning_speed_mps'] if box['planning_speed_mps'] is not None else UNKNOWN_OBJECT_SPEED_BOUND, -1,
         name='ve_tracked_unknown:'+box['motion_state'],
         is_static=box['motion_state'] == 'stationary', size_x=box['length_m'], size_y=box['width_m'],
         heading_deg=box['planning_heading_deg'], unique_id=box['track_id']) for box in packet['boxes']]
+    for obj, box in zip(objects, packet['boxes']):
+        # Confidence is independent of the nominal model/observed speed.
+        # Highway planning uses the supplied speed even before motion history
+        # matures. Keep this confidence flag without inventing zero velocity.
+        obj.motion_uncertain = (box['motion_state'] == 'uncertain'
+                                and box.get('planning_speed_source') not in ('carry_over', 'overlap_supported'))
+        obj.speed_unknown = box['planning_speed_mps'] is None
+        # Raw detections/tracker history stay at measurement time. Construct a
+        # fresh planning position each tick, shared verbatim with the RViz
+        # snapshot. Never translate static scenery by ego displacement, or use
+        # the unknown-speed bound as a measured velocity.
+        obj.observation_x, obj.observation_y = obj.position.x, obj.position.y
+        obj.position_projection_s = 0.
+        if (not obj.is_static and not obj.speed_unknown
+                and math.isfinite(obj.velocity) and math.isfinite(obj.heading_deg)):
+            yaw = math.radians(obj.heading_deg)
+            obj.position = obj.position.translate(
+                obj.velocity * math.cos(yaw) * alignment_s,
+                obj.velocity * math.sin(yaw) * alignment_s)
+            obj.position_projection_s = alignment_s
     return vehicle, objects

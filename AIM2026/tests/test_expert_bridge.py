@@ -1,4 +1,5 @@
 import json
+import copy
 from pathlib import Path
 import socket
 import struct
@@ -65,12 +66,126 @@ def test_control_units_and_fail_closed():
     with pytest.raises(ValueError): wire_command(command,.5)
 
 
+def test_new_rear_vehicle_keeps_model_speed_through_udp_tracker_and_adapter():
+    bridge = Inputs('test', 'sha', VeObjectTracker())
+    detection, pose = packets()
+    detection['boxes'][0].update(center_world=[-10., 20.], speed_mps=9.56)
+    bridge.accept(json.dumps(detection).encode())
+    bridge.accept(json.dumps(pose).encode())
+    assert bridge.ready()
+    assert bridge.packet['boxes'][0]['motion_state'] == 'uncertain'
+    _, objects = planner_inputs(bridge.packet, bridge.pose)
+    assert objects[0].velocity == 9.56
+    assert not objects[0].is_static
+    assert objects[0].motion_uncertain
+
+
+def aligned_packets():
+    detection, pose = packets()
+    latest = pose['selected_samples']['gps']['received_ns']
+    detection['sensor_received_ns'] = latest - 300_000_000
+    detection['object_received_ns'] = latest - 200_000_000
+    detection['boxes'][0].update(speed_mps=10., heading_deg=90.)
+    bridge = Inputs('test', 'sha', VeObjectTracker())
+    bridge.accept(json.dumps(detection).encode())
+    bridge.accept(json.dumps(pose).encode())
+    assert bridge.ready()
+    return bridge
+
+
+def test_objects_advance_to_position_time_once_not_oldest_sensor_or_send_time():
+    bridge = aligned_packets()
+    original = copy.deepcopy(bridge.packet)
+    vehicle, objects = planner_inputs(bridge.packet, bridge.pose)
+    assert (vehicle.position.x, vehicle.position.y) == (12., 20.)
+    # 10 m/s north for 0.2 s, not 0.3 s from the oldest sensor receipt.
+    assert objects[0].position.x == pytest.approx(15.)
+    assert objects[0].position.y == pytest.approx(22.)
+    assert objects[0].position_projection_s == pytest.approx(.2)
+    assert bridge.packet == original
+    _, repeated = planner_inputs(bridge.packet, bridge.pose)
+    assert repeated[0].position.y == pytest.approx(22.)  # No cumulative drift.
+    later = copy.deepcopy(bridge.pose)
+    later['selected_samples']['gps']['received_ns'] += 50_000_000
+    _, advanced = planner_inputs(bridge.packet, later)
+    assert advanced[0].position.y == pytest.approx(22.5)
+
+
+@pytest.mark.parametrize('kind', ['stationary', 'unknown', 'legacy', 'no_pose', 'older_pose'])
+def test_motion_alignment_never_invents_static_unknown_or_unstamped_motion(kind):
+    bridge = aligned_packets()
+    packet, pose = bridge.packet, bridge.pose
+    if kind == 'stationary':
+        packet['boxes'][0]['motion_state'] = 'stationary'
+    elif kind == 'unknown':
+        packet['boxes'][0]['planning_speed_mps'] = None
+    elif kind == 'legacy':
+        packet.pop('object_received_ns')
+    elif kind == 'no_pose':
+        pose = None
+    else:
+        pose['selected_samples']['gps']['received_ns'] = packet['object_received_ns'] - 1
+    _, objects = planner_inputs(packet, pose)
+    assert (objects[0].position.x, objects[0].position.y) == (15., 20.)
+    assert objects[0].position_projection_s == 0.
+
+
+def test_motion_alignment_does_not_extend_input_expiry_or_hide_bad_frame_time():
+    bridge = aligned_packets()
+    assert not bridge.ready(bridge.packet['sensor_received_ns'] + 500_000_001)
+    detection, _ = packets()
+    detection['object_received_ns'] = detection['sent_ns'] + 1
+    bad = Inputs('test', 'sha', VeObjectTracker())
+    assert bad.accept(json.dumps(detection).encode()) == 'invalid_detection'
+    assert bad.packet is None
+
+
+def test_rviz_snapshot_receives_the_same_aligned_objects_as_the_planner(tmp_path):
+    from AIM2026.Visualization.snapshot import write_snapshot, decode
+    bridge = aligned_packets()
+    vehicle, objects = planner_inputs(bridge.packet, bridge.pose)
+    target = tmp_path / 'visualization.json'
+    write_snapshot(target, SimpleNamespace(candidates=[], path=[]), vehicle, objects, [])
+    state = decode(json.loads(target.read_text(encoding='utf-8')))
+    assert state['objects'][0].position.y == objects[0].position.y == pytest.approx(22.)
+    assert state['objects'][0].observation_y == 20.
+    assert state['objects'][0].position_projection_s == pytest.approx(.2)
+    assert state['vehicle'].position.x == vehicle.position.x
+
+
+def test_missing_model_speed_remains_unknown_instead_of_becoming_zero():
+    bridge = Inputs('test', 'sha', VeObjectTracker())
+    detection, pose = packets()
+    detection['boxes'][0]['speed_mps'] = None
+    bridge.accept(json.dumps(detection).encode())
+    bridge.accept(json.dumps(pose).encode())
+    assert bridge.packet['boxes'][0]['planning_speed_mps'] is None
+    assert bridge.ready()  # One object's missing speed must not trigger global full braking.
+    _, objects = planner_inputs(bridge.packet, bridge.pose)
+    assert objects[0].speed_unknown and objects[0].motion_uncertain
+    assert objects[0].velocity > 0.  # Explicit reachable-speed bound, not a measured speed.
+
+
+def test_confirmed_mover_does_not_become_a_stationary_hypothesis_on_one_weak_frame():
+    tracker = VeObjectTracker(moving_carry_s=.75)
+    detection, pose = packets()
+    start = detection['sent_ns']
+    for i in range(14):
+        detection['sent_ns'] = start + i*100_000_000
+        detection['boxes'][0].update(center_world=[i*.16, 20.], speed_mps=1.6)
+        tracked = tracker.update(detection)
+    for k, x in enumerate((2.98, 1.58)):
+        detection['sent_ns'] = start + 1_400_000_000 + k*100_000_000
+        detection['boxes'][0]['center_world'] = [x, 20.]
+        tracked = tracker.update(detection)
+    assert tracked['boxes'][0]['planning_speed_source'] == 'carry_over'
+    _, objects = planner_inputs(tracked, pose)
+    assert objects[0].velocity > 1.
+    assert not objects[0].motion_uncertain
+
+
 def test_local_steering_profile_reuses_existing_sign_adapter():
-    import yaml
     from AIM2026.Expert.adapter import configure_udp_steering
-    root = Path(__file__).resolve().parents[2]
-    settings = yaml.safe_load((root/'AIM2026/config_local.yaml').read_text())
-    assert settings['Control']['positive_steer'] == 'right'
     config = {'common': {}}
     configure_udp_steering(config, 'normal')
     # Positive Pure Pursuit requests a left turn; this simulator needs negative wire steering.

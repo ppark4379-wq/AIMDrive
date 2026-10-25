@@ -6,8 +6,9 @@ unless ``static_geometry_fusion`` is enabled; then only confirmed stationary
 tracks publish a fused footprint (see ``_StaticGeometry``).
 Motion is estimated from publisher-time samples, not synchronized sensor time.
 VE scalar speed alone cannot establish motion or predict association positions.
-Unconfirmed tracks carry zero planning speed but remain explicitly uncertain;
-their observed footprints are still published to the Expert.
+Unconfirmed tracks retain a valid VE speed as a provisional estimate. Motion
+confidence and speed are separate: lack of history must not turn a closing car
+into a stationary prediction. Missing speed remains None until observed.
 """
 from collections import deque
 import math
@@ -132,10 +133,53 @@ STATIC_HOLD_MIN_STATIONARY_S = 3.   # only an object that has stood still this l
 
 
 class VeObjectTracker:
+    def _support_overlapping_motion(self, boxes, now):
+        """Retain both footprints of a duplicate detection, without inventing a stop.
+
+        Only substantial overlap with a separately confirmed moving footprint,
+        aligned axes, matching size and agreeing model speeds supplies evidence.
+        Nearby distinct cars and a low-speed/confirmed stationary box are excluded.
+        This does not remove geometry or mark motion as independently observed.
+        """
+        if not self.moving_carry_s:
+            return
+        moving = [b for b in boxes if b['motion_state'] == 'moving'
+                  and b['track_span_s'] >= .5 and b['planning_speed_mps'] >= 2.]
+        for box in boxes:
+            if (box['motion_state'] != 'uncertain' or box['planning_speed_source'] != 've_provisional'
+                    or box['speed_mps'] < 2. or box['length_m'] < 3.):
+                continue
+            for other in moving:
+                speed = other['planning_speed_mps']
+                if abs(box['speed_mps']-speed) > max(1.5, .25*speed):
+                    continue
+                yaw = math.radians(other['planning_heading_deg'])
+                if abs(math.cos(math.radians(box['heading_deg'])-yaw)) < math.cos(math.radians(5.)):
+                    continue
+                if any(max(box[k],other[k])/max(.1,min(box[k],other[k])) > 1.35
+                       for k in ('length_m','width_m')):
+                    continue
+                dx,dy = (box['center_world'][i]-other['center_world'][i] for i in range(2))
+                along = abs(dx*math.cos(yaw)+dy*math.sin(yaw))
+                across = abs(-dx*math.sin(yaw)+dy*math.cos(yaw))
+                overlap = max(0.,min(box['length_m'],other['length_m'],
+                                    (box['length_m']+other['length_m'])/2.-along)) * max(
+                    0.,min(box['width_m'],other['width_m'],(box['width_m']+other['width_m'])/2.-across))
+                if overlap < .4*min(box['length_m']*box['width_m'],other['length_m']*other['width_m']):
+                    continue
+                box['planning_speed_source'] = 'overlap_supported'
+                box['motion_support_track_id'] = other['track_id']
+                box['planning_heading_deg'] = other['planning_heading_deg']
+                velocity = (box['speed_mps']*math.cos(yaw),box['speed_mps']*math.sin(yaw))
+                track = self.tracks[box['track_id']]
+                track['velocity'] = velocity
+                track['carry'] = (now,box['speed_mps'],velocity,other['planning_heading_deg'],velocity)
+                break
+
     def __init__(self, max_gap=.75, static_geometry_fusion=False, moving_carry_s=0., slow_window_s=0., stationary_hold_s=0., provisional_static_mps=0.):
         """``moving_carry_s``: a track that was confirmed moving and only lost its evidence (no stationary
         evidence) keeps its last planning speed/velocity for this long. Slow vehicles (1-2 m/s) otherwise flip
-        to ``uncertain`` (planning speed 0) every second and the planner brakes for a phantom stop."""
+        to ``uncertain`` and fall back to the provisional model speed."""
         if not 0. <= provisional_static_mps <= .6:
             raise ValueError('provisional_static_mps must be within 0..0.6 m/s')
         if not 0. <= stationary_hold_s <= 6.:
@@ -273,15 +317,31 @@ class VeObjectTracker:
                                              velocity=(0., 0.), speed=0.)
             track = self.tracks[identity]
             history = track['history']
+            continues = False
             # Do not infer motion across a long detection gap.
             if history and now - history[-1][0] > .3:
-                history.clear()
-                track['state'] = 'uncertain'
+                dt = now - history[-1][0]
+                expected = np.asarray(track.get('velocity', (0., 0.))) * dt
+                observed = np.asarray(box['center_world']) - np.asarray(history[-1][1:])
+                continues = (self.moving_carry_s > 0. and track.get('carry')
+                             and dt <= self.max_gap and np.linalg.norm(expected) >= .35
+                             and np.linalg.norm(observed-expected) <= max(.3, .2*np.linalg.norm(expected)))
+                if not continues:
+                    history.clear()
+                    track['state'] = 'uncertain'
             history.append((now, *box['center_world']))
             window = max(.8, self.slow_window_s)
             while len(history) > 2 and now - history[0][0] > window:
                 history.popleft()
             motion = _position_motion([h for h in history if now - h[0] <= .8] if self.slow_window_s else history)
+            if continues and not motion['coherent']:
+                # A confirmed mover observed farther along its predicted path
+                # supplies new displacement evidence even at 2--3 Hz. Repeated
+                # 0.4 s intervals must not erase all history at every frame.
+                velocity = observed / dt
+                motion.update(coherent=True, velocity=tuple(map(float, velocity)),
+                              speed_mps=float(np.linalg.norm(velocity)),
+                              displacement_m=float(np.linalg.norm(observed)))
             span, measured_speed = motion['span_s'], motion['speed_mps']
             spatial_moving = motion['coherent']
             vx, vy = motion['velocity']
@@ -321,7 +381,9 @@ class VeObjectTracker:
                     and motion['path_efficiency'] >= .6 and direction_agreement >= .9
                     and motion['residual_m'] <= max(.2, .2*motion['displacement_m'])):
                 spatial_moving = True
-            speed, source = 0., 'unconfirmed'
+            speed = (float(raw_speed) if raw_speed is not None
+                     and math.isfinite(raw_speed) and raw_speed >= 0. else None)
+            source = 've_provisional' if speed is not None else 'speed_unavailable'
             track['state'] = 'uncertain'
             if spatial_moving:
                 track['state'] = 'moving'
@@ -334,12 +396,12 @@ class VeObjectTracker:
                   and motion['displacement_m'] < .3 and motion['latest_deviation_m'] <= .25
                   and measured_speed < .6):
                 track['state'] = 'stationary'
-                source = 'stationary_history'
+                speed, source = 0., 'stationary_history'
             elif (self.provisional_static_mps and len(history) >= 2 and span >= .2 - 1e-9
                   and raw_speed is not None and raw_speed <= self.provisional_static_mps
                   and motion['radius_m'] <= .5 and motion['displacement_m'] < .4 and measured_speed < .8):
                 track['state'] = 'stationary'
-                source = 'provisional_stationary'
+                speed, source = 0., 'provisional_stationary'
             if self.stationary_hold_s:
                 held = self._hold_stationary(track, box, now, spatial_moving, measured_speed)
                 if held:
@@ -349,19 +411,22 @@ class VeObjectTracker:
             if spatial_moving:
                 track['carry'] = (now, speed, (vx, vy), box['heading_deg'], motion['velocity'])
             elif (self.moving_carry_s > 0. and track['state'] == 'uncertain' and track.get('carry')
-                    and now - track['carry'][0] <= self.moving_carry_s):
+                    and now - track['carry'][0] <= self.moving_carry_s
+                    and (raw_speed is None or raw_speed >= .5 * track['carry'][1])):
                 # Evidence is weak, not contradictory: stationary evidence would have set state 'stationary'.
                 speed, source, carried = track['carry'][1], 'carry_over', True
             heading = box['heading_deg']
-            if spatial_moving:
+            if spatial_moving or carried:
                 # An OBB has a 180-degree ambiguity; resolve its forward sign
                 # from observed motion without rotating/changing the footprint.
                 angle = math.radians(heading)
-                if vx * math.cos(angle) + vy * math.sin(angle) < 0.:
+                direction = (vx, vy) if spatial_moving else track['carry'][2]
+                if direction[0] * math.cos(angle) + direction[1] * math.sin(angle) < 0.:
                     heading = (heading + 360.) % 360. - 180.
             velocity = (vx, vy) if spatial_moving else (track['carry'][2] if carried else (0., 0.))
             # Association and motion keep using the raw box below.
-            track.update(seen=now, xy=box['center_world'], box=box, velocity=velocity, speed=speed)
+            track.update(seen=now, xy=box['center_world'], box=box, velocity=velocity,
+                         speed=speed if speed is not None else 0.)
             emitted = box
             if self.static_geometry_fusion:
                 if spatial_moving:
@@ -381,7 +446,8 @@ class VeObjectTracker:
                                planning_speed_source=source, observed_speed_mps=measured_speed,
                                motion_fit_residual_m=motion['residual_m'],
                                motion_path_efficiency=motion['path_efficiency']))
-        policy = 'world_position_supported_speed_v3_association'
+        self._support_overlapping_motion(output, now)
+        policy = 'world_position_supported_speed_v4_provisional_ve'
         if self.static_geometry_fusion:
             policy += '+stationary_geometry_fusion_v1'
         return dict(packet, boxes=output, tracking_policy=policy)

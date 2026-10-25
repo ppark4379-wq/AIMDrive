@@ -46,7 +46,8 @@ LANE_CHANGE_PREDICT_ACCEL = 1.5      # 변경 중 속도 예측 가속도 [m/s^2
 LANE_CHANGE_PREDICT_ACCEL_MAX = 3.0  # Also check faster-than-nominal acceleration toward a front vehicle.
 LANE_CHANGE_PREDICT_DECEL = 3.0      # 변경 중 속도 예측 감속도 [m/s^2]
 LANE_CHANGE_LAUNCH_SPEED = 8.0       # 요청 속도 없는 정지 상태 호환 호출의 예측 목표 [m/s]
-LANE_CHANGE_BUMPER_MARGIN = 5.0      # 미래 목표 차선 앞뒤 최소 범퍼 여유 [m]
+LANE_CHANGE_BUMPER_MARGIN = 4.0      # 일반 차선변경 미래 앞뒤 범퍼 여유 [m]; 411->409는 전용값 사용
+UNKNOWN_OBJECT_SPEED_BOUND = 30.0  # Missing object speed: prediction bound, not a measurement [m/s]
 LANE_CHANGE_ABORT_MAX_LATERAL = 0.8  # 뒤차 위험 시 원래 차선으로 복귀를 검토할 횡이동 [m]
 LANE_CHANGE_RETURN_DISTANCE = 25.0  # 아직 진입 전일 때 작은 횡변위를 되돌릴 거리 [m]
 STATIC_LOOKAHEAD_MIN = 85.0          # 정적 장애물 회피를 미리 준비할 최소 거리 [m]
@@ -133,6 +134,37 @@ MERGE_EGO_TAKEOVER_TIME_MARGIN = 0.2 # 상대차 우선권을 자차로 바꾸�
 # =============================================================================
 # 5. 첫 번째 합류: 진입 영역·양보·상대차 관측 소실 처리
 # =============================================================================
+# 411 진입차선 → 바로 왼쪽 409. 링크 끝(y=89.20)이 아닌 실측 끝을 사용한다.
+# Target selection / following, ONLY for 411 -> 409 (distances along lane 409).
+ENTRY_MERGE_SEARCH_FRONT = 30.0      # target-selection range ahead [m]
+ENTRY_MERGE_SEARCH_REAR = 15.0       # target-selection range behind [m]; safety checks include all observations
+ENTRY_MERGE_TARGET_HOLD = 0.5        # bounded target prediction through a detection dropout [s]
+ENTRY_MERGE_REASSOC_DISTANCE = 1.5   # unique position match required after an ID change [m]
+ENTRY_MERGE_REASSOC_SPEED = 3.5      # maximum speed difference for that match [m/s]
+ENTRY_MERGE_SPEED_FILTER_TIME = 0.35 # smooth the following reference; raw hazards remain checked [s]
+ENTRY_MERGE_FOLLOW_ACCEL = 2.0       # following target-speed rise [m/s^2]
+ENTRY_MERGE_FOLLOW_DECEL = 2.0       # following target-speed fall, not emergency braking [m/s^2]
+ENTRY_MERGE_HANDOFF_TIME = 2.0       # continue the same following command after alignment [s]
+ENTRY_MERGE_SOURCE = "A2256W000411"
+ENTRY_MERGE_TARGET = "A2256W000409"
+ENTRY_MERGE_START_Y = 251.20          # 이 지점부터 빈 틈을 찾으면 즉시 합류 [map m]
+ENTRY_MERGE_END_Y = 140.0            # 차체까지 왼쪽으로 이동을 마칠 최종 경계 [map m]
+ENTRY_MERGE_END_MARGIN = 2.0         # 최종 경계 앞 차체 여유 [m]
+ENTRY_MERGE_MIN_DISTANCE = 22.0      # 끝에서 대기 후 출발할 저속 변경 거리 [m]
+ENTRY_MERGE_CHANGE_TIME = 4.5        # 속도가 높으면 변경 경로를 길게 만들어 감속 없이 진입 [s]
+ENTRY_MERGE_CRUISE_SPEED = 10.0      # 합류 시작 전 준비 속도 상한(36km/h); 완료 후 도로 속도로 복귀
+ENTRY_MERGE_COMMITTED_HORIZON = 2.0  # 시작 후 남은 변경 시간+완료 여유를 검사하되 최소 확보 [s]
+ENTRY_MERGE_STOP_TOLERANCE = 0.6     # 대기점 직전 정지 유지 범위 [m]
+ENTRY_MERGE_APPROACH_DECEL = 1.5     # 옆 차선이 막혔을 때 한 번에 접근 감속 [m/s²]
+ENTRY_MERGE_LATERAL_ACCEL = 2.0      # 짧은 변경의 속도 결정에 쓰는 횡가속 상한 [m/s²]
+ENTRY_MERGE_OBSTACLE_MARGIN = 0.75   # 시작 전 정지/미확정 객체 박스 흔들림에 추가할 공간 여유 [m]
+ENTRY_MERGE_FRONT_GAP = 2.0          # 411->409 초기/진행 중 미래 앞 범퍼 여유 및 추종 기준 [m]
+ENTRY_MERGE_FOLLOW_RESERVE = 0.0     # 최소 간격에 도달하기 전 속도가 같아지는 교착 방지 [m]
+ENTRY_MERGE_GAP_TIME = 2.0           # 합류 전에 앞차 뒤 간격을 확보하는 속도 응답 [s]
+ENTRY_MERGE_GAP_SPEED_DELTA = 3.0    # 간격 확보를 위해 앞차보다 낮출 속도의 최대 차이 [m/s]
+ENTRY_MERGE_REAR_GAP = 8.0           # 411->409 초기/진행 중 미래 뒤 범퍼 여유; 접근속도 여유 추가 [m]
+ENTRY_MERGE_LAUNCH_P_GAIN = 0.8      # 전체 가속 궤적 검증 후 대기 상태에서 바로 출발
+
 PREDICTIVE_MERGE_POINT = (64.35, 132.39) # 합류 충돌 영역 중심의 전역 (x, y) [m]
 PREDICTIVE_MERGE_POINT_Z = 29.86       # 합류 영역 표시용 전역 높이 [m]
 PREDICTIVE_MERGE_BRAKE_START_POINT = (63.06, 179.63) # 양보 감속 시작 기준점 전역 (x, y) [m]

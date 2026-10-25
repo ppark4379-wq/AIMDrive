@@ -17,7 +17,7 @@ from AIM2026.UDP.VehicleStatus import VehicleStatusReceiver, CompetitionVehicleS
 from AIM2026.UDP.Manager import UDPManager
 from AIM2026.UDP.Pose import PoseSender, decode_pose
 from AIM2026.UDP.Detection import DetectionSender, EgoPose, decode, DR_POSITION
-from AIM2026.Inference.main import VePublisher, CAMERAS
+from AIM2026.Inference.main import VePublisher, CAMERAS, aligned_status
 from AIM2026.Inference.sensors.position import position_at_frame, position_identity
 
 
@@ -180,10 +180,12 @@ def test_detection_wire_preserves_dr_identity_and_requires_it():
     stamp = time.monotonic_ns()-10_000_000
     identity = dict(position_mode='dead_reckoning', received_ns=stamp)
     packet = sender.send([], EgoPose(0.,0.,0.,0.,1.), stamp/1e9,
-                         ego_position_source=DR_POSITION, position_identity=identity)
+                         ego_position_source=DR_POSITION, position_identity=identity,
+                         object_received_at=(stamp+2_000_000)/1e9)
     decoded = decode(json.dumps(packet).encode())
     assert decoded.ego_position_source == DR_POSITION
     assert decoded.position_identity == identity
+    assert decoded.object_received_ns == round((stamp+2_000_000)/1e9*1e9)
     with pytest.raises(ValueError, match='provenance'):
         sender.send([], EgoPose(0.,0.,0.,0.,1.), stamp/1e9, ego_position_source=DR_POSITION)
 
@@ -207,6 +209,36 @@ def test_publisher_rejects_unavailable_provider_even_when_receipt_is_fresh():
     assert not publisher._fresh(invalid, time.monotonic())
 
 
+def test_status_source_alignment_interpolates_bounded_bracket_without_extending_freshness():
+    # Recorded 60--70 ms MORAI status intervals left holes in a 50 ms causal window.
+    left = ReceivedSample(dict(speed=10.), 20., 1, 100.)
+    right = ReceivedSample(dict(speed=10.7), 20.07, 2, 100.07)
+    record, method = aligned_status((left, right), 100.06)
+    assert method == 'interpolated_lidar_source_100ms'
+    assert record.value['speed'] == pytest.approx(10.6)
+    assert record.source_time == 100.06
+    assert record.received_at == left.received_at
+    assert left.value['speed'] == 10.
+    assert aligned_status((left, right), 100.02)[0] is left
+    assert aligned_status((left,), 100.06) == (None, None)  # No extrapolation.
+    distant = ReceivedSample(dict(speed=12.), 20.2, 3, 100.2)
+    assert aligned_status((left, distant), 100.06) == (None, None)
+    reset_clock = ReceivedSample(dict(speed=10.7), 20.07, 2, 100.07, clock_epoch=1)
+    assert aligned_status((left, reset_clock), 100.06) == (None, None)
+    publisher = VePublisher(None, None, None)
+    assert not publisher._fresh(record, 20.51)
+    lidar = ReceivedSample('points', 20.07, 1, None,
+                           dict(source_stamp_us_within_hour=100_060_000))
+    records = {name: (ReceivedSample('image', 20.07, 1, None),) for name in CAMERAS}
+    records.update(vehicle_status=(left, right),
+        imu=(ReceivedSample(dict(quaternion=(0., 0., 0., 1.)), 20.06, 1, 100.06),),
+        gps=(ReceivedSample(dict(dead_reckoning=True), 20.06, 1, 100.06,
+                            dict(position_mode='dead_reckoning')),))
+    selected, method = publisher._inputs(records, lidar, 20.08)
+    assert method == 'interpolated_lidar_source_100ms'
+    assert selected['vehicle_status'].value['speed'] == pytest.approx(10.6)
+
+
 def test_publisher_uses_frame_time_dr_and_sends_its_provenance(monkeypatch):
     now=1000.
     monkeypatch.setattr('AIM2026.Inference.main.time.monotonic', lambda: now)
@@ -228,6 +260,7 @@ def test_publisher_uses_frame_time_dr_and_sends_its_provenance(monkeypatch):
     assert udp.send_detection.call_args.kwargs['ego_position_source']==DR_POSITION
     assert udp.send_detection.call_args.kwargs['position_identity']['received_ns']==identity['received_ns']
     assert udp.send_detection.call_args.args[2]==now-.02  # Include IMU in freshness bound.
+    assert udp.send_detection.call_args.kwargs['object_received_at']==now-.01  # LiDAR frame, not oldest IMU.
 
 
 @pytest.mark.parametrize('source_time', [10.21, None])

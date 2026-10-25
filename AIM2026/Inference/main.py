@@ -5,7 +5,8 @@ python AIM2026/Inference/main.py                # run until Ctrl+C
 python AIM2026/Inference/main.py --seconds 60
 
 For every new LiDAR frame: the newest four cameras, the vehicle-status speed
-causal to the LiDAR source time (<= 50 ms, the trained contract), the IMU
+aligned to the LiDAR source time (causal <= 50 ms, or interpolation between
+received samples bracketing that time within 100 ms), the IMU
 heading and the GPS fix -> VisionRuntime -> one Detection packet. The control
 pose (GPS / IMU / status, 50 Hz) is sent independently by the UDP manager.
 Missing or stale inputs send a not-ready packet, never old boxes. This process
@@ -34,6 +35,7 @@ LIDAR_STAMP_RESOLUTION_S = 1e-6  # LiDAR stamps are whole microseconds; status s
 # 50 ms window misses ~5% of LiDAR frames. An older sample (<= 100 ms) is rotated to
 # the LiDAR time with its own body gyro rate instead of declaring the frame unusable.
 IMU_PROPAGATION_S = 0.10
+STATUS_INTERPOLATION_S = 0.10  # bounded bracketing only; never extrapolate speed
 
 
 def _causal(records, source_time, tolerance=SPEED_ALIGNMENT_S):
@@ -45,6 +47,38 @@ def _causal(records, source_time, tolerance=SPEED_ALIGNMENT_S):
     candidates = [r for r in records if r.source_time
                   and -LIDAR_STAMP_RESOLUTION_S <= source_time - r.source_time <= tolerance + 1e-9]
     return max(candidates, key=lambda r: r.source_time) if candidates else None
+
+
+def aligned_status(records, source_time):
+    """Use a causal sample, else interpolate two already received speed samples.
+
+    A render-limited simulator may publish status every 60--70 ms. Dropping
+    each LiDAR time in the last 10--20 ms of that interval causes false input
+    outages. A bounded bracket estimates the speed at the actual LiDAR time;
+    it neither extends freshness limits nor assumes an old speed is current.
+    """
+    causal = _causal(records, source_time)
+    if causal is not None:
+        return causal, 'causal_lidar_source_50ms'
+    before = [r for r in records if r.source_time and r.source_time < source_time]
+    after = [r for r in records if r.source_time and r.source_time >= source_time]
+    if not before or not after:
+        return None, None
+    left, right = max(before, key=lambda r: r.source_time), min(after, key=lambda r: r.source_time)
+    span = right.source_time-left.source_time
+    if not 0 < span <= STATUS_INTERPOLATION_S or left.clock_epoch != right.clock_epoch:
+        return None, None
+    a, b = float(left.value['speed']), float(right.value['speed'])
+    if not (math.isfinite(a) and math.isfinite(b)):
+        return None, None
+    ratio = (source_time-left.source_time)/span
+    value = dict(left.value, speed=a+(b-a)*ratio)
+    return dataclasses.replace(left, value=value, source_time=source_time,
+        source_stamp_ns=int(round(source_time*1e9)),
+        received_at=min(left.received_at, right.received_at),
+        meta=dict(left.meta or {}, speed_interpolation=dict(
+            before_source_time=left.source_time, after_source_time=right.source_time,
+            before_sequence=left.sequence, after_sequence=right.sequence))), 'interpolated_lidar_source_100ms'
 
 
 def propagate_imu(value, dt):
@@ -126,8 +160,8 @@ class VePublisher:
                 lidar_time = resolve_hour_stamp(stamp_us, reference.source_time)
             except (ValueError, TypeError):
                 missing.append('lidar_source_clock')
-            chosen['vehicle_status'] = _causal(statuses, lidar_time) if lidar_time else None
-            alignment = 'causal_lidar_source_50ms'
+            chosen['vehicle_status'], alignment = (aligned_status(statuses, lidar_time)
+                                                   if lidar_time else (None, None))
             if lidar_time and chosen['vehicle_status'] is None:
                 missing.append('vehicle_status_source_alignment')
         if not self._fresh(chosen['vehicle_status'], now) and 'vehicle_status_source_alignment' not in missing:
@@ -179,6 +213,7 @@ class VePublisher:
         sent_at = time.monotonic()
         self.udp.send_detection(result.boxes, ego_pose, oldest, signal=result.signal,
                                 native_signal=result.native_signal, position_identity=identity,
+                                object_received_at=lidar.received_at,
                                 ego_position_source='GPS_dead_reckoning'
                                 if identity['position_mode']=='dead_reckoning' else 'GPS')
         # The sender downgrades a frame whose sensors aged past 0.5 s during inference.

@@ -196,86 +196,98 @@ class LaneChangeMixin:
     def _evaluate_lane_change(self, candidate, vehicle_state, entries, matches, committed=False):
         if not candidate.valid or len(candidate.points) < 2:
             return
-        if (not committed and getattr(candidate, "static_escape", False)
-                and vehicle_state.velocity >= parameters.STATIC_CHANGE_MAX_SPEED
-                and not hasattr(candidate, "maneuver_speed_limit")):
-            # Keep the entry speed through lateral motion instead of suddenly
-            # accelerating toward a 100 km/h global-route request. Slower
-            # starts use the existing path ceiling and acceleration checks.
-            candidate.maneuver_speed_limit = min(
-                self._requested_speed,
-                max(vehicle_state.velocity, parameters.STATIC_CHANGE_MAX_SPEED))
-        target_speed = min(self._requested_speed,
-                           getattr(candidate, "speed_limit", float("inf")),
-                           getattr(candidate, "maneuver_speed_limit", float("inf")))
-        conflict = self.lane_change_safety.check(candidate, vehicle_state, entries, matches, target_speed,
-                                                  committed=committed)
-        candidate.prediction_conflict = conflict
-        candidate.requested_conflict = conflict
-        candidate.safety_speed = float("inf")
-        candidate.lane_change_verified = conflict is None
-        if conflict is None:
-            held_limit = getattr(candidate, "maneuver_speed_limit", float("inf"))
-            candidate.safety_speed = min(
-                getattr(candidate, "speed_limit", float("inf")),
-                held_limit if held_limit < self._requested_speed else float("inf"))
-            candidate.collision_time = float("inf")
-            return
-        source_lead_conflict = any(
-            match.lane_link.id == getattr(candidate, "source_link_id", None)
-            and getattr(entry["object_info"], "unique_id", None) == conflict.get("object_id")
-            and not self.obstacle_motion.is_static(entry["object_info"])
-            for entry, match in matches)
-        if (not committed and (getattr(candidate, "static_escape", False) or source_lead_conflict)
-                and (not conflict.get("rear", False) or vehicle_state.velocity <= 2.0)
-                and conflict["kind"] in ("collision", "gap", "turn_speed") and conflict["time"] > 0.0):
-            # A cruise-speed conflict need not invalidate the lateral path.
-            # Search bounded positive speeds before commitment, always checking
-            # the complete maneuver, acceleration, front traffic AND rear traffic.
-            # Keep the selected cap until completion so the next tick cannot
-            # accelerate back to the profile that was rejected here.
-            speeds = {2.0, max(0.0, vehicle_state.velocity)}
-            speeds.update(max(0.0, float(entry["object_info"].velocity))
-                          for entry in entries)
-            speeds.update(target_speed - 2.0 * step
-                          for step in range(1, int(target_speed / 2.0) + 1))
-            for speed in sorted((v for v in speeds if 2.0 <= v < target_speed), reverse=True):
-                if self.lane_change_safety.check(
-                        candidate, vehicle_state, entries, matches, speed,
-                        require_completion=True, committed=False) is None:
-                    candidate.maneuver_speed_limit = speed
-                    candidate.safety_speed = speed
-                    candidate.prediction_conflict = None
-                    candidate.lane_change_verified = True
-                    candidate.collision_time = float("inf")
-                    self._last_lane_checks.append(
-                        "{} gap-speed={:.1f}km/h cruise={:.1f}km/h".format(
-                            candidate.direction, speed * 3.6, target_speed * 3.6))
-                    return
+        return self._evaluate_speed_hold(candidate, vehicle_state, entries, matches, committed)
+
+    def _evaluate_speed_hold(self, candidate, ego, entries, matches, committed):
+        """Do not slow to fit a gap; allow separately validated acceleration.
+
+        The dedicated entry-merge follower keeps its separate policy. Geometry limits are
+        admission checks, not a request to brake halfway through a lane change.
+        """
+        candidate.hold_change_speed = True
+        if not hasattr(candidate, 'change_cruise_speed'):
+            candidate.change_cruise_speed = (
+                max(0., ego.velocity) if ego.velocity > parameters.ACC_STOPPED_SPEED
+                else min(self._requested_speed, getattr(candidate, 'speed_limit', float('inf'))))
+            candidate.change_entry_speed = candidate.change_cruise_speed
+        speed = candidate.change_cruise_speed
+        end = min(range(len(candidate.points)),
+                  key=lambda i: candidate.points[i].distance(candidate.transition_end))
+        curvature = self._max_curvature(candidate.points[:end+1])
+        curve_limit = math.sqrt(parameters.STATIC_CHANGE_LATERAL_ACCEL / max(curvature, 1e-6))
+        if speed <= .05 or speed > getattr(candidate, 'speed_limit', float('inf')) + 1e-6:
+            conflict = dict(time=0., rear=False, kind='change_speed_not_supported', speed=speed)
+        else:
+            conflict = self.lane_change_safety.check(candidate, ego, entries, matches, speed,
+                                                    committed=committed)
+        if conflict is None and not committed:
+            if speed**2 * curvature > parameters.STATIC_CHANGE_LATERAL_ACCEL:
+                conflict = dict(time=0., rear=False, kind='change_speed_not_supported', speed=speed)
+        candidate.acceleration_conflict = None
         if committed:
-            # Any speed reduction must also pass the rear-vehicle check. Never
-            # assume an instantaneous slowdown when predicting a following car.
-            target = min(target_speed, vehicle_state.velocity)
-            while target >= 0.0:
-                if self.lane_change_safety.check(candidate, vehicle_state, entries, matches,
-                                                 target, require_completion=False, committed=True) is None:
-                    candidate.safety_speed = target
-                    candidate.prediction_conflict = None
-                    candidate.lane_change_verified = True
-                    candidate.collision_time = float("inf")
-                    return
-                if target == 0.0:
-                    break
-                target = max(0.0, target - 2.0)
-        candidate.valid = False
-        candidate.cost = float("inf")
-        candidate.collision_time = conflict["time"]
-        self._last_lane_checks.append("{} blocked-{} t={:.1f}".format(
-            candidate.direction, conflict["kind"], conflict["time"]))
+            # Entry speed is a lower reference, not a permanent low-speed cap.
+            # Test acceleration on the SAME lateral path, against all front/rear
+            # traffic and both acceleration envelopes, before raising its target.
+            faster = min(self._requested_speed, curve_limit,
+                         getattr(candidate, 'speed_limit', float('inf')))
+            if faster > speed + .05:
+                acceleration_conflict = self.lane_change_safety.check(
+                    candidate, ego, entries, matches, faster, committed=True)
+                candidate.acceleration_conflict = acceleration_conflict
+                if acceleration_conflict is None:
+                    speed = candidate.change_cruise_speed = faster
+                    conflict = None
+        # A rear-only conflict must not mask a simultaneous new front hazard.
+        rear_conflict = conflict
+        remaining = list(entries)
+        while committed and conflict and conflict.get('rear'):
+            identity = conflict.get('object_id')
+            reduced = [e for e in remaining
+                       if getattr(e['object_info'], 'unique_id', None) != identity]
+            if identity is None or len(reduced) == len(remaining):
+                break
+            remaining = reduced
+            conflict = self.lane_change_safety.check(candidate, ego, remaining, matches, speed,
+                                                    committed=True)
+        conflict = conflict or rear_conflict
+        candidate.prediction_conflict = candidate.requested_conflict = conflict
+        candidate.lane_change_verified = conflict is None
+        candidate.safety_speed = speed if conflict is None else float('inf')
+        candidate.collision_time = conflict['time'] if conflict else float('inf')
+        if conflict:
+            candidate.valid = False
+            candidate.cost = float('inf')
+            self._last_lane_checks.append('{} blocked-{} at held speed={:.2f}m/s'.format(
+                candidate.direction, conflict['kind'], speed))
+
+    @staticmethod
+    def _describe_change_speed(candidate, details):
+        if getattr(candidate, 'hold_change_speed', False):
+            details['lane_change_cruise'] = dict(
+                speed=candidate.change_cruise_speed,
+                entry_speed=getattr(candidate, 'change_entry_speed', candidate.change_cruise_speed),
+                acceleration_conflict=getattr(candidate, 'acceleration_conflict', None),
+                verified=getattr(candidate, 'lane_change_verified', False),
+                maintain_speed=(candidate.valid or bool(
+                    (getattr(candidate, 'prediction_conflict', None) or {}).get('rear'))),
+                conflict=getattr(candidate, 'prediction_conflict', None))
 
     def _result_during_change(
         self, candidate, nearest_distance, ttc, acc_target_velocity, common
     ):
+        self._describe_change_speed(candidate, common['debug_details'])
+        if getattr(candidate, 'hold_change_speed', False):
+            conflict = getattr(candidate, 'prediction_conflict', None)
+            if candidate.valid or (conflict and conflict.get('rear')):
+                # The actual selected path has its own complete traffic check.
+                # Old-lane ACC and generic merge pacing cannot lower this speed.
+                return HighwayPlanningResult(
+                    candidate.points, active=True, acc_override=True,
+                    acc_target_velocity=candidate.change_cruise_speed,
+                    highway_state=self.state, selected_offset=candidate.offset,
+                    candidates=[candidate],
+                    reason=('highway_lane_change_rear_risk' if conflict
+                            else 'highway_lane_change_in_progress'), **common)
         collision_during_change = not candidate.valid
         urgent_front_acc = (
             not getattr(candidate, "lane_change_verified", False)

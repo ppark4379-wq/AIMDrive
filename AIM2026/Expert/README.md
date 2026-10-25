@@ -80,3 +80,30 @@ main.py → runtime.py
 센서 수신·명령 송신은 `AIM2026/UDP`, 위치 추정·좌표변환은 `AIM2026/GPSJamming`이 담당한다. Expert 안의 `network`, `localization` 폴더는 제거했다. `Point`는 `src/interfaces/geometry.py`, `PathManager`는 `src/planning/common/reference_path.py`에서 직접 가져온다. `interfaces`는 통신 구현이 아니라 판제에 필요한 자료형이다.
 
 기존 시나리오 도구가 사용하는 ROS 구현·실행기는 [legacy_expert/ros](../../MoraiDrive/scenario_runner/legacy_expert/ros/README.md)로 옮겼다. 현재 UDP 실행에서는 불러오지 않는다. `ros/`와 `src/visualization/`은 RViz 시각화에 필요하므로 유지한다.
+# 고속도로 시나리오 테스트
+
+저장소 루트에서 WSL로 실행한다.
+
+```bash
+bash AIM2026/Expert/run_highway.sh --check  # 센서 연결·주행 없이 구성 검사
+bash AIM2026/Expert/run_highway.sh          # 시나리오 배치와 통합 Expert 실행
+```
+
+기존 `MoraiDrive/scenario_runner`의 `full_loop_highway` 구간(약 825m),
+`full_loop.yaml`의 3개 NPC SpawnPoint·날씨 설정을 재사용한다.
+이 검증 실행에서는 `highway_merge_static_vehicle.enabled=False`로 덮어써 합류 정차 차량을 생성하지 않는다.
+원본 시나리오 YAML과 일반 주행 설정은 변경하지 않는다.
+예전 `run_gt_scenario.sh highway`, `run_ve_scenario.sh highway`의 ROS/GT 주행 프로세스는
+이 명령으로 시작하지 않는다. `highway_tunnel`은 터널까지 포함한 별도 시험이다.
+
+실행 흐름은 `run_highway.sh → run_highway.py → AIM2026/main.py → Expert/main.py`
+이며, 센서 수신·인지 추론·위치 추정·UDP 제어는 일반 주행과 같은 런타임을 사용한다.
+시나리오는 gRPC로 차량/NPC를 배치하고 경로를 전달하며 진행을 관찰한다.
+완주 또는 Ctrl+C 시 종료 파일을 통해 Expert와 인지 프로세스를 함께 정리한다.
+초기부터 지속되는 MORAI `Ego` 단독 충돌 표시는 별도 기록하며,
+이를 포함한 엄격한 충돌 검사는 `--strict-collisions`로 실행한다.
+
+일반 주행은 저장소 루트에서 `python3 AIM2026/main.py`(WSL) 또는
+`python AIM2026/main.py`(Windows)로 실행한다. 설치된 `lmdrive`, `vldrive` 순서로
+Windows Python을 선택한다. 모델·포트 설정은 같은 `AIM2026/config_local.yaml`을 쓴다.
+검증이 끝나 테스트 런처를 제거해도 일반 `main.py` 주행 경로는 그대로 유지된다.

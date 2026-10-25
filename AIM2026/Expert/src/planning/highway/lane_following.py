@@ -60,10 +60,8 @@ class LaneFollowingMixin:
                         return successor_match
             target_max_distance = parameters.MANEUVER_TARGET_MAX_DISTANCE
             if (self.state in (self.CHANGE_LEFT, self.CHANGE_RIGHT)
-                    and (getattr(self.active_candidate, "lane_change_count", 1) == 2
-                         or getattr(self.active_candidate, 'static_corridor', False))):
-                # The verified path spans two legal adjacent lanes. Retain its
-                # final target while ego is still on the original/via lane.
+                    and getattr(self.active_candidate, 'static_corridor', False)):
+                # Retain the verified adjacent corridor target during motion.
                 target_max_distance = max(target_max_distance, abs(self.active_candidate.offset) + 1.0)
             if target_match.distance <= target_max_distance:
                 return target_match
@@ -109,13 +107,14 @@ class LaneFollowingMixin:
                 - 0.5 * parameters.VEHICLE_LENGTH
                 - 0.5 * object_length,
             )
-            closing_speed = max(
-                0.0, vehicle_state.velocity - float(object_info.velocity)
-            )
+            # Use available speed consistently with trajectory prediction.
+            # A missing speed still needs a conservative following bound.
+            lead_speed = 0.0 if getattr(object_info, 'speed_unknown', False) else max(0.0, float(object_info.velocity))
+            closing_speed = max(0.0, vehicle_state.velocity - lead_speed)
             object_ttc = gap / closing_speed if closing_speed > 0.1 else float("inf")
             if gap < nearest:
                 nearest = gap
-                self._front_lead_speed = max(0.0, float(object_info.velocity))
+                self._front_lead_speed = lead_speed
             minimum_ttc = min(minimum_ttc, object_ttc)
 
         # Link matching can briefly fail at merges/splits. Keep ACC available
@@ -141,13 +140,12 @@ class LaneFollowingMixin:
             )
             if gap > parameters.FRONT_RELEVANCE_DISTANCE:
                 continue
-            closing_speed = max(
-                0.0, vehicle_state.velocity - float(object_info.velocity)
-            )
+            lead_speed = 0.0 if getattr(object_info, 'speed_unknown', False) else max(0.0, float(object_info.velocity))
+            closing_speed = max(0.0, vehicle_state.velocity - lead_speed)
             object_ttc = gap / closing_speed if closing_speed > 0.1 else float("inf")
             if gap < nearest:
                 nearest = gap
-                self._front_lead_speed = max(0.0, float(object_info.velocity))
+                self._front_lead_speed = lead_speed
             minimum_ttc = min(minimum_ttc, object_ttc)
         return nearest, minimum_ttc
 

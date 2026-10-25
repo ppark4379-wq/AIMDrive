@@ -33,6 +33,17 @@ def target_speed(self, vehicle_state, local_path, planning_path, lattice_result,
     planned_velocity = self._second_merge_slowdown_band(
         planned_velocity, vehicle_state
     )
+    entry_merge = lattice_result.debug_details.get('entry_merge', {})
+    if entry_merge.get('phase') in ('MERGING', 'COMPLETE', 'FOLLOWING'):
+        # Keep the verified first-merge speed instead of re-reading curvature
+        # on the abandoned source path. Signals/pedestrians/ACC below still win.
+        planned_velocity = max(planned_velocity, entry_merge['target_speed'])
+    change_cruise = lattice_result.debug_details.get('lane_change_cruise')
+    if change_cruise:
+        # Ordinary lane changes keep their validated entry speed. The global
+        # route still follows the abandoned lane; its curvature must not brake
+        # this maneuver. Legal-zone/terminal limits and hazards below still win.
+        planned_velocity = min(change_cruise['speed'], self.path_manager.get_velocity_without_curvature())
 
     # adaptive cruise control를 활용한 속도 계획
     if curvature_bypass:

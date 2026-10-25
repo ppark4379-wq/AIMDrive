@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""RViz MarkerArray publisher for the GT-based lattice planner."""
+"""RViz markers for Expert planning and the supplied perception snapshot."""
 
 import math
 
@@ -97,6 +97,25 @@ class LatticeRvizVisualizer:
         self._set_color(guard, 1.0, 0.8, 0.0, 0.9)
         guard.points = [RosPoint(x=x, y=y, z=.1) for x, y in guard_points]
         marker_array.markers.append(guard)
+        merge = result.debug_details.get('entry_merge', {})
+        search = self._new_marker('map', stamp, 'merge_search_range', 0, Marker.LINE_STRIP)
+        polygon = merge.get('search_polygon', [])
+        search.action = Marker.ADD if polygon else Marker.DELETE
+        search.scale.x = .18
+        self._set_color(search, 1., .8, 0., .95)
+        search.points = [RosPoint(x=x, y=y, z=.18) for x, y in polygon]
+        marker_array.markers.append(search)
+        label = self._new_marker('map', stamp, 'merge_follow_target', 0, Marker.TEXT_VIEW_FACING)
+        label.action = Marker.ADD if polygon else Marker.DELETE
+        label.pose.position.x = vehicle_state.position.x
+        label.pose.position.y = vehicle_state.position.y
+        label.pose.position.z = 3.
+        label.scale.z = .55
+        label.text = '411 -> 409 | {} | target {}\nrange +{} / -{} m | {}'.format(
+            merge.get('phase', ''), merge.get('lead_id'), merge.get('search_front', ''),
+            merge.get('search_rear', ''), merge.get('target_event', ''))
+        self._set_color(label, 1., .25, .15, 1.)
+        marker_array.markers.append(label)
         if static_mode:
             for marker in marker_array.markers:
                 marker.lifetime = rospy.Duration(1.0)
@@ -273,13 +292,26 @@ class LatticeRvizVisualizer:
             marker.scale.x = max(1.0, float(object_info.size_x))
             marker.scale.y = max(1.0, float(object_info.size_y))
             marker.scale.z = 1.5
-            if object_info.is_static:
+            lead_id = result.debug_details.get('entry_merge', {}).get('lead_id')
+            if lead_id is not None and getattr(object_info, 'unique_id', None) == lead_id:
+                self._set_color(marker, 1.0, 0.0, 0.0, .95)
+            elif object_info.is_static:
                 self._set_color(marker, 1.0, 0.45, 0.0, 0.75)
             elif object_info.type in (1, 2):
                 self._set_color(marker, 0.0, 0.7, 1.0, 0.65)
             else:
                 self._set_color(marker, 1.0, 0.0, 1.0, 0.65)
             marker_array.markers.append(marker)
+
+            if lead_id is not None and getattr(object_info, 'unique_id', None) == lead_id:
+                label = self._new_marker('map', stamp, 'merge_target_label', 0, Marker.TEXT_VIEW_FACING)
+                label.pose.position.x = object_info.position.x
+                label.pose.position.y = object_info.position.y
+                label.pose.position.z = 2.5
+                label.scale.z = 1.0
+                label.text = 'MERGE FOLLOW TARGET #{}'.format(lead_id)
+                self._set_color(label, 1., 0., 0., 1.)
+                marker_array.markers.append(label)
 
         for prediction_id, predicted_path in enumerate(result.predicted_object_paths):
             if len(predicted_path) < 2:
@@ -315,13 +347,17 @@ class LatticeRvizVisualizer:
             label.pose.position.y = object_info.position.y
             label.pose.position.z = 2.4
             label.scale.z = 0.42
-            label.text = "S{} L{} {}".format(
-                lane_match.lane_link.section_index,
-                lane_match.lane_link.lane_number,
-                lane_match.lane_link.id,
-            )
-            self._set_color(label, 1.0, 1.0, 1.0, 0.95)
-            marker_array.markers.append(label)
+            # Older snapshots encoded LaneMatch as only x/y and lost lane_link.
+            # Keep the obstacle and its predictions visible; only omit that label.
+            lane_link = getattr(lane_match, 'lane_link', None)
+            if lane_link is not None:
+                label.text = "S{} L{} {}".format(
+                    lane_link.section_index,
+                    lane_link.lane_number,
+                    lane_link.id,
+                )
+                self._set_color(label, 1.0, 1.0, 1.0, 0.95)
+                marker_array.markers.append(label)
 
             for point_index, point in enumerate(predicted_path[1:], 1):
                 previous = predicted_path[point_index - 1]

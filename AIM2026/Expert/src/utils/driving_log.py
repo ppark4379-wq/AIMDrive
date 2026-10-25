@@ -25,6 +25,8 @@ def log_control(self, vehicle_state, planning_path, lattice_result, target_veloc
             print("[PLAN] curvature=off zone=second_merge reference_v={:.2f} base_v={:.2f}".format(
                 profile_planned_velocity, planned_velocity))
         details = getattr(lattice_result, "debug_details", {})
+        if details.get('entry_merge'):
+            print('[ENTRY_MERGE] {}'.format(details['entry_merge']))
         if details.get("lane_change_conflict"):
             print("[PLAN] lane_change_conflict={}".format(details["lane_change_conflict"]))
         if "static_avoidance" in details:
