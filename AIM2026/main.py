@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Start integrated Expert driving and visualization with the existing runtime.
 
-Run ``python main.py`` on Windows or ``python3 main.py`` in WSL.
+Run ``python main.py`` on Windows or ``python3 main.py`` in WSL from AIM2026.
 The Windows lmdrive environment is selected automatically when it exists
 under the workspace owner's profile; otherwise use the current interpreter.
 Extra arguments, including the socket-free --check, go to the Expert CLI.
@@ -11,7 +11,7 @@ from pathlib import Path
 import sys
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def main(argv=None):

@@ -26,10 +26,10 @@ AIM2026/Expert/
 
 ## 통합 실행
 
-프로젝트 루트의 `main.py`는 자율주행과 시각화를 기본으로 켜고, 사용자 폴더의 Windows `lmdrive` 환경을 자동으로 선택한다. 모델 추론도 자동으로 시작된다. WSL Bash에서 실행한다.
+`AIM2026/main.py`는 자율주행과 시각화를 기본으로 켜고, 사용자 폴더의 Windows `lmdrive` 환경을 자동으로 선택한다. 모델 추론도 자동으로 시작된다. WSL Bash에서 실행한다.
 
 ```bash
-cd /mnt/c/Users/autonav009/Desktop/AIMDrive
+cd /mnt/c/Users/autonav009/Desktop/AIMDrive/AIM2026
 python3 main.py
 ```
 
@@ -43,11 +43,11 @@ bash AIM2026/Visualization/run_rviz.sh
 PowerShell에서는 다음 명령을 사용한다.
 
 ```powershell
-cd C:\Users\autonav009\Desktop\AIMDrive
+cd C:\Users\autonav009\Desktop\AIMDrive\AIM2026
 python main.py
 ```
 
-루트 실행기의 `--check`는 차량을 움직이거나 소켓을 열지 않고 설정·가중치·경로를 확인한다 (`python3 main.py --check`). 관찰 모드는 기존 `AIM2026/Expert/main.py`를 `--drive` 없이 실행한다.
+통합 실행기의 `--check`는 차량을 움직이거나 소켓을 열지 않고 설정·가중치·경로를 확인한다 (`python3 main.py --check`). 관찰 모드는 기존 `AIM2026/Expert/main.py`를 `--drive` 없이 실행한다.
 
 GPS 재밍 시험에서는 정상 GPS로 초기 위치를 잡은 뒤 재밍 구간에 진입한다. 기본 로컬 설정의 `Localization.enabled: true`이면 GPS가 끊길 때 IMU·차속 기반 위치 추정으로 자동 전환한다. 재밍 구간에서 실행을 새로 시작하면 초기 GPS 위치가 없어 주행할 수 없다.
 
