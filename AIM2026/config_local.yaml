@@ -131,6 +131,7 @@ Inference:
   status_interval_s: 2.0
   vision:
     checkpoint: P1
+    object_head: truck      # Weights/VE/object_head_truck_20261024.pt: 객체 검출 헤드 (P1 속도·신호등 헤드는 유지)
     signal_head: true
     max_sensor_age_s: 0.5
 

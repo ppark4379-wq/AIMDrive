@@ -74,6 +74,55 @@ class HighwayLauncherTest(unittest.TestCase):
         baseline.apply({'collision_objects': []})
         self.assertEqual(baseline.apply({'collision_objects': ['Ego']})['collision_objects'], ['Ego'])
 
+    def test_recorded_27_report_is_new_and_never_added_to_startup_exemptions(self):
+        baseline = StartupContactBaseline({'collision_objects': ['Ego', '-100']})
+        result = baseline.apply({'collision_objects': ['Ego', '27'], 'x': 56.99, 'y': 299.12})
+        self.assertEqual(result['collision_objects'], ['27'])
+        self.assertEqual(result['contact_classification']['27'], 'new_report')
+        self.assertEqual(result['contact_classification']['Ego'], 'startup_residual')
+        baseline.apply({'collision_objects': ['Ego']})
+        result = baseline.apply({'collision_objects': ['Ego', 27, '-100']})
+        self.assertEqual(result['collision_objects'], ['27', '-100'])
+        self.assertEqual(result['contact_classification']['27'], 'reappeared_report')
+        self.assertEqual(result['contact_classification']['-100'], 'reappeared_report')
+
+    def test_id_normalization_does_not_hide_new_numeric_contacts(self):
+        baseline = StartupContactBaseline({'collision_objects': [' Ego ', 27]}, {'Ego'})
+        result = baseline.apply({'collision_objects': ['Ego', '27', 28, ' ']}, {'Ego', '28'})
+        self.assertEqual(result['collision_objects'], ['28'])
+        result = baseline.apply({'collision_objects': ['Ego', 27]}, {'Ego', '27'})
+        self.assertEqual(result['collision_objects'], ['27'])
+        self.assertEqual(result['contact_classification']['27'], 'startup_exemption_revoked')
+
+    def test_collision_evidence_survives_failed_actor_query(self):
+        scenario = object.__new__(HighwayScenario)
+        scenario.output = self.output
+        scenario.grpc = SimpleNamespace(world=Mock())
+        scenario.grpc.world.get_all_actors_state.side_effect = RuntimeError('unavailable')
+        scenario._startup_contact_baseline = StartupContactBaseline({'collision_objects': ['Ego']})
+        state = scenario._startup_contact_baseline.apply(
+            {'collision_objects': ['Ego', '27'], 'x': 56.99, 'y': 299.12})
+        scenario.record_collision_stop(state, 13.3)
+        report = json.loads((self.output / 'collision_stop.json').read_text(encoding='utf-8'))
+        self.assertEqual(report['ego_state']['collision_objects'], ['27'])
+        self.assertEqual(report['scenario_elapsed_s'], 13.3)
+        self.assertEqual(report['actor_query_error'], 'unavailable')
+        self.assertFalse(report['collision_time_known'])
+
+    def test_collision_evidence_captures_only_reported_targets(self):
+        scenario = object.__new__(HighwayScenario)
+        scenario.output = self.output
+        scenario.grpc = SimpleNamespace(world=Mock())
+        actors = [SimpleNamespace(actor_info=SimpleNamespace(id=SimpleNamespace(value=v)))
+                  for v in ('27', '28')]
+        scenario.grpc.world.get_all_actors_state.return_value = SimpleNamespace(states=actors)
+        state = {'collision_objects': ['27'], 'x': 56.99, 'y': 299.12}
+        with patch('google.protobuf.json_format.MessageToDict', return_value={'actor_info': {'id': '27'}}):
+            scenario.record_collision_stop(state, 13.3)
+        report = json.loads((self.output / 'collision_stop.json').read_text(encoding='utf-8'))
+        self.assertEqual(set(report['target_snapshots']), {'27'})
+        self.assertEqual(report['targets_absent_at_query'], [])
+
     def test_only_preexisting_anonymous_contact_is_baselined(self):
         baseline = StartupContactBaseline({'collision_objects': ['Ego', '-100']})
         self.assertEqual(baseline.apply({'collision_objects': ['Ego', '-100']})['collision_objects'], [])

@@ -38,7 +38,11 @@ class StartupContactBaseline:
     Once absent, the label loses its exemption for the rest of this run.
     """
     def __init__(self, state, live_actor_ids=None):
-        initial = set(state.get('collision_objects', []))
+        initial = {str(value).strip() for value in state.get('collision_objects', [])
+                   if str(value).strip()}
+        self.initial = initial.copy()
+        self.seen = initial.copy()
+        self.previous = initial.copy()
         numeric = {value for value in initial if value.isdecimal()}
         absent = (numeric - set(live_actor_ids)) if live_actor_ids is not None else set()
         allowed = {'Ego', '-100'} | absent
@@ -48,7 +52,9 @@ class StartupContactBaseline:
 
     def apply(self, state, live_actor_ids=None):
         state = dict(state)
-        raw = list(state.get('collision_objects', []))
+        raw = list(dict.fromkeys(str(value).strip() for value in state.get('collision_objects', [])
+                                 if str(value).strip()))
+        previously_ignored = self.ignored.copy()
         # Each exemption can only disappear, never grow after the baseline.
         # A cleared label that later reappears is a NEW contact, including -100.
         self.ignored.intersection_update(raw)
@@ -62,6 +68,16 @@ class StartupContactBaseline:
         state['startup_contact_baseline_active'] = self.active
         state['startup_contact_ignored'] = sorted(self.ignored)
         state['collision_objects'] = [item for item in raw if item not in self.ignored]
+        state['contact_classification'] = {
+            item: ('startup_residual' if item in self.ignored else
+                   'startup_exemption_revoked' if item in previously_ignored else
+                   'new_report' if item not in self.seen else
+                   'reappeared_report' if item not in self.previous else
+                   'preexisting_unverified' if item in self.initial else 'continuing_report')
+            for item in raw
+        }
+        self.seen.update(raw)
+        self.previous = set(raw)
         return state
 
 
@@ -197,17 +213,67 @@ class HighwayScenario(MissionScenario):
         state = baseline.apply(state, actor_ids)
         if baseline.removed_actor_ids:
             state['startup_contact_live_actor_ids'] = sorted(actor_ids) if actor_ids is not None else None
-        signature = (tuple(state['raw_collision_objects']), baseline.active)
+        signature = (tuple(sorted(state['raw_collision_objects'])),
+                     tuple(state['startup_contact_ignored']), tuple(sorted(state['collision_objects'])))
         if signature != getattr(self, '_last_contact_signature', None):
+            now = time.monotonic()
+            event = dict(monotonic=now, observed_at=datetime.now().astimezone().isoformat(),
+                         since_baseline_s=now - getattr(self, '_contact_started_monotonic', now),
+                         source='MORAI_gRPC_vehicle_state.collision_objects', **state)
+            first_reports = getattr(self, '_contact_first_reports', {})
+            for item in state['raw_collision_objects']:
+                first_reports.setdefault(item, event.copy())
+            self._contact_first_reports = first_reports
             with (self.output / 'contact_events.jsonl').open('a', encoding='utf-8') as stream:
-                stream.write(json.dumps(dict(monotonic=time.monotonic(), **state)) + '\n')
+                stream.write(json.dumps(event) + '\n')
             self._last_contact_signature = signature
         return state
+
+    def record_collision_stop(self, state, elapsed):
+        """Called AFTER stopping control and BEFORE destroying scenario actors.
+
+        Actor snapshots are verification evidence only, never Expert input.
+        Observation time is not a simulator-provided collision timestamp.
+        """
+        baseline = getattr(self, '_startup_contact_baseline', None)
+        report = dict(
+            observed_at=datetime.now().astimezone().isoformat(), scenario_elapsed_s=elapsed,
+            decision='stop_on_unexempted_MORAI_report', ego_state=state,
+            startup_raw=sorted(baseline.initial) if baseline else [],
+            first_observations=getattr(self, '_contact_first_reports', {}),
+            collision_time_known=False, target_snapshots={},
+            note='Positions below are sampled after stop request, not at physical impact. '
+                 'No geometric distance is used to dismiss a MORAI collision report.')
+        destination = self.output / 'collision_stop.json'
+        # Persist the triggering observation even if the subsequent actor query fails.
+        destination.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+        try:
+            from google.protobuf.json_format import MessageToDict
+            response = self.grpc.world.get_all_actors_state(vehicle=True, pedestrian=True, obstacle=True)
+            if response is None or not hasattr(response, 'states'):
+                raise RuntimeError('Actor query returned no states')
+            requested = set(state.get('collision_objects', []))
+            for actor in response.states:
+                actor_id = str(actor.actor_info.id.value)
+                if actor_id in requested:
+                    report['target_snapshots'][actor_id] = MessageToDict(
+                        actor, preserving_proto_field_name=True)
+            report['targets_absent_at_query'] = sorted(requested - set(report['target_snapshots']))
+            report['actor_snapshot_at'] = datetime.now().astimezone().isoformat()
+        except Exception as exc:
+            report['actor_query_error'] = str(exc)
+        destination.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+        print('[Highway] Collision evidence: {} | ids={} | classification={} | ego=({}, {})'.format(
+            destination, state.get('collision_objects'), state.get('contact_classification'),
+            state.get('x'), state.get('y')), flush=True)
 
     def configure_drive_from_start(self):
         # Preserve evidence before the existing runner teleports/reset-motion.
         # This separates a pre-existing simulator contact from placement contact.
         state = self.get_ego_motion_state()
+        self._contact_started_monotonic = time.monotonic()
+        self._contact_first_reports = {}
+        self._last_contact_signature = None
         (self.output / 'before_placement.json').write_text(
             json.dumps(state, ensure_ascii=False, indent=2), encoding='utf-8')
         if not self.args.strict_collisions:
@@ -219,6 +285,11 @@ class HighwayScenario(MissionScenario):
                       'new contacts and cleared labels reappearing still stop the run. '
                       'This is not a collision-free guarantee.'.format(
                           sorted(self._startup_contact_baseline.ignored)), flush=True)
+        else:
+            # Strict mode records the same evidence but grants no exemptions.
+            self._startup_contact_baseline = StartupContactBaseline(state)
+            self._startup_contact_baseline.ignored.clear()
+            self._startup_contact_baseline.active = False
         return super().configure_drive_from_start()
 
     def check_startup_contact(self):

@@ -117,3 +117,10 @@ RViz ROI/지도 화면 모두 노란 테두리로 탐색 범위, 빨간 차량�
 같은 NPC 번호가 다시 생성되거나 actor 조회가 실패하면 해당 예외도 해제한다.
 `--strict-collisions`는 이 초기 예외를 적용하지 않는다. 이 처리는 시나리오 검증부에만
 있으며, actor 정보가 인지·판단·제어 입력으로 전달되지는 않는다.
+
+`contact_events.jsonl`은 초기 잔여 기록(`startup_residual`), 새 보고(`new_report`),
+재등장(`reappeared_report`), 초기 예외 해제(`startup_exemption_revoked`)를 구분한다.
+새 충돌 보고 시 제어를 먼저 정지하고, NPC 정리 전에 `collision_stop.json`에
+주행 경과시간·자차 위치·원본 ID·초기 기록·대상 actor 상태를 저장한다.
+기록 시각은 관측 시각이며 실제 접촉 시각은 알 수 없다. 대상 상태는 정지 요청 후
+조회한 정보이므로 그 위치만으로 실제 충돌을 부정하거나 정지를 해제하지 않는다.

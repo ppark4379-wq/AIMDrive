@@ -665,6 +665,14 @@ class FullLoopDriveBase(BaseScenario):
                 getattr(self, "observe_collision", None)
             ):
                 self.stop_drive_control()
+                recorder = getattr(self, "record_collision_stop", None)
+                if callable(recorder):
+                    try:
+                        recorder(ego_state, elapsed)
+                    except Exception as exc:
+                        # Diagnostics must never replace the collision failure
+                        # or prevent the existing scenario cleanup.
+                        print("[Collision] Evidence write failed: " + str(exc))
                 raise RuntimeError(
                     ("Manual Ego collision during tunnel trial: " if manual_ego else
                      "AIMDrive expert collision during scenario verification: ")
