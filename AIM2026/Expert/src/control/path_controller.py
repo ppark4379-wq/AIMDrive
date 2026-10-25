@@ -305,14 +305,15 @@ class PathController:
 
     @staticmethod
     def _roundabout_entry_acceleration_gain(target_velocity, vehicle_state, lattice_result):
-        """Raise P only for permitted entry acceleration, keeping other limits."""
+        """Reach the permitted entry/follow target promptly, only until merged."""
         if (getattr(lattice_result, "mode", "") != "roundabout_entry"
                 or target_velocity <= 0.05 or target_velocity <= vehicle_state.velocity):
             return None
         details = lattice_result.debug_details.get("roundabout_entry", {})
-        if details.get("phase") not in ("cruise", "rear_pressure") or details.get("front_gap") is not None:
+        if (details.get("committed", False)
+                or details.get("phase") not in ("cruise", "follow", "rear_pressure")):
             return None
-        entry_started = (details.get("entering", False) or details.get("committed", False)
+        entry_started = (details.get("entering", False)
                          or details.get("hold_gap", float("inf")) <= lattice_parameters.ROUNDABOUT_HOLD_TOLERANCE)
         if not entry_started:
             return None

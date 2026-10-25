@@ -328,7 +328,11 @@ class HighwayScenario(MissionScenario):
         self.expert_controller = ExpertController(self.expert_controller, self)
 
 
-def main(argv=None):
+def main(argv=None, *, mission='full_loop_highway'):
+    if mission not in ('full_loop_highway', 'full_loop_roundabout',
+                       'full_loop_roundabout_nonuniform', 'full_loop_roundabout_speed_random',
+                       'full_loop_roundabout_brake'):
+        raise ValueError('Unsupported verification mission: ' + mission)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--check', action='store_true', help='Validate without connecting to MORAI')
     parser.add_argument('--config', type=Path, default=ROOT / 'AIM2026/config_local.yaml')
@@ -349,7 +353,7 @@ def main(argv=None):
     for key in list(config):
         if key.startswith('ve_'):
             config.pop(key)
-    config.update(mission_mode='full_loop_highway', drive_control_mode='aimdrive_expert',
+    config.update(mission_mode=mission, drive_control_mode='aimdrive_expert',
                   expert_speed_cap_kmh=60. if args.speed_cap_kmh is None else args.speed_cap_kmh,
                   expert_ros_remaps=[],
                   expert_traffic_light_control=False, route_debug_enabled=False,
@@ -357,7 +361,7 @@ def main(argv=None):
     config.setdefault('sync_runtime', {})['enabled'] = False
     if args.seed is not None:
         config['random_seed'] = args.seed
-    stamp = 'highway-' + datetime.now().strftime('%Y%m%d-%H%M%S-%f')
+    stamp = mission.replace('full_loop_', '', 1) + '-' + datetime.now().strftime('%Y%m%d-%H%M%S-%f')
     output = ROOT / 'AIM2026/outputs/scenarios' / stamp
     output.mkdir(parents=True)
     global_cfg['paths']['runtime_root'] = str(output)
@@ -384,7 +388,7 @@ def main(argv=None):
     old_handler = signal.signal(signal.SIGTERM, interrupt)
     try:
         client.connect()
-        print('[Highway] One run: existing highway scene -> AIM2026/main.py -> Expert', flush=True)
+        print('[Scenario] One run: {} -> AIM2026/main.py -> Expert'.format(mission), flush=True)
         scenario.run()
     except KeyboardInterrupt:
         print('[Highway] stopped', flush=True)

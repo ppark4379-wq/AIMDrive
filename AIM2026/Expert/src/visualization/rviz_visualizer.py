@@ -575,6 +575,7 @@ class LatticeRvizVisualizer:
         return [fill, outline, label]
 
     def _build_roundabout_entry_markers(self, result, stamp):
+        details = getattr(result, 'debug_details', {}).get('roundabout_entry', {})
         occupied = (
             getattr(result, "reason", "") == "roundabout_entry_occupied_stop"
         )
@@ -615,14 +616,14 @@ class LatticeRvizVisualizer:
             marker_id=0,
             marker_type=Marker.LINE_STRIP,
         )
-        decision.scale.x = 0.18
+        decision.scale.x = 0.32
         decision.points = self._segment_box_points(
             decision_start,
             decision_end,
             parameters.ROUNDABOUT_ENTRY_APPROACH_HALF_WIDTH,
             z=0.12,
         )
-        self._set_color(decision, 0.0, 0.7, 1.0, 0.85)
+        self._set_color(decision, 1.0, 0.65, 0.0, 0.95)
         markers.append(decision)
 
         stop_line = self._new_marker(
@@ -657,8 +658,32 @@ class LatticeRvizVisualizer:
             if cruising
             else "ROUNDABOUT CHECK"
         )
+        label.text += '\nHOLD band -{:g}/+{:g}m'.format(
+            parameters.ROUNDABOUT_ENTRY_STOP_BACK_DISTANCE,
+            parameters.ROUNDABOUT_ENTRY_STOP_FORWARD_DISTANCE)
+        if details:
+            label.text += '\nphase={} entering={} committed={}'.format(
+                details.get('phase', '?'), details.get('entering', False), details.get('committed', False))
+            blocker = details.get('blocker_unique_id')
+            if blocker is not None:
+                label.text += '\nBLOCKER {} / TTC {:.1f}s'.format(
+                    blocker, float(details.get('collision_time', 0.)))
         self._set_color(label, red, green, blue, 1.0)
         markers.append(label)
+        start = parameters.ROUNDABOUT_ENTRY_APPROACH_START
+        begin = self._new_marker('map', stamp, 'roundabout_check_start', 0, Marker.SPHERE)
+        begin.pose.position.x, begin.pose.position.y = start
+        begin.pose.position.z = .5
+        begin.scale.x = begin.scale.y = begin.scale.z = 1.
+        self._set_color(begin, .15, 1., .35, 1.)
+        markers.append(begin)
+        start_label = self._new_marker('map', stamp, 'roundabout_check_start_label', 0, Marker.TEXT_VIEW_FACING)
+        start_label.pose.position.x, start_label.pose.position.y = start[0]-7., start[1]
+        start_label.pose.position.z = 2.
+        start_label.scale.z = .7
+        start_label.text = 'ENTRY CHECK START\nContinuous trajectory prediction from approach'
+        self._set_color(start_label, .15, 1., .35, 1.)
+        markers.append(start_label)
         return markers
 
     @staticmethod

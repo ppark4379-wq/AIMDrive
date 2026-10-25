@@ -18,6 +18,22 @@ from AIM2026.Expert.src.planning.highway.common.types import LaneMatch
 
 
 class SnapshotTests(unittest.TestCase):
+    def test_roundabout_check_start_and_hold_band_are_distinct(self):
+        overlay = self.world_overlay()
+        import rospy
+        from AIM2026.Expert.src.config.parameters import lattice as p
+        state = self.snapshot()
+        state['result'].debug_details['roundabout_entry'] = dict(
+            phase='yield', entering=False, committed=False, blocker_unique_id=7, collision_time=2.)
+        markers = overlay.renderer._build_roundabout_entry_markers(state['result'],rospy.Time(0))
+        start = next(m for m in markers if m.ns=='roundabout_check_start')
+        self.assertEqual((start.pose.position.x,start.pose.position.y),p.ROUNDABOUT_ENTRY_APPROACH_START)
+        label = next(m for m in markers if m.ns=='roundabout_entry_label')
+        self.assertIn('BLOCKER 7',label.text)
+        self.assertIn('phase=yield',label.text)
+        band = next(m for m in markers if m.ns=='roundabout_entry_decision_zone')
+        self.assertEqual(band.color.r,1.)
+
     def test_new_rviz_subscriber_receives_full_frame_after_delta_cache(self):
         from AIM2026.Visualization.rviz import OriginalDisplay
         viewer = object.__new__(OriginalDisplay)

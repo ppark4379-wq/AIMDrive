@@ -128,7 +128,7 @@ ROUNDABOUT_ENTRY_STOP_FORWARD_DISTANCE = 1.2 # 정지 목표 위치 앞쪽으로
 # 주행 속도와 전방 경로
 ROUNDABOUT_APPROACH_VELOCITY = 30.0 / 3.6 # 정지 목표 위치 접근 속도 상한; 15 km/h [m/s]
 ROUNDABOUT_ENTRY_CRUISE_VELOCITY = 30.0 / 3.6 # 진입 주행 속도 상한; 30 km/h [m/s]
-ROUNDABOUT_ENTRY_ACCEL_P_GAIN = 0.80 # 진입 허용 후 단독 가속에만 적용할 속도 PID P 게인
+ROUNDABOUT_ENTRY_ACCEL_P_GAIN = 1.0 # 진입 직전/진입 중 허용 속도까지 가속하는 강도(앞차 추종 포함). 클수록 빠르게 가속; 진입 완료·양보·제동에는 미적용
 ROUNDABOUT_PREVIEW_POINTS = 200       # 회전교차로 예측에 제공할 전방 경로점 개수
 
 # 충돌 예측과 선행차 추종
