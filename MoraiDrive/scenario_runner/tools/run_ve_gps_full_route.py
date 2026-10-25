@@ -15,12 +15,8 @@ import time
 from types import SimpleNamespace
 
 REPO = Path(__file__).resolve().parents[3]
-<<<<<<< HEAD
 DEFAULT_RUNTIME = REPO / 'MoraiDrive/.runtime/aim2026_wsl_blackout.yaml'
-sys.path[:0] = [str(REPO/'MoraiDrive'), str(REPO/'AIM2026/Expert/tools')]
-=======
 sys.path[:0] = [str(REPO/'MoraiDrive'), str(REPO/'MoraiDrive/scenario_runner/legacy_expert')]
->>>>>>> 42c7a57f7589b441cc228df414ebdd83e4cf1805
 from scenario_runner.main_runner import load_configuration, resolve_static_preset
 from scenario_runner.scenarios.full_loop_scenario import FullLoopScenario
 from scenario_runner.scenarios.segment_modes.modes import MISSION_MODES
@@ -145,13 +141,9 @@ class GpsController:
 
     def command(self, check=False):
         args = self.context.gps_args
-<<<<<<< HEAD
         if getattr(args, 'aim2026_runtime', None):
             return self.runtime_command(check)
-        return [sys.executable, '-u', '-B', str(REPO/'AIM2026/Expert/tools/run_ve_gps_expert.py'),
-=======
         return [sys.executable, '-u', '-B', str(REPO/'MoraiDrive/scenario_runner/legacy_expert/run_ve_gps_expert.py'),
->>>>>>> 42c7a57f7589b441cc228df414ebdd83e4cf1805
                 '--check' if check else '--drive', '--scenario-context', str(self.context_path),
                 '--output', str(self.output), '--speed-cap-kmh', str(args.speed_cap_kmh),
                 '--sim-profile', args.sim_profile, '--signal-head', str(args.signal_head),
