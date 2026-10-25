@@ -14,8 +14,8 @@ from scipy.interpolate import CubicSpline
 
 from ...interfaces.geometry import Point
 from ..highway.planner import HighwayLanePlanner
-from ..highway.lane_change_safety import LaneChangeSafety
-from ..highway import parameters as hp
+from ..highway.common.collision_check import LaneChangeSafety
+from ...config.parameters import highway as hp
 from ..static_obstacle.recorded_planner import connector
 from .motion import key
 from .dynamic_recovery import make_recovery, recovery_result, reconnect_tracker, replan_tracker

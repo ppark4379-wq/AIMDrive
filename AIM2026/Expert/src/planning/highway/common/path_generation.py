@@ -5,9 +5,9 @@ HighwayLanePlanner의 동일 인스턴스 상태를 사용하는 메서드 묶�
 """
 import math
 import numpy as np
-from ...interfaces.geometry import Point
-from . import parameters
-from .structures import HighwayCandidatePath
+from ....interfaces.geometry import Point
+from ....config.parameters import highway as parameters
+from .types import HighwayCandidatePath
 
 
 class TrajectoryMixin:

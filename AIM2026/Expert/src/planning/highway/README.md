@@ -1,23 +1,53 @@
-# 고속도로 계획
+# 고속도로 계획 코드 안내
 
-`planner.py`의 `HighwayLanePlanner`가 전체 상태와 `plan()`의 분기 순서를 소유한다.
-411 진입차선은 `entry_merge.py`에서 먼저 처리하고, 다른 구간은 기존 계획 순서를 따른다.
+`planner.py`의 `HighwayLanePlanner.plan()`이 전체 판단 순서와 상태를 관리한다.
+폴더를 나누어도 동일한 플래너 인스턴스와 메서드를 사용한다.
 
-| 메서드 파일 | 책임 |
-|---|---|
-| `entry_merge.py` | 411→409 합류 단계, 최종 대기점, 변경 경로 유지·안전 검사 |
-| `merge_following.py` | 옆 차량 선택·ID 유지, 뒤 공간 확보, 합류 전·중·후 추종 속도 |
-| `merge_speed.py` | 합류 속도 제한, 우선권, 목표 속도 안정화 |
-| `predictive_merge.py` | 예측 합류 진입, 도착 시간, 차체 영역 계산 |
-| `lane_change.py` | 차선 변경 시작, 후보 여유, 복귀와 진행 결과 |
-| `lane_following.py` | 기준 차로 매칭, 전방 위험과 ACC 제한 |
-| `trajectory.py` | 후보 경로 생성, 다항식과 경로 기하 |
-| `collision_prediction.py` | 객체 예측 경로, 시각, 차체 충돌 |
+```text
+highway/
+├── planner.py                   # 전체 흐름·상태 전환
+├── first_merge/                 # 1차 합류: 411 → 409
+│   ├── merge.py                 # 진입·대기·변경·완료 단계
+│   ├── follow_target.py         # 옆 차선 추종 타깃 선택·유지·속도
+│   └── priority.py              # 기존 첫 합류 우선권 판단(보존)
+├── driving/                     # 일반 고속도로
+│   ├── lane_following.py        # 현재 차선 앞차 찾기·ACC
+│   ├── lane_change.py           # 한 차선 변경 시작·유지·완료
+│   └── obstacle_avoidance.py    # 정지 장애물 회피 경로
+├── second_merge/                # 2차 합류
+│   ├── priority.py              # 두 번째 합류 우선권·양보 속도
+│   └── speed_limits.py          # 두 번째 합류 접근 속도·곡률 처리
+└── common/                      # 여러 구간이 함께 쓰는 계산
+    ├── lane_map.py              # 지도 링크·차선 매칭·이동 가능 방향
+    ├── path_generation.py       # 후보 경로 생성
+    ├── collision_check.py       # 미래 차체 충돌·차선변경 앞뒤 간격
+    ├── merge_safety.py          # 두 합류 구간의 공통 안전 검사
+    ├── merge_priority.py        # 합류 판단 호출·속도 제한 안정화
+    ├── speed_limits.py          # 두 합류 구간의 곡률 속도 보정
+    ├── object_motion.py         # 객체 이동·정지 상태
+    └── types.py                 # 차선 매칭·후보·계획 결과 자료형
+```
 
-위 표의 `merge_speed.py`부터 여섯 파일은 같은 `HighwayLanePlanner` 인스턴스의
-메서드를 묶은 mixin이다. `MergeSafety`, `LaneChangeSafety`, `ObstacleMotion`을
-공유한다. 두 차선 변경용 `MultiLanePlanning`은 제거했고, `HighwayStaticCorridor`도
-현재 차선과 바로 옆 한 차선만 검색한다.
+## 파라미터를 바꿀 때
+
+설정은 **[config/parameters/highway.py](../../config/parameters/highway.py)** 한 파일이다.
+1차 합류 → 일반 고속도로 → 2차 합류 → 공통 → 지도 → 자동 계산 순서이며,
+각 구간 위쪽에 자주 튜닝하는 값을 배치했다. 모든 값 옆에 한국어 설명이 있다.
+
+| 자주 조절할 값 | 현재 값 | 적용 |
+|---|---:|---|
+| `ENTRY_MERGE_FRONT_GAP` | 2m | 411→409 최소 앞 범퍼 간격·추종 기준 |
+| `ENTRY_MERGE_FOLLOW_RESERVE` | 0m | 첫 합류 추종 목표에 더하는 여유 |
+| `ENTRY_MERGE_REAR_GAP` | 8m | 첫 합류 최소 뒤 범퍼 간격 |
+| `ENTRY_MERGE_CRUISE_SPEED` | 10m/s = 36km/h | 첫 합류 준비 속도 상한 |
+| `LANE_CHANGE_BUMPER_MARGIN` | 4m | 일반 차선변경 미래 앞뒤 간격 |
+
+`SEARCH_FRONT/REAR`는 추종 타깃 선택 범위이며 최소 안전 간격과 다르다.
+공통 안전 검사와 앞뒤 접근속도 검사도 함께 적용된다.
+`first_merge/priority.py`는 호출 경로가 남아 있어 삭제하지 않았다.
+미사용 설정 9개와 비활성 투영 진단 코드만 정리했으며, 기존 값·계산식·판단 순서는 유지했다.
+
+## 기존 주행 정책 및 로그
 
 일반 좌우 차선 변경은 시작 속도를 저장하되, 이를 고정 상한으로 묶지 않는다.
 기존 경로의 남은 곡률과 앞뒤 차량을 가속 궤적으로 다시 검사해 통과하면 재가속한다.
@@ -30,10 +60,10 @@
 
 411에서는 y=251.20부터 409의 앞뒤 간격·접근속도·변경 완료까지의 충돌을 검사한다.
 안전한 틈이 있으면 즉시 시작하고, 막혀 있으면 현재 차선을 따라 한 번 감속해 대기한다.
-409의 앞 30m·뒤 20m 범위에서 가장 가까운 차량을 선택하고, 나란히 달리거나 뒤에 있는
+409의 앞 30m·뒤 15m 범위에서 가장 가까운 차량을 선택하고, 나란히 달리거나 뒤에 있는
 차량이면 411에서 속도를 조절해 먼저 보낸다. 선택한 차량은 더 가까운 검출이 나타나도
 교체하지 않는다. ID 변경은 위치·속도·방향이 일치하는 유일한 후보만 재연결한다.
-합류 시작 앞차 여유는 범퍼 기준 6m, 추종 추가 여유는 1m다. 차체 길이와 접근속도에
+합류 시작 앞차 여유는 범퍼 기준 2m, 추종 추가 여유는 0m다. 차체 길이와 접근속도에
 따른 여유는 별도 포함한다. 범위를 벗어난 차량도 기존 전체 충돌 검사에는 남는다.
 변경 거리도 도로 제한속도가 아닌 실제 합류 목표속도로 정한다. `motion_state=uncertain`은
 검출 실패가 아니라 추적 이력이 아직 짧다는 뜻이다. 유효한 속도가 있으면 그 속도로
@@ -61,7 +91,7 @@ ACC와 미래 위치를 계산하며, 미확정이라는 이유만으로 정지 
 409에서 미리 차선을 바꿨다는 이유만으로 실제 합류 지점의 검사를 생략하지 않는다.
 
 튜닝은 `src/config/parameters/highway.py`의 구간별 주석을 따른다.
-이 폴더의 `parameters.py`는 같은 설정 모듈로 연결하는 호환 import다.
+설정 모듈을 직접 가져오므로 이 폴더에는 중복 `parameters.py`를 두지 않는다.
 `config/parameters/sections.py`에는 고속도로 활성 영역과 종료 우회전 영역이 있다.
 
 실행 결과는 `AIM2026/outputs/expert/<실행 이름>/`에 남는다. `control.jsonl`의

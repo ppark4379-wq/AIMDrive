@@ -12,13 +12,13 @@ from types import SimpleNamespace
 import numpy as np
 from scipy.interpolate import CubicSpline
 
-from ...interfaces.geometry import Point
-from ...vehicle_state import VehicleState
-from ..static_obstacle.recorded_planner import RecordedStaticPlanner, connector
-from ..static_obstacle.corridor_graph import search_corridor
-from ..lattice import parameters as static_parameters
-from . import parameters as p
-from .structures import HighwayCandidatePath
+from ....interfaces.geometry import Point
+from ....vehicle_state import VehicleState
+from ...static_obstacle.recorded_planner import RecordedStaticPlanner, connector
+from ...static_obstacle.corridor_graph import search_corridor
+from ...lattice import parameters as static_parameters
+from ....config.parameters import highway as p
+from ..common.types import HighwayCandidatePath
 
 
 class HighwayCorridorSearch(RecordedStaticPlanner):

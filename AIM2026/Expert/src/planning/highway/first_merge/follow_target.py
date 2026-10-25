@@ -6,7 +6,7 @@ All observed vehicles still go through the lane-change collision checks.
 import math
 from bisect import bisect_right
 
-from . import parameters as p
+from ....config.parameters import highway as p
 
 
 class MergeFollowing:

@@ -9,7 +9,7 @@ from .pid import Pid
 from .control_input import ControlInput
 from ..planning.lattice import parameters as lattice_parameters
 from ..planning.roundabout import diagnostics as roundabout_debug
-from ..planning.highway import parameters as highway_parameters
+from ..config.parameters import highway as highway_parameters
 
 
 class PathController:

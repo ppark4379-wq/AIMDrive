@@ -10,9 +10,10 @@ from .planning.traffic.stop_controller import TrafficLightStopController
 from .planning.section_planning import LatticePlanningProcess
 from .planning.ve_planning import VePerceptionPlanningProcess, perception_source
 from .planning.planning_process import PlanningProcess, ve_plan
-from .planning.highway.speed_policy import (
-    _second_merge_curvature_bypass, _second_merge_slowdown_band,
-    _merge_ego_curvature_speed_floor, _hold_merge_ego_curvature_speed)
+from .planning.highway.second_merge.speed_limits import _second_merge_curvature_bypass
+from .planning.highway.second_merge.speed_limits import _second_merge_slowdown_band
+from .planning.highway.common.speed_limits import _merge_ego_curvature_speed_floor
+from .planning.highway.common.speed_limits import _hold_merge_ego_curvature_speed
 from .planning.static_obstacle.speed_policy import _smooth_static_target_speed
 from .control.path_controller import PathController
 from .control.control_process import ControlProcess

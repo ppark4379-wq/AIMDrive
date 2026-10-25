@@ -2,7 +2,7 @@ import sys,time,json,traceback,builtins
 from pathlib import Path
 root=Path(__file__).resolve().parents[2]
 sys.path[:0]=[str(root/'expert/src'),'/usr/lib/python3/dist-packages']
-from expert.src.planning.highway.lane_map import HighwayLaneMap
+from expert.src.planning.highway.common.lane_map import HighwayLaneMap
 from expert.src.localization.point import Point
 import numpy as np
 m=HighwayLaneMap(str(root/'expert/map_data/R_KR_PG_KATRI_2025'))

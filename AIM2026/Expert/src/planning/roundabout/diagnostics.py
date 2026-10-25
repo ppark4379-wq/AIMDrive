@@ -8,7 +8,7 @@ import threading
 import time
 
 from ...config.parameters import lattice as p
-from ..highway import parameters as vehicle_parameters
+from ...config.parameters import highway as vehicle_parameters
 
 
 _writer = None

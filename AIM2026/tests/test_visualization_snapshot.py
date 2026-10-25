@@ -14,7 +14,7 @@ from AIM2026.Expert.src.interfaces.geometry import Point
 from AIM2026.Expert.src.interfaces.vehicle_state import VehicleState
 from AIM2026.Expert.src.interfaces.perception_data import ObjectInfo
 from AIM2026.Expert.src.planning.lattice.structures import CandidatePath, LatticePlanningResult
-from AIM2026.Expert.src.planning.highway.structures import LaneMatch
+from AIM2026.Expert.src.planning.highway.common.types import LaneMatch
 
 
 class SnapshotTests(unittest.TestCase):

@@ -12,7 +12,7 @@ from AIM2026.Expert.src.interfaces.geometry import Point
 from AIM2026.Expert.src.interfaces.vehicle_state import VehicleState
 from AIM2026.Expert.src.interfaces.perception_data import ObjectInfo
 from AIM2026.Expert.src.planning.highway.planner import HighwayLanePlanner
-from AIM2026.Expert.src.planning.highway.lane_map import HighwayLaneMap
+from AIM2026.Expert.src.planning.highway.common.lane_map import HighwayLaneMap
 from AIM2026.Expert.src.planning.common.target_speed import target_speed
 from AIM2026.Expert.src.control.path_controller import PathController
 

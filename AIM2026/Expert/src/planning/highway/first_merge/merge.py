@@ -6,10 +6,10 @@ owns the first entry only; it never chooses a second lateral destination.
 """
 import math
 
-from ...interfaces.geometry import Point
-from . import parameters as p
-from .structures import HighwayPlanningResult
-from .merge_following import MergeFollowing
+from ....interfaces.geometry import Point
+from ....config.parameters import highway as p
+from ..common.types import HighwayPlanningResult
+from .follow_target import MergeFollowing
 
 
 class EntryMerge:

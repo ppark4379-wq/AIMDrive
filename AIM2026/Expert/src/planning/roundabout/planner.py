@@ -7,9 +7,9 @@ from types import SimpleNamespace
 
 from ...interfaces.geometry import Point
 from ...obstacle.object_info import is_ve_tracked_unknown
-from ..highway.lane_map import HighwayLaneMap
+from ..highway.common.lane_map import HighwayLaneMap
 from ..highway.planner import HighwayLanePlanner
-from ..highway.structures import HighwayLaneLink
+from ..highway.common.types import HighwayLaneLink
 from ...config.parameters import lattice as p
 from ..lattice.structures import LatticePlanningResult
 from .diagnostics import RoundaboutDiagnostics

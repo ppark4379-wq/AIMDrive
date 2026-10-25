@@ -6,7 +6,7 @@ import sys
 import time
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'expert/src'))
-from expert.src.planning.highway.lane_map import HighwayLaneMap
+from expert.src.planning.highway.common.lane_map import HighwayLaneMap
 from expert.src.localization.point import Point
 lane=HighwayLaneMap(str(ROOT/'scenario_runner/data/R_KR_PR_K-city_2025'))
 point=Point(-131.486, -427.961)

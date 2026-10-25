@@ -1,7 +1,7 @@
 """Stable adjacent leader, bounded dropout, continuous following, and scope."""
 import unittest
 
-from AIM2026.Expert.src.planning.highway import parameters as p
+from AIM2026.Expert.src.config.parameters import highway as p
 
 
 class MergeFollowingTests(unittest.TestCase):

@@ -8,22 +8,22 @@ import time
 import numpy as np
 
 from ...interfaces.geometry import Point
-from . import parameters
-from .lane_map import HighwayLaneMap
-from .merge_safety import MergeSafety
-from .lane_change_safety import LaneChangeSafety
-from .obstacle_motion import ObstacleMotion
-from .entry_merge import EntryMerge
-from .static_corridor import HighwayStaticCorridor
-from .structures import HighwayCandidatePath, HighwayPlanningResult
+from ...config.parameters import highway as parameters
+from .common.lane_map import HighwayLaneMap
+from .common.merge_safety import MergeSafety
+from .common.collision_check import LaneChangeSafety
+from .common.object_motion import ObstacleMotion
+from .first_merge.merge import EntryMerge
+from .driving.obstacle_avoidance import HighwayStaticCorridor
+from .common.types import HighwayCandidatePath, HighwayPlanningResult
 
 
-from .merge_speed import MergeSpeedMixin
-from .predictive_merge import PredictiveMergeMixin
-from .lane_change import LaneChangeMixin
-from .lane_following import LaneFollowingMixin
-from .trajectory import TrajectoryMixin
-from .collision_prediction import CollisionPredictionMixin
+from .common.merge_priority import MergeSpeedMixin
+from .first_merge.priority import PredictiveMergeMixin
+from .driving.lane_change import LaneChangeMixin
+from .driving.lane_following import LaneFollowingMixin
+from .common.path_generation import TrajectoryMixin
+from .common.collision_check import CollisionPredictionMixin
 
 
 class HighwayLanePlanner(

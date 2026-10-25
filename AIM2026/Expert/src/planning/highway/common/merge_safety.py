@@ -2,8 +2,8 @@
 
 import math
 
-from ...interfaces.geometry import Point
-from . import parameters as p
+from ....interfaces.geometry import Point
+from ....config.parameters import highway as p
 
 
 class MergeSafety:
