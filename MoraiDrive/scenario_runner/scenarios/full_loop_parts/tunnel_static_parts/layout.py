@@ -300,7 +300,7 @@ def expanded_region_width_limit(region_name, lateral_limit_m=.25):
             "full_polygon_validation_required": True}
 
 
-def _expanded_pose_check(obstacle, yaw, *, continuous_sampling=False):
+def _expanded_pose_check(obstacle, yaw, *, continuous_sampling=False, vehicle_offsets=(0.,)):
     from .advanced_patterns import REGIONS
     region = obstacle.get("placement_region")
     lane = obstacle.get("placement_lane_id")
@@ -330,7 +330,8 @@ def _expanded_pose_check(obstacle, yaw, *, continuous_sampling=False):
     if difference(native, declared) > 1e-6:
         raise ValueError("Expanded actor native traffic direction disagrees with its lane")
     offset = _finite(obstacle.get("static_yaw_offset_deg", 0.), "static yaw offset")
-    if obstacle["actor_kind"] == "vehicle" and abs(offset) > 1e-9:
+    if obstacle["actor_kind"] == "vehicle" and not any(
+            abs((offset-angle+180.) % 360.-180.) <= 1e-6 for angle in vehicle_offsets):
         raise ValueError("Stationary vehicles must face their native lane traffic direction")
     footprint = normalize_footprint(obstacle["planned_bbox"])
     expected = native+offset-footprint["heading_offset_deg"]
@@ -362,7 +363,7 @@ def validate_candidate(candidate, map_loader, *, _road_boundary=None):
     boundary = (_road_boundary if _road_boundary is not None else expanded_road_boundary(map_loader)) if domain else None
     continuous_sampling = False
     if domain:
-        from .advanced_patterns import PATTERNS, yaw_options
+        from .advanced_patterns import PATTERNS, yaw_options, yaw_options_for
         placement = candidate.get("placement", {})
         if "sampling_schema" in placement:
             if placement["sampling_schema"] != "aimdrive_tunnel_static_sampling_v1":
@@ -397,7 +398,10 @@ def validate_candidate(candidate, map_loader, *, _road_boundary=None):
         lateral = _finite(obstacle["lateral_m"], "lateral_m")
         position, yaw = route_pose(geometry["own_points"], station)
         if boundary is not None:
-            _expanded_pose_check(obstacle, yaw, continuous_sampling=continuous_sampling)
+            _expanded_pose_check(
+                obstacle, yaw, continuous_sampling=continuous_sampling,
+                vehicle_offsets=yaw_options_for(candidate["placement"].get("static_yaw_offsets_deg"), "vehicle",
+                                                obstacle["model"]))
             if continuous_sampling:
                 if obstacle.get("placement_region") != "continuous_two_lane":
                     raise ValueError("Continuous sampled actors require the continuous two-lane region")
@@ -567,7 +571,7 @@ def _generate_expanded_candidate(map_loader, static_catalog, vehicle_models, see
                                 pattern, footprint_domain, static_yaw_offsets_deg,
                                 station_window_m, lateral_regions):
     from .advanced_patterns import (DOMAIN, REGIONS, REFERENCE_EGO, SCHEMA as PATTERN_SCHEMA,
-                                    resolve_slots, yaw_options)
+                                    resolve_slots, yaw_options, yaw_options_for)
     if footprint_domain != DOMAIN:
         raise ValueError("Expanded patterns require explicit footprint_domain='two_lane_physical_road'")
     _integer(seed, "seed")
@@ -615,7 +619,7 @@ def _generate_expanded_candidate(map_loader, static_catalog, vehicle_models, see
                         or any(isinstance(value, bool) or float(value) != 1. for value in scale)):
                     raise ValueError("measured geometry is not at native unit scale")
                 footprint = normalize_footprint(raw)
-                offsets = yaw_options(static_yaw_offsets_deg, name) if kind == "obstacle" else [0.]
+                offsets = yaw_options_for(static_yaw_offsets_deg, kind, name)
                 eligible = []
                 for angle in offsets:
                     if projected_footprint_dimensions(footprint, angle)["width_m"] <= width_cap+1e-9:

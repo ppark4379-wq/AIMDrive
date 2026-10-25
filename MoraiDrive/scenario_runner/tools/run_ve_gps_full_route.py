@@ -15,6 +15,7 @@ import time
 from types import SimpleNamespace
 
 REPO = Path(__file__).resolve().parents[3]
+DEFAULT_RUNTIME = REPO / 'MoraiDrive/.runtime/aim2026_wsl_blackout.yaml'
 sys.path[:0] = [str(REPO/'MoraiDrive'), str(REPO/'MoraiDrive/scenario_runner/legacy_expert')]
 from scenario_runner.main_runner import load_configuration, resolve_static_preset
 from scenario_runner.scenarios.full_loop_scenario import FullLoopScenario
@@ -31,6 +32,11 @@ TUNNEL_LAYOUT_LIBRARY = REPO/'MoraiDrive/scenario_runner/.runtime/tunnel_static_
 
 def pick_tunnel_layout(spec, seed):
     """One of the team's 121 curated tunnel layouts: an index, or 'random' (reproducible from the seed)."""
+    if str(spec).endswith('.json'):
+        # A hand-made layout for development (e.g. obliquely parked OBJ_ cars): {"obstacles": [{actor_kind, model,
+        # scale, yaw_deg, position{x,y,z}, station_m, lateral_m}, ...]}, spawned and checked like a library layout.
+        document = json.loads(Path(spec).read_text())
+        return dict(index=-1, sha256='custom', requested_pattern='custom', obstacles=document['obstacles'])
     rows = json.loads(TUNNEL_LAYOUT_LIBRARY.read_text())['candidates']
     if str(spec) == 'random':
         index = random.Random(seed).randrange(len(rows))
@@ -52,10 +58,13 @@ def configure_scenario(config, args):
             result.pop(key)
     result.update(clean_road_mode=False, drive_control_mode='aimdrive_expert',
                   expert_speed_cap_kmh=args.speed_cap_kmh, expert_ros_remaps=[],
+                  expert_uncapped_speed_zones=['high_speed_to_tollgate'] if getattr(args, 'uncap_highway', False) else [],
                   expert_traffic_light_control=False, max_laps=1,
                   route_setup_attempts=1, random_seed=args.seed,
                   route_debug_enabled=False, ve_stop_before_tunnel=args.stop_before_tunnel,
-                  static_verified_pair=not bool(args.static_preset))
+                  static_verified_pair=not bool(args.static_preset) and not getattr(args, 'static_obstacle_count', None))
+    if getattr(args, 'static_obstacle_count', None):
+        result['static_obstacle_count'] = args.static_obstacle_count
     result.setdefault('sync_runtime', {})['enabled'] = False
     result.setdefault('highway_merge_static_vehicle', {})['enabled'] = False
     result['highway_merge_static_vehicle_explicitly_disabled'] = True
@@ -98,8 +107,42 @@ class GpsController:
     def __getattr__(self, name):
         return getattr(self.base, name)
 
+    def runtime_command(self, check=False):
+        """AIM2026 unified entry: sensors, VE, Expert and UDP control in one command (same code as competition)."""
+        args = self.context.gps_args
+        command = [self.runtime_python(), '-u', '-B', str(REPO/'AIM2026/Expert/main.py'),
+                   '--config', str(args.aim2026_runtime), '--scenario-context', str(self.context_path),
+                   '--output', str(self.output), '--speed-cap-kmh', str(args.speed_cap_kmh),
+                   '--sim-profile', args.sim_profile]
+        command.append('--check' if check else '--drive')
+        command.append('--visualize')  # also records inputs.jsonl (VE boxes) and paths.jsonl (planned path) for diagnosis
+        if getattr(args, 'static_geometry_fusion', False):
+            command.append('--static-geometry-fusion')
+        for flag, name in (('--moving-carry-s', 'moving_carry_s'), ('--slow-window-s', 'slow_window_s'),
+                           ('--stationary-hold-s', 'stationary_hold_s')):
+            if getattr(args, name, 0.):
+                command += [flag, str(getattr(args, name))]
+        if getattr(args, 'ignore_signals', None):
+            command += ['--ignore-signals', ','.join(args.ignore_signals)]
+        return command
+
+    @staticmethod
+    def runtime_python():
+        from runtime_paths import ANALYSIS_PYTHON
+        return str(ANALYSIS_PYTHON)
+
+    def runtime_environment(self):
+        """The unified process needs torch (VE child) and Shapely 2 (Expert) in one interpreter."""
+        from runtime_paths import ASYNC_DEPS
+        env = dict(os.environ)
+        env.pop('CONDA_PREFIX', None)
+        env['PYTHONPATH'] = os.pathsep.join(filter(None, [str(ASYNC_DEPS), env.get('PYTHONPATH')]))
+        return env
+
     def command(self, check=False):
         args = self.context.gps_args
+        if getattr(args, 'aim2026_runtime', None):
+            return self.runtime_command(check)
         return [sys.executable, '-u', '-B', str(REPO/'MoraiDrive/scenario_runner/legacy_expert/run_ve_gps_expert.py'),
                 '--check' if check else '--drive', '--scenario-context', str(self.context_path),
                 '--output', str(self.output), '--speed-cap-kmh', str(args.speed_cap_kmh),
@@ -125,7 +168,9 @@ class GpsController:
         write(self.context.gps_output/'driver_command.json', command)
         self.log = (self.context.gps_output/'driver.console.log').open('w', buffering=1)
         self.process = subprocess.Popen(command, cwd=REPO, stdout=self.log,
-                                        stderr=subprocess.STDOUT, start_new_session=True)
+                                        stderr=subprocess.STDOUT, start_new_session=True,
+                                        env=self.runtime_environment()
+                                        if getattr(self.context.gps_args, 'aim2026_runtime', None) else None)
         print('[GPS+VE 주행 로그] '+str(self.context.gps_output/'driver.console.log'), flush=True)
         deadline = time.monotonic()+100.
         while time.monotonic() < deadline:
@@ -330,6 +375,9 @@ def main(argv=None):
     parser.add_argument('--static-preset')
     parser.add_argument('--ego-trace', type=Path)
     parser.add_argument('--speed-cap-kmh', '--expert-speed-cap-kmh', type=float, default=60.)
+    parser.add_argument('--cap-highway', dest='uncap_highway', action='store_false',
+                        help='고속도로 구간(high_speed_to_tollgate)에도 --speed-cap-kmh를 적용 (기본: 고속도로는 구간 제한 100km/h)')
+    parser.set_defaults(uncap_highway=True)
     parser.add_argument('--sim-profile', choices=('normal', 'competition'), default='normal')
     parser.add_argument('--signal-head', '--ve-signal-head', type=Path,
         default=Path(os.environ.get('VE_SIGNAL_HEAD', str(REPO/'MoraiDrive/.runtime/signal_state_p1_20261014/run_003/signal_head_final.pt'))))
@@ -353,6 +401,13 @@ def main(argv=None):
                         help='full_loop_tunnel_vehicle 미션의 터널 안 차량 행동 하나를 고정')
     parser.add_argument('--tunnel-vehicle-random', action='store_true',
                         help='full_loop_tunnel_vehicle 미션에서 --seed로 행동을 무작위 선택')
+    parser.add_argument('--aim2026-runtime', type=Path,
+                        help='Drive with the unified AIM2026 entry (AIM2026/Expert/main.py) using this sensor/UDP YAML '
+                             'instead of the development GPS runner.')
+    parser.add_argument('--legacy-runtime', action='store_true',
+                        help='Skip the default AIM2026 runtime (%s) and use the development GPS runner.' % DEFAULT_RUNTIME.name)
+    parser.add_argument('--static-obstacle-count', type=int, choices=(1, 2),
+                        help='Spawn this many verified static obstacles at random instead of the default verified pair.')
     parser.add_argument('--aim2026-config', type=Path,
                         help='Optional AIM2026 YAML sensor/DR backend for the existing common Expert.')
     parser.add_argument('--gps-blackout-hold', action='store_true',
@@ -366,6 +421,8 @@ def main(argv=None):
     for name, port in (('status',8000), ('gps',10506), ('imu',10507), ('control',7601), ('control-source',7600)):
         parser.add_argument('--'+name+'-port', type=int, default=port)
     args = parser.parse_args(argv)
+    if not args.aim2026_runtime and not args.aim2026_config and not args.legacy_runtime and DEFAULT_RUNTIME.is_file():
+        args.aim2026_runtime = DEFAULT_RUNTIME
     validate_aim2026_options(args, parser)
     if args.simulate_gps_blackout and not args.gps_blackout_hold:
         parser.error('--simulate-gps-blackout requires --gps-blackout-hold')
@@ -388,7 +445,11 @@ def main(argv=None):
     from scenario_runner.adapters.expert_controller import validate_max_velocity_kmh
     args.speed_cap_kmh = validate_max_velocity_kmh(args.speed_cap_kmh)
     args.signal_head = args.signal_head.expanduser().resolve()
-    if not args.aim2026_config and not args.signal_head.is_file():
+    if args.aim2026_runtime:
+        args.aim2026_runtime = args.aim2026_runtime.expanduser().resolve()
+        if not args.aim2026_runtime.is_file():
+            parser.error('--aim2026-runtime file not found: '+str(args.aim2026_runtime))
+    if not args.aim2026_config and not args.aim2026_runtime and not args.signal_head.is_file():
         parser.error('신호 head 없음: '+str(args.signal_head))
     ports = [args.status_port,args.gps_port,args.imu_port,args.control_port,args.control_source_port,
              10501,10502,10503,10504,2368,12050]

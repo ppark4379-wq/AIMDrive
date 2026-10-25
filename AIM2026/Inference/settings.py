@@ -25,6 +25,8 @@ def read_config(path):
     vision = options['vision']
     if vision.get('checkpoint') not in CHECKPOINTS:
         raise ValueError('Inference.vision.checkpoint must be one of %s' % sorted(CHECKPOINTS))
+    if vision.get('object_head') not in (None, 'truck'):
+        raise ValueError('Inference.vision.object_head: null or truck')
     if type(vision.get('signal_head')) is not bool:
         raise ValueError('Inference.vision.signal_head: true or false')
     if not isinstance(options.get('device'), str) or options['device'].split(':')[0] not in ('cuda', 'cpu'):

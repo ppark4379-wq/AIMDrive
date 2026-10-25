@@ -23,6 +23,13 @@ CHECKPOINTS = {
 SIGNAL_HEADS = {
     'P1': 'signal_head_p1_20261014.pt',  # signal_state_p1_20261014/run_003/signal_head_final.pt
 }
+# Object-head candidates replace only traffic_pred_head channels 0-6 (score, offsets, heading, size) of their base
+# checkpoint; channel 7 (speed) keeps coming from the base head, so speed behaviour is unchanged.
+OBJECT_HEADS = {
+    # truck_split2_20261024/checkpoint-step-0060000 (Xcient P520/P540 aware), with fragment merge
+    'truck': dict(file='object_head_truck_20261024.pt', base='P1',
+                  sha256='3f53745b672fe06aabeb4f515e9081e808396c6b5c3d95dfc68259fbb09a4d94'),
+}
 
 
 def digest(path):
@@ -74,3 +81,41 @@ def load_signal(path, base_sha256, device):
     if not path.is_file():
         raise FileNotFoundError('Signal head not found: %s' % path)
     return load_signal_head(torch.load(str(path), map_location='cpu'), base_sha256).to(device)
+
+
+def resolve_object_head(name, base_label):
+    """(path, SHA256) of a reviewed object head that belongs to ``base_label``."""
+    if name not in OBJECT_HEADS:
+        raise ValueError('Unknown object head %r; choose from %s' % (name, sorted(OBJECT_HEADS)))
+    entry = OBJECT_HEADS[name]
+    if entry['base'] != base_label:
+        raise ValueError('Object head %r was trained on %s, not %s' % (name, entry['base'], base_label))
+    return WEIGHTS_DIR / entry['file'], entry['sha256']
+
+
+def load_object_head(model, path, expected_sha256, device):
+    """Replace ``model.traffic_pred_head`` channels 0-6 with the reviewed head; channel 7 stays as it was."""
+    import copy
+    import torch
+    from torch import nn
+    path = Path(path)
+    if not path.is_file():
+        raise FileNotFoundError('Object head not found: %s' % path)
+    if digest(path) != expected_sha256:
+        raise ValueError('Object head SHA256 mismatch: %s' % path)
+    payload = torch.load(str(path), map_location='cpu', weights_only=True)
+    state = {k[len('traffic_pred_head.'):]: v for k, v in payload['state_dict'].items()
+             if k.startswith('traffic_pred_head.')}
+
+    class SplitHead(nn.Module):
+        def __init__(self, trained, reference):
+            super().__init__()
+            self.trained, self.reference = trained, reference
+
+        def forward(self, x):
+            return torch.cat([self.trained(x)[..., :7], self.reference(x)[..., 7:]], -1)
+
+    reference = model.traffic_pred_head
+    trained = copy.deepcopy(reference)
+    trained.load_state_dict(state)
+    model.traffic_pred_head = SplitHead(trained, reference).to(device).eval()

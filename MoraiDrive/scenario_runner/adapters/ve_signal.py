@@ -10,6 +10,9 @@ import threading
 import time
 
 TARGET_ID = 'C1256W000052'
+# A permission (green / left arrow) that was valid is kept this long when the head loses confidence: the vehicle that
+# has started through the intersection sees the lamp from a worse angle and must not stop in the middle of it.
+PERMISSION_LATCH_S = 4.
 TOPIC = '/ve/GetTrafficLightStatus'
 
 
@@ -29,6 +32,7 @@ class SignalPolicy:
         self.allow_since = None
         self.allow_samples = 0
         self.bound = False
+        self.latched_until = None
 
     def accept(self, packet, points, now):
         previous_code = self.code
@@ -41,7 +45,17 @@ class SignalPolicy:
                  and type(confidence) in (float, int) and math.isfinite(confidence)
                  and .9 <= confidence <= 1 and self.bound
                  and 0 <= now-self.received <= .5)
-        self.code = code if valid else None
+        fresh = 0 <= now-self.received <= .5
+        if valid:
+            self.code = code
+            self.latched_until = now+PERMISSION_LATCH_S if code in self.permission_codes else None
+        elif (previous_code in self.permission_codes and self.latched_until is not None
+                and now <= self.latched_until and self.bound and fresh
+                and not (code == 1 and type(confidence) in (float, int) and confidence >= .9)):
+            self.code = previous_code      # permission kept briefly; a confident red always cancels it
+        else:
+            self.code = None
+            self.latched_until = None
         if self.code != previous_code:
             self.allow_since, self.allow_samples = None, 0
         if self.code not in self.permission_codes:

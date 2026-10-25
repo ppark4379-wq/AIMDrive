@@ -1,9 +1,15 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+import time
 import numpy as np
 from ...interfaces.perception_data import is_ve_tracked_unknown
 from ..jamming.motion import stationary as jamming_stationary
 from ...interfaces.geometry import Point
+
+
+# A re-plan (planning/blocked) between two validated static paths must not hand a stopped obstacle back to the
+# path-distance ACC: that stops the vehicle and restarts its speed ramp every cycle.
+STATIC_ACC_BYPASS_GRACE_S = 2.0
 
 
 class ForwardObjectDetector(object):
@@ -70,9 +76,18 @@ def _legacy_acc_entries(self, vehicle_state, lattice_result, forward_entries):
         # legacy ACC; avoid a second vehicle stop on the old path.
         return [entry for entry in forward_entries if entry['object_info'].type not in (1,2)
                 and not is_ve_tracked_unknown(entry['object_info'])]
-    if (getattr(lattice_result, "mode", "") == "static_obstacle"
-            and getattr(lattice_result, "active", False)
-            and static_details.get("path_validated", False)):
+    now = time.monotonic()
+    static_active = (getattr(lattice_result, "mode", "") == "static_obstacle"
+                     and getattr(lattice_result, "active", False))
+    if static_active and static_details.get("path_validated", False):
+        self._static_acc_bypass_until = now + STATIC_ACC_BYPASS_GRACE_S
+    elif not static_active:
+        self._static_acc_bypass_until = 0.
+    # The grace only covers a re-plan in which the static planner itself still allows motion; a path that
+    # became blocked (acc_target_velocity 0) hands the objects back to ACC at once.
+    if static_active and (static_details.get("path_validated", False)
+                          or (now <= getattr(self, "_static_acc_bypass_until", 0.)
+                              and getattr(lattice_result, "acc_target_velocity", 0.) > 0.)):
         # Only bypass static vehicle ACC after validating the complete swept
         # path. Moving vehicles, people and traffic signals keep their stops.
         return [entry for entry in forward_entries if not (

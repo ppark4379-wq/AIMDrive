@@ -93,7 +93,44 @@ def _partial(box):
     return bool(x0 < BEV_EXTENT[0] or x1 > BEV_EXTENT[1] or y0 < BEV_EXTENT[2] or y1 > BEV_EXTENT[3])
 
 
-def decode_boxes(prediction, *, score_threshold=CONFIDENCE, nms_iou=NMS_IOU):
+MERGE_IOMIN = 0.4
+MERGE_MAX_ANGLE_DEG = 15.
+MERGE_MAX_LENGTH_M = 14.
+
+
+def merge_fragments(boxes):
+    """Merge post-NMS boxes that are fragments of one long object (a truck seen as several boxes).
+
+    Two boxes merge when the smaller lies mostly inside the larger (intersection / smaller area >= 0.4) and their
+    headings agree within 15 degrees. The merged box keeps the higher-score box's heading, lateral centre and score,
+    spans the union along that heading (at most 14 m) and takes the larger width. From VLDrive
+    inference/ve_fragment_merge.py.
+    """
+    kept, merges = [], 0
+    for box in boxes:                      # sorted by score, as NMS leaves them
+        for i, k in enumerate(kept):
+            h, hb = k['heading'] / np.linalg.norm(k['heading']), box['heading'] / np.linalg.norm(box['heading'])
+            if math.degrees(math.acos(min(1., abs(float(h @ hb))))) > MERGE_MAX_ANGLE_DEG:
+                continue
+            o = oriented_iou(box, k)
+            inter = o * (box['area'] + k['area']) / (1 + o)
+            if inter / min(box['area'], k['area']) < MERGE_IOMIN:
+                continue
+            ends = [float((c - k['center']) @ h) for c in np.vstack([k['polygon'], box['polygon']])]
+            lo, hi = min(ends), max(ends)
+            if hi - lo > MERGE_MAX_LENGTH_M:
+                continue
+            merged = _rectangle(k['center'] + h * (lo + hi) / 2, h, hi - lo, max(k['width'], box['width']))
+            merged.update(score=k['score'], cell_index=k['cell_index'], partial=_partial(merged))
+            kept[i] = merged
+            merges += 1
+            break
+        else:
+            kept.append(box)
+    return kept, merges
+
+
+def decode_boxes(prediction, *, score_threshold=CONFIDENCE, nms_iou=NMS_IOU, merge=False):
     """(2500, 8) head -> ego-frame boxes (right, forward metres) after NMS, and rejection counts.
 
     Heading channels [right, -forward] become [right, forward]; offsets x3.5,
@@ -138,6 +175,8 @@ def decode_boxes(prediction, *, score_threshold=CONFIDENCE, nms_iou=NMS_IOU):
             counts['nms_suppressed'] += 1
         else:
             kept.append(candidate)
+    if merge and nms_iou is not None:
+        kept, counts['fragment_merges'] = merge_fragments(kept)
     counts['decoded_boxes'] = len(kept)
     return kept, counts
 
@@ -155,14 +194,14 @@ def to_world(center, heading, x, y, yaw):
     return position, math.degrees(math.atan2(hy, hx))
 
 
-def decode_world_boxes(prediction, x, y, yaw_grid_rad):
+def decode_world_boxes(prediction, x, y, yaw_grid_rad, merge=False):
     """Detection head + the pose the inputs were captured at -> (UDP Box list, counts).
 
     Speed is the head's scalar speed (no direction); invalid values become None.
     Values outside the Detection wire limits would make the sender reject the
     whole frame, so such a speed becomes None and such a box is dropped (counted).
     """
-    boxes, counts = decode_boxes(prediction)
+    boxes, counts = decode_boxes(prediction, merge=merge)
     values = prediction.detach().float().cpu().numpy() if hasattr(prediction, 'detach') else np.asarray(prediction)
     result, invalid_speeds, oversize = [], 0, 0
     for box in boxes:

@@ -1,6 +1,7 @@
 """Highway native-SpawnPoint functions for the full-loop scenario."""
 
 import math
+import os
 import random
 import time
 
@@ -43,6 +44,8 @@ def _merge_static_vehicle_model_candidates(self):
 def _merge_static_vehicle_pose(self):
     """Validate and resolve the configured merge-ramp stationary pose."""
     cfg = dict(self.cfg.get("highway_merge_static_vehicle", {}))
+    if os.environ.get("MORAI_HIGHWAY_SPAWN_MODELS", "").strip():
+        return None  # data collection: no merge-ramp stationary sedan
     if not bool(cfg.get("enabled", False)):
         return None
 
@@ -191,6 +194,50 @@ def spawn_highway_merge_static_vehicle(self):
     return actor
 
 
+def _collection_traffic_varied():
+    return os.environ.get("MORAI_HIGHWAY_SPAWN_VARIED", "1") != "0"
+
+
+def _collection_spawn_models(self, specs):
+    """Data collection only: pin SpawnPoint models from MORAI_HIGHWAY_SPAWN_MODELS (comma list).
+
+    Each lap draws, from the run seed, a model per SpawnPoint plus its own spawn period, speed range and population,
+    so repeated laps do not replay one synchronized truck convoy (MORAI_HIGHWAY_SPAWN_VARIED=0 keeps fixed values).
+    """
+    models = [m.strip() for m in os.environ.get("MORAI_HIGHWAY_SPAWN_MODELS", "").split(",") if m.strip()]
+    if not models:
+        return specs
+    missing = sorted(set(models) - set(self.vehicle_models()))
+    if missing:
+        raise RuntimeError(f"MORAI_HIGHWAY_SPAWN_MODELS unavailable: {missing}")
+    length_types = [int(v) for v in os.environ.get("MORAI_HIGHWAY_SPAWN_LENGTH_TYPES", "3").split(",") if v.strip()]
+    rng = random.Random(int(self.run_seed) ^ 0x5452554B)
+    pinned = []
+    for i, spec in enumerate(specs):
+        item = dict(spec, vehicle_length_types=length_types)
+        if _collection_traffic_varied():
+            period_low = round(rng.uniform(4.0, 9.0), 1)
+            speed_low = round(rng.uniform(30.0, 52.0), 1)
+            item.update(
+                model_name=rng.choice(models),
+                min_spawn_period_sec=period_low,
+                max_spawn_period_sec=round(period_low + rng.uniform(2.0, 8.0), 1),
+                min_desired_velocity_custom_kmh=speed_low,
+                max_desired_velocity_custom_kmh=round(min(58.0, speed_low + rng.uniform(4.0, 12.0)), 1),
+                maximum_spawn_vehicle=rng.choice((2, 3, 4)),
+            )
+        else:
+            item["model_name"] = models[i % len(models)]
+        pinned.append(item)
+    print("[FullLoop] highway SpawnPoint traffic pinned for collection: "
+          + "; ".join(
+              f"{s.get('name', s.get('id'))}={s['model_name']} period={s['min_spawn_period_sec']}-{s['max_spawn_period_sec']}s "
+              f"speed={s['min_desired_velocity_custom_kmh']}-{s['max_desired_velocity_custom_kmh']}kmh max={s['maximum_spawn_vehicle']}"
+              for s in pinned)
+          + f", length_types={length_types}")
+    return pinned
+
+
 def spawn_highway_npcs(self):
     """Create native MORAI SpawnPoints and let them settle while disabled."""
     cfg = self.cfg["highway_npc"]
@@ -202,6 +249,7 @@ def spawn_highway_npcs(self):
     specs = list(cfg.get("spawn_points", []))
     if not specs:
         raise RuntimeError("No native highway SpawnPoint definitions configured")
+    specs = _collection_spawn_models(self, specs)
 
     total_spawn_capacity = sum(
         int(spec.get("maximum_spawn_vehicle", 0)) for spec in specs

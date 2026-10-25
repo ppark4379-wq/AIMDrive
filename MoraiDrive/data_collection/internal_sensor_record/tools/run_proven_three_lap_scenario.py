@@ -885,7 +885,7 @@ def main():
                     raise ValueError('Simulation expert requires use_sim_time=true and actual /clock')
                 if original and not a.expert_wall_clock and not ros_clock_expert:
                     raise ValueError('RealTime expert requires use_sim_time=false')
-                storage = require_ssd(output, check_volume=True, reserve_bytes=70 * 1024**3)
+                storage = require_ssd(output, check_volume=True, reserve_bytes=int(float(os.environ.get('MORAI_STORAGE_RESERVE_GIB', '70')) * 1024**3))
                 if a.policy_study is not None:
                     a.policy_study = a.policy_study.resolve()
                     require_ssd(a.policy_study, reserve_bytes=0)

@@ -218,7 +218,7 @@ if [[ -n "$SIGNAL_PLAN" ]]; then
     /usr/bin/python3 "$INTEGRATION/tools/preflight_local_storage.py" \
         --reserve-gib "$signal_reserve_gib"
 else
-    /usr/bin/python3 "$INTEGRATION/tools/preflight_local_storage.py" --reserve-gib 70
+    /usr/bin/python3 "$INTEGRATION/tools/preflight_local_storage.py" --reserve-gib "${MORAI_STORAGE_RESERVE_GIB:-70}"
 fi
 
 integration_log="$MORAI_PROJECT_ROOT/.runtime/data_collection/scenario_contract_check.log"

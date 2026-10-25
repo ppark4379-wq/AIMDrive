@@ -177,6 +177,62 @@ def make_object_message(packet, message_type, object_type, stamp):
     return message
 
 
+def install_head_candidate(model, device):
+    """Optional truck-aware object head (env VE_HEAD_CANDIDATE, SHA256 in VE_HEAD_CANDIDATE_SHA256).
+
+    The base checkpoint stays the reviewed P1: encoder, traffic-light head, contract and signal sidecar are unchanged.
+    The candidate only replaces ``traffic_pred_head`` channels 0-6 (score, offsets, heading, size); channel 7
+    (scalar speed) keeps coming from the frozen P1 head, so its speed behaviour is bit-identical to P1. Boxes that
+    are fragments of one long object are merged after NMS (VE_FRAGMENT_MERGE=0 disables it).
+    """
+    import copy
+    import hashlib
+    import os
+    import torch
+    from torch import nn
+    candidate = os.environ.get('VE_HEAD_CANDIDATE')
+    if not candidate:
+        return
+    expected = os.environ.get('VE_HEAD_CANDIDATE_SHA256', '')
+    sha = hashlib.sha256()
+    with open(candidate, 'rb') as stream:
+        for chunk in iter(lambda: stream.read(8 * 1024 * 1024), b''):
+            sha.update(chunk)
+    if not expected or sha.hexdigest() != expected:
+        raise ValueError('VE_HEAD_CANDIDATE requires a matching VE_HEAD_CANDIDATE_SHA256')
+    state = torch.load(candidate, map_location='cpu', weights_only=True)['state_dict']
+    head_state = {k[len('traffic_pred_head.'):]: v for k, v in state.items() if k.startswith('traffic_pred_head.')}
+
+    class SplitHead(nn.Module):
+        def __init__(self, trained, reference):
+            super().__init__()
+            self.trained, self.reference = trained, reference
+
+        def forward(self, x):
+            a, b = self.trained(x), self.reference(x)
+            return torch.cat([a[..., :7], b[..., 7:]], -1)
+
+    reference = model.traffic_pred_head
+    trained = copy.deepcopy(reference)
+    trained.load_state_dict(head_state)
+    model.traffic_pred_head = SplitHead(trained, reference).to(device).eval()
+    print('[VE] object head candidate %s (speed channel from P1)' % sha.hexdigest()[:12], flush=True)
+    if os.environ.get('VE_FRAGMENT_MERGE', '1') != '0':
+        from utils.evaluation import morai_object_metrics as metrics
+        from utils.evaluation import morai_ve_expert_adapter as adapter
+        from inference.ve_fragment_merge import merge_fragments
+        decode = metrics.decode_object_boxes
+
+        def decode_merged(prediction, **kwargs):
+            boxes, counts = decode(prediction, **kwargs)
+            if kwargs.get('nms_iou', metrics.NMS_IOU) is None:
+                return boxes, counts
+            merged, n = merge_fragments(boxes, metrics._rectangle, metrics.oriented_iou, metrics._partial)
+            return merged, dict(counts, fragment_merges=n, decoded_boxes=len(merged))
+        adapter.decode_object_boxes = decode_merged
+        print('[VE] fragment merge on', flush=True)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', required=True)
@@ -249,6 +305,7 @@ def main(argv=None):
     device = config['runtime']['device']
     model, payload, digest = _load_model(Path(config['checkpoint']), config['checkpoint_sha256'], device)
     contract = validate_contract(checkpoint_encoder_contract(payload, digest), {'map_basis': MAP_BASIS})
+    install_head_candidate(model, device)
     signal_head = None
     if config.get('signal_head'):
         from models.ve.signal_state import decode_checkpoint, extract_signal_feature, decode_signal, decode_native_signal

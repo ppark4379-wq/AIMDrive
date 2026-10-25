@@ -10,7 +10,7 @@ import math
 import random
 from collections.abc import Mapping
 
-from .advanced_patterns import DOMAIN, REFERENCE_EGO, yaw_options
+from .advanced_patterns import DOMAIN, REFERENCE_EGO, VEHICLE_YAW_KEY, yaw_options, yaw_options_for
 from .layout import (
     MAP_NAME, OPPOSING_LINK, SCHEMA as CANDIDATE_SCHEMA, TUNNEL_LINK,
     _finite, _hash, _integer, expanded_road_boundary, normalize_footprint,
@@ -44,6 +44,9 @@ def _yaw_policy(requested):
     policy = copy.deepcopy(NATIVE_STATIC_YAW_POLICY)
     for name in sorted(requested or {}):
         values = yaw_options(requested, name)
+        if name == VEHICLE_YAW_KEY:
+            policy[name] = values   # opt-in oblique parked cars; every listed angle is screened like any other layout
+            continue
         permitted = NATIVE_STATIC_YAW_POLICY.get(name, [0.])
         if any(value not in permitted for value in values):
             raise ValueError("Sampling yaw policy exceeds native permitted rotations: " + str(name))
@@ -72,7 +75,7 @@ def _model_pool(static_catalog, vehicles, actor_kind, width_cap, yaw_policy):
                         or any(isinstance(value, bool) or float(value) != 1. for value in scale)):
                     raise ValueError("measured geometry is not at native unit scale")
                 footprint = normalize_footprint(raw)
-                offsets = yaw_options(yaw_policy, name) if kind == "obstacle" else [0.]
+                offsets = yaw_options_for(yaw_policy, kind, name)
                 for offset in offsets:
                     projected = projected_footprint_dimensions(footprint, offset)
                     if projected["width_m"] <= width_cap+1e-9:
