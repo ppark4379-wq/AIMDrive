@@ -194,7 +194,89 @@ def to_world(center, heading, x, y, yaw):
     return position, math.degrees(math.atan2(hy, hx))
 
 
-def decode_world_boxes(prediction, x, y, yaw_grid_rad, merge=False):
+LIDAR_SEED_RADIUS_M = 1.5     # the object's points start within this distance of the detector's centre ...
+LIDAR_CLUSTER_GAP_M = .5      # ... and grow through neighbours closer than this ...
+LIDAR_CLUSTER_MAX_M = 4.      # ... never farther than this from the centre (walls, other objects)
+LIDAR_MIN_POINTS = 15
+LIDAR_MIN_LONG_M = 1.5
+LIDAR_MIN_SHOWN = .6          # the outline must show this share of max(detector length, LIDAR_SHOWN_FLOOR_M)
+LIDAR_SHOWN_FLOOR_M = 4.      # a car seen only from behind (a 2 m line) must not pass as a barrier
+LIDAR_MIN_ASPECT = 1.8        # clearly elongated; irregular piles (rockslide) keep the detector's box
+
+
+def lshape_axis(points):
+    """Long-axis direction (radians) of the 2-D points by the L-shape closeness criterion, and the fitted extents.
+
+    Every 1-degree rectangle orientation in [0, 90) is scored by how close the points lie to its nearest edge; the
+    best one is the outline a car's visible sides form, independent of how many points each side has.
+    """
+    angles = np.radians(np.arange(90.))
+    e1 = np.stack([np.cos(angles), np.sin(angles)], 1)
+    e2 = np.stack([-np.sin(angles), np.cos(angles)], 1)
+    c1, c2 = points @ e1.T, points @ e2.T
+    d1 = np.minimum(c1 - c1.min(0), c1.max(0) - c1)
+    d2 = np.minimum(c2 - c2.min(0), c2.max(0) - c2)
+    best = int(np.argmax(np.sum(1. / np.maximum(np.minimum(d1, d2), .05), axis=0)))
+    l1, l2 = float(np.ptp(c1[:, best])), float(np.ptp(c2[:, best]))
+    axis = angles[best] if l1 >= l2 else angles[best] + math.pi / 2
+    return axis, max(l1, l2), min(l1, l2)
+
+
+def object_points(points, center):
+    """The LiDAR points connected to the detector's centre (gaps < LIDAR_CLUSTER_GAP_M), within LIDAR_CLUSTER_MAX_M."""
+    near = points[np.hypot(points[:, 0] - center[0], points[:, 1] - center[1]) < LIDAR_CLUSTER_MAX_M]
+    if not len(near):
+        return near
+    member = np.hypot(near[:, 0] - center[0], near[:, 1] - center[1]) < LIDAR_SEED_RADIUS_M
+    frontier = member.copy()
+    while frontier.any():
+        gap = np.min(np.linalg.norm(near[:, None] - near[frontier][None], axis=2), axis=1)
+        frontier = (gap < LIDAR_CLUSTER_GAP_M) & ~member
+        member |= frontier
+    return near[member]
+
+
+def refine_heading_with_lidar(boxes, points):
+    """Orient elongated objects by the outline of their LiDAR points; returns the number of boxes changed.
+
+    In the middle range (8-25 m) the cells covering one parked car or barrier predict headings up to 90 degrees apart
+    and NMS picks a different cell from frame to frame, so the box turns; thin barriers also come out too short.
+    The visible sides are measured directly by the LiDAR: the heading comes from their outline, the size is the larger
+    of the detector's and the outline's (the outline only shows the visible sides) and the box is widened to cover
+    the points. The forward sign stays the one closest to the head's heading. ``points`` are (right, forward) metres
+    in the boxes' frame, already limited to body height.
+    """
+    if points is None or not len(points):
+        return 0
+    changed = 0
+    for box in boxes:
+        cluster = object_points(points, box['center'])
+        if len(cluster) < LIDAR_MIN_POINTS:
+            continue
+        axis, long_side, short_side = lshape_axis(cluster)
+        if (long_side < max(LIDAR_MIN_LONG_M, LIDAR_MIN_SHOWN * max(box['length'], LIDAR_SHOWN_FLOOR_M))
+                or long_side < LIDAR_MIN_ASPECT * max(short_side, .05)):
+            continue
+        u = np.array([math.cos(axis), math.sin(axis)])
+        if float(u @ box['heading']) < 0.:
+            u = -u
+        v = np.array([-u[1], u[0]])
+        center = np.asarray(box['center'], dtype=np.float64)
+        length, width = max(box['length'], long_side), max(box['width'], short_side)
+        # cover both the detector's footprint (now along the measured axis) and every object point
+        along, across = (cluster - center) @ u, (cluster - center) @ v
+        lo_u, hi_u = min(-length / 2, along.min()), max(length / 2, along.max())
+        lo_v, hi_v = min(-width / 2, across.min()), max(width / 2, across.max())
+        refined = _rectangle(center + u * (lo_u + hi_u) / 2 + v * (lo_v + hi_v) / 2, u, hi_u - lo_u, hi_v - lo_v)
+        refined.update({k: box[k] for k in ('score', 'cell_index')}, partial=_partial(refined),
+                       head_heading=box['heading'])
+        box.clear()
+        box.update(refined)
+        changed += 1
+    return changed
+
+
+def decode_world_boxes(prediction, x, y, yaw_grid_rad, merge=False, lidar_points=None):
     """Detection head + the pose the inputs were captured at -> (UDP Box list, counts).
 
     Speed is the head's scalar speed (no direction); invalid values become None.
@@ -202,6 +284,22 @@ def decode_world_boxes(prediction, x, y, yaw_grid_rad, merge=False):
     whole frame, so such a speed becomes None and such a box is dropped (counted).
     """
     boxes, counts = decode_boxes(prediction, merge=merge)
+    if lidar_points is not None:
+        counts['lidar_heading'] = refine_heading_with_lidar(boxes, lidar_points)
+        if counts['lidar_heading']:
+            # Cells of one car that disagreed on the heading overlapped too little for NMS; once they share the
+            # measured heading they are duplicates, so suppress (and merge) again.
+            kept = []
+            for box in boxes:   # still in score order
+                if any(oriented_iou(box, earlier) > NMS_IOU for earlier in kept):
+                    counts['nms_suppressed'] += 1
+                else:
+                    kept.append(box)
+            boxes = kept
+            if merge:
+                boxes, merges = merge_fragments(boxes)
+                counts['fragment_merges'] = counts.get('fragment_merges', 0) + merges
+            counts['decoded_boxes'] = len(boxes)
     values = prediction.detach().float().cpu().numpy() if hasattr(prediction, 'detach') else np.asarray(prediction)
     result, invalid_speeds, oversize = [], 0, 0
     for box in boxes:

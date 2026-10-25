@@ -15,7 +15,7 @@ import time
 from types import SimpleNamespace
 
 REPO = Path(__file__).resolve().parents[3]
-DEFAULT_RUNTIME = REPO / 'MoraiDrive/.runtime/aim2026_wsl_blackout.yaml'
+DEFAULT_RUNTIME = Path(os.environ.get('VE_DEFAULT_RUNTIME') or REPO / 'MoraiDrive/.runtime/aim2026_wsl_blackout.yaml')
 sys.path[:0] = [str(REPO/'MoraiDrive'), str(REPO/'MoraiDrive/scenario_runner/legacy_expert')]
 from scenario_runner.main_runner import load_configuration, resolve_static_preset
 from scenario_runner.scenarios.full_loop_scenario import FullLoopScenario
@@ -118,6 +118,8 @@ class GpsController:
         command.append('--visualize')  # also records inputs.jsonl (VE boxes) and paths.jsonl (planned path) for diagnosis
         if getattr(args, 'static_geometry_fusion', False):
             command.append('--static-geometry-fusion')
+        if getattr(args, 'no_static_memory', False):
+            command.append('--no-static-memory')
         for flag, name in (('--moving-carry-s', 'moving_carry_s'), ('--slow-window-s', 'slow_window_s'),
                            ('--stationary-hold-s', 'stationary_hold_s')):
             if getattr(args, name, 0.):
@@ -404,6 +406,8 @@ def main(argv=None):
     parser.add_argument('--aim2026-runtime', type=Path,
                         help='Drive with the unified AIM2026 entry (AIM2026/Expert/main.py) using this sensor/UDP YAML '
                              'instead of the development GPS runner.')
+    parser.add_argument('--no-static-memory', action='store_true',
+                        help='AIM2026 런타임의 정적 기억(깜빡이는 작은 정지 물체 유지)을 끈다 (A/B 시험용)')
     parser.add_argument('--legacy-runtime', action='store_true',
                         help='Skip the default AIM2026 runtime (%s) and use the development GPS runner.' % DEFAULT_RUNTIME.name)
     parser.add_argument('--static-obstacle-count', type=int, choices=(1, 2),
