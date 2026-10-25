@@ -1,8 +1,10 @@
 import json
 import math
 import os
+import sys
 import threading
 import time
+from ..validation.incident import snapshot_nearby_actors
 
 from .base_scenario import BaseScenario
 from ..adapters.expert_controller import ExpertController
@@ -612,6 +614,22 @@ class FullLoopDriveBase(BaseScenario):
                 continue
 
             ego_state = self.get_ego_motion_state()
+            validation_log = getattr(self, "_runner_validation_log", None)
+            if validation_log is not None:
+                try:
+                    validation_log.observe(
+                        self.run_instance_id, elapsed, ego_state,
+                        clock_domain=self.clock.domain, lap_index=lap,
+                        actor_provider=lambda: snapshot_nearby_actors(self.grpc, ego_state),
+                        route_progress_provider=(lambda: self.project_on_route_near_progress(
+                            ego_state["x"], ego_state["y"],
+                            previous_s=getattr(self, "expert_last_s", None),
+                        )[0]) if (not editor_mode and not callable(
+                            getattr(self, "observe_collision", None))) else None,
+                    )
+                except Exception as error:
+                    print("[Validation] Ego observation failed: " + str(error),
+                          file=sys.stderr, flush=True)
             self.record_ego_trace(elapsed, ego_state)
             ego_x = ego_state["x"]
             ego_y = ego_state["y"]
@@ -695,6 +713,8 @@ class FullLoopDriveBase(BaseScenario):
                 current_s,
             )
             self.expert_last_s = current_s
+            if validation_log is not None:
+                validation_log.note_route_progress(current_s)
             remaining_s = max(0.0, self.route_length_m - current_s)
 
             if progress_anchor_s is None:

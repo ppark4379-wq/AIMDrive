@@ -41,6 +41,24 @@ def telemetry_json(value, **options):
     return json.dumps(value, default=convert, **options)
 
 
+def validation_json_value(value):
+    """Make optional diagnostics JSON-safe without changing planner values."""
+    import numpy as np
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, np.ndarray):
+        value = value.tolist()
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {str(key): validation_json_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [validation_json_value(item) for item in value]
+    return None
+
+
 def wire_command(command, max_steering, hold_steer=0.):
     """Expert command -> MORAI wire values. ``None`` brakes fully.
 
@@ -149,6 +167,7 @@ def main(argv=None, control_tick=None):
     parser.add_argument('--visualize', action='store_true', help='Write read-only RViz input logs')
     parser.add_argument('--seconds', type=float, default=0.)
     parser.add_argument('--output', type=Path)
+    parser.add_argument('--run-id', help='Scenario validation identity; enables controller-neutral pipeline logging')
     parser.add_argument('--speed-cap-kmh', type=float, default=None,
                         help='Optional additional speed ceiling; highway default comes from highway.py')
     parser.add_argument('--sim-profile', choices=('normal','competition'), default=None,
@@ -220,6 +239,7 @@ def main(argv=None, control_tick=None):
     old_handlers = {sig: signal.signal(sig, lambda *_: stop.append(True))
                     for sig in (signal.SIGINT, signal.SIGTERM)}
     process = sender = receiver = None
+    pipeline = None
     logs = []
     try:
         expert_log = (output/'expert.log').open('w', encoding='utf-8', buffering=1); logs.append(expert_log)
@@ -241,13 +261,24 @@ def main(argv=None, control_tick=None):
             sender.send(Command(brake=1.))
         publisher_log = (output/'inference.log').open('w', encoding='utf-8', buffering=1); logs.append(publisher_log)
         control_log = (output/'control.jsonl').open('w', encoding='utf-8', buffering=1); logs.append(control_log)
+        if args.run_id:
+            from scenario_runner.validation.pipeline_log import PipelineWriter
+            pipeline = PipelineWriter(output/'pipeline.jsonl', args.run_id, (
+                Path(__file__), ROOT/'AIM2026/Expert/main.py',
+                ROOT/'AIM2026/Expert/src/autonomous_driving.py',
+                ROOT/'AIM2026/Expert/src/planning/planning_process.py',
+                ROOT/'AIM2026/Expert/src/control/path_controller.py',
+                ROOT/'AIM2026/Inference/main.py'))
         path_log = input_log = None
         if args.visualize:
             path_log = (output/'paths.jsonl').open('w', encoding='utf-8', buffering=1)
             input_log = (output/'inputs.jsonl').open('w', encoding='utf-8', buffering=1)
             logs.extend((path_log,input_log))
         child_options = {'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == 'nt' else {'start_new_session': True}
-        process = subprocess.Popen([sys.executable, '-u', '-B', str(ROOT/'AIM2026/Inference/main.py'), '--config', str(config_path)],
+        inference_command = [sys.executable, '-u', '-B', str(ROOT/'AIM2026/Inference/main.py'), '--config', str(config_path)]
+        if args.run_id:
+            inference_command += ['--run-id', args.run_id, '--audit-dir', str(output)]
+        process = subprocess.Popen(inference_command,
                                    cwd=ROOT, stdout=publisher_log, stderr=subprocess.STDOUT, **child_options)
         started = next_status = time.monotonic()
         next_snapshot = 0.
@@ -260,6 +291,7 @@ def main(argv=None, control_tick=None):
         print('[Expert] 1 ms timer resolution: %s' % timer_active, flush=True)
         period = 1. / driving.realtime_sampling_rate
         last_tick = next_tick = time.perf_counter()
+        cycle_id = 0
         while (not stop and not (args.stop_file and args.stop_file.exists())
                and not (args.seconds and time.monotonic()-started >= args.seconds)):
             if process.poll() is not None:
@@ -277,7 +309,9 @@ def main(argv=None, control_tick=None):
                     policy.invalidate()
                 if result == 'detection':
                     if input_log:
-                        input_log.write(json.dumps(inputs.packet, allow_nan=False)+'\n')
+                        input_log.write(json.dumps(
+                            dict(inputs.packet, run_id=args.run_id) if args.run_id else inputs.packet,
+                            allow_nan=False)+'\n')
                     if inputs.frames == 1:
                         p = inputs.packet['ego_pose']
                         policy.last_index = min(range(len(context.route_points)), key=lambda i:
@@ -289,6 +323,7 @@ def main(argv=None, control_tick=None):
             control_dt = max(.001, tick_time - last_tick)
             fresh = inputs.ready()
             command = None
+            vehicle = objects = path = None
             code = policy.output(now)
             if fresh:
                 if policy.reason == 'off_route':
@@ -316,10 +351,12 @@ def main(argv=None, control_tick=None):
                         except (OSError, TypeError, ValueError, AttributeError) as exc:
                             print('[RViz snapshot] '+str(exc), file=expert_log)
                         next_snapshot = now+.1
+            generated_ns = time.monotonic_ns()
             encoded = wire_command(command, driving.max_steering, hold_steer=last_steer)
             last_steer = encoded.steer
             if sender:
                 sender.send(encoded)
+            sent_ns = time.monotonic_ns() if sender else None
             row = dict(status='RUNNING' if fresh else 'WAITING', VE_frames=inputs.frames,
                        position_source=(inputs.pose or {}).get('ego_position_source', 'unavailable'),
                        VE_held=inputs.held_frames,
@@ -334,7 +371,18 @@ def main(argv=None, control_tick=None):
             log_time_ns = time.monotonic_ns()
             plan_result = driving.lattice_planning_process.last_result if fresh else None
             plan_details = getattr(plan_result, 'debug_details', {})
+            gate_audit = None
+            if args.run_id:
+                try:
+                    gate_audit = policy.audit(now)
+                except Exception:
+                    pass  # Optional journal data cannot interrupt vehicle control.
             control_log.write(telemetry_json(dict(row, monotonic_ns=log_time_ns,
+                **(dict(run_id=args.run_id, monotonic=log_time_ns / 1e9,
+                        VE_sequence=inputs.packet.get('sequence') if fresh else None,
+                        signal_code=code, signal_id=policy.target_id,
+                        signal_head=policy.head_source, signal_gate=gate_audit)
+                   if args.run_id else {}),
                 control_dt_s=control_dt,
                 inference_age_ms=(round((log_time_ns-inputs.packet['sensor_received_ns'])/1e6, 1)
                                   if inputs.packet else None),
@@ -350,6 +398,73 @@ def main(argv=None, control_tick=None):
                             reason=getattr(policy, 'reason', None), green_samples=policy.allow_samples,
                             phase_age_ms=round((now - policy.received) * 1e3, 1) if policy.received else None),
                 control_pose=inputs.pose))+'\n')
+            if pipeline is not None:
+                # The journal is passive. A serialization or disk error is
+                # recorded by PipelineWriter and cannot alter the UDP command.
+                try:
+                    packet = inputs.packet if fresh else None
+                    pose = inputs.pose or {}
+                    ego = pose.get('ego_pose') if isinstance(pose, dict) else None
+                    points = ([[float(p.x), float(p.y)] if hasattr(p, 'x') else
+                               [float(p[0]), float(p[1])] for p in list(path or [])[:80]]
+                              if fresh else None)
+                    boxes = packet.get('boxes') if packet else None
+                    planning_ego = (dict(x=vehicle.position.x, y=vehicle.position.y,
+                                         yaw_grid_rad=vehicle.yaw, speed_mps=vehicle.velocity)
+                                    if vehicle is not None else None)
+                    planning_objects = ([dict(track_id=obj.unique_id,
+                        center_world=[obj.position.x, obj.position.y],
+                        position_xy=[obj.position.x, obj.position.y],
+                        planning_speed_mps=obj.velocity, length_m=obj.size_x,
+                        width_m=obj.size_y, heading_deg=obj.heading_deg,
+                        motion_state=obj.name.partition(':')[2] or None,
+                        coordinate_frame='projected_grid',
+                        is_static=obj.is_static,
+                        speed_unknown=getattr(obj, 'speed_unknown', None),
+                        motion_uncertain=getattr(obj, 'motion_uncertain', None))
+                        for obj in objects] if objects is not None else None)
+                    common = dict(cycle_id=cycle_id, controller='aim2026_integrated_udp',
+                                  model_sha256=sha, coordinate_frame='projected_grid')
+                    pipeline.write('perception', **common,
+                        ve_fresh_max_s=0.5, pose_fresh_max_s=0.15,
+                        ve_generation=generation, ve_sequence=packet.get('sequence') if packet else None,
+                        ve_valid=fresh, ve_received_ns=packet.get('sensor_received_ns') if packet else None,
+                        ve_inference_complete_ns=packet.get('inference_complete_ns') if packet else None,
+                        objects=boxes, signal_head_output=packet.get('signal') if packet else None,
+                        native_signal_head_output=packet.get('native_signal') if packet else None)
+                    pipeline.write('planning', **common,
+                        planning_input_source='aim2026_ve_udp' if fresh else None,
+                        selected_planning_input_source='aim2026_ve_udp',
+                        expert_planner_branch=getattr(driving, 'perception_source', None),
+                        ve_sequence=packet.get('sequence') if packet else None,
+                        ego_input=planning_ego, input_objects=planning_objects,
+                        planned_trajectory=points,
+                        target_velocity_mps=getattr(driving, 'previous_target_velocity', None) if fresh else None,
+                        planner_name='AutonomousDriving',
+                        planning_mode=getattr(plan_result, 'mode', None),
+                        planning_reason=getattr(plan_result, 'reason', None),
+                        debug_details=validation_json_value(plan_details),
+                        signal_input_code=code if fresh else None,
+                        signal_target_id=policy.target_id if fresh else None,
+                        signal_gate=gate_audit)
+                    # Same read-only gate snapshot as the control journal.
+                    # This is not a second policy evaluation.
+                    pipeline.write('control', **common,
+                        planning_cycle_id=cycle_id if fresh else None,
+                        ve_sequence=packet.get('sequence') if packet else None,
+                        input_path=points,
+                        target_velocity_mps=getattr(driving, 'previous_target_velocity', None) if fresh else None,
+                        calculated_command=(dict(accel=command.accel, brake=command.brake,
+                            front_steer_rad=command.front_steer) if command is not None else None),
+                        final_wire_command=dict(accel=encoded.accel, brake=encoded.brake,
+                                                steer_normalized=encoded.steer),
+                        generated_ns=generated_ns, sent_ns=sent_ns,
+                        sent=bool(sender), observed_ego=ego,
+                        signal_gate=gate_audit)
+                except (OSError, TypeError, ValueError, AttributeError) as journal_error:
+                    pipeline.error = str(journal_error)
+                    pipeline._report_error()
+            cycle_id += 1
             if now >= next_status:
                 print(telemetry_json(row), flush=True)
                 # Lifecycle file for launchers (the scenario runner waits for DRIVING before it starts the course).
@@ -382,6 +497,8 @@ def main(argv=None, control_tick=None):
             receiver.close()
         for stream in logs:
             stream.close()
+        if pipeline is not None:
+            pipeline.close()
         for sig, handler in old_handlers.items():
             signal.signal(sig, handler)
 

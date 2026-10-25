@@ -283,6 +283,8 @@ def main():
     parser.add_argument('--check', action='store_true', help='Validate config and weight files; no sockets, no model')
     parser.add_argument('--seconds', type=float, default=0., help='Stop after this many seconds (0 = until Ctrl+C)')
     parser.add_argument('--generation', help='Shared sender identity when launched by the common Expert')
+    parser.add_argument('--run-id', help='Scenario Runner identity for publisher audit')
+    parser.add_argument('--audit-dir', type=Path, help='Write publisher timing records for incident capture')
     args = parser.parse_args()
     config = read_config(args.config)
     if args.generation is not None:
@@ -325,10 +327,19 @@ def main():
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stop.append(True))
     from AIM2026.Inference.timer_resolution import high_resolution_timer
+    if bool(args.run_id) != bool(args.audit_dir):
+        parser.error('--run-id and --audit-dir must be used together')
     timer = high_resolution_timer()
     timer.__enter__()
     udp.start()
+    audit = None
     try:
+        if args.audit_dir:
+            try:
+                args.audit_dir.mkdir(parents=True, exist_ok=True)
+                audit = (args.audit_dir / 'performance.jsonl').open('w', encoding='utf-8', buffering=1)
+            except OSError as error:
+                print('[VE audit unavailable] ' + str(error), flush=True)
         publisher = VePublisher(udp, runtime, udp.pose.projector, max_age_s=vision['max_sensor_age_s'])
         if options.get('status_file'):
             publisher.signal_frames = Path(options['status_file']).parent / 'signal_frames'
@@ -338,7 +349,23 @@ def main():
         while not stop and not (args.seconds and time.monotonic() - started >= args.seconds):
             if udp.pose.error:
                 raise RuntimeError('Control pose stream stopped: ' + udp.pose.error)
-            if publisher.step() is None:
+            result = publisher.step()
+            if audit is not None and result is not None:
+                try:
+                    audit.write(json.dumps(dict(run_id=args.run_id,
+                        generation=udp.detection.generation, clock_domain='host_monotonic_ns',
+                        monotonic_ns=time.monotonic_ns(), frame_sequence=publisher.last_lidar,
+                        detection_sequence=udp.detection.sequence, ready=result == 'ready',
+                        reason=publisher.reason, details=publisher.last),
+                        ensure_ascii=False, allow_nan=False, default=str) + '\n')
+                except (OSError, TypeError, ValueError) as error:
+                    print('[VE audit unavailable] ' + str(error), flush=True)
+                    try:
+                        audit.close()
+                    except OSError:
+                        pass
+                    audit = None
+            if result is None:
                 time.sleep(.002)
             if time.monotonic() >= next_status:
                 row = publisher.status()
@@ -349,6 +376,11 @@ def main():
                     target.write_text(json.dumps(row, ensure_ascii=False, indent=1, default=str), encoding='utf-8')
                 next_status = time.monotonic() + options['status_interval_s']
     finally:
+        if audit is not None:
+            try:
+                audit.close()
+            except OSError:
+                pass
         try:
             if udp.running:
                 udp.send_detection_not_ready('publisher_stopped')

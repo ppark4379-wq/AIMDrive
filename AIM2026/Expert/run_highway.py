@@ -130,6 +130,8 @@ class ExpertController:
                 '--stop-file', self.child_path(self.stop_file)]
         if args.speed_cap_kmh is not None:
             command.extend(['--speed-cap-kmh', str(args.speed_cap_kmh)])
+        if getattr(args, 'validation_events', False) and not check:
+            command.extend(['--run-id', str(self.scenario.run_instance_id)])
         return command
 
     def child_environment(self):
@@ -194,6 +196,13 @@ class ExpertController:
 
 
 class HighwayScenario(MissionScenario):
+    def prepare_full_loop_route(self):
+        # FullLoopScenario.setup assigns run_seed and run_instance_id immediately
+        # before this hook. Bind validation to those actual per-run values.
+        if self.args.validation_events and not self.args.check:
+            _start_validation(self)
+        return super().prepare_full_loop_route()
+
     def live_actor_ids(self):
         """Scenario verification only; never feed actor states to the Expert."""
         world = getattr(getattr(self, 'grpc', None), 'world', None)
@@ -328,6 +337,48 @@ class HighwayScenario(MissionScenario):
         self.expert_controller = ExpertController(self.expert_controller, self)
 
 
+def _start_validation(scenario):
+    if getattr(scenario, '_runner_validation_log', None) is not None:
+        return
+    from scenario_runner.validation.run_log import ValidationRunLog
+
+    mission = scenario.args.mission
+    validation_root = ROOT / 'MoraiDrive/scenario_runner/.runtime'
+    log = ValidationRunLog(validation_root / 'validation_runs', mission)
+    scenario._runner_validation_log = log
+    scenario._runner_scenario_name = mission
+    scenario._validation_controller = ('aim2026_highway' if mission == 'full_loop_highway'
+                                       else 'aim2026_roundabout')
+    log.enable_incidents(validation_root / 'incidents', scenario,
+                         run_options=['--seed', str(scenario.run_seed), '--validation-events'])
+    log.incident_recorder.connect_pipeline(scenario.driver_output / 'pipeline.jsonl')
+
+
+def _finish_validation(scenario, output, status, error):
+    from scenario_runner.validation.finish import finish_validation_run
+
+    validation_log = getattr(scenario, '_runner_validation_log', None)
+    if validation_log is None:
+        return
+    finish_validation_run(validation_log, scenario, status, error)
+    report = dict(status={'run_returned': 'COMPLETE', 'interrupted': 'STOPPED',
+                          'exception': 'FAILED'}[status],
+                  error=str(error) if error else None, run_id=scenario.run_instance_id,
+                  plan=dict(mission=scenario.args.mission, seed=scenario.run_seed,
+                            driver_output=str(scenario.driver_output)))
+    (output / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2),
+                                        encoding='utf-8')
+    if (scenario.driver_output / 'pipeline.jsonl').is_file():
+        try:
+            (scenario.driver_output / 'report.json').write_text(
+                json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+            from scenario_runner.validation.failure_report import build_report
+            html, _ = build_report(scenario.driver_output, output / 'failure_report')
+            print('[Validation] HTML report=' + str(html), flush=True)
+        except Exception as report_error:
+            print('[Validation] HTML report unavailable: ' + str(report_error), flush=True)
+
+
 def main(argv=None, *, mission='full_loop_highway'):
     if mission not in ('full_loop_highway', 'full_loop_roundabout',
                        'full_loop_roundabout_nonuniform', 'full_loop_roundabout_speed_random',
@@ -340,6 +391,8 @@ def main(argv=None, *, mission='full_loop_highway'):
     parser.add_argument('--speed-cap-kmh', type=validate_max_velocity_kmh, default=None,
                         help='Optional additional ceiling; tune highway.py for the highway speed')
     parser.add_argument('--seed', type=int)
+    parser.add_argument('--validation-events', action='store_true',
+                        help='Record Ego observations, incidents, and the integrated VE/Planning/Control journal')
     parser.add_argument('--strict-collisions', action='store_true',
                         help='Stop even for verified persistent pre-start contact records')
     args = parser.parse_args(argv)
@@ -374,6 +427,7 @@ def main(argv=None, *, mission='full_loop_highway'):
         client = MoraiGrpcClient(global_cfg)
     scenario = HighwayScenario(grpc_client=client,
         map_loader=MGeoMapLoader(global_cfg['paths']['mgeo_root']), global_cfg=global_cfg, scenario_cfg=config)
+    args.mission = mission
     scenario.args, scenario.output = args, output
     scenario.driver_output = ROOT / 'AIM2026/outputs/expert' / stamp
     if args.check:
@@ -386,18 +440,29 @@ def main(argv=None, *, mission='full_loop_highway'):
     def interrupt(*_):
         raise KeyboardInterrupt
     old_handler = signal.signal(signal.SIGTERM, interrupt)
+    status, error = 'run_returned', None
     try:
         client.connect()
         print('[Scenario] One run: {} -> AIM2026/main.py -> Expert'.format(mission), flush=True)
         scenario.run()
     except KeyboardInterrupt:
+        status = 'interrupted'
         print('[Highway] stopped', flush=True)
+    except BaseException as exc:
+        status, error = 'exception', exc
+        raise
     finally:
         try:
-            scenario.stop_expert_controller()
+            try:
+                scenario.stop_expert_controller()
+            finally:
+                client.stop()
         finally:
-            client.stop()
             signal.signal(signal.SIGTERM, old_handler)
+            try:
+                _finish_validation(scenario, output, status, error)
+            except Exception as finish_error:
+                print('[Validation] finalization failed: ' + str(finish_error), flush=True)
     return 0
 
 

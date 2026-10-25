@@ -21,16 +21,31 @@ class SignalPolicy:
     target_id = TARGET_ID
     head_source = 'three_class'
     accepted_codes = (1, 16, 33)
+    # Gate constants. Named so the read-only audit and the offline diagnosis report the real values.
+    FRESH_MAX_S = .5
+    REQUIRED_SAMPLES = 3
+    REQUIRED_HOLD_S = .3
+    MIN_CONFIDENCE = .9
+    PERMISSION_LATCH_S = PERMISSION_LATCH_S
 
     def __init__(self):
+        self.audit_counters = dict(permission_resets=0, stale_invalidations=0, last_reset_reason=None)
+        self._audit_raw = None
+        self._audit_gate = None
         self.invalidate()
 
-    def invalidate(self):
+    def _reset_allow(self, reason):
+        """Same reset as before; the audit only notes that accumulated permission was lost."""
+        if getattr(self, 'allow_samples', 0):
+            self.audit_counters['permission_resets'] += 1
+            self.audit_counters['last_reset_reason'] = reason
+        self.allow_since, self.allow_samples = None, 0
+
+    def invalidate(self, reason='invalidated'):
         self.code = None
         self.confidence = None
         self.received = None
-        self.allow_since = None
-        self.allow_samples = 0
+        self._reset_allow(reason)
         self.bound = False
         self.latched_until = None
 
@@ -43,27 +58,41 @@ class SignalPolicy:
         self.received = packet['sensor_received_ns'] / 1e9
         valid = (type(code) is int and code in self.accepted_codes
                  and type(confidence) in (float, int) and math.isfinite(confidence)
-                 and .9 <= confidence <= 1 and self.bound
-                 and 0 <= now-self.received <= .5)
-        fresh = 0 <= now-self.received <= .5
+                 and self.MIN_CONFIDENCE <= confidence <= 1 and self.bound
+                 and 0 <= now-self.received <= self.FRESH_MAX_S)
+        fresh = 0 <= now-self.received <= self.FRESH_MAX_S
+        latched = False
         if valid:
             self.code = code
-            self.latched_until = now+PERMISSION_LATCH_S if code in self.permission_codes else None
+            self.latched_until = now+self.PERMISSION_LATCH_S if code in self.permission_codes else None
         elif (previous_code in self.permission_codes and self.latched_until is not None
                 and now <= self.latched_until and self.bound and fresh
-                and not (code == 1 and type(confidence) in (float, int) and confidence >= .9)):
+                and not (code == 1 and type(confidence) in (float, int) and confidence >= self.MIN_CONFIDENCE)):
             self.code = previous_code      # permission kept briefly; a confident red always cancels it
+            latched = True
         else:
             self.code = None
             self.latched_until = None
+        self._audit_raw = dict(latched=latched, code=code if type(code) is int else None,
+                               confidence=float(confidence) if type(confidence) in (float, int) and math.isfinite(confidence) else None,
+                               valid=bool(valid), reject=None if valid else self._reject_reason(code, confidence, now))
         if self.code != previous_code:
-            self.allow_since, self.allow_samples = None, 0
+            self._reset_allow('code_changed')
         if self.code not in self.permission_codes:
-            self.allow_since, self.allow_samples = None, 0
+            self._reset_allow('code_not_permission')
         else:
             if self.allow_since is None:
                 self.allow_since = now
             self.allow_samples += 1
+
+    def _reject_reason(self, code, confidence, now):
+        if not (type(code) is int and code in self.accepted_codes):
+            return 'no_signal_in_packet' if code is None else 'code_not_accepted'
+        if not (type(confidence) in (float, int) and math.isfinite(confidence) and self.MIN_CONFIDENCE <= confidence <= 1):
+            return 'low_confidence'
+        if not self.bound:
+            return 'unbound_or_unsupported'
+        return 'stale_at_accept'
 
     def select_signal(self, packet):
         return packet.get('signal') or {}
@@ -76,12 +105,42 @@ class SignalPolicy:
         return 1185-1031 <= nearest <= 1297-1031 and distances[nearest] <= 2.0**2
 
     def output(self, now):
-        if self.received is None or not 0 <= now-self.received <= .5:
-            self.invalidate()
+        if self.received is None or not 0 <= now-self.received <= self.FRESH_MAX_S:
+            had_packet = self.received is not None
+            if had_packet:
+                self.audit_counters['stale_invalidations'] += 1
+            self._audit_gate = dict(output=0, reason='stale_invalidated' if had_packet else 'no_packet')
+            self.invalidate('stale' if had_packet else 'no_packet')
             return 0
-        if self.code in self.permission_codes and (self.allow_samples < 3 or now-self.allow_since < .3):
+        if self.code in self.permission_codes and (self.allow_samples < self.REQUIRED_SAMPLES
+                                                   or now-self.allow_since < self.REQUIRED_HOLD_S):
+            self._audit_gate = dict(output=0, reason='debounce_samples' if self.allow_samples < self.REQUIRED_SAMPLES
+                                    else 'debounce_duration')
             return 0
-        return self.code or 0
+        result = self.code or 0
+        self._audit_gate = dict(output=result, reason=None if self.code else (self._audit_raw or {}).get('reject') or 'no_valid_code')
+        return result
+
+    def audit(self, now):
+        """Read-only snapshot of the gate after output(now). Only states that exist are reported."""
+        raw, gate = self._audit_raw or {}, self._audit_gate or {}
+        received = self.received
+        row = dict(
+            raw_signal_code=raw.get('code'), raw_signal_confidence=raw.get('confidence'),
+            raw_accepted_by_gate=raw.get('valid'), raw_reject_reason=raw.get('reject'),
+            permission_latched=raw.get('latched'), latch_s=self.PERMISSION_LATCH_S,
+            received_timestamp=received,
+            signal_age_ms=None if received is None else (now-received)*1000,
+            accepted_code=self.code, head_source=self.head_source, target_id=self.target_id, bound=self.bound,
+            allow_samples=self.allow_samples,
+            allow_duration_ms=None if self.allow_since is None else (now-self.allow_since)*1000,
+            required_samples=self.REQUIRED_SAMPLES, required_duration_ms=self.REQUIRED_HOLD_S*1000,
+            fresh_max_ms=self.FRESH_MAX_S*1000,
+            gate_output_code=gate.get('output'), gate_rejection_reason=gate.get('reason'),
+            permission_resets=self.audit_counters['permission_resets'],
+            stale_invalidations=self.audit_counters['stale_invalidations'],
+            last_reset_reason=self.audit_counters['last_reset_reason'])
+        return {k: (None if isinstance(v, float) and not math.isfinite(v) else v) for k, v in row.items()}
 
 
 class FullRouteSignalPolicy(SignalPolicy):
@@ -131,7 +190,7 @@ class FullRouteSignalPolicy(SignalPolicy):
         target = next((r for r in self.targets if r['path_index'] >= nearest),None)
         identity = target['signal_id'] if target else ''
         if identity != self.target_id:
-            self.allow_since, self.allow_samples = None, 0
+            self._reset_allow("target_changed")
         self.target_id = identity
         if target is None:
             self.reason = 'no_upcoming_signal'
@@ -168,7 +227,10 @@ def build_signal_targets(context, config):
     """Use the same open/closed route contract as this invocation's Expert."""
     import importlib.util
     from pathlib import Path
-    source = Path(context.global_cfg['paths']['expert_root'])/'src/planning/traffic/route_targets.py'
+    expert_root = Path(context.global_cfg['paths']['expert_root'])
+    source = expert_root/'src/planning/traffic/route_targets.py'
+    if not source.is_file():
+        source = expert_root/'src/expert/src/planning/traffic/route_targets.py'
     spec = importlib.util.spec_from_file_location('ve_trial_route_signals', source)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

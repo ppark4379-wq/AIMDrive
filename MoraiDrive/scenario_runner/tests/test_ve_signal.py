@@ -52,6 +52,22 @@ class SignalTests(unittest.TestCase):
         self.policy.accept(self.sample(None,10.,confidence=.6),self.points,10.)
         self.assertEqual(self.policy.output(10.),0)
 
+    def test_latch_is_visible_in_the_audit_and_can_be_switched_off_for_replay(self):
+        for t in [10., 10.1, 10.2, 10.31]:
+            self.policy.accept(self.sample(33,t), self.points,t)
+        self.policy.accept(self.sample(None,10.5,confidence=.6),self.points,10.5)
+        self.assertEqual(self.policy.output(10.5),33)
+        audit = self.policy.audit(10.5)
+        self.assertTrue(audit['permission_latched'])
+        self.assertEqual(audit['latch_s'], 4.)
+        self.assertEqual(audit['raw_signal_code'], None)          # the head itself said nothing
+        legacy = SignalPolicy()
+        legacy.PERMISSION_LATCH_S = 0.
+        for t in [10., 10.1, 10.2, 10.31]:
+            legacy.accept(self.sample(33,t), self.points,t)
+        legacy.accept(self.sample(None,10.5,confidence=.6),self.points,10.5)
+        self.assertEqual(legacy.output(10.5),0)
+
     def test_red_and_straight_deny_immediately_and_unknown_never_allows(self):
         for code in [1,16]:
             self.policy.accept(self.sample(code,10),self.points,10)
@@ -227,6 +243,57 @@ class ClockIndependentDeliveryTests(unittest.TestCase):
         policy.last_index = 290
         policy.bind(dict(x=290., y=8.), points)
         self.assertEqual(policy.reason, 'off_route')          # between the zones the 6 m limit holds
+
+
+class GateAuditTests(unittest.TestCase):
+    """The audit only reports gate state; the returned codes stay exactly what they were."""
+
+    def policy(self):
+        policy = FullRouteSignalPolicy([], [])
+        policy.bind = lambda pose, points: (setattr(policy, 'head_source', 'native_binary')
+                                            or setattr(policy, 'accepted_codes', (1, 16))
+                                            or setattr(policy, 'permission_codes', (16,)) or True)
+        return policy
+
+    def packet(self, code, received):
+        return dict(ego_pose={}, sensor_received_ns=int(received*1e9), native_signal=dict(code=code, confidence=.999))
+
+    def test_audit_reports_real_gate_state_and_constants(self):
+        policy = self.policy()
+        self.assertIsNone(policy.audit(10.)['gate_output_code'])         # nothing observed yet: nothing invented
+        policy.accept(self.packet(16, 10.), [], 10.05)
+        self.assertEqual(policy.output(10.05), 0)
+        audit = policy.audit(10.05)
+        self.assertEqual((audit['raw_signal_code'], audit['allow_samples'], audit['gate_output_code']), (16, 1, 0))
+        self.assertEqual(audit['gate_rejection_reason'], 'debounce_samples')
+        self.assertEqual((audit['required_samples'], audit['required_duration_ms'], audit['fresh_max_ms']), (3, 300., 500.))
+        for t in (10.2, 10.4):
+            policy.output(t)
+            policy.accept(self.packet(16, t-.05), [], t)
+        self.assertEqual(policy.output(10.45), 16)
+        audit = policy.audit(10.45)
+        self.assertEqual((audit['gate_output_code'], audit['gate_rejection_reason'], audit['allow_samples']), (16, None, 3))
+
+    def test_stale_input_invalidates_and_is_counted(self):
+        policy = self.policy()
+        for t in (10., 10.2, 10.4):
+            policy.output(t)
+            policy.accept(self.packet(16, t), [], t)
+        self.assertEqual(policy.output(10.45), 16)
+        self.assertEqual(policy.output(11.), 0)                              # older than FRESH_MAX_S
+        audit = policy.audit(11.)
+        self.assertEqual(audit['gate_rejection_reason'], 'stale_invalidated')
+        self.assertEqual((audit['stale_invalidations'], audit['permission_resets']), (1, 1))
+        self.assertEqual(audit['last_reset_reason'], 'stale')
+        self.assertEqual(policy.audit(11.)['allow_samples'], 0)
+
+    def test_rejection_reasons_do_not_change_outputs(self):
+        policy = self.policy()
+        policy.accept(dict(self.packet(16, 10.), native_signal=dict(code=16, confidence=.5)), [], 10.)
+        self.assertEqual(policy.output(10.), 0)
+        self.assertEqual(policy.audit(10.)['raw_reject_reason'], 'low_confidence')
+        policy.accept(self.packet(33, 10.1), [], 10.1)
+        self.assertEqual(policy.audit(10.1)['raw_reject_reason'], 'code_not_accepted')
 
 
 if __name__ == '__main__':unittest.main()

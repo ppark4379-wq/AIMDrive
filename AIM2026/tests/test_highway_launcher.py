@@ -55,6 +55,14 @@ class HighwayLauncherTest(unittest.TestCase):
         command = self.controller.command()
         self.assertEqual(command[command.index('--speed-cap-kmh') + 1], '70.0')
 
+    def test_validation_identity_reaches_integrated_runtime_only_when_enabled(self):
+        self.scenario.run_instance_id = 'run-124'
+        self.assertNotIn('--run-id', self.controller.command())
+        self.scenario.args.validation_events = True
+        command = self.controller.command()
+        self.assertEqual(command[command.index('--run-id') + 1], 'run-124')
+        self.assertNotIn('--run-id', self.controller.command(check=True))
+
     def test_integrated_entry_forwards_scene_arguments_and_check_never_drives(self):
         interpreter = self.output / 'python.exe'
         interpreter.touch()
