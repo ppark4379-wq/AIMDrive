@@ -61,12 +61,15 @@ class TunnelDynamicTest(unittest.TestCase):
         actor = Mock()
         actor.get_id.return_value = "ped-1"
         actor.destroy.return_value = True
+        actor.control.return_value = True
         grpc = Mock()
         grpc.get_available_pedestrian_models.return_value = ["Man1"]
         grpc.get_all_pedestrian_states.return_value = []
         grpc.spawn_pedestrian.return_value = actor
         grpc.control_pedestrian.return_value = True
         grpc.set_pedestrian_waypoint.return_value = True
+        grpc.make_transform.side_effect = lambda x, y, z, yaw: SimpleNamespace(
+            rotation=SimpleNamespace(x=0., y=0., z=yaw))
         context = SimpleNamespace(
             cfg={"tunnel_dynamic": {
                 "enabled": True, "model": "Man1", "path_id": "walk_then_cross",
@@ -95,25 +98,45 @@ class TunnelDynamicTest(unittest.TestCase):
         self.assertEqual(context.tunnel_dynamic_phase, "waiting")
         update_tunnel_dynamic(context, 0.0, {"speed_mps": 4.0}, 15.0)
         context.grpc.spawn_pedestrian.assert_not_called()
-        update_tunnel_dynamic(context, 1.0, {"speed_mps": 4.0}, 27.0)
+        update_tunnel_dynamic(context, 1.0, {"speed_mps": 4.0}, 31.0)
         self.assertEqual(context.tunnel_dynamic_phase, "spawned_unobserved")
         self.assertFalse(context.tunnel_dynamic_result["spawn_state_verified"])
         self.assertEqual(context.tunnel_dynamic_target_index, 1)
-        update_tunnel_dynamic(context, 2.0, {}, 28.0)
+        update_tunnel_dynamic(context, 5.0, {"speed_mps": 3.0}, 32.0)
         self.assertEqual(context.tunnel_dynamic_target_index, 2)
-        update_tunnel_dynamic(context, 3.0, {}, 29.0)
+        update_tunnel_dynamic(context, 8.0, {"speed_mps": 0.0}, 33.0)
         self.assertEqual(context.tunnel_dynamic_phase, "completed")
         self.assertTrue(context.tunnel_dynamic_result["completed"])
         self.assertEqual(context.grpc.spawn_pedestrian.call_count, 1)
-        self.assertEqual(context.grpc.set_pedestrian_waypoint.call_count, 2)
-        context.grpc.set_pedestrian_waypoint.assert_any_call(
-            actor, 50.0, 2.0, 0.0, 1.5)
-        context.grpc.set_pedestrian_waypoint.assert_any_call(
-            actor, 50.0, -2.0, 0.0, 1.5)
+        context.grpc.set_pedestrian_waypoint.assert_not_called()
+        self.assertEqual([(call.args[0].z, call.args[1])
+                          for call in actor.control.call_args_list], [(0., 5.4), (-90., 5.4)])
         context.grpc.control_pedestrian.assert_called_once_with(
             actor, 0.0, 0.0, 0.0)
         actor.destroy.assert_called_once()
         self.assertEqual(context.scenario_actors, [])
+
+    def test_heading_command_rejection_cleans_up_at_spawn_or_turn(self):
+        for reject_initial in (True, False):
+            with self.subTest(reject_initial=reject_initial):
+                context, actor = self.make_route_context()
+                prepare_tunnel_dynamic(context)
+                arm_tunnel_dynamic(context)
+                if reject_initial:
+                    actor.control.return_value = False
+                    with self.assertRaisesRegex(RuntimeError, "heading command failed"):
+                        update_tunnel_dynamic(context, 1., {"speed_mps": 4.}, 31.)
+                else:
+                    update_tunnel_dynamic(context, 1., {"speed_mps": 4.}, 31.)
+                    actor.get_actor_state.return_value = self.observed_state(x=50., y=2.)
+                    actor.control.return_value = False
+                    with self.assertRaisesRegex(RuntimeError, "heading command failed"):
+                        update_tunnel_dynamic(context, 5., {"speed_mps": 3.}, 32.)
+                self.assertEqual(context.tunnel_dynamic_phase, "failed")
+                self.assertFalse(context.tunnel_dynamic_result["completed"])
+                actor.destroy.assert_called_once()
+                self.assertEqual(context.scenario_actors, [])
+                context.grpc.set_pedestrian_waypoint.assert_not_called()
 
     def test_wrong_side_path_fails_before_spawn(self):
         context, _ = self.make_route_context()
@@ -127,7 +150,7 @@ class TunnelDynamicTest(unittest.TestCase):
         context, actor = self.make_route_context()
         prepare_tunnel_dynamic(context)
         arm_tunnel_dynamic(context)
-        update_tunnel_dynamic(context, 1.0, {"speed_mps": 4.0}, 27.0)
+        update_tunnel_dynamic(context, 1.0, {"speed_mps": 4.0}, 31.0)
         with self.assertRaisesRegex(RuntimeError, "timed out"):
             update_tunnel_dynamic(context, 17.0, {}, 21.0)
         self.assertEqual(context.tunnel_dynamic_phase, "failed")
@@ -143,7 +166,7 @@ class TunnelDynamicTest(unittest.TestCase):
                 prepare_tunnel_dynamic(context)
                 arm_tunnel_dynamic(context)
                 with self.assertRaisesRegex(RuntimeError, "ID unavailable|no actor ID"):
-                    update_tunnel_dynamic(context, 1.0, {"speed_mps": 4.0}, 27.0)
+                    update_tunnel_dynamic(context, 1.0, {"speed_mps": 4.0}, 31.0)
                 actor.destroy.assert_called_once()
                 context.grpc.get_all_pedestrian_states.assert_not_called()
                 self.assertEqual(context.tunnel_dynamic_phase, "failed")
@@ -185,7 +208,7 @@ class TunnelDynamicTest(unittest.TestCase):
                          "straight_same_direction_01")
         self.assertEqual(context.tunnel_dynamic_plan["interaction_s"], 27.5)
         arm_tunnel_dynamic(context)
-        update_tunnel_dynamic(context, 1.0, {"speed_mps": 2.0}, 15.0)
+        update_tunnel_dynamic(context, 1.0, {"speed_mps": 2.0}, 17.0)
         context.grpc.spawn_pedestrian.assert_called_once()
         spawn = context.grpc.spawn_pedestrian.call_args.kwargs
         self.assertEqual(spawn["velocity"], 5.4)
@@ -220,7 +243,7 @@ class TunnelDynamicTest(unittest.TestCase):
             transform=SimpleNamespace(location=SimpleNamespace(x=35.0, y=2.5)))
         prepare_tunnel_dynamic(context)
         arm_tunnel_dynamic(context)
-        update_tunnel_dynamic(context, 1.0, {"speed_mps": 2.0}, 15.0)
+        update_tunnel_dynamic(context, 1.0, {"speed_mps": 2.0}, 17.0)
         update_tunnel_dynamic(context, 1.1, {}, 15.0)
         self.assertEqual(context.tunnel_dynamic_phase, "diagnostic_hold")
         self.assertEqual(context.tunnel_dynamic_result["failure_reason"],
@@ -251,7 +274,7 @@ class TunnelDynamicTest(unittest.TestCase):
         context, actor = self.make_route_context()
         prepare_tunnel_dynamic(context)
         arm_tunnel_dynamic(context)
-        update_tunnel_dynamic(context, 1.0, {"speed_mps": 4.0}, 27.0)
+        update_tunnel_dynamic(context, 1.0, {"speed_mps": 4.0}, 31.0)
         return context, actor
 
     @staticmethod
@@ -367,7 +390,17 @@ class TunnelDynamicTest(unittest.TestCase):
                 self.assertEqual(context.tunnel_dynamic_phase, "failed")
                 self.assertFalse(context.tunnel_dynamic_result["spawn_state_verified"])
                 self.assertFalse(context.tunnel_dynamic_result["completed"])
-                actor.get_actor_state.assert_not_called()
+                actor.get_actor_state.assert_called_once()
+
+    def test_verified_first_pose_is_accepted_when_ego_reaches_stopping_bound(self):
+        context, actor = self.start_observation_context()
+        actor.get_actor_state.return_value = self.observed_state()
+        update_tunnel_dynamic(context, 1.05, {"speed_mps": 8.0}, 45.0)
+        timing = context.tunnel_dynamic_result["initial_state_interaction_timing"]
+        self.assertLess(timing["remaining_m"], timing["safe_stop_distance_m"])
+        self.assertTrue(context.tunnel_dynamic_result["spawn_state_verified"])
+        self.assertEqual(context.tunnel_dynamic_phase, "moving")
+        self.assertFalse(context.tunnel_dynamic_result["completed"])
 
     def test_late_first_state_return_is_rejected_even_if_direct_query_started_in_time(self):
         context, actor = self.start_observation_context()
@@ -470,7 +503,7 @@ class TunnelDynamicTest(unittest.TestCase):
         actor.get_actor_state.return_value = self.observed_state(x=50.0, y=-2.0)
         context.grpc.get_all_pedestrian_states.return_value = [self.observed_state()]
         with patch.object(tunnel_dynamic.time, "sleep"), self.assertRaisesRegex(RuntimeError, "removal unverified"):
-            update_tunnel_dynamic(context, 2.0, {}, 28.0)
+            update_tunnel_dynamic(context, 3.0, {}, 28.0)
         self.assertEqual(context.tunnel_dynamic_phase, "failed")
         self.assertEqual(context.tunnel_dynamic_event_index, 0)
         self.assertFalse(context.tunnel_dynamic_results[0]["completed"])
