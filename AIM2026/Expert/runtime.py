@@ -177,6 +177,7 @@ def main(argv=None, control_tick=None):
     config_path.write_text(yaml.safe_dump(child_cfg, sort_keys=False), encoding='utf-8')
     print(json.dumps(dict(output=str(output), model=label, weights=str(weights),
                          sim_profile=args.sim_profile,
+                         ignored_signals=args.ignore_signals,
                          steering_sign=-1 if args.sim_profile == 'normal' else 1,
                          command_target=[cfg['Ego']['ip'],cfg['Ego']['cmd_port']],
                          mode='drive' if args.drive else 'shadow'), ensure_ascii=False), flush=True)
