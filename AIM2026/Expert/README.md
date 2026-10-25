@@ -49,6 +49,12 @@ cd C:\Users\dydwn\AIMDrive
 
 `--check`는 소켓을 열지 않고 설정·가중치·경로를 확인한다. `--drive`를 생략하면 제어 명령을 송신하지 않는다.
 
+GPS 재밍 시험에서는 정상 GPS로 초기 위치를 잡은 뒤 재밍 구간에 진입한다. 기본 로컬 설정의 `Localization.enabled: true`이면 GPS가 끊길 때 IMU·차속 기반 위치 추정으로 자동 전환한다. 재밍 구간에서 실행을 새로 시작하면 초기 GPS 위치가 없어 주행할 수 없다.
+
+위치 추정은 `AIM2026/Localization/`에서 관리하며 설정은 `AIM2026/Localization/config.yaml`에 있다. 기존 UDP 수신기의 GPS·IMU·차속 이력을 공유하므로 별도 실행이나 센서 포트가 필요 없다. GPS가 정상일 때는 GPS 위치를 사용하고, 유효 GPS가 0.15초 이상 갱신되지 않으면 마지막 GPS 기준 위치에서 IMU 방향과 부호 있는 차속을 적분한다. GPS가 복구되면 GPS 위치로 돌아간다. LiDAR 벽 검출 결과는 위치 추정에 사용하지 않는다.
+
+콘솔의 `position_source`는 정상 수신 시 `GPS`, 추정 주행 시 `GPS_dead_reckoning`, 사용 가능한 위치가 없으면 `unavailable`이다. 사용한 위치와 센서 시각은 실행 폴더의 `control.jsonl`, 원시 입력과 추정 기록은 `localization/`에 저장한다. 초기 GPS 없음, IMU·차속 중단 또는 추정 한도(120초/250m) 초과로 위치가 무효화되면 통합 제어는 정지한다. GPS 복구 시 위치를 즉시 GPS로 되돌리므로 추정 오차만큼 위치가 바뀔 수 있다. 잘못된 좌표가 유효한 GPS처럼 계속 수신되는 상황의 탐지는 지원하지 않는다.
+
 기본 실행은 터널의 미지원 신호 `LCS01`을 무시한다. `--competition` 실행은 기본 무시 신호가 없으며, 필요하면 `--ignore-signals LCS01`로 지정한다. 여러 신호는 쉼표로 구분한다. 이 옵션은 해당 실행의 계획·신호 정책에만 적용되며 원본 Expert 설정은 변경하지 않는다.
 
 ## 실행 흐름
@@ -58,7 +64,7 @@ main.py → runtime.py
   ├── adapter.py → 기존 지도·공식 경로 준비
   ├── AIM2026/Inference/main.py 자동 실행
   │   → UDP/Manager 센서 수신
-  │   → GPSJamming 위치 추정·좌표변환 + P1/신호등 추론
+  │   → Localization: GPS 또는 IMU·차속 위치 추정 + P1/신호등 추론
   │   → 인지 결과·최신 자차 상태 전달
   └── adapter → main.on_control_tick
       → PlanningProcess → ControlProcess

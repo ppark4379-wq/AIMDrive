@@ -134,8 +134,8 @@ Inference:
     signal_head: true
     max_sensor_age_s: 0.5
 
-# Shared GPS/DR provider; algorithm and settings are maintained by GPSJamming.
+# Shared GPS/IMU-speed position provider, independent of LiDAR wall detection.
 Localization:
   enabled: true
-  config: GPSJamming/configs/localization.yaml
+  config: Localization/config.yaml
   record_dir: null

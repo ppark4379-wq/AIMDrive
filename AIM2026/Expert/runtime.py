@@ -108,7 +108,7 @@ def publisher_config(config, output, generation):
     child_cfg['Ego']['cmd_source_port'] = None
     if (child_cfg.get('Localization') or {}).get('enabled', False):
         child_cfg['Localization']['record_dir'] = str(output/'localization')
-        from AIM2026.GPSJamming.gps_jamming.localization.service import create_localization
+        from AIM2026.Localization.service import create_localization
         from types import SimpleNamespace
         validation_cfg = json.loads(json.dumps(child_cfg))
         validation_cfg['Localization']['record_dir'] = None
@@ -294,6 +294,7 @@ def main(argv=None, control_tick=None):
             if sender:
                 sender.send(encoded)
             row = dict(status='RUNNING' if fresh else 'WAITING', VE_frames=inputs.frames,
+                       position_source=(inputs.pose or {}).get('ego_position_source', 'unavailable'),
                        VE_held=inputs.held_frames,
                        control_pose_frames=inputs.pose_frames, reason=None if fresh else inputs.reason,
                        accel=encoded.accel, brake=encoded.brake, steer=encoded.steer, control_sent=bool(sender),

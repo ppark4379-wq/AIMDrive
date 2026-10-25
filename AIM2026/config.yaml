@@ -3,7 +3,7 @@ TargetHz: 30
 # Position only. Shared sensors -> improved DR -> the common Expert.
 Localization:
   enabled: true
-  config: GPSJamming/configs/localization.yaml
+  config: Localization/config.yaml
   record_dir: null  # optional new directory, relative to AIM2026; never overwrite logs
 
 Ego:
