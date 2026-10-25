@@ -133,6 +133,7 @@ class Detection:
     signal: dict = None
     native_signal: dict = None
     position_identity: dict = None
+    object_received_ns: int = None  # LiDAR frame receipt, not the oldest sensor
 
     def sensor_age_s(self, now_ns=None):
         return ((time.monotonic_ns() if now_ns is None else now_ns) - self.sensor_received_ns) / 1e9
@@ -177,6 +178,11 @@ def decode(data, now_ns=None, *, generation=None, checkpoint_sha256=None, max_ag
         raise ValueError('Invalid sensor receipt timestamp')
     if now_ns - received_ns > max_age_s * 1e9:
         raise ValueError('Detection sensor snapshot expired')
+    object_received_ns = packet.get('object_received_ns')
+    if object_received_ns is not None:
+        _monotonic_ns(object_received_ns, 'object_received_ns')
+        if not received_ns <= object_received_ns <= sent_ns:
+            raise ValueError('Invalid object frame receipt timestamp')
     boxes = packet.get('boxes')
     if not isinstance(boxes, list) or len(boxes) > MAX_BOXES:
         raise ValueError('Invalid or too many detection boxes')
@@ -191,7 +197,8 @@ def decode(data, now_ns=None, *, generation=None, checkpoint_sha256=None, max_ag
                      EgoPose.from_wire(packet.get('ego_pose')),
                      tuple(Box.from_wire(row) for row in boxes), *sources,
                      _signal(packet.get('signal'), 'signal'),
-                     _signal(packet.get('native_signal'), 'native_signal'), position_identity)
+                     _signal(packet.get('native_signal'), 'native_signal'), position_identity,
+                     object_received_ns)
 
 
 class DetectionSender:
@@ -232,10 +239,13 @@ class DetectionSender:
         return self.socket.sendto(encode(packet), self.target)
 
     def send(self, boxes, ego_pose, sensor_received_at, *, signal=None, native_signal=None,
-             ego_position_source=GPS_POSITION, ego_status_source=UDP_STATUS, position_identity=None):
+             ego_position_source=GPS_POSITION, ego_status_source=UDP_STATUS, position_identity=None,
+             object_received_at=None):
         """``sensor_received_at``: time.monotonic() receipt of the oldest sensor used.
 
         Inputs that expired during inference are sent as not ready, never as boxes.
+        ``object_received_at`` is the LiDAR frame receipt used for bounded motion
+        alignment at the consumer. The oldest sensor is only a freshness bound.
         """
         received_ns = int(round(_finite(sensor_received_at, 'sensor_received_at') * 1e9))
         wire_boxes = [box.to_wire() for box in boxes]
@@ -251,6 +261,11 @@ class DetectionSender:
         now_ns = time.monotonic_ns()
         if not 0 < received_ns <= now_ns:
             raise ValueError('sensor_received_at must be a past time.monotonic() value')
+        object_received_ns = None
+        if object_received_at is not None:
+            object_received_ns = round(_finite(object_received_at, 'object_received_at') * 1e9)
+            if not received_ns <= object_received_ns <= now_ns:
+                raise ValueError('object_received_at must be between oldest sensor and now')
         if now_ns - received_ns > self.max_age_ns:
             return self._send(self._header(False, 'sensors_expired_during_inference'))
         packet = self._header(True, None)
@@ -259,6 +274,8 @@ class DetectionSender:
                       signal=signals[0], native_signal=signals[1])
         if position_identity is not None:
             packet['selected_samples'] = dict(gps=dict(position_identity))
+        if object_received_ns is not None:
+            packet['object_received_ns'] = object_received_ns
         return self._send(packet)
 
     def send_not_ready(self, reason):

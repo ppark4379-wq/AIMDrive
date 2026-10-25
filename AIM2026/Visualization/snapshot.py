@@ -13,14 +13,16 @@ def encode(value):
         return {str(k): encode(v) for k,v in value.items()}
     if isinstance(value, (list, tuple)):
         return [encode(v) for v in value]
+    # LaneMatch also has x/y: retain its lane before the generic point case.
+    # Otherwise object_lane_matches loses lane_link and the RViz labels crash.
+    if hasattr(value, 'lane_link'):
+        return {'__object__': {'lane_link': encode(value.lane_link)}}
     if hasattr(value, 'x') and hasattr(value, 'y'):
         return {'__object__': {'x': float(value.x), 'y': float(value.y),
                                'z': float(getattr(value, 'z', 0.))}}
     if hasattr(value, 'tolist'):
         return encode(value.tolist())
-    if hasattr(value, 'lane_link'):
-        fields = {'lane_link': value.lane_link}
-    elif all(hasattr(value, k) for k in ('section_index','lane_number','points','excluded')):
+    if all(hasattr(value, k) for k in ('section_index','lane_number','points','excluded')):
         fields = {k:getattr(value,k) for k in ('id','points','section_index','lane_number','excluded')}
     else:
         fields = vars(value)

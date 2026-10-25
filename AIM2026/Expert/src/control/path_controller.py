@@ -72,10 +72,15 @@ class PathController:
         )
         second_merge_launch_gain = self._second_merge_launch_acceleration_gain(
             target_velocity, vehicle_state, lattice_result)
+        entry_merge_launch_gain = self._entry_merge_launch_acceleration_gain(
+            target_velocity, vehicle_state, lattice_result)
         second_merge_release = (second_merge_launch_gain is not None
                                 and self.previous_target_velocity is not None
                                 and self.previous_target_velocity <= .05)
-        fast_stop_release = fast_roundabout_release or fast_pedestrian_release or second_merge_release
+        entry_merge_release = (entry_merge_launch_gain is not None
+                               and self.previous_target_velocity is not None
+                               and self.previous_target_velocity <= .05)
+        fast_stop_release = fast_roundabout_release or fast_pedestrian_release or second_merge_release or entry_merge_release
         if fast_stop_release:
             self.pid.reset()
         # 속도 제어를 위한 PID control
@@ -83,7 +88,7 @@ class PathController:
             target_velocity, vehicle_state.velocity,
             derivative_on_measurement=(lattice_result.mode in ("roundabout_entry", "highway_lane")
                                        or fast_pedestrian_release),
-            acceleration_p_gain=(second_merge_launch_gain or self._highway_escape_acceleration_gain(
+            acceleration_p_gain=(entry_merge_launch_gain or second_merge_launch_gain or self._highway_escape_acceleration_gain(
                 target_velocity, vehicle_state, lattice_result
             ) or self._roundabout_entry_acceleration_gain(
                 target_velocity, vehicle_state, lattice_result
@@ -93,6 +98,13 @@ class PathController:
         if target_velocity <= 0.05:
             self.pid.reset()
             acc_cmd = -1.
+        elif (lattice_result.debug_details.get('lane_change_cruise', {}).get('maintain_speed')
+              and target_velocity >= lattice_result.debug_details['lane_change_cruise']['speed'] - 1e-6
+              and vehicle_state.velocity <= target_velocity):
+            # A derivative kick or a previous ACC brake must not slow a verified
+            # constant-speed lane change while we are still below its setpoint.
+            # Overspeed, lowered legal/signal limits and new hazards retain PID braking.
+            acc_cmd = max(0., self._smooth_longitudinal_command(acc_cmd))
         elif fast_stop_release:
             acc_cmd = max(0.0, acc_cmd)
         else:
@@ -120,7 +132,8 @@ class PathController:
             "CHANGE_RIGHT",
         )
         if highway_lane_change:
-            compact_escape = (lattice_result.debug_details.get("highway_static_escape", {}).get("compact", False)
+            compact_escape = ((lattice_result.debug_details.get("highway_static_escape", {}).get("compact", False)
+                               or lattice_result.debug_details.get("entry_merge", {}).get("compact", False))
                               and vehicle_state.velocity <= highway_parameters.STATIC_CHANGE_MAX_SPEED)
             lane_change_limit = np.deg2rad(
                 highway_parameters.STATIC_CHANGE_STEERING_DEG if compact_escape
@@ -255,6 +268,16 @@ class PathController:
             "roundabout_entry_cruise",
             "roundabout_entry_follow_lead",
         )
+
+    @staticmethod
+    def _entry_merge_launch_acceleration_gain(target_velocity, vehicle_state, lattice_result):
+        details = getattr(lattice_result, 'debug_details', {}).get('entry_merge', {})
+        if (details.get('phase') != 'MERGING' or not details.get('verified')
+                or vehicle_state.velocity >= 3.0
+                or target_velocity <= max(.05, vehicle_state.velocity)
+                or target_velocity < details.get('target_speed', float('inf'))-1e-6):
+            return None
+        return highway_parameters.ENTRY_MERGE_LAUNCH_P_GAIN
 
     @staticmethod
     def _second_merge_launch_acceleration_gain(target_velocity, vehicle_state, lattice_result):

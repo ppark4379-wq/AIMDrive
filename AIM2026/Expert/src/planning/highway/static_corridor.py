@@ -163,20 +163,12 @@ class HighwayStaticCorridor:
             jobs = []
             for direction, adjacent in planner.lane_map.legal_neighbors(source):
                 chain = [source, adjacent]
-                for _ in range(2):
-                    target = chain[-1]
-                    if allowed_targets is None or target.lane_number in allowed_targets:
-                        try:
-                            owner = HighwayCorridorSearch(ego, chain, obstacles)
-                            jobs.append((owner, direction, tuple(chain)))
-                        except ValueError:
-                            pass
-                    following = dict(planner.lane_map.legal_neighbors(target)).get(direction)
-                    if following is None or following.id in {v.id for v in chain}:
-                        break
-                    chain = chain + [following]
-            # All adjacent destinations precede any farther destination.
-            jobs.sort(key=lambda job: len(job[2]))
+                if allowed_targets is None or adjacent.lane_number in allowed_targets:
+                    try:
+                        owner = HighwayCorridorSearch(ego, chain, obstacles)
+                        jobs.append((owner, direction, tuple(chain)))
+                    except ValueError:
+                        pass
             self.key, self.origin, self.cached = key, ego.position, []
             if jobs:
                 if self.executor is None:

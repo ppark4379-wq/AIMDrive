@@ -13,6 +13,34 @@ def packet(t, boxes, generation='test'):
 
 
 class VeTrackingTests(unittest.TestCase):
+    def test_overlapping_duplicate_keeps_geometry_and_supported_motion(self):
+        tracker = VeObjectTracker(moving_carry_s=.75)
+        for i in range(8):
+            tracker.update(packet(i*.1,[box(i, speed=10., length=5., width=2.2)]))
+        raw = box(9.2,.9,speed=10.,length=5.,width=2.2)
+        rows = tracker.update(packet(.8,[box(8.,speed=10.,length=5.,width=2.2),raw]))['boxes']
+        self.assertEqual(2,len(rows))
+        duplicate = rows[1]
+        self.assertEqual('overlap_supported',duplicate['planning_speed_source'])
+        self.assertEqual('uncertain',duplicate['motion_state'])
+        self.assertFalse(duplicate['motion_direction_observed'])
+        self.assertEqual(rows[0]['track_id'],duplicate['motion_support_track_id'])
+        for key in raw:self.assertEqual(raw[key],duplicate[key])
+        # New measured displacement then supplies its own motion evidence.
+        rows = tracker.update(packet(1.2,[box(12.,speed=10.,length=5.,width=2.2),
+                                          box(13.2,.9,speed=10.,length=5.,width=2.2)]))['boxes']
+        self.assertTrue(rows[1]['motion_direction_observed'])
+
+    def test_distinct_or_stopped_boxes_do_not_borrow_motion(self):
+        for offset,speed in ((3.5,10.),(.9,0.),(.9,3.)):
+            with self.subTest(offset=offset,speed=speed):
+                tracker=VeObjectTracker(moving_carry_s=.75)
+                for i in range(8):
+                    tracker.update(packet(i*.1,[box(i,speed=10.,length=5.,width=2.2)]))
+                rows=tracker.update(packet(.8,[box(8.,speed=10.,length=5.,width=2.2),
+                    box(9.2,offset,speed=speed,length=5.,width=2.2)]))['boxes']
+                self.assertEqual('ve_provisional',rows[1]['planning_speed_source'])
+
     def test_small_box_size_jitter_preserves_identity_and_raw_geometry(self):
         tracker = VeObjectTracker()
         identity = None
@@ -125,7 +153,9 @@ class VeTrackingTests(unittest.TestCase):
         self.assertEqual({1}, {r['track_id'] for r in rows})
         self.assertEqual('uncertain', rows[0]['motion_state'])
         self.assertEqual('stationary', rows[-1]['motion_state'])
-        self.assertTrue(all(r['planning_speed_mps'] == 0. for r in rows))
+        self.assertEqual(14., rows[0]['planning_speed_mps'])
+        self.assertEqual('ve_provisional', rows[0]['planning_speed_source'])
+        self.assertEqual(0., rows[-1]['planning_speed_mps'])
         self.assertTrue(all(r['speed_mps'] == 14. for r in rows))
 
     def test_large_oscillation_is_uncertain_not_a_fast_moving_vehicle(self):
@@ -137,7 +167,8 @@ class VeTrackingTests(unittest.TestCase):
             row = tracker.update(packet(i*.12, [raw]))['boxes'][0]
             self.assertEqual(1, row['track_id'])
             self.assertEqual('uncertain', row['motion_state'])
-            self.assertEqual(0., row['planning_speed_mps'])
+            self.assertEqual(13., row['planning_speed_mps'])
+            self.assertFalse(row['motion_direction_observed'])
             self.assertEqual(raw['center_world'], row['center_world'])
 
     def test_actual_fast_motion_is_recovered_despite_zero_or_missing_raw_speed(self):
@@ -159,14 +190,15 @@ class VeTrackingTests(unittest.TestCase):
         self.assertAlmostEqual(3., row['planning_speed_mps'])
         self.assertEqual(15., row['speed_mps'])
 
-    def test_gap_discards_confirmed_motion_and_does_not_reuse_raw_speed(self):
+    def test_gap_discards_motion_confidence_but_retains_current_model_speed(self):
         tracker = VeObjectTracker()
         for i in range(8):
             row = tracker.update(packet(i*.1, [box(i*.3)]))['boxes'][0]
         self.assertEqual('moving', row['motion_state'])
         row = tracker.update(packet(1.1, [box(3.3)]))['boxes'][0]
         self.assertEqual('uncertain', row['motion_state'])
-        self.assertEqual(0., row['planning_speed_mps'])
+        self.assertEqual(3., row['planning_speed_mps'])
+        self.assertEqual('ve_provisional', row['planning_speed_source'])
         self.assertEqual(0., row['track_span_s'])
 
     def test_small_jitter_does_not_interrupt_supported_moving_track(self):
@@ -184,6 +216,21 @@ class VeTrackingTests(unittest.TestCase):
 class MovingCarryTests(unittest.TestCase):
     """A slow vehicle that briefly loses its motion evidence must not turn into a phantom stop."""
 
+    def test_confirmed_motion_survives_repeated_slow_observation_intervals(self):
+        tracker = VeObjectTracker(moving_carry_s=.75)
+        for i in range(10):
+            tracker.update(packet(i*.1, [box(i, speed=10.)]))
+        for t in (1.3, 1.7, 2.1, 2.5):
+            row = tracker.update(packet(t, [box(t*10., speed=10.)]))['boxes'][0]
+            self.assertEqual(row['motion_state'], 'moving')
+            self.assertAlmostEqual(row['planning_speed_mps'], 10.)
+
+    def test_raw_speed_collapse_disables_carry(self):
+        tracker = VeObjectTracker(moving_carry_s=.75)
+        self.feed(tracker, [.16*i for i in range(14)])
+        row = tracker.update(packet(1.4, [box(2.5, speed=0., length=4.5, width=1.9)]))['boxes'][0]
+        self.assertNotEqual(row['planning_speed_source'], 'carry_over')
+
     @staticmethod
     def feed(tracker, positions, speed=1.6):
         out = None
@@ -197,7 +244,9 @@ class MovingCarryTests(unittest.TestCase):
         self.feed(tracker, xs)
         # box centre jumps back and forth: evidence breaks down
         jitter = [xs[-1] + d for d in (.9, -.5, .8, -.6)]
-        self.assertEqual(self.feed(tracker, jitter)['planning_speed_mps'], 0.)
+        row = self.feed(tracker, jitter)
+        self.assertEqual(row['planning_speed_mps'], 1.6)
+        self.assertEqual(row['planning_speed_source'], 've_provisional')
 
     def test_carry_keeps_last_speed_then_expires(self):
         tracker = VeObjectTracker(moving_carry_s=1.0)
@@ -214,11 +263,12 @@ class MovingCarryTests(unittest.TestCase):
         self.assertTrue(carried)
         self.assertAlmostEqual(carried[0]['planning_speed_mps'], speed, places=6)
         self.assertEqual(carried[0]['motion_state'], 'uncertain')       # label stays honest
-        # after the carry window the speed drops back to zero
+        # After the carry window use the current model estimate, never a fabricated stop.
         later = None
         for k in range(14):
             later = tracker.update(packet(t + .5 + k * .1, [box(xs[-1] + (.9, -.5)[k % 2], speed=speed, length=4.5, width=1.9)]))['boxes'][0]
-        self.assertEqual(later['planning_speed_mps'], 0.)
+        self.assertEqual(later['planning_speed_mps'], speed)
+        self.assertEqual(later['planning_speed_source'], 've_provisional')
 
     def test_a_stopped_vehicle_is_not_carried(self):
         tracker = VeObjectTracker(moving_carry_s=1.0)

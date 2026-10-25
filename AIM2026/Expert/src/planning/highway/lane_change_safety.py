@@ -2,6 +2,7 @@
 
 import math
 from bisect import bisect_left
+from copy import copy
 
 from . import parameters as p
 
@@ -26,10 +27,18 @@ class LaneChangeSafety:
         ramp = min(remaining, abs((target - speed) / accel))
         return speed * delay + speed * ramp + 0.5 * accel * ramp * ramp + target * (remaining - ramp)
 
-    def static_distance(self, points, entries):
+    def static_distance(self, points, entries, include_uncertain=False, margin=0.0):
         """Distance to first body overlap, using measured poses, including off-link objects."""
         objects = [entry['object_info'] for entry in entries
-                   if self.planner.obstacle_motion.is_static(entry['object_info'])]
+                   if (self.planner.obstacle_motion.is_static(entry['object_info'])
+                       or (include_uncertain and getattr(entry['object_info'], 'speed_unknown', False)))]
+        if margin > 0.0:
+            # Geometry-only copies: never rewrite a perception object's speed
+            # or motion state to test its possible stationary occupancy.
+            objects = [copy(obj) for obj in objects]
+            for obj in objects:
+                obj.size_x += 2*margin
+                obj.size_y += 2*margin
         if not objects or len(points) < 2:
             return float('inf')
         distance = 0.0
@@ -91,7 +100,13 @@ class LaneChangeSafety:
         initial_rear = {id(entry['object_info']) for entry in entries
                         if ((entry['object_info'].position.x - ego.position.x) * math.cos(ego.yaw)
                             + (entry['object_info'].position.y - ego.position.y) * math.sin(ego.yaw)) < 0.0}
-        stationary_distance = self.static_distance(points, entries)
+        entry_merge = getattr(candidate, 'entry_merge', False)
+        entry_gap_policy = (entry_merge
+                            and getattr(candidate, 'source_link_id', None) == p.ENTRY_MERGE_SOURCE
+                            and getattr(candidate, 'target_link_id', None) == p.ENTRY_MERGE_TARGET)
+        stationary_distance = self.static_distance(points, entries,
+            include_uncertain=entry_merge,
+            margin=p.ENTRY_MERGE_OBSTACLE_MARGIN if entry_merge and not committed else 0.0)
         # Use the exact sampled path for stationary geometry even when time
         # samples could skip a small obstacle at highway speed.
         if require_completion and stationary_distance <= completion_distance + max(speed, target_speed) * p.LANE_CHANGE_SETTLE_TIME:
@@ -99,6 +114,11 @@ class LaneChangeSafety:
                         rear=False, kind='static_path', distance=stationary_distance)
         completion_time = None
         minimum_prediction_time = getattr(candidate, 'minimum_prediction_time', 0.0)
+        if committed and getattr(candidate, 'entry_merge', False):
+            # The full maneuver was checked at launch. Recheck its REMAINING
+            # distance plus settling, not another rolling five seconds beyond
+            # completion on every tick. Near-term collision checks still run.
+            minimum_prediction_time = min(minimum_prediction_time, p.ENTRY_MERGE_COMMITTED_HORIZON)
         t = 0.0
         # At normal road speeds this is about 3--6 s. From rest use finite
         # acceleration to the requested speed, rather than teleporting ahead.
@@ -145,23 +165,36 @@ class LaneChangeSafety:
                                     object_id=getattr(obj, 'unique_id', None))
                     # A small future bumper margin, in addition to the larger
                     # initial target-lane clearance. Check only overlapping lanes.
-                    source_static = (planner.obstacle_motion.is_static(obj)
-                                     and (match is None or match.lane_link.id == getattr(candidate, 'source_link_id', None)))
+                    source_lane = (match is not None
+                                   and match.lane_link.id == getattr(candidate, 'source_link_id', None))
+                    source_occupancy_only = ((getattr(candidate, 'entry_merge', False) and source_lane)
+                        or (planner.obstacle_motion.is_static(obj) and (match is None or source_lane)))
+                    # While leaving the source lane, check every moving AND
+                    # stationary hypothesis against the swept body above. A
+                    # longitudinal following gap on that abandoned lane would
+                    # brake a safe pass whenever a provisional speed fluctuates.
+                    # Target-lane and unmatched moving vehicles retain the gap.
                     # Gap checks use the other vehicle's lane direction. Ego's
                     # turning heading can point its rear axis across an entirely
                     # different lane and falsely block a change away from it.
                     gap_longitudinal = dx * math.cos(angle) + dy * math.sin(angle)
                     gap_lateral = abs(-dx * math.sin(angle) + dy * math.cos(angle))
-                    if (not source_static and math.cos(angle - yaw) > 0.8
+                    if (not source_occupancy_only and math.cos(angle - yaw) > 0.8
                             and gap_lateral < 0.5 * (p.VEHICLE_WIDTH + max(1.0, obj.size_y))):
                         gap = (gap_longitudinal - p.VEHICLE_LENGTH - 0.5 * max(1.0, obj.size_x)
                                if gap_longitudinal >= 0 else -gap_longitudinal - 0.5 * max(1.0, obj.size_x))
-                        required_gap = p.LANE_CHANGE_BUMPER_MARGIN
+                        # Only 411 -> 409 uses entry margins, before AND during
+                        # the maneuver. Other changes retain the common margin.
+                        required_gap = ((p.ENTRY_MERGE_FRONT_GAP if gap_longitudinal >= 0
+                                         else p.ENTRY_MERGE_REAR_GAP)
+                                        if entry_gap_policy else p.LANE_CHANGE_BUMPER_MARGIN)
                         if gap_longitudinal < 0:
                             required_gap += max(0.0, obj.velocity - speed_at_t) * rear_time_gap
                         if gap < required_gap:
                             return dict(time=t, rear=bool(longitudinal < 0.0 or id(obj) in initial_rear), kind='gap',
-                                        object_id=getattr(obj, 'unique_id', None))
+                                        object_id=getattr(obj, 'unique_id', None),
+                                        gap=gap, required_gap=required_gap,
+                                        gap_policy='entry_merge' if entry_gap_policy else 'lane_change')
             if (completion_time is not None
                     and t >= max(minimum_prediction_time, completion_time + p.LANE_CHANGE_SETTLE_TIME)):
                 return None

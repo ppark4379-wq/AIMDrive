@@ -145,9 +145,11 @@ def main(argv=None, control_tick=None):
                              'stands at the tunnel entrance; none with --competition)')
     parser.add_argument('--scenario-context', type=Path,
                         help='Route/scenario configuration written by the scenario runner (ve_gps_scenario_context_v1)')
+    parser.add_argument('--stop-file', type=Path,
+                        help='Scenario harness requests graceful shutdown through this file')
     parser.add_argument('--static-geometry-fusion', action='store_true',
                         help='Tracker: publish fused footprints for stationary VE boxes')
-    parser.add_argument('--moving-carry-s', type=float, default=0.,
+    parser.add_argument('--moving-carry-s', type=float, default=0.75,
                         help='Tracker: seconds a confirmed mover keeps its speed (0 = off)')
     parser.add_argument('--slow-window-s', type=float, default=0.,
                         help='Tracker: slow-mover confirmation window in seconds (0 = off)')
@@ -243,7 +245,8 @@ def main(argv=None, control_tick=None):
         print('[Expert] 1 ms timer resolution: %s' % timer_active, flush=True)
         period = 1. / driving.realtime_sampling_rate
         last_tick = next_tick = time.perf_counter()
-        while not stop and not (args.seconds and time.monotonic()-started >= args.seconds):
+        while (not stop and not (args.stop_file and args.stop_file.exists())
+               and not (args.seconds and time.monotonic()-started >= args.seconds)):
             if process.poll() is not None:
                 raise RuntimeError('Inference exited; see '+str(output/'inference.log'))
             for _ in range(128):
@@ -311,8 +314,19 @@ def main(argv=None, control_tick=None):
                                    age_s=None if policy.received is None else round(now-policy.received, 3)))
             # Record the exact pose used by this control tick for timing/jitter
             # diagnosis. This does not alter inputs, planning, or commands.
-            control_log.write(json.dumps(dict(row, monotonic_ns=time.monotonic_ns(),
+            log_time_ns = time.monotonic_ns()
+            plan_result = driving.lattice_planning_process.last_result if fresh else None
+            plan_details = getattr(plan_result, 'debug_details', {})
+            control_log.write(json.dumps(dict(row, monotonic_ns=log_time_ns,
                 control_dt_s=control_dt,
+                inference_age_ms=(round((log_time_ns-inputs.packet['sensor_received_ns'])/1e6, 1)
+                                  if inputs.packet else None),
+                inference_sequence=(inputs.packet.get('sequence') if inputs.packet else None),
+                planning=dict(reason=getattr(plan_result, 'reason', None),
+                              target_speed=getattr(driving, 'previous_target_velocity', None),
+                              target_lane=getattr(plan_result, 'target_link_id', None),
+                              entry_merge=plan_details.get('entry_merge'),
+                              lane_change_cruise=plan_details.get('lane_change_cruise')),
                 # Signal decision of this tick (VE phase after policy; 0 = unknown -> stop).
                 signal=dict(id=policy.target_id, code=code, head=getattr(policy, 'head_source', None),
                             reason=getattr(policy, 'reason', None), green_samples=policy.allow_samples,
