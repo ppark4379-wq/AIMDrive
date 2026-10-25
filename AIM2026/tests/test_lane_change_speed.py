@@ -300,4 +300,66 @@ class LaneKeepingPredictionTest(unittest.TestCase):
             self.assertEqual(point.y,0.)
 
 
+class SecondMergeFollowTest(unittest.TestCase):
+    def setUp(self):
+        from AIM2026.Expert.src.planning.highway.common.merge_safety import MergeSafety
+        lanes=NS(successors={'source': ('A2256W000153',), 'other': ('A2256W000153',)},
+                 project=lambda position,link: NS(s=0.), forward_distance=lambda a,b: None)
+        self.safety=MergeSafety(NS(lane_map=lanes))
+        self.safety.zone='SECOND_ENTRY'
+        self.ego=VehicleState(0.,0.,0.,5.)
+        self.source=NS(lane_link=NS(id='source'))
+        self.match=NS(lane_link=NS(id='other'),s=20.)
+        self.car=NS(size_x=4.5,velocity=8.,speed_unknown=False)
+        self.tracks=[('leader',(self.car,self.match,0.)),('later',(self.car,self.match,0.))]
+
+    def test_yielded_target_is_not_replaced_by_later_vehicle(self):
+        self.safety._remember_second_yield(dict(id='leader',rear=False),self.tracks,self.source)
+        self.safety._remember_second_yield(dict(id='later',rear=False),self.tracks,self.source)
+        self.assertEqual(self.safety.second_follow_key,'leader')
+        self.match.s=12.
+        speed=self.safety._second_follow_speed(self.ego,self.tracks,12.5)
+        self.assertGreater(speed,0.)
+        self.assertLess(speed,12.5)
+        self.assertEqual(self.safety.second_follow_details['phase'],'following_yielded_vehicle')
+
+    def test_rear_unknown_or_missing_target_cannot_authorize_follow(self):
+        self.safety._remember_second_yield(dict(id='leader',rear=True),self.tracks,self.source)
+        self.assertIsNone(self.safety.second_follow_key)
+        self.safety.second_follow_key='leader'
+        self.match.s=2.
+        self.assertEqual(self.safety._second_follow_speed(self.ego,self.tracks,12.5),12.5)
+        self.match.s=12.;self.car.speed_unknown=True
+        self.assertEqual(self.safety._second_follow_speed(self.ego,self.tracks,12.5),12.5)
+        self.safety._second_follow_speed(self.ego,[],12.5)
+        self.assertIsNone(self.safety.second_follow_key)
+
+    def test_following_still_checks_all_vehicles_and_stops_for_conflict(self):
+        from unittest.mock import Mock
+        safety=self.safety
+        safety.second_follow_key='leader';self.match.s=12.
+        safety.zone_for=lambda match:'SECOND_ENTRY'
+        safety._update_tracks=lambda *args:self.tracks
+        safety._shares_corridor=lambda *args:True
+        safety._second_merge_entered=lambda *args:False
+        safety._route=lambda *args:([Point(0.,0.),Point(100.,0.)],[0.,100.])
+        safety._pose=lambda *args:[(Point(20.,0.),0.)]
+        safety._conflict=Mock(return_value={'id':'later','rear':True,'time':1.,'kind':'obb'})
+        result=safety.limit(self.ego,self.source,[],[],desired_velocity=12.5)
+        self.assertEqual(result,0.)
+        self.assertEqual(safety.details['decision'],'STOP')
+        for call in safety._conflict.call_args_list:
+            self.assertIs(call.args[4],self.tracks)
+        self.assertEqual(safety.second_follow_key,'leader')
+
+    def test_first_merge_and_reset_are_unaffected(self):
+        self.safety.zone='FIRST_PREDICTIVE'
+        self.safety._remember_second_yield(dict(id='leader'),self.tracks,self.source)
+        self.assertIsNone(self.safety.second_follow_key)
+        self.assertEqual(self.safety._second_follow_speed(self.ego,self.tracks,12.5),12.5)
+        self.safety.second_follow_key='leader'
+        self.safety.reset()
+        self.assertIsNone(self.safety.second_follow_key)
+
+
 if __name__=='__main__': unittest.main()

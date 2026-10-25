@@ -341,6 +341,7 @@ def main(argv=None, control_tick=None):
                               target_speed=getattr(driving, 'previous_target_velocity', None),
                               target_lane=getattr(plan_result, 'target_link_id', None),
                               entry_merge=plan_details.get('entry_merge'),
+                              second_merge_follow=(plan_details.get('merge_safety') or {}).get('second_follow'),
                               lane_change_cruise=plan_details.get('lane_change_cruise')),
                 # Signal decision of this tick (VE phase after policy; 0 = unknown -> stop).
                 signal=dict(id=policy.target_id, code=code, head=getattr(policy, 'head_source', None),

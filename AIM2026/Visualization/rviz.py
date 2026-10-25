@@ -4,6 +4,8 @@ import argparse
 import csv
 import json
 import math
+import re
+from datetime import datetime
 from pathlib import Path
 import signal
 import subprocess
@@ -164,8 +166,12 @@ class SnapshotReader:
                     state = display_state(folder, None)
                     if state is not None:
                         self.state = state
+                        # Windows and WSL clocks can differ after a clock change.
+                        # A newly observed write proves activity in our clock;
+                        # the first old snapshot alone must still remain stale.
+                        changed_after_read = self.signature is not None
                         self.signature = signature
-                        self.written_at = info.st_mtime
+                        self.written_at = now if changed_after_read else info.st_mtime
             except OSError:
                 pass
         return self.state, self.state is None or now - self.written_at > max_age
@@ -234,6 +240,8 @@ def main():
         reader = SnapshotReader()
         next_scan = 0.
         next_status = 0.
+        run_signatures = {}
+        run_activity = {}
         started = time.monotonic()
         print('[RViz] Reading UDP Expert logs; no vehicle control. Start Expert with --visualize.', flush=True)
         print('[RViz] VIEW={} | data=VE detections -> tracker -> Expert snapshot'.format(
@@ -247,9 +255,38 @@ def main():
                 break
             if time.monotonic() >= next_scan:
                 candidates = list(args.runs_root.glob('*/inference.yaml'))
-                recorded = [p for p in candidates if (p.parent/'visualization.json').is_file()]
-                candidates = recorded or candidates
-                newest = max(candidates, key=lambda p:p.stat().st_mtime).parent if candidates else None
+                # Follow the newest actual run even before its first snapshot.
+                # Preferring any old snapshot pins the viewer to a previous run
+                # while the new Expert is waiting for inference. Exclude checks
+                # when real runs exist: --check writes config but no control log.
+                started_runs = [p for p in candidates if (p.parent/'control.jsonl').is_file()]
+                candidates = started_runs or candidates
+                for candidate in candidates:
+                    heartbeat = candidate.parent/'control.jsonl'
+                    if heartbeat.is_file():
+                        info = heartbeat.stat()
+                        signature = (info.st_mtime_ns, info.st_size)
+                        if candidate in run_signatures and signature != run_signatures[candidate]:
+                            run_activity[candidate] = time.monotonic()
+                        run_signatures[candidate] = signature
+                active_runs = [p for p in candidates
+                               if time.monotonic()-run_activity.get(p, -float('inf')) < 3.]
+                candidates = active_runs or candidates
+                # A simulator session may follow a system-clock correction.
+                # Old runs dated in the future must not outrank today's run.
+                current_clock_runs = [p for p in candidates if p.stat().st_mtime <= time.time() + 5.]
+                candidates = current_clock_runs or candidates
+                def run_order(path):
+                    # Scenario run names originate in the WSL launcher, even
+                    # when Windows writes their files with a different clock.
+                    match = re.search(r'\d{8}-\d{6}', path.parent.name)
+                    if match:
+                        try:
+                            return datetime.strptime(match.group(), '%Y%m%d-%H%M%S').timestamp()
+                        except ValueError:
+                            pass
+                    return path.stat().st_mtime
+                newest = max(candidates, key=run_order).parent if candidates else None
                 next_scan = time.monotonic() + 1.
             if newest is not None and newest != folder:
                 try:
