@@ -8,8 +8,8 @@ Panels:
 Visualization Manager:
   Class: ""
   Displays:
-    - Alpha: 0.5
-      Cell Size: 1
+    - Alpha: 0.15
+      Cell Size: 5
       Class: rviz/Grid
       Color: 120; 120; 120
       Enabled: true
@@ -24,7 +24,7 @@ Visualization Manager:
       Color: 180; 180; 180
       Enabled: true
       Line Style: Lines
-      Line Width: 0.03
+      Line Width: 0.18
       Name: Global Path
       Topic: /global_path
       Unreliable: false
@@ -35,7 +35,7 @@ Visualization Manager:
       Color: 0; 90; 255
       Enabled: true
       Line Style: Lines
-      Line Width: 0.12
+      Line Width: 0.35
       Name: Selected Local Path
       Topic: /local_path
       Unreliable: false
@@ -65,7 +65,7 @@ Visualization Manager:
     - Class: rviz/MarkerArray
       Enabled: true
       Marker Topic: /lattice/lanes
-      Name: Highway Lane Sections
+      Name: Active Lane + Roundabout Decisions
       Namespaces:
         highway_lane_centers: true
         highway_lane_labels: true
@@ -73,15 +73,16 @@ Visualization Manager:
       Value: true
     - Class: rviz/MarkerArray
       Enabled: true
-      Marker Topic: /vldrive/notice_markers
-      Name: VLDrive Notice Zones + Current Instruction
-      Namespaces:
-        notice_route: true
-        notice_zones: true
-        notice_start: true
-        notice_end: true
-        notice_labels: true
-        notice_current: true
+      Marker Topic: /expert/map
+      Name: Course Map + Recorded Reference Paths
+      Namespaces: {}
+      Queue Size: 1
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /expert/overlays
+      Name: Moving VE ROI + Signal Decisions
+      Namespaces: {}
       Queue Size: 1
       Value: true
     - Angle Tolerance: 0.1
@@ -95,7 +96,7 @@ Visualization Manager:
       Value: true
   Enabled: true
   Global Options:
-    Background Color: 35; 35; 35
+    Background Color: 20; 25; 32
     Default Light: true
     Fixed Frame: map
     Frame Rate: 30
@@ -110,17 +111,39 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/XYOrbit
-      Distance: 45
+      Distance: 140
       Focal Point:
         X: 0
         Y: 0
         Z: 0
-      Name: Top Down
+      Name: Follow Ego
       Pitch: 1.5708
       Target Frame: gps
       Value: XYOrbit (rviz)
       Yaw: 0
-    Saved Views: {}
+    Saved Views:
+      - Class: rviz/XYOrbit
+        Distance: 1200
+        Focal Point:
+          X: 0
+          Y: 0
+          Z: 0
+        Name: Whole Course
+        Pitch: 1.5708
+        Target Frame: map
+        Value: XYOrbit (rviz)
+        Yaw: 0
+      - Class: rviz/XYOrbit
+        Distance: 140
+        Focal Point:
+          X: 0
+          Y: 0
+          Z: 0
+        Name: Follow Ego
+        Pitch: 1.5708
+        Target Frame: gps
+        Value: XYOrbit (rviz)
+        Yaw: 0
 Window Geometry:
   Height: 900
   Width: 1500

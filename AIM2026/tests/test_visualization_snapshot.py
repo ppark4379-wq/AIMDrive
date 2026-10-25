@@ -18,6 +18,67 @@ from AIM2026.Expert.src.planning.highway.common.types import LaneMatch
 
 
 class SnapshotTests(unittest.TestCase):
+    def test_new_rviz_subscriber_receives_full_frame_after_delta_cache(self):
+        from AIM2026.Visualization.rviz import OriginalDisplay
+        viewer = object.__new__(OriginalDisplay)
+        count = [0]
+        viewer.publisher = SimpleNamespace(get_num_connections=lambda: count[0])
+        viewer._marker_cache = {'roi': {'old': 1}}
+        viewer._marker_ids = {'roi': {'old'}}
+        viewer._render_key = 'old'
+        viewer.refresh_connections()
+        self.assertEqual(viewer._render_key,'old')
+        count[0] = 1
+        viewer.refresh_connections()
+        self.assertIsNone(viewer._render_key)
+        self.assertEqual(viewer._marker_cache,{})
+        viewer._render_key = 'new'
+        viewer.refresh_connections()
+        self.assertEqual(viewer._render_key,'new')
+
+    def world_overlay(self):
+        try:
+            import rospy
+        except ImportError:
+            self.skipTest('ROS renderer runs in WSL')
+        from AIM2026.Visualization.world import WorldOverlay
+        from AIM2026.Expert.src.visualization.rviz_visualizer import LatticeRvizVisualizer
+        return WorldOverlay(object.__new__(LatticeRvizVisualizer))
+
+    def test_world_map_contains_course_highway_static_and_roundabout(self):
+        overlay = self.world_overlay()
+        namespaces = {m.ns for m in overlay.static.markers}
+        self.assertNotIn('map_road_centers', namespaces)
+        self.assertTrue({'highway_map_lanes','static_reference_recordings',
+                         'roundabout_approach','roundabout_circulating_lane','static_planning_zone'} <= namespaces)
+        self.assertTrue(overlay.signals)
+        for marker in overlay.static.markers:
+            marker.serialize(__import__('io').BytesIO())
+
+    def test_world_roi_rotates_with_ego_and_keeps_dimensions(self):
+        import math
+        overlay = self.world_overlay()
+        import rospy
+        state = self.snapshot()
+        state['vehicle'].yaw = math.pi/2
+        markers = overlay.dynamic(state, rospy.Time(0), False)
+        roi = next(m for m in markers.markers if m.ns == 've_roi_world')
+        self.assertAlmostEqual(roi.points[0].x, state['vehicle'].position.x-25.)
+        self.assertAlmostEqual(roi.points[0].y, state['vehicle'].position.y+30.)
+        self.assertEqual(roi.points[0],roi.points[-1])
+
+    def test_signal_color_requires_current_bound_ve_policy_and_stale_is_gray(self):
+        overlay = self.world_overlay()
+        import rospy
+        state = self.snapshot()
+        identity = overlay.signals[0][0]
+        state['signal'] = dict(id=identity,code=1,bound=True,reason='test')
+        for stale, bound, red in ((False,True,True),(True,True,False),(False,False,False)):
+            state['signal']['bound'] = bound
+            markers = overlay.dynamic(state,rospy.Time(0),stale)
+            lamp = next(m for m in markers.markers if m.ns=='signal_stop_nodes' and m.id==0)
+            self.assertEqual(lamp.color.r==1.,red)
+
     def test_second_merge_geometry_is_shared_by_map_and_roi(self):
         try:
             import rospy
@@ -173,9 +234,14 @@ class SnapshotTests(unittest.TestCase):
             self.assertEqual(sum(m.action == Marker.DELETEALL for m in first.markers), 1)
             expected = {(m.ns, m.id) for m in first.markers if m.action == Marker.ADD}
             second = viewer.update_markers(topic, draw(topic), stamp)
-            self.assertTrue(second.markers)
-            self.assertTrue(all(m.action == Marker.ADD for m in second.markers))
-            self.assertTrue(all(m.lifetime.to_sec() == 0 for m in second.markers))
+            self.assertEqual(second.markers, [])  # unchanged geometry stays in RViz
+            self.assertTrue(all(m.lifetime.to_sec() == 0 for m in first.markers))
+            changed = draw(topic)
+            added = next(m for m in changed.markers if m.action == Marker.ADD)
+            added.color.a = .123
+            delta = viewer.update_markers(topic, changed, stamp)
+            self.assertEqual(len(delta.markers), 1)
+            self.assertEqual(delta.markers[0].color.a, .123)
             # A temporary read delay cannot expire the markers. A real empty
             # next frame must, however, explicitly remove every old marker.
             empty = type(second)()

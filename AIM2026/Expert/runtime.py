@@ -310,10 +310,12 @@ def main(argv=None, control_tick=None):
                         from AIM2026.Visualization.snapshot import write_snapshot
                         try:
                             write_snapshot(output/'visualization.json',
-                                driving.lattice_planning_process.last_result, vehicle, objects, path)
+                                driving.lattice_planning_process.last_result, vehicle, objects, path,
+                                signal=dict(id=policy.target_id, code=code, bound=policy.bound,
+                                            reason=getattr(policy, 'reason', None)))
                         except (OSError, TypeError, ValueError, AttributeError) as exc:
                             print('[RViz snapshot] '+str(exc), file=expert_log)
-                        next_snapshot = now+.2
+                        next_snapshot = now+.1
             encoded = wire_command(command, driving.max_steering, hold_steer=last_steer)
             last_steer = encoded.steer
             if sender:

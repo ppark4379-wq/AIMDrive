@@ -41,10 +41,11 @@ def decode(value):
     return value
 
 
-def write_snapshot(target, result, vehicle, objects, selected_path):
+def write_snapshot(target, result, vehicle, objects, selected_path, signal=None):
     if result is None:
         return
-    document = encode(dict(result=result, vehicle=vehicle, objects=objects, selected_path=selected_path))
+    document = encode(dict(result=result, vehicle=vehicle, objects=objects,
+                           selected_path=selected_path, signal=signal))
     # JSON cannot preserve shared list identity; preserve the renderer's selected color explicitly.
     for row, candidate in zip(document['result']['__object__']['candidates'], result.candidates):
         row['__object__']['selected_preview'] = (candidate.points is result.path

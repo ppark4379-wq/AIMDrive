@@ -52,6 +52,12 @@ class OriginalDisplay:
         self.odom_pub = rospy.Publisher('/odom', Odometry, queue_size=1)
         self._marker_ids = {}
         self._route = None
+        from AIM2026.Visualization.world import WorldOverlay
+        from visualization_msgs.msg import MarkerArray
+        self.world = WorldOverlay(self.renderer)
+        self.world_pub = rospy.Publisher('/expert/map', MarkerArray, queue_size=1, latch=True)
+        self.overlay_pub = rospy.Publisher('/expert/overlays', MarkerArray, queue_size=1)
+        self.world_pub.publish(self.world.static)
 
     def update_markers(self, topic, markers, stamp):
         """Update existing geometry; explicitly remove only vanished markers.
@@ -62,14 +68,20 @@ class OriginalDisplay:
         import rospy
         from visualization_msgs.msg import Marker
         current = {}
+        cache = getattr(self, '_marker_cache', {})
+        old = cache.get(topic, {})
         for marker in markers.markers:
             key = (marker.ns, marker.id)
             if marker.action == Marker.ADD:
                 marker.lifetime = rospy.Duration(0)
+                # All map markers already carry world coordinates (ROI has a
+                # fixed display frame). Stamp-only changes must not rebuild
+                # thousands of unchanged vertices in RViz.
+                marker.header.stamp = rospy.Time(0)
                 current[key] = marker
             elif marker.action == Marker.DELETE:
                 current.pop(key, None)
-        updates = list(current.values())
+        updates = [marker for key, marker in current.items() if old.get(key) != marker]
         frame_id = updates[0].header.frame_id if updates else getattr(self, '_marker_frames', {}).get(topic, 'map')
         if not hasattr(self, '_marker_frames'):
             self._marker_frames = {}
@@ -87,8 +99,24 @@ class OriginalDisplay:
                 removed.header.frame_id = frame_id; removed.header.stamp = stamp
                 updates.append(removed)
         self._marker_ids[topic] = set(current)
+        cache[topic] = current
+        self._marker_cache = cache
         markers.markers = updates
         return markers
+
+    def refresh_connections(self):
+        """Send a full frame to newly connected RViz subscribers, then deltas."""
+        pubs = ([self.publisher] if hasattr(self, 'publisher') else
+                [self.renderer.paths_pub, self.renderer.objects_pub,
+                 self.renderer.lanes_pub, self.overlay_pub,
+                 self.local_pub, self.odom_pub])
+        counts = tuple(pub.get_num_connections() for pub in pubs)
+        previous = getattr(self, '_connections', (0,)*len(counts))
+        if any(current > old for current, old in zip(counts, previous)):
+            self._marker_cache = {}
+            self._marker_ids = {}
+            self._render_key = None
+        self._connections = counts
 
     @staticmethod
     def path_message(points, stamp):
@@ -105,6 +133,8 @@ class OriginalDisplay:
 
     def publish(self, route, state, stamp, stale):
         from nav_msgs.msg import Odometry
+        self.overlay_pub.publish(self.update_markers('world_overlays',
+            self.world.dynamic(state, stamp, stale), stamp))
         if route is not self._route:
             self.global_pub.publish(self.path_message(route,stamp))
             self._route = route
@@ -117,9 +147,18 @@ class OriginalDisplay:
                 if marker.ns == 'lattice_status':
                     marker.text = 'STALE - LAST RECORDED STATE\n'+marker.text
         self.renderer.paths_pub.publish(self.update_markers('paths', paths, stamp))
-        objects = self.renderer._build_object_markers(result,vehicle,state['objects'],stamp)
+        # The driving overview shows observed objects, not dozens of future
+        # translucent boxes over each object. Prediction stays in the planner.
+        import copy
+        observed = copy.copy(result)
+        observed.predicted_object_paths = []
+        observed.object_lane_matches = []
+        objects = self.renderer._build_object_markers(observed,vehicle,state['objects'],stamp)
         self.renderer.objects_pub.publish(self.update_markers('objects', objects, stamp))
         lanes = self.renderer._build_lane_markers(result,stamp)
+        # WorldOverlay already publishes the highway lines once, latched.
+        # Drawing the same lines twice at almost identical Z causes shimmer.
+        lanes.markers = [m for m in lanes.markers if m.ns != 'highway_lane_centers']
         self.renderer.lanes_pub.publish(self.update_markers('lanes', lanes, stamp))
         self.local_pub.publish(self.path_message(state['selected_path'],stamp))
         odom = Odometry(); odom.header.frame_id='map'; odom.header.stamp=stamp; odom.child_frame_id='gps'
@@ -182,9 +221,9 @@ def main():
     parser.add_argument('--runs-root', type=Path, default=REPO/'AIM2026/outputs/expert')
     parser.add_argument('--markers-only', action='store_true')
     views = parser.add_mutually_exclusive_group()
-    views.add_argument('--roi', dest='roi', action='store_true', help='October 14 VE ROI + Expert paths (default)')
-    views.add_argument('--map', dest='roi', action='store_false', help='Legacy map-view Expert display')
-    parser.set_defaults(roi=True)
+    views.add_argument('--roi', dest='roi', action='store_true', help='October 14 local VE ROI display')
+    views.add_argument('--map', dest='roi', action='store_false', help='Whole-course map + moving VE ROI (default)')
+    parser.set_defaults(roi=False)
     parser.add_argument('--seconds', type=float, default=0.)
     args = parser.parse_args()
     # Prevent two readers from alternating markers on the same ROS topics.
@@ -286,7 +325,14 @@ def main():
                         except ValueError:
                             pass
                     return path.stat().st_mtime
-                newest = max(candidates, key=run_order).parent if candidates else None
+                if active_runs:
+                    newest = max(active_runs, key=lambda p: run_activity[p]).parent
+                elif folder is not None and (folder/'inference.yaml').is_file():
+                    # Keep the last observed run after it stops. WSL/Windows
+                    # clock differences must not switch us back to an old run.
+                    newest = folder
+                else:
+                    newest = max(candidates, key=run_order).parent if candidates else None
                 next_scan = time.monotonic() + 1.
             if newest is not None and newest != folder:
                 try:
@@ -318,8 +364,12 @@ def main():
                 x,y,yaw = vehicle.position.x,vehicle.position.y,vehicle.yaw
                 broadcaster.sendTransform((x,y,0.), (0.,0.,math.sin(yaw/2),math.cos(yaw/2)),
                                           stamp, 'gps', 'map')
-            display.publish(route, state, stamp, stale)
-            time.sleep(.1)
+            render_key = (folder, reader.signature, stale)
+            display.refresh_connections()
+            if render_key != getattr(display, '_render_key', None):
+                display.publish(route, state, stamp, stale)
+                display._render_key = render_key
+            time.sleep(.05)
     finally:
         rospy.signal_shutdown('viewer closed')
         for child in (viewer, owned_master):
