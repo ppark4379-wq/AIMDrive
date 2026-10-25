@@ -62,7 +62,9 @@ def load_map_derivation_inputs(source, resolver, parent, episode):
             or report.get('schema') != 'morai_sensor_record_object_geometry_audit_v1'
             or report.get('structural_valid') is not True
             or report.get('complete_observed_geometry_scope') is not True):
-        raise ValueError('Changed or incomplete direct empty-inventory evidence')
+        if evidence.get('effective_object_geometry') is None:
+            raise ValueError('Changed or incomplete direct empty-inventory evidence')
+        return _admission_recovery_inputs(source, resolver, episode, timeline_dir, evidence)
     timeline = _indexed_frames(read_json(timeline_dir/'frames.json'))
     geometry = _indexed_frames(read_json(geometry_dir/'frames.json'))
     selected = set()
@@ -89,6 +91,26 @@ def load_map_derivation_inputs(source, resolver, parent, episode):
                 or audit.get('api_box_geometry_candidate') is not True):
             raise ValueError('Direct map correction requires sealed complete timely empty inventories')
     return timeline, geometry, {}, 'sealed_complete_empty_inventory_v1'
+
+
+def _admission_recovery_inputs(source, resolver, episode, timeline_dir, evidence):
+    """Publications whose admission recovery selected a sealed V2-V5 geometry audit (e.g. V5 LiDAR-registry heavy
+    vehicles). Used only when the direct empty-inventory evidence does not apply; the loader's own verifier binds
+    the audit to this recording before it is read."""
+    from .morai_sensor_record_dataset import child, digest, read_json, verify_admission_recovery, verify_seal
+    recovery_name = source.get('admission_recovery_path', 'ADMISSION_RECOVERY.json')
+    verify_admission_recovery(episode, evidence, recovery_name)
+    recovery = read_json(child(episode.resolve().parent, str(recovery_name)))
+    geometry_dir = child(episode.resolve().parent, recovery['corrected_object_geometry']['path']).parent
+    timeline_hash = digest(timeline_dir/'COMPLETE.json')
+    if (evidence.get('gt_timeline') != timeline_hash
+            or read_json(geometry_dir/'COMPLETE.json').get('gt_timeline_seal_sha256') != timeline_hash
+            or digest(geometry_dir/'COMPLETE.json') != evidence['effective_object_geometry']):
+        raise ValueError('Effective geometry is not bound to this recording timeline')
+    return (_indexed_frames(read_json(timeline_dir/'frames.json')),
+            _indexed_frames(read_json(geometry_dir/'frames.json')),
+            read_json(geometry_dir/'pivot_evidence.json')['instances'],
+            'sealed_admission_recovery_geometry_v1')
 
 
 def rotate_waypoints(waypoints, angle_degrees):

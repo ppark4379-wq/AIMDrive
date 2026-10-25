@@ -28,7 +28,7 @@ def main():
     p.add_argument('--output', type=Path)
     p.add_argument('--seconds', type=float, default=120)
     p.add_argument('--max-gib', type=float, default=20)
-    p.add_argument('--reserve-gib', type=float, default=50)
+    p.add_argument('--reserve-gib', type=float, default=float(os.environ.get('MORAI_STORAGE_RESERVE_GIB', '50')))
     p.add_argument('--ready-file', type=Path)
     p.add_argument('--stop-file', type=Path)
     p.add_argument('--episode-metadata', type=Path)

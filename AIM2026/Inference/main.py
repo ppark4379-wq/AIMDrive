@@ -95,6 +95,9 @@ class VePublisher:
         self.frames = self.ready_frames = self.expired_frames = 0
         self.reason = 'waiting_for_lidar'
         self.last = None
+        self.signal_frames = None      # directory for the front camera frames kept when the signal heads disagree
+        self._signal_frames_saved = 0
+        self._signal_frame_at = 0.
         self.imu_method = None
         self.imu_methods = {}
 
@@ -181,6 +184,7 @@ class VePublisher:
                                 native_signal=result.native_signal, position_identity=identity,
                                 ego_position_source='GPS_dead_reckoning'
                                 if identity['position_mode']=='dead_reckoning' else 'GPS')
+        self._keep_signal_disagreement(chosen, result, ego_pose, now)
         # The sender downgrades a frame whose sensors aged past 0.5 s during inference.
         sender = getattr(self.udp, 'detection', None)
         delivered = getattr(sender, 'last_ready', True) is not False
@@ -198,6 +202,29 @@ class VePublisher:
                          position_identity=identity,
                          pose=dict(x=round(pose['x'], 2), y=round(pose['y'], 2)))
         return 'ready' if delivered else self.reason
+
+    def _keep_signal_disagreement(self, chosen, result, ego_pose, now, every_s=2., limit=60):
+        """Evidence for the case where the 3-class head abstains while the red/green head is confident.
+
+        That is how a lamp the head cannot read looks from the planner's side (it waits for a permission that never
+        arrives). Keep a few front camera frames with both head outputs so the cause can be seen afterwards.
+        """
+        if self.signal_frames is None or self._signal_frames_saved >= limit or now - self._signal_frame_at < every_s:
+            return
+        three, native = result.signal or {}, result.native_signal or {}
+        if three.get('code') is not None or native.get('code') is None or (native.get('confidence') or 0.) < .9:
+            return
+        self._signal_frame_at = now
+        self._signal_frames_saved += 1
+        try:
+            self.signal_frames.mkdir(parents=True, exist_ok=True)
+            stem = '%04d_%.1f' % (self._signal_frames_saved, now)
+            (self.signal_frames / (stem + '.jpg')).write_bytes(bytes(chosen['rgb_front'].value))
+            (self.signal_frames / (stem + '.json')).write_text(json.dumps(dict(
+                monotonic_s=now, three_class=three, native=native, x=ego_pose.x, y=ego_pose.y,
+                speed_mps=ego_pose.speed_mps)), encoding='utf-8')
+        except (OSError, TypeError, ValueError):
+            pass
 
     def _not_ready(self, reason):
         self.reason = reason
@@ -235,6 +262,9 @@ def main():
     udp._validate_ports()
     weights, _sha, head = resolve(vision['checkpoint'])
     files = [weights] + ([head] if vision['signal_head'] and head else [])
+    if vision.get('object_head'):
+        from AIM2026.Inference.vision.checkpoint import resolve_object_head
+        files.append(resolve_object_head(vision['object_head'], vision['checkpoint'])[0])
     if vision['signal_head'] and head is None:
         raise ValueError('No signal head is registered for %s; set Inference.vision.signal_head: false'
                          % vision['checkpoint'])
@@ -251,9 +281,9 @@ def main():
     lidar = config['LiDAR']
     runtime = VisionRuntime(vision['checkpoint'], device=options['device'], signal_head=vision['signal_head'],
                             lidar_to_base=lidar_to_base(lidar['pos'], lidar['rot_deg']),
-                            cpu_threads=options['cpu_threads'])
-    print('[VE] %s loaded (%s), signal head=%s' % (vision['checkpoint'], options['device'],
-                                                  runtime.signal_head is not None), flush=True)
+                            cpu_threads=options['cpu_threads'], object_head=vision.get('object_head'))
+    print('[VE] %s loaded (%s), signal head=%s, object head=%s' % (
+        vision['checkpoint'], options['device'], runtime.signal_head is not None, runtime.object_head), flush=True)
     stop = []
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stop.append(True))
@@ -263,6 +293,8 @@ def main():
     udp.start()
     try:
         publisher = VePublisher(udp, runtime, udp.pose.projector, max_age_s=vision['max_sensor_age_s'])
+        if options.get('status_file'):
+            publisher.signal_frames = Path(options['status_file']).parent / 'signal_frames'
         print('[VE] receiving: %s -> Detection/pose %s:%s' % (', '.join(udp.receivers),
               config['Detection'].get('ip') or '127.0.0.1', config['Detection']['port']), flush=True)
         started = next_status = time.monotonic()

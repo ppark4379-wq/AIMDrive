@@ -236,6 +236,20 @@ class RecordedStaticTests(unittest.TestCase):
         self.assertTrue(self.planner.collision_free(xy, yaw, [obj]))
         self.assertFalse(np.array_equal(original, xy))
 
+    def test_stopped_off_the_committed_path_replans_instead_of_holding_it(self):
+        from unittest.mock import patch
+        import expert.src.planning.static_obstacle.recorded_planner as module
+        original, obj, ego = self._block_committed_path(0.)
+        ego.position = type(ego.position)(ego.position.x + 1.5, ego.position.y)   # stopped >0.75 m off the path
+        clock = [1000.]
+        with patch.object(module.time, 'monotonic', lambda: clock[0]):
+            result = self.planner.plan(ego, self.route[:80], [obj], self.route)
+            self.assertEqual(result.debug_details['static_avoidance']['error'], 'tracking_error')
+            clock[0] += module.REPLAN_AFTER_BLOCKED_S + .1
+            result = self.planner.plan(ego, self.route[:80], [obj], self.route)
+        self.assertEqual(result.debug_details['static_avoidance']['error'], 'replanning_after_block')
+        self.assertFalse(self.planner.active)
+
     def test_moving_vehicle_does_not_replan_a_blocked_path(self):
         from unittest.mock import patch
         import expert.src.planning.static_obstacle.recorded_planner as module

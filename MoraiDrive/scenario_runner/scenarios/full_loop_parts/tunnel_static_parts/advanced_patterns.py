@@ -102,6 +102,22 @@ def resolve_slots(pattern, count, window, rng, *, min_pair_gap_m, lateral_region
     return count, slots, gap, enforce, copy.deepcopy(specification["design"] if specification else {})
 
 
+VEHICLE_YAW_KEY = "*vehicle*"
+
+
+def yaw_options_for(mapping, kind, model):
+    """Permitted yaw offsets: obstacles by model, vehicles by model or by the shared ``*vehicle*`` entry.
+
+    A vehicle without any entry stays aligned with its lane (offset 0), as before. Oblique parked cars are therefore
+    opt-in, e.g. ``static_yaw_offsets_deg: {"*vehicle*": [0, 30, 60, 90]}``.
+    """
+    if kind == "obstacle" or (mapping is not None and model in mapping):
+        return yaw_options(mapping, model)
+    if mapping is not None and VEHICLE_YAW_KEY in mapping:
+        return yaw_options(mapping, VEHICLE_YAW_KEY)
+    return [0.]
+
+
 def yaw_options(mapping, model):
     values = mapping.get(model, [0.]) if mapping is not None else [0.]
     if isinstance(values, (int, float)) and not isinstance(values, bool):

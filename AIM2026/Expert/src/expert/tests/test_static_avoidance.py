@@ -356,6 +356,16 @@ class StaticAvoidanceTest(unittest.TestCase):
         result.debug_details["static_avoidance"]["path_validated"] = False
         self.assertEqual(self.entries, controller._legacy_acc_entries(self.ego, result, self.entries))
 
+    def test_replan_right_after_a_validated_path_keeps_the_static_acc_bypass(self):
+        controller = AutonomousDriving.__new__(AutonomousDriving)
+        controller.lattice_planning_process = self.process
+        result = self.start()
+        self.assertEqual([], controller._legacy_acc_entries(self.ego, result, self.entries))
+        result.debug_details["static_avoidance"]["path_validated"] = False
+        self.assertEqual([], controller._legacy_acc_entries(self.ego, result, self.entries))
+        controller._static_acc_bypass_until = 0.
+        self.assertEqual(self.entries, controller._legacy_acc_entries(self.ego, result, self.entries))
+
     def test_false_static_acc_stop_releases_only_on_validated_path(self):
         result = self.start()
         checker = self.process.planner

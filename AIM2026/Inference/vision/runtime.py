@@ -106,7 +106,8 @@ class VisionRuntime:
     """
 
     def __init__(self, checkpoint='P1', *, device='cuda', lidar_to_base=DEFAULT_LIDAR_TO_BASE,
-                 signal_head=True, checkpoint_path=None, checkpoint_sha256=None, cpu_threads=4):
+                 signal_head=True, checkpoint_path=None, checkpoint_sha256=None, cpu_threads=4,
+                 object_head=None):
         if checkpoint_path is not None:
             if not checkpoint_sha256:
                 raise ValueError('checkpoint_sha256 is required with checkpoint_path')
@@ -125,6 +126,12 @@ class VisionRuntime:
         self.device = device
         self.model, payload, self.checkpoint_sha256 = checkpoints.load_encoder(path, sha, device)
         self.contract = checkpoint_contract(payload, self.checkpoint_sha256)
+        self.object_head = object_head
+        if object_head:
+            if checkpoint_path is not None:
+                raise ValueError('object_head needs a reviewed checkpoint label')
+            checkpoints.load_object_head(self.model, *checkpoints.resolve_object_head(object_head, checkpoint),
+                                         device)
         self.inputs = InputBuilder(self.contract['adapter'], lidar_to_base)
         self.signal_head = (checkpoints.load_signal(head_path, self.checkpoint_sha256, device)
                             if head_path is not None else None)
@@ -146,6 +153,6 @@ class VisionRuntime:
                   if self.signal_head is not None else None)
         get = pose.get if isinstance(pose, dict) else lambda key: getattr(pose, key)
         boxes, counts = decode_world_boxes(detection[0], float(get('x')), float(get('y')),
-                                           float(get('yaw_grid_rad')))
+                                           float(get('yaw_grid_rad')), merge=bool(self.object_head))
         return Perception(tuple(boxes), signal, decode_native_signal(light)[0], counts,
                           (time.monotonic() - begin) * 1e3)

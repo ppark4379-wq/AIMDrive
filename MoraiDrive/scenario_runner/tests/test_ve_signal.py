@@ -30,6 +30,28 @@ class SignalTests(unittest.TestCase):
         self.policy.accept(self.sample(33,11.),self.points,11.)
         self.assertEqual(self.policy.output(11.),0)
 
+    def test_granted_permission_survives_a_brief_loss_of_confidence_but_not_a_red(self):
+        for t in [10., 10.1, 10.2, 10.31]:
+            self.policy.accept(self.sample(33,t), self.points,t)
+        self.assertEqual(self.policy.output(10.31),33)
+        # The vehicle is now moving through: the head abstains (low confidence). Permission is kept for a few seconds.
+        self.policy.accept(self.sample(None,10.5,confidence=.6),self.points,10.5)
+        self.assertEqual(self.policy.output(10.5),33)
+        self.policy.accept(self.sample(None,12.,confidence=.6),self.points,12.)
+        self.assertEqual(self.policy.output(12.),33)
+        # ... but only for the latch time ...
+        self.policy.accept(self.sample(None,15.,confidence=.6),self.points,15.)
+        self.assertEqual(self.policy.output(15.),0)
+        # ... and a confident red cancels it at once.
+        for t in [20., 20.1, 20.2, 20.31]:
+            self.policy.accept(self.sample(33,t), self.points,t)
+        self.policy.accept(self.sample(1,20.4,confidence=.99),self.points,20.4)
+        self.assertEqual(self.policy.output(20.4),1)
+
+    def test_unknown_without_a_prior_permission_stays_a_stop(self):
+        self.policy.accept(self.sample(None,10.,confidence=.6),self.points,10.)
+        self.assertEqual(self.policy.output(10.),0)
+
     def test_red_and_straight_deny_immediately_and_unknown_never_allows(self):
         for code in [1,16]:
             self.policy.accept(self.sample(code,10),self.points,10)

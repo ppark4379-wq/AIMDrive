@@ -120,6 +120,26 @@ class TunnelStaticSamplingTests(unittest.TestCase):
             with self.subTest(requested=requested), self.assertRaisesRegex(ValueError, "native permitted"):
                 self.candidate(static_yaw_offsets_deg=requested)
 
+    def test_oblique_vehicles_are_opt_in_and_pass_the_shared_validation(self):
+        # Without an entry every parked car keeps facing its lane, as before.
+        for seed in range(10):
+            for row in self.candidate(seed, actor_kind="vehicle", count=1)["obstacles"]:
+                self.assertEqual(row["static_yaw_offset_deg"], 0.)
+        seen = set()
+        for seed in range(40):
+            candidate = self.candidate(seed, actor_kind="vehicle", count=1,
+                                       static_yaw_offsets_deg={"*vehicle*": [0., 30., 60.]})
+            row = candidate["obstacles"][0]
+            self.assertIn(row["static_yaw_offset_deg"], (0., 30., 60.))
+            self.assertAlmostEqual(row["yaw_deg"],
+                row["native_forward_yaw_deg"]+row["static_yaw_offset_deg"]-row["planned_bbox"]["heading_offset_deg"])
+            validate_candidate(candidate, self.loader, _road_boundary=self.boundary)
+            seen.add(row["static_yaw_offset_deg"])
+        self.assertTrue({30., 60.} & seen)
+        candidate["obstacles"][0]["static_yaw_offset_deg"] = 45.
+        with self.assertRaises(ValueError):
+            validate_candidate(candidate, self.loader, _road_boundary=self.boundary)
+
     def test_three_actors_require_explicit_count_and_permission(self):
         with self.assertRaisesRegex(ValueError, "explicit count"):
             self.candidate(count=3)

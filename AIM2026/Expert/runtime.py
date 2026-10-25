@@ -20,6 +20,7 @@ from AIM2026.UDP.Detection import decode, NotReady
 from AIM2026.UDP.Pose import decode_pose, SCHEMA as POSE_SCHEMA
 from AIM2026.UDP.Cmd import CmdSender, Command
 from AIM2026.Expert.adapter import prepare, planner_inputs
+from AIM2026.Expert.static_memory import StaticMemory
 from AIM2026.Inference.timer_resolution import high_resolution_timer
 
 # VE not-ready reasons that must stop using the last detection at once.
@@ -45,8 +46,9 @@ def wire_command(command, max_steering, hold_steer=0.):
 
 class Inputs:
     """Pin one publisher and reject stale/reordered frames before updating state."""
-    def __init__(self, generation, digest, tracker):
+    def __init__(self, generation, digest, tracker, memory=None):
         self.generation, self.digest, self.tracker = generation, digest, tracker
+        self.memory = memory
         self.packet = self.pose = None
         self.sequences = {False: 0, True: 0}
         self.frames = self.pose_frames = self.held_frames = 0
@@ -92,6 +94,8 @@ class Inputs:
             self.pose_frames += 1
             return 'pose'
         self.packet = self.tracker.update(row)
+        if self.memory is not None:
+            self.packet = self.memory.apply(self.packet)
         self.frames += 1
         return 'detection'
 
@@ -147,6 +151,8 @@ def main(argv=None, control_tick=None):
                         help='Tracker: seconds a confirmed mover keeps its speed (0 = off)')
     parser.add_argument('--slow-window-s', type=float, default=0.,
                         help='Tracker: slow-mover confirmation window in seconds (0 = off)')
+    parser.add_argument('--no-static-memory', action='store_true',
+                        help='Do not remember small obstacles the detector reports on only some frames')
     parser.add_argument('--stationary-hold-s', type=float, default=0.,
                         help='Tracker: seconds a long-stopped object stays stationary (0 = off)')
     args = parser.parse_args(argv)
@@ -190,7 +196,8 @@ def main(argv=None, control_tick=None):
     from expert.src.autonomous_driving import AutonomousDriving
     inputs = Inputs(generation, sha, VeObjectTracker(
         static_geometry_fusion=args.static_geometry_fusion, moving_carry_s=args.moving_carry_s,
-        slow_window_s=args.slow_window_s, stationary_hold_s=args.stationary_hold_s))
+        slow_window_s=args.slow_window_s, stationary_hold_s=args.stationary_hold_s),
+        memory=None if args.no_static_memory else StaticMemory())
     stop = []
     old_handlers = {sig: signal.signal(sig, lambda *_: stop.append(True))
                     for sig in (signal.SIGINT, signal.SIGTERM)}
@@ -311,6 +318,10 @@ def main(argv=None, control_tick=None):
                 control_pose=inputs.pose))+'\n')
             if now >= next_status:
                 print(json.dumps(row), flush=True)
+                # Lifecycle file for launchers (the scenario runner waits for DRIVING before it starts the course).
+                state = ('DRIVING' if sender else 'SHADOW') if fresh else 'WAITING'
+                (output/'status.json').write_text(json.dumps(dict(row, status=state, elapsed_s=round(now-started, 1))),
+                                                  encoding='utf-8')
                 next_status = now+2.
             last_tick = tick_time
             # Fixed schedule: a late tick does not shift every following tick.

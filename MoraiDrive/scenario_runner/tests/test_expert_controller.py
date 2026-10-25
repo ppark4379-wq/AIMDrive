@@ -68,6 +68,22 @@ class ExpertSignalRouteExportTests(unittest.TestCase):
         self.assertEqual(profile["max_velocity"], 100)
         self.assertEqual([z["max_velocity"] for z in profile["speed_limit_zones"]], [100, 20])
 
+    def test_uncapped_zone_keeps_its_own_limit_under_a_runtime_cap(self):
+        source = self.root / "expert/src/expert/src/config/config.json"
+        config = json.loads(source.read_text())
+        config["planning"]["velocity_profile"].update(
+            max_velocity=100, speed_limit_zones=[
+                {"name": "high_speed_to_tollgate", "max_velocity": 100},
+                {"name": "slow", "max_velocity": 80}])
+        source.write_text(json.dumps(config))
+        controller = ExpertController(
+            expert_root=str(self.root / "expert"), runtime_root=str(self.root / "runtime"),
+            map_name="test", mgeo_root=str(self.root / "map"), route_points=[(0, 0), (1, 0)],
+            speed_cap_kmh=60, uncapped_speed_zones=["high_speed_to_tollgate"])
+        profile = json.loads(Path(controller.runtime_config_path).read_text())["planning"]["velocity_profile"]
+        self.assertEqual(profile["max_velocity"], 60)
+        self.assertEqual([z["max_velocity"] for z in profile["speed_limit_zones"]], [100, 60])
+
     def test_invalid_speed_cap_rejected(self):
         for value in (0, -1, float("nan"), float("inf"), True):
             with self.subTest(value=value), self.assertRaises(ValueError):

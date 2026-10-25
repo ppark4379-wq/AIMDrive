@@ -408,6 +408,7 @@ class FullLoopDriveBase(BaseScenario):
             end_link=self.end_link,
             max_velocity_kmh=self.cfg.get("expert_max_velocity_kmh"),
             speed_cap_kmh=self.cfg.get("expert_speed_cap_kmh"),
+            uncapped_speed_zones=self.cfg.get("expert_uncapped_speed_zones", ()),
             traffic_light_control=bool(
                 self.cfg.get("expert_traffic_light_control", False)
             ),

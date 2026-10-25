@@ -107,5 +107,6 @@ Inference:
   status_interval_s: 2.0
   vision:
     checkpoint: P1          # label in Inference/vision/checkpoint.py (file in Weights/VE)
+    object_head: null       # null | truck (Weights/VE/object_head_truck_20261024.pt: truck-aware boxes + fragment merge)
     signal_head: true       # P1 three-phase signal head (Weights/VE/signal_head_p1_20261014.pt)
     max_sensor_age_s: 0.5   # older camera/LiDAR/GPS/IMU/status -> not-ready packet

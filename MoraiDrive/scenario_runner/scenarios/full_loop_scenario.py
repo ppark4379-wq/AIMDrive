@@ -23,6 +23,7 @@ from .full_loop_parts import (
     tunnel_vehicle_dynamic,
     vehicle_common,
 )
+from .full_loop_parts.extra_obstacles import spawn_extra_obstacles
 
 
 class FullLoopScenario(FullLoopDriveBase):
@@ -131,6 +132,7 @@ class FullLoopScenario(FullLoopDriveBase):
                 self.spawn_dynamic_obstacle()
                 self.spawn_roundabout_npcs()
                 self.spawn_highway_npcs()
+                spawn_extra_obstacles(self)
                 if self.tunnel_vehicle_handler is not None:
                     self.tunnel_vehicle_handler.arm(self)
                 elif self.tunnel_dynamic_handler is None:

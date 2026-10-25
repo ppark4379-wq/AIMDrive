@@ -64,6 +64,7 @@ class ExpertController:
         velocity_profile_window_size=None,
         route_signal_route_links=None,
         speed_cap_kmh=None,
+        uncapped_speed_zones=(),
     ):
         self.expert_root = os.path.abspath(expert_root)
         self.runtime_root = os.path.abspath(runtime_root)
@@ -75,6 +76,7 @@ class ExpertController:
         self.max_velocity_kmh = None if max_velocity_kmh is None else validate_max_velocity_kmh(max_velocity_kmh)
         self.requested_max_velocity_kmh = self.max_velocity_kmh
         self.speed_cap_kmh = None if speed_cap_kmh is None else validate_max_velocity_kmh(speed_cap_kmh)
+        self.uncapped_speed_zones = frozenset(uncapped_speed_zones or ())
         self.traffic_light_control = bool(traffic_light_control)
         self.python_executable = python_executable or sys.executable
         self.ros_remaps = list(ros_remaps or [])
@@ -170,7 +172,7 @@ class ExpertController:
             velocity_profile["max_velocity"] = min(
                 validate_max_velocity_kmh(velocity_profile["max_velocity"]), self.speed_cap_kmh)
             for zone in velocity_profile.get("speed_limit_zones", []):
-                if "max_velocity" in zone:
+                if "max_velocity" in zone and zone.get("name") not in self.uncapped_speed_zones:
                     zone["max_velocity"] = min(
                         validate_max_velocity_kmh(zone["max_velocity"]), self.speed_cap_kmh)
             self.speed_contract["runtime_speed_cap_kmh"] = self.speed_cap_kmh

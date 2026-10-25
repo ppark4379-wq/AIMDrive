@@ -43,6 +43,9 @@ from ...config.parameters.static_obstacle import (
     ALIGNMENT_PREVIEW,
 )
 
+# Failures of the committed path after which a stopped vehicle plans again from where it stands.
+REPLAN_FAILURES = ('remaining_path_collision', 'tracking_error')
+
 ROOT = STATIC_OBSTACLE_PATHS # 기록 경로 목록 및 후보 경로 자료를 읽을 기준 폴더
 
 
@@ -977,10 +980,11 @@ class RecordedStaticPlanner:
                 failure = 'alignment_recovery_unavailable'
             else:
                 points = self.path
-        if failure == 'remaining_path_collision' and abs(ego.velocity) < REPLAN_STOPPED_SPEED:
+        if failure in REPLAN_FAILURES and abs(ego.velocity) < REPLAN_STOPPED_SPEED:
             # A new/moved obstacle first stops the vehicle on the committed path (above). If the
             # path stays blocked while stopped, plan again from the measured pose and current
-            # obstacles instead of holding the obsolete path forever.
+            # obstacles instead of holding the obsolete path forever. A tracking error while
+            # stopped means the vehicle can no longer reach the committed path: same remedy.
             now = time.monotonic()
             if self.blocked_since is None:
                 self.blocked_since = now
