@@ -30,9 +30,9 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "expert" / "src"))
+sys.path.insert(0, str(ROOT.parent))
 from scenario_runner.tools import static_lane_compliance as lane  # noqa: E402
-from expert.src.config.paths import STATIC_OBSTACLE_PATHS, RECORDINGS_DIRECTORY_NAME  # noqa: E402
+from AIM2026.Expert.src.config.paths import STATIC_OBSTACLE_PATHS, RECORDINGS_DIRECTORY_NAME  # noqa: E402
 
 CONFIG_PATH = ROOT / "scenario_runner" / "config" / "full_loop.yaml"
 ROUTE_PATH = ROOT / "scenario_runner" / "config" / "full_loop_links.yaml"

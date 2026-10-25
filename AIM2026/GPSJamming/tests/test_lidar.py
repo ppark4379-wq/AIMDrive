@@ -8,14 +8,16 @@ import unittest
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from gps_jamming.interfaces.lidar_udp import decode_packet, LidarAssembler, LidarUDPReceiver, LidarUDPStream
-from gps_jamming.timing.timestamps import TimestampMapper
-from gps_jamming.lidar.ROI import ROI as preprocess
-from gps_jamming.lidar.ransac import remove_ground
-from gps_jamming.lidar.runtime import load_config, DEFAULT_CONFIG, frame_to_dict
-from gps_jamming.pipeline import LidarPipeline
-from gps_jamming.types import LidarFrame
-from gps_jamming.geometry.transforms import transform_xyzi
+from src.LidarDecoder import decode_packet, LidarAssembler
+from src.UDP import LidarUDPReceiver, LidarUDPStream
+from src.LidarDecoder import TimestampMapper
+from src.ROIDownsampling import ROI as preprocess
+from src.Ransac import remove_ground
+from main import load_config, DEFAULT_CONFIG
+from src.LidarDecoder import frame_to_dict
+from src.Process import LidarPipeline
+from src.LidarDecoder import LidarFrame
+from src.ROIDownsampling import transform_xyzi
 
 
 def packet(stamp, start, step=3.0, distance=10.0):
@@ -153,13 +155,12 @@ class LidarTests(unittest.TestCase):
         self.assertEqual(result[0, 3], 150)
         self.assertEqual(raw[0, 3], 200)
 
-    def test_scene_ground_candidates_features_metadata(self):
+    def test_scene_ground_and_frame_metadata(self):
         config = load_config(DEFAULT_CONFIG)
         # Keep the synthetic scene independent of the user's tuning ROI.
         config["lidar"]["preprocessing"].update(roi_min=[-30, -30, -3], roi_max=[60, 30, 5])
         frame = LidarFrame(7, 123, 456, 789, config["lidar"]["assembly"]["coordinate_frame"], True, scene(), 900)
         result = LidarPipeline(config["lidar"]).process(frame)
-        self.assertEqual(len(result.clusters), 2)
         self.assertGreater(result.diagnostics["ground_points"], 1900)
         self.assertEqual(result.raw_timestamp, 123)
         self.assertEqual(result.timestamp, 456)
@@ -168,13 +169,6 @@ class LidarTests(unittest.TestCase):
         np.testing.assert_allclose(result.points[:, :3], frame.points[:, :3] + [1, 0, 1.45], atol=1e-6)
         np.testing.assert_array_equal(frame.points, scene())
         np.testing.assert_array_equal(result.points[:, 3], frame.points[:, 3])
-        self.assertEqual(frame.clusters, [])
-        centers = sorted([c.centroid for c in result.clusters], key=lambda c: c[0])
-        np.testing.assert_allclose(centers[0], [10.5, 0, 0.95], atol=0.15)
-        np.testing.assert_allclose(centers[1], [16.25, 4.25, 1.0], atol=0.15)
-        for c in result.clusters:
-            self.assertEqual(c.point_count, len(c.points))
-            np.testing.assert_allclose(c.dimensions, np.ptp(c.points[:, :3], axis=0))
         json.dumps(frame_to_dict(result), allow_nan=False)
 
     def test_ground_missing_does_not_delete_objects(self):
@@ -194,8 +188,6 @@ class LidarTests(unittest.TestCase):
         self.assertEqual(len(stages["ground"]) + len(stages["nonground"]), len(stages["voxel"]))
         self.assertEqual(len(stages["ground"]), debug.diagnostics["ground_points"])
         self.assertGreaterEqual(len(stages["roi"]), len(stages["voxel"]))
-        for indices, cluster in zip(stages["components"], stages["clusters"]):
-            np.testing.assert_array_equal(stages["nonground"][indices], cluster.points)
 
     def test_transform_before_roi_and_no_double_translation(self):
         config = load_config(DEFAULT_CONFIG)["lidar"]

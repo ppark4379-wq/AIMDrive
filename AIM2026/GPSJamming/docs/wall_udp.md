@@ -5,7 +5,7 @@
 기존 ROS master를 실행한 상태에서:
 
 ```bash
-bash run_ros1.sh node _port:=2368 _boundary_udp_host:=127.0.0.1 _boundary_udp_port:=12051
+bash visualization/run_ros1.sh node _port:=2368 _boundary_udp_host:=127.0.0.1 _boundary_udp_port:=12051
 ```
 
 RViz는 기존 방식으로 실행한다. ROS 토픽은 디버깅용으로 유지하며 Expert용
@@ -14,7 +14,7 @@ RViz는 기존 방식으로 실행한다. ROS 토픽은 디버깅용으로 유�
 다른 터미널에서 수신 확인 (conda 불필요):
 
 ```bash
-/usr/bin/python3 scripts/receive_wall_udp.py --full
+/usr/bin/python3 tools/receive_wall_udp.py --full
 ```
 
 실제 Expert 수신기와 확인 스크립트를 같은 포트에 동시에 바인드하지 않는다.
@@ -44,7 +44,7 @@ GPSJamming 디렉터리를 Python 경로에 추가한 후 아래 API를 사용�
 ROS 의존성은 없다. 이번 작업에서 Expert 파일 자체는 수정하지 않았다.
 
 ```python
-from gps_jamming.interfaces.wall_udp import WallUDPReceiver, line_edges
+from src.UDP import WallUDPReceiver, line_edges
 
 receiver = WallUDPReceiver(port=12051, max_age_s=0.5)
 try:

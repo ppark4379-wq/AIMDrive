@@ -1,15 +1,50 @@
 """Shared DR integration through the current refactored Expert entry point."""
 import copy
 import importlib
+import json
 from pathlib import Path
 import sys
 from types import SimpleNamespace
 from unittest.mock import Mock
+import pytest
 
 from AIM2026.Inference.settings import read_config
 from AIM2026.Expert.runtime import publisher_config
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.mark.parametrize('options, ignored', [
+    ([], ['LCS01']),
+    (['--ignore-signals', ''], []),
+    (['--competition'], []),
+    (['--competition', '--ignore-signals', 'LCS01'], ['LCS01']),
+])
+def test_expert_signal_override_reaches_planner_and_policy_only_for_this_run(monkeypatch, tmp_path, options, ignored):
+    entry = importlib.import_module('AIM2026.Expert.runtime')
+    original_prepare = entry.prepare
+    captured = []
+    for name in ('GT_BEV_CONFIG_PATH', 'GT_BEV_PATH_CSV', 'GT_BEV_MAP_DIR'):
+        monkeypatch.setenv(name, '')
+    weights = tmp_path/'weights'; weights.write_text('presence fixture')
+    monkeypatch.setattr('AIM2026.Inference.vision.checkpoint.resolve', lambda _: (weights, 'sha', weights))
+    monkeypatch.setattr('AIM2026.Inference.vision.checkpoint.digest', lambda _: 'sha')
+
+    def prepare(args, output):
+        result = original_prepare(args, output)
+        _, controller, policy = result
+        config = json.loads(Path(controller.runtime_config_path).read_text(encoding='utf-8'))
+        planner_ids = config['planning']['traffic_light_stop'].get('ignored_signal_ids', [])
+        policy_ids = [target['signal_id'] for target in policy.targets]
+        assert ('LCS01' in planner_ids) == bool(ignored)
+        assert ('LCS01' in policy_ids) == (not ignored)
+        captured.append(result)
+        return result
+
+    monkeypatch.setattr(entry, 'prepare', prepare)
+    argv = ['--check', '--output', str(tmp_path/'run'), *options]
+    assert entry.main(argv) == 0
+    assert len(captured) == 1
 
 
 def test_private_config_has_one_sensor_owner_no_child_control_and_unique_recording(tmp_path):

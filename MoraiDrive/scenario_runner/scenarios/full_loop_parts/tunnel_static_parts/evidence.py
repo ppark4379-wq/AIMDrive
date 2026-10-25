@@ -48,7 +48,7 @@ def source_snapshot(golden, recovery_helper, scene_helper=None):
     files.extend(sorted((PACKAGE_ROOT/"scenarios/full_loop_parts/tunnel_static_parts").glob("*.py")))
     files.extend(sorted((PROJECT_ROOT/"data_collection/internal_sensor_record/evidence/object_geometry_registry_default3d_v2").glob("*.json")))
     files.extend(sorted((PROJECT_ROOT/"data_collection/internal_sensor_record/evidence/object_geometry_registry_unit3d_v1").glob("*.json")))
-    files.extend((PROJECT_ROOT/"expert/src/expert/src/network/ros_manager.py", Path(recovery_helper)))
+    files.extend((PROJECT_ROOT/"scenario_runner/legacy_expert/ros/ros_manager.py", Path(recovery_helper)))
     if Path(recovery_helper).suffix == ".sh" and Path(recovery_helper).with_suffix(".py").is_file():
         files.append(Path(recovery_helper).with_suffix(".py"))
     if scene_helper:

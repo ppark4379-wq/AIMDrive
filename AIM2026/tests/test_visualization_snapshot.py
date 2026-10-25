@@ -9,10 +9,10 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT), str(ROOT/'AIM2026/Expert/src')]
 from AIM2026.Visualization.snapshot import write_snapshot, decode
-from expert.src.interfaces.geometry import Point
-from expert.src.interfaces.vehicle_state import VehicleState
-from expert.src.interfaces.perception_data import ObjectInfo
-from expert.src.planning.lattice.structures import CandidatePath, LatticePlanningResult
+from AIM2026.Expert.src.interfaces.geometry import Point
+from AIM2026.Expert.src.interfaces.vehicle_state import VehicleState
+from AIM2026.Expert.src.interfaces.perception_data import ObjectInfo
+from AIM2026.Expert.src.planning.lattice.structures import CandidatePath, LatticePlanningResult
 
 
 class SnapshotTests(unittest.TestCase):
@@ -44,7 +44,7 @@ class SnapshotTests(unittest.TestCase):
             import rospy
         except ImportError:
             self.skipTest('ROS renderer runs in WSL')
-        from expert.src.visualization.rviz_visualizer import LatticeRvizVisualizer
+        from AIM2026.Expert.src.visualization.rviz_visualizer import LatticeRvizVisualizer
         state=self.snapshot(); renderer=object.__new__(LatticeRvizVisualizer)
         result,vehicle=state['result'],state['vehicle'];stamp=rospy.Time(0)
         paths=renderer._build_path_markers(result,vehicle,stamp)

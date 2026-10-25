@@ -12,7 +12,7 @@ import time
 import xmlrpc.client
 
 REPO = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(REPO), str(REPO/'AIM2026/Expert/src')]
+sys.path.insert(0, str(REPO))
 
 
 def latest_record(path, max_age=.75):
@@ -43,7 +43,7 @@ class OriginalDisplay:
     def __init__(self):
         import rospy
         from nav_msgs.msg import Path, Odometry
-        from expert.src.visualization.rviz_visualizer import LatticeRvizVisualizer
+        from AIM2026.Expert.src.visualization.rviz_visualizer import LatticeRvizVisualizer
         self.renderer = LatticeRvizVisualizer()
         self.global_pub = rospy.Publisher('/global_path', Path, queue_size=1, latch=True)
         self.local_pub = rospy.Publisher('/local_path', Path, queue_size=1)
@@ -91,9 +91,9 @@ def display_state(folder, path_row):
         except (OSError,ValueError):
             return None
     if path_row:
-        from expert.src.interfaces.vehicle_state import VehicleState
-        from expert.src.interfaces.geometry import Point
-        from expert.src.planning.lattice.structures import LatticePlanningResult
+        from AIM2026.Expert.src.interfaces.vehicle_state import VehicleState
+        from AIM2026.Expert.src.interfaces.geometry import Point
+        from AIM2026.Expert.src.planning.lattice.structures import LatticePlanningResult
         points=[Point(*p) for p in path_row['path']]
         return dict(vehicle=VehicleState(*path_row['ego']),objects=[],selected_path=points,
                     result=LatticePlanningResult(points,reason='restart_expert_for_full_visualization'))

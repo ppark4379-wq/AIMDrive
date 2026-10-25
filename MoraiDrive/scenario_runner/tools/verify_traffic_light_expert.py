@@ -51,17 +51,17 @@ def _expert_scope(source, environment):
     """호출자의 기존 Expert 모듈·환경·검색 경로를 그대로 되돌린다."""
     old_path = list(sys.path)
     old_modules = {key: value for key, value in sys.modules.items()
-                   if key == "expert" or key.startswith("expert.")}
+                   if key == "AIM2026.Expert" or key.startswith("AIM2026.Expert.")}
     old_environment = {key: os.environ.get(key) for key in environment}
     for key in old_modules:
         del sys.modules[key]
-    sys.path.insert(0, str(source))
+    sys.path.insert(0, str(Path(source).resolve().parents[2]))
     os.environ.update(environment)
     try:
         yield
     finally:
         for key in list(sys.modules):
-            if key == "expert" or key.startswith("expert."):
+            if key == "AIM2026.Expert" or key.startswith("AIM2026.Expert."):
                 del sys.modules[key]
         sys.modules.update(old_modules)
         sys.path[:] = old_path
@@ -88,9 +88,9 @@ def verify_traffic_light_expert(global_cfg, scenario_cfg):
     _require(not any(vars(mode.zones).values()), "신호 수집에서 장애물/NPC zone이 켜져 있습니다.")
     expert_root = Path(paths["expert_root"]).resolve()
     expert_source = expert_root / "src"
-    source_files = [expert_source / "expert/src" / relative for relative in (
+    source_files = [expert_source / relative for relative in (
         "config/config.json", "config/config.py", "planning/traffic/stop_controller.py",
-        "planning/traffic/route_targets.py", "path/mapping.py", "localization/point.py")]
+        "planning/traffic/route_targets.py", "path/mapping.py", "interfaces/geometry.py")]
     source_files += [Path(cfg["global_path"]), Path(cfg["route_definition_path"])]
     before = {str(path): _digest(path) for path in source_files}
     logs = io.StringIO()
@@ -129,9 +129,9 @@ def verify_traffic_light_expert(global_cfg, scenario_cfg):
                 "GT_BEV_DIRECT_USE_ENV_CONFIG": "1",
             }
             with _expert_scope(expert_source, environment):
-                Config = importlib.import_module("expert.src.config.config").Config
+                Config = importlib.import_module("AIM2026.Expert.src.config.config").Config
                 StopController = importlib.import_module(
-                    "expert.src.planning.traffic.stop_controller").TrafficLightStopController
+                    "AIM2026.Expert.src.planning.traffic.stop_controller").TrafficLightStopController
                 actual = Config()
                 signal_document = actual["map"]["route_signal_targets"]
                 policies = copy.deepcopy(actual["planning"]["traffic_light_stop"])

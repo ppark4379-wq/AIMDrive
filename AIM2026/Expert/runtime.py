@@ -13,7 +13,7 @@ import time
 import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
-for path in (ROOT, ROOT/'MoraiDrive', ROOT/'AIM2026/Expert/src', ROOT/'VLDrive'):
+for path in (ROOT, ROOT/'MoraiDrive', ROOT/'VLDrive'):
     sys.path.insert(0, str(path))
 
 from AIM2026.UDP.Detection import decode, NotReady
@@ -112,7 +112,7 @@ def publisher_config(config, output, generation):
     child_cfg['Ego']['cmd_source_port'] = None
     if (child_cfg.get('Localization') or {}).get('enabled', False):
         child_cfg['Localization']['record_dir'] = str(output/'localization')
-        from AIM2026.GPSJamming.gps_jamming.localization.service import create_localization
+        from AIM2026.Localization.service import create_localization
         from types import SimpleNamespace
         validation_cfg = json.loads(json.dumps(child_cfg))
         validation_cfg['Localization']['record_dir'] = None
@@ -183,6 +183,7 @@ def main(argv=None, control_tick=None):
     config_path.write_text(yaml.safe_dump(child_cfg, sort_keys=False), encoding='utf-8')
     print(json.dumps(dict(output=str(output), model=label, weights=str(weights),
                          sim_profile=args.sim_profile,
+                         ignored_signals=args.ignore_signals,
                          steering_sign=-1 if args.sim_profile == 'normal' else 1,
                          command_target=[cfg['Ego']['ip'],cfg['Ego']['cmd_port']],
                          mode='drive' if args.drive else 'shadow'), ensure_ascii=False), flush=True)
@@ -193,7 +194,7 @@ def main(argv=None, control_tick=None):
     # inference process still owns the sensor ports.
     UDPManager(child_cfg)._probe_ports()
     from inference.ve_object_tracking import VeObjectTracker
-    from expert.src.autonomous_driving import AutonomousDriving
+    from AIM2026.Expert.src.autonomous_driving import AutonomousDriving
     inputs = Inputs(generation, sha, VeObjectTracker(
         static_geometry_fusion=args.static_geometry_fusion, moving_carry_s=args.moving_carry_s,
         slow_window_s=args.slow_window_s, stationary_hold_s=args.stationary_hold_s),
@@ -300,6 +301,7 @@ def main(argv=None, control_tick=None):
             if sender:
                 sender.send(encoded)
             row = dict(status='RUNNING' if fresh else 'WAITING', VE_frames=inputs.frames,
+                       position_source=(inputs.pose or {}).get('ego_position_source', 'unavailable'),
                        VE_held=inputs.held_frames,
                        control_pose_frames=inputs.pose_frames, reason=None if fresh else inputs.reason,
                        accel=encoded.accel, brake=encoded.brake, steer=encoded.steer, control_sent=bool(sender),

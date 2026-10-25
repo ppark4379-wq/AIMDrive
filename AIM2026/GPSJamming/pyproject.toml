@@ -5,15 +5,22 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "gps-jamming"
 version = "0.1.0"
-description = "Camera and LiDAR rule-based perception"
+description = "LiDAR tunnel wall boundary detection and UDP transport"
 readme = "README.md"
-requires-python = ">=3.10"
-dependencies = ["numpy>=1.23", "scipy>=1.9", "PyYAML>=6"]
+requires-python = ">=3.8"
+dependencies = ["numpy>=1.23", "PyYAML>=6"]
 
-[project.optional-dependencies]
-localization = ["numpy>=1.23", "pyproj>=3.4", "PyYAML>=6"]
-viewer = ["open3d>=0.18,<0.20"]
+[project.scripts]
+gps-jamming = "main:main"
+
+[tool.setuptools]
+py-modules = ["main"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["gps_jamming*"]
+include = ["src", "visualization", "config"]
+namespaces = true
+
+[tool.setuptools.package-data]
+config = ["perception.yaml"]
+visualization = ["lidar.rviz", "run_ros1.sh"]

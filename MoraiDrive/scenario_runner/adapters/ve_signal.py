@@ -168,7 +168,7 @@ def build_signal_targets(context, config):
     """Use the same open/closed route contract as this invocation's Expert."""
     import importlib.util
     from pathlib import Path
-    source = Path(context.global_cfg['paths']['expert_root'])/'src/expert/src/planning/traffic/route_targets.py'
+    source = Path(context.global_cfg['paths']['expert_root'])/'src/planning/traffic/route_targets.py'
     spec = importlib.util.spec_from_file_location('ve_trial_route_signals', source)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

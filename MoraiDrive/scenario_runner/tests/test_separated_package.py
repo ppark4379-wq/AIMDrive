@@ -832,7 +832,7 @@ class SeparatedPackageTest(unittest.TestCase):
             root = Path(temporary)
             expert_root = root / "expert"
             config_dir = (
-                expert_root / "src" / "expert" / "src" / "config"
+                expert_root / "src" / "config"
             )
             config_dir.mkdir(parents=True)
             config_path = config_dir / "config.json"

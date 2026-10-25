@@ -90,8 +90,8 @@ def prepare(args, output):
 
 
 def planner_inputs(packet, control_pose=None, position_sources=('GPS',), coordinates=None):
-    from expert.src.vehicle_state import VehicleState
-    from expert.src.obstacle.object_info import ObjectInfo
+    from AIM2026.Expert.src.vehicle_state import VehicleState
+    from AIM2026.Expert.src.obstacle.object_info import ObjectInfo
     if coordinates is not None:
         packet = coordinates.expert_packet(packet)
         if control_pose is not None:

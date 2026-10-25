@@ -32,7 +32,7 @@ def configure_tunnel_trial(driving, config, boundary_factory=None):
     if contract.get("mode") != "full_loop_tunnel_static" or not isinstance(rows, list) or not rows:
         raise RuntimeError("Measured Jamming geometry requires the guarded tunnel trial contract")
     if boundary_factory is None:
-        from expert.src.planning.jamming.road_boundary import RoadBoundary
+        from AIM2026.Expert.src.planning.jamming.road_boundary import RoadBoundary
         boundary_factory = RoadBoundary.from_map_dir
     policy = contract["road_boundary_policy"]
     boundary = boundary_factory(config["map"]["data_dir"], body_policy=policy["body"],
@@ -83,7 +83,7 @@ def configure_tunnel_trial(driving, config, boundary_factory=None):
 
 def configure_ros_message_path(expert_root):
     """Use the message build shipped with this Expert, before inherited overlays."""
-    message_path = Path(expert_root).resolve() / "devel/lib/python3/dist-packages"
+    message_path = Path(expert_root).resolve() / "ros/devel/lib/python3/dist-packages"
     if not (message_path / "morai_msgs/msg/__init__.py").is_file():
         return None
     message_path_string = str(message_path)
@@ -101,13 +101,13 @@ def main():
         raise RuntimeError("MORAI_EXPERT_ROOT is not configured")
 
     configure_ros_message_path(expert_root)
-    expert_source = os.path.join(os.path.abspath(expert_root), "src")
+    expert_source = str(Path(expert_root).resolve().parents[1])
     if expert_source not in sys.path:
         sys.path.insert(0, expert_source)
 
-    from expert.src.autonomous_driving import AutonomousDriving
-    from expert.src.localization.path_manager import PathManager
-    from expert.src.network.ros_manager import RosManager
+    from AIM2026.Expert.src.autonomous_driving import AutonomousDriving
+    from AIM2026.Expert.src.planning.common.reference_path import PathManager
+    from MoraiDrive.scenario_runner.legacy_expert.ros.ros_manager import RosManager
     import morai_msgs.msg
     from morai_msgs.msg import CtrlCmd, EgoVehicleStatus
 
@@ -124,12 +124,16 @@ def main():
         ).resolve(),
     }
     for name, module_path in modules.items():
+        expected_root = (
+            root.parents[1] / "MoraiDrive/scenario_runner/legacy_expert/ros"
+            if name == "ros_manager" else root
+        )
         try:
-            module_path.relative_to(root)
+            module_path.relative_to(expected_root)
         except ValueError:
             raise RuntimeError(
                 f"External Expert import escaped configured root: "
-                f"{name}={module_path}, root={root}"
+                f"{name}={module_path}, root={expected_root}"
             )
 
     print(f"[Expert] mode={os.environ.get('MORAI_EXPERT_MODE', 'unknown')}", flush=True)

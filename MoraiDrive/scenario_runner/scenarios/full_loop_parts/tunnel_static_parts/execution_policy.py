@@ -62,7 +62,7 @@ def describe(global_cfg, library):
         path = (project / 'data_collection' / relative).resolve()
         if path.is_file():
             files[str(path)] = digest(path)
-    expert_source = Path(paths['expert_root']).resolve() / 'src/expert/src'
+    expert_source = Path(paths['expert_root']).resolve() / 'src'
     for path in sorted(expert_source.rglob('*.py')):
         files[str(path.resolve())] = digest(path)
     sdk = Path(paths.get('grpc_src', project / 'data_collection/third_party/grpc_inha_univ/src'))

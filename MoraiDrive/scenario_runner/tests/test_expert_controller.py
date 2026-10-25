@@ -16,7 +16,7 @@ class ExpertSignalRouteExportTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
-        config = self.root / "expert/src/expert/src/config/config.json"
+        config = self.root / "expert/src/config/config.json"
         config.parent.mkdir(parents=True)
         config.write_text(json.dumps({
             "map": {"route_signal_route_links": ["STALE"], "route_signal_targets": {"stale": True}},
@@ -31,7 +31,7 @@ class ExpertSignalRouteExportTests(unittest.TestCase):
         )
 
     def test_defaults_follow_current_expert_speed_settings_without_changing_source(self):
-        source = self.root / "expert/src/expert/src/config/config.json"
+        source = self.root / "expert/src/config/config.json"
         for maximum, window in ((37, 23), (43, 31)):
             with self.subTest(maximum=maximum, window=window):
                 original = json.loads(source.read_text())
@@ -49,7 +49,7 @@ class ExpertSignalRouteExportTests(unittest.TestCase):
                 self.assertEqual(source.read_bytes(), before)
 
     def test_runtime_speed_cap_limits_highway_preserves_lower_limits_and_source(self):
-        source = self.root / "expert/src/expert/src/config/config.json"
+        source = self.root / "expert/src/config/config.json"
         config = json.loads(source.read_text())
         config["planning"]["velocity_profile"].update(
             max_velocity=100, speed_limit_zones=[

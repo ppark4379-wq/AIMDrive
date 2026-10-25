@@ -135,8 +135,8 @@ class LiveObjectsTests(unittest.TestCase):
         except ImportError:
             self.skipTest('ROS-generated messages unavailable; pure wire-contract tests still apply')
         sys.path.insert(0, str(repo / 'AIM2026/Expert/src'))
-        from expert.src.planning.ve_planning import VeInputGate
-        from expert.src.obstacle.object_info import ObjectInfo
+        from AIM2026.Expert.src.planning.ve_planning import VeInputGate
+        from AIM2026.Expert.src.obstacle.object_info import ObjectInfo
         m = live.make_object_message([self.box], self.meta, 99,
                                     ObjectStatusList, ObjectStatus, Time)
         stream = io.BytesIO()

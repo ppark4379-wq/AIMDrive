@@ -22,7 +22,7 @@ class ExecutionPolicyTests(unittest.TestCase):
         geometry_patch.start()
         self.addCleanup(geometry_patch.stop)
         self.expert = self.root/"fake_expert"
-        original = self.expert/"src/expert/src/config/config.json"
+        original = self.expert/"src/config/config.json"
         original.parent.mkdir(parents=True)
         self.write(original,{"map":{},"planning":{"velocity_profile":{"max_velocity":37.,"window_size":50}},
                              "control":{"gain":"unchanged"}})
@@ -113,7 +113,7 @@ class ExecutionPolicyTests(unittest.TestCase):
         self.assertFalse(self.store.exists())
 
     def test_describe_reads_fake_original_37_and_does_not_modify_it(self):
-        original=self.expert/"src/expert/src/config/config.json"
+        original=self.expert/"src/config/config.json"
         before=original.read_bytes()
         described=policy_module.describe({"paths":{"expert_root":str(self.expert)}},self.library)
         self.assertEqual(described["expert_speed"]["max_velocity_kmh"],37.)

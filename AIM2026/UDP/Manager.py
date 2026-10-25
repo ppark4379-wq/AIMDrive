@@ -235,7 +235,7 @@ class UDPManager:
                 self.process_groups.append(group.start())
                 self.receivers.update(group.proxies)
             if (self.config.get('Localization') or {}).get('enabled', False):
-                from AIM2026.GPSJamming.gps_jamming.localization.service import create_localization
+                from AIM2026.Localization.service import create_localization
                 self.localization = create_localization(self, self.config)
                 if self.localization is not None:
                     self.localization.start()

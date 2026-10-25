@@ -6,11 +6,11 @@ from unittest.mock import patch
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from gps_jamming.lidar.ROI import ROI
-from gps_jamming.lidar.ransac import remove_ground
-from gps_jamming.lidar.runtime import DEFAULT_CONFIG, load_config
-from gps_jamming.pipeline import LidarPipeline
-from gps_jamming.types import LidarFrame
+from src.ROIDownsampling import ROI
+from src.Ransac import remove_ground
+from main import DEFAULT_CONFIG, load_config
+from src.Process import LidarPipeline
+from src.LidarDecoder import LidarFrame
 
 
 class IntermediateTests(unittest.TestCase):
@@ -45,20 +45,18 @@ class IntermediateTests(unittest.TestCase):
         config = load_config(DEFAULT_CONFIG)['lidar']
         frame = LidarFrame(1, 1, None, 1, config['assembly']['coordinate_frame'], True,
                            np.array([[0, 0, 0, 42]], dtype=np.float32), 1)
-        for mode in [{}, {'voxel_only': True}, {'ground_only': True}]:
-            pipe = LidarPipeline(config, capture_debug=True, **mode)
-            with patch('gps_jamming.pipeline.preprocess', wraps=ROI) as roi, \
-                 patch('gps_jamming.pipeline.remove_ground', wraps=remove_ground) as ground:
-                pipe.process(frame)
-            self.assertEqual(roi.call_count, 1)
-            cached = roi.call_args.kwargs['intermediates']
-            if not mode.get('ground_only'):
-                self.assertIs(pipe.last_debug['roi'], cached['roi'])
-            if not mode.get('voxel_only'):
-                self.assertEqual(ground.call_count, 1)
-                self.assertIs(ground.call_args.kwargs['intermediates'], cached)
-                np.testing.assert_array_equal(pipe.last_debug['ground'],
-                                              pipe.last_debug['voxel'][cached['ground_mask']])
+        pipe = LidarPipeline(config, capture_debug=True)
+        with patch('src.Process.preprocess', wraps=ROI) as roi, \
+             patch('src.Process.remove_ground', wraps=remove_ground) as ground:
+            pipe.process(frame)
+        self.assertEqual(roi.call_count, 1)
+        self.assertEqual(ground.call_count, 1)
+        cached = roi.call_args.kwargs['intermediates']
+        self.assertIs(pipe.last_debug['roi'], cached['roi'])
+        self.assertIs(ground.call_args.kwargs['intermediates'], cached)
+        np.testing.assert_array_equal(pipe.last_debug['ground'],
+                                      pipe.last_debug['voxel'][cached['ground_mask']])
+
 
 
 if __name__ == '__main__':

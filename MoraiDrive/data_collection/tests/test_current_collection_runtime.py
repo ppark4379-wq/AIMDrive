@@ -104,7 +104,7 @@ class CurrentCollectionRuntimeTests(unittest.TestCase):
             spec.loader.exec_module(module)
         with tempfile.TemporaryDirectory() as temporary:
             project = Path(temporary) / 'MoraiDrive'
-            config = project.parent / 'AIM2026/Expert/src/expert/src/config/config.json'
+            config = project.parent / 'AIM2026/Expert/src/config/config.json'
             config.parent.mkdir(parents=True)
             with patch.object(module, 'PROJECT_ROOT', project):
                 for content in ('{"version": 1}', '{"version": 2}'):

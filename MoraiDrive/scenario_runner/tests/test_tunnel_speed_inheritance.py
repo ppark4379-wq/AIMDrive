@@ -28,7 +28,7 @@ class TunnelSpeedInheritanceTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         self.expert = self.root/"fake_expert"
-        self.config_path = self.expert/"src/expert/src/config/config.json"
+        self.config_path = self.expert/"src/config/config.json"
         self.config_path.parent.mkdir(parents=True)
         self.config = {"map":{"name":"original", "data_dir":"original-map", "use_mgeo_path":True,
                               "traffic_light_control":True,"is_closed_path":True},

@@ -115,7 +115,7 @@ def resolve_runtime_paths(global_cfg, scenario_cfg):
             PROJECT_ROOT.parent / "AIM2026" / "Expert",
             PROJECT_ROOT / "third_party" / "GT_BEV",
         ],
-        marker=Path("src") / "expert" / "src" / "config" / "config.json",
+        marker=Path("src") / "config" / "config.json",
         label="external AIMDrive expert",
     )
 

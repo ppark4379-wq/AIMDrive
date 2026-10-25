@@ -153,7 +153,7 @@ class TunnelRandomMixTest(unittest.TestCase):
             arm_tunnel_dynamic(context)
         context.grpc.spawn_pedestrian.assert_not_called()
 
-    def test_four_actors_complete_one_at_a_time_and_report_is_saved(self):
+    def test_four_actors_complete_without_ego_slowdown_and_report_is_saved(self):
         with tempfile.TemporaryDirectory() as directory:
             context = self.make_context()
             context.cfg["profile_state_path"] = str(Path(directory) / "profile.json")
@@ -168,7 +168,7 @@ class TunnelRandomMixTest(unittest.TestCase):
                 actor.get_id.return_value = f"actor-{index}"
                 actor.destroy.return_value = True
                 context.grpc.spawn_pedestrian.return_value = actor
-                ego_s = plan["interaction_s"] - (16.0 if plan["behavior"].startswith("straight_") else 12.0)
+                ego_s = plan["interaction_s"] - (13.0 if plan["behavior"].startswith("straight_") else 10.0)
                 update_tunnel_dynamic(context, elapsed, {"speed_mps": 4.0}, ego_s)
                 self.assertEqual(context.scenario_actors, [actor])
                 start, end = plan["waypoints"]
@@ -190,8 +190,14 @@ class TunnelRandomMixTest(unittest.TestCase):
             self.assertEqual(len(set(labels)), 4)
             report = json.loads(context.tunnel_dynamic_report_path.read_text(encoding="utf-8"))
             self.assertTrue(report["completed"])
+            self.assertFalse(report["ego_response_affects_completion"])
+            self.assertFalse(report["interaction_verified"])
             self.assertEqual(report["run_seed"], 12345)
             self.assertTrue(all(item["completed"] for item in report["events"]))
+            self.assertTrue(any(item["interaction_required"] for item in report["events"]))
+            self.assertTrue(all(not item["interaction_verified"] for item in report["events"]))
+            self.assertTrue(all(item["interaction_assessment"] == "not_observed"
+                                for item in report["events"] if item["interaction_required"]))
 
     def test_timeout_cleans_actor_and_does_not_advance(self):
         context = self.make_context()
@@ -201,7 +207,7 @@ class TunnelRandomMixTest(unittest.TestCase):
         actor.get_id.return_value = "first-actor"
         actor.destroy.return_value = True
         context.grpc.spawn_pedestrian.return_value = actor
-        update_tunnel_dynamic(context, 0.0, {"speed_mps": 4.0}, context.tunnel_dynamic_plan["interaction_s"] - 16.0)
+        update_tunnel_dynamic(context, 0.0, {"speed_mps": 4.0}, context.tunnel_dynamic_plan["interaction_s"] - 13.0)
         with self.assertRaisesRegex(RuntimeError, "timed out"):
             update_tunnel_dynamic(context, 21.0, {}, 0.0)
         actor.destroy.assert_called_once()
@@ -217,18 +223,18 @@ class TunnelRandomMixTest(unittest.TestCase):
         return context
 
     def test_faster_ego_spawns_further_from_the_same_interaction(self):
-        # At 36 m the slow car is outside its window; the fast car's window
-        # opens early enough for the pedestrian's 3 s approach to the anchor.
+        # At 26 m the slow car is outside its window; the faster car is
+        # 0.25 s behind the pedestrian's 3 s approach to the anchor.
         for speed, expected_spawn in ((4.0, False), (8.0, True)):
             context = self.arm_candidate()
-            update_tunnel_dynamic(context, 1.0, {"speed_mps": speed}, 4.0)
+            update_tunnel_dynamic(context, 1.0, {"speed_mps": speed}, 14.0)
             self.assertEqual(context.grpc.spawn_pedestrian.called, expected_spawn)
             if expected_spawn:
                 trigger = context.tunnel_dynamic_result["trigger"]
-                self.assertAlmostEqual(trigger["remaining_m"], 36.0)
+                self.assertAlmostEqual(trigger["remaining_m"], 26.0)
                 self.assertAlmostEqual(trigger["npc_eta_sec"], 3.0)
-                self.assertAlmostEqual(trigger["eta_delta_sec"], 1.5)
-                self.assertEqual(context.tunnel_dynamic_result["trigger_s"], 4.0)
+                self.assertAlmostEqual(trigger["eta_delta_sec"], .25)
+                self.assertEqual(context.tunnel_dynamic_result["trigger_s"], 14.0)
 
     def test_stopped_ego_waits_even_inside_the_distance_window(self):
         context = self.arm_candidate()
@@ -252,7 +258,6 @@ class TunnelRandomMixTest(unittest.TestCase):
     def test_unsafe_or_missed_window_does_not_spawn(self):
         for speed, ego_s, reason in (
             (4.0, 32.0, "safe_stop"),
-            (2.0, 34.2, "NPC would arrive after Ego"),
             (0.0, 42.0, "missed_trigger"),
         ):
             with self.subTest(speed=speed, ego_s=ego_s):
@@ -261,6 +266,15 @@ class TunnelRandomMixTest(unittest.TestCase):
                     update_tunnel_dynamic(context, 1.0, {"speed_mps": speed}, ego_s)
                 context.grpc.spawn_pedestrian.assert_not_called()
                 self.assertFalse(context.tunnel_dynamic_result["completed"])
+
+    def test_centerline_path_keeps_its_late_arrival_guard(self):
+        context = self.arm_candidate("straight_opposite_02")
+        plan = context.tunnel_dynamic_plan
+        # Just outside stopping distance, but Ego reaches the intersection
+        # anchor before this centerline walker can get there.
+        with self.assertRaisesRegex(RuntimeError, "NPC would arrive after Ego"):
+            update_tunnel_dynamic(context, 1.0, {"speed_mps": 2.0}, plan["interaction_s"] - 5.8)
+        context.grpc.spawn_pedestrian.assert_not_called()
 
     def test_crossing_uses_actual_intersection_on_a_bent_route(self):
         context = SimpleNamespace(
@@ -296,7 +310,7 @@ class TunnelRandomMixTest(unittest.TestCase):
                          {"maximum_eta_delta_sec": -1.0},
                          {"minimum_ego_speed_mps": float("nan")},
                          {"minimum_trigger_distance_m": True},
-                         {"maximum_trigger_distance_m": 1.0}):
+                         {"maximum_trigger_distance_m": 1.0, "minimum_trigger_distance_m": 2.0}):
             with self.subTest(override=override):
                 context.cfg["tunnel_dynamic"]["interaction_trigger"] = override
                 with self.assertRaises((ValueError, RuntimeError)):

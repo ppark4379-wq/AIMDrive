@@ -129,7 +129,7 @@
 
 이 절의 수치는 완화 전 기록이다. 현재 적용값은 아래 '두 번째 합류 전용 완화' 절을 참조한다.
 
-설정 위치: `src/expert/src/planning/highway/parameters.py`.
+설정 위치: `src/planning/highway/parameters.py`.
 현재 우선권 판단은 `_merge_arrivals_overlap()`을 사용한다.
 
 ```

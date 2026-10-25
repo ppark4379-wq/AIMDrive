@@ -2,7 +2,7 @@ import json
 import select
 import time
 import unittest
-from gps_jamming.interfaces.wall_udp import WallUDPSender, WallUDPReceiver, line_edges
+from src.UDP import WallUDPSender, WallUDPReceiver, line_edges
 
 
 class WallTransportTest(unittest.TestCase):

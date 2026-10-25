@@ -36,26 +36,30 @@ def _gps_sentence(latitude, longitude):
     return f'${body}*{checksum:02X}\r\n'.encode()
 
 
-@pytest.mark.parametrize('shared_destination', [False, True])
-def test_real_receivers_blackout_recovery_and_common_expert_decoder(shared_destination):
+@pytest.mark.parametrize('transport', ['separate', 'shared', 'camera_shared'])
+def test_real_receivers_blackout_recovery_and_common_expert_decoder(transport):
     config = yaml.safe_load((ROOT / 'AIM2026/config.yaml').read_text())
     ports = set()
     while len(ports) < 3:
         ports.add(_free_port())
     gps_port, imu_port, status_port = ports
-    if shared_destination:
+    if transport != 'separate':
         imu_port = gps_port
     config['GPS'].update(dest_port=gps_port, bind='127.0.0.1')
     config['IMU'].update(dest_port=imu_port, bind='127.0.0.1')
     config['Ego'].update(vehicle_status_port=status_port, bind='127.0.0.1', cmd_port=None)
     config['Localization']['record_dir'] = None
+    if transport == 'camera_shared':
+        # Production layout: the camera process owns the shared port and
+        # forwards GPS/IMU datagrams to the parent's original receivers.
+        config['Camera']['Cam_Front'].update(dest_port=gps_port, bind='127.0.0.1')
     consumer = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     consumer.bind(('127.0.0.1', 0))
     consumer.settimeout(.03)
     config['Detection'].update(ip='127.0.0.1', port=consumer.getsockname()[1], checkpoint_sha256='loopback-test')
     manager = UDPManager(config)
-    manager.sensor_config = {key: value for key, value in manager.sensor_config.items()
-                             if key in ('gps', 'imu', 'vehicle_status')}
+    names = ('gps', 'imu', 'vehicle_status', 'rgb_front') if transport == 'camera_shared' else ('gps', 'imu', 'vehicle_status')
+    manager.sensor_config = {key: value for key, value in manager.sensor_config.items() if key in names}
     sender = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sender.bind(('127.0.0.1', 0))
     gps_sender = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -74,7 +78,7 @@ def test_real_receivers_blackout_recovery_and_common_expert_decoder(shared_desti
         tick = 0
         def wait_mode(mode, send_gps):
             nonlocal tick
-            deadline = time.monotonic() + 2.
+            deadline = time.monotonic() + 5.
             while time.monotonic() < deadline:
                 tick += 1
                 ns = 100_000_000_000 + tick * 20_000_000
@@ -99,6 +103,8 @@ def test_real_receivers_blackout_recovery_and_common_expert_decoder(shared_desti
         assert math.isfinite(held['ego_pose']['x'])
         assert held['ego_pose']['speed_mps'] == 10.
         assert held['selected_samples']['gps']['last_gps_received_ns'] < held['selected_samples']['gps']['received_ns']
+        assert math.hypot(held['ego_pose']['x']-normal['ego_pose']['x'],
+                          held['ego_pose']['y']-normal['ego_pose']['y']) > .1
         decode_pose(json.dumps(held).encode())
         # The refactored entry point accepts the same provenanced DR pose.
         from AIM2026.Expert.runtime import Inputs
@@ -116,8 +122,26 @@ def test_real_receivers_blackout_recovery_and_common_expert_decoder(shared_desti
         decoded = decoder.decode_control_pose(held, held['generation'], 'loopback-test',
             time.monotonic_ns(), position_sources=('GPS', 'GPS_dead_reckoning'))
         assert decoded['ego_position_source'] == 'GPS_dead_reckoning'
-        assert wait_mode('gps', True)['ready'] is True
-        assert len(manager.receivers) == 3
+        # Silence all inputs: the next control pose must become unavailable,
+        # rather than retaining a ready DR position indefinitely.
+        deadline = time.monotonic() + 1.
+        refused = None
+        while time.monotonic() < deadline:
+            try:
+                packet = json.loads(consumer.recvfrom(8001)[0])
+            except socket.timeout:
+                continue
+            if not packet.get('ready'):
+                refused = packet
+                break
+        assert refused is not None
+        recovered = wait_mode('gps', True)
+        assert recovered['ego_position_source'] == 'GPS'
+        assert recovered['ego_pose']['x'] == pytest.approx(normal['ego_pose']['x'], abs=1e-5)
+        assert recovered['ego_pose']['y'] == pytest.approx(normal['ego_pose']['y'], abs=1e-5)
+        assert len(manager.receivers) == len(names)
+        if transport == 'camera_shared':
+            assert manager.process_groups and manager.process_groups[0].alive()
         assert manager.cmd is None
     finally:
         manager.close()

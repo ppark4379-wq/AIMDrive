@@ -117,7 +117,7 @@ def test_manager_consumers_use_localization_without_replacing_or_double_closing_
 
 def test_manager_starts_one_service_over_existing_receivers(monkeypatch):
     manager_module = importlib.import_module('AIM2026.UDP.Manager')
-    service_module = importlib.import_module('AIM2026.GPSJamming.gps_jamming.localization.service')
+    service_module = importlib.import_module('AIM2026.Localization.service')
     geometry = dict(pos=[0.,0.,0.], rot_deg=[0.,0.,0.])
     config = dict(Camera={key:dict(geometry, width=640, height=480, fov=90., dest_port=5000+index)
                           for index,key in enumerate(('Cam_Front','Cam_Left','Cam_Right','Cam_Rear'))},
