@@ -116,10 +116,42 @@ class LatticeRvizVisualizer:
             merge.get('search_rear', ''), merge.get('target_event', ''))
         self._set_color(label, 1., .25, .15, 1.)
         marker_array.markers.append(label)
+        marker_array.markers.extend(self._build_second_merge_markers(result, stamp))
         if static_mode:
             for marker in marker_array.markers:
                 marker.lifetime = rospy.Duration(1.0)
         return marker_array
+
+    def _build_second_merge_markers(self, result, stamp):
+        """Draw configured second-merge areas in map coordinates (display only)."""
+        p = highway_parameters
+        markers = []
+        areas = (
+            ('second_merge_zone', p.CONSERVATIVE_MERGE_POINT,
+             p.CONSERVATIVE_MERGE_ENTRY_RADIUS, (1., .35, .05)),
+            ('second_merge_approach', p.SECOND_MERGE_SLOWDOWN_CENTER,
+             p.SECOND_MERGE_SLOWDOWN_RADIUS, (.7, .3, 1.)),
+        )
+        for namespace, center, radius, color in areas:
+            outline = self._new_marker('map', stamp, namespace, 0, Marker.LINE_STRIP)
+            outline.scale.x = .20
+            self._set_color(outline, *color, .9)
+            outline.points = [RosPoint(x=center[0]+radius*math.cos(i*2*math.pi/64),
+                                       y=center[1]+radius*math.sin(i*2*math.pi/64), z=.22)
+                              for i in range(65)]
+            markers.append(outline)
+        label = self._new_marker('map', stamp, 'second_merge_label', 0, Marker.TEXT_VIEW_FACING)
+        label.pose.position.x, label.pose.position.y = p.CONSERVATIVE_MERGE_POINT
+        label.pose.position.z = 1.5
+        label.scale.z = .9
+        safety = (getattr(result, 'debug_details', {}) or {}).get('merge_safety', {}) or {}
+        decision = safety.get('decision', '') if safety.get('zone') == 'SECOND_ENTRY' else ''
+        label.text = 'SECOND MERGE {}\nORANGE: conflict area r={:g}m\nPURPLE: approach {:g}-{:g} km/h'.format(
+            decision, p.CONSERVATIVE_MERGE_ENTRY_RADIUS,
+            p.SECOND_MERGE_SLOWDOWN_MIN_SPEED_KPH, p.SECOND_MERGE_SLOWDOWN_MAX_SPEED_KPH)
+        self._set_color(label, 1., .55, .15, 1.)
+        markers.append(label)
+        return markers
 
     def _build_ego_marker(self, vehicle_state, stamp):
         marker = self._new_marker(

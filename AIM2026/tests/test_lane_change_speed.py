@@ -261,4 +261,43 @@ class LaneChangeSpeedTests(unittest.TestCase):
         self.assertEqual(controller._calculate_control(self.ego,result.path,0.,result)[0],-1.)
 
 
+class LaneKeepingPredictionTest(unittest.TestCase):
+    def setUp(self):
+        from AIM2026.Expert.src.planning.highway.common.merge_safety import MergeSafety
+        from AIM2026.Expert.src.config.parameters import highway
+        self.settings = highway
+        self.match = NS(x=10., y=3.5, yaw=0., lane_link=NS(road_id='4000104'))
+        self.obj = NS(position=Point(10.,3.5), velocity=10., heading_deg=-20., size_x=4.5, size_y=2.)
+        lanes = NS(_angle_difference=lambda a,b: math.atan2(math.sin(a-b),math.cos(a-b)),
+                   advance_options=lambda match,d: [(Point(match.x+d,match.y),0.,match.lane_link)])
+        self.safety = MergeSafety(NS(lane_map=lanes))
+
+    def test_adjacent_vehicle_heading_noise_does_not_create_lateral_entry(self):
+        with patch.object(self.settings,'ASSUME_HIGHWAY_VEHICLES_KEEP_LANE',True):
+            point,_=self.safety._pose(self.obj,self.match,2.)[0]
+            self.assertAlmostEqual(point.y,3.5)
+            self.assertAlmostEqual(point.x,30.)
+        with patch.object(self.settings,'ASSUME_HIGHWAY_VEHICLES_KEEP_LANE',False):
+            point,_=self.safety._pose(self.obj,self.match,2.)[0]
+            self.assertLess(point.y,1.)
+
+    def test_actual_overlap_is_not_erased_and_other_roads_keep_cut_in_prediction(self):
+        from AIM2026.Expert.src.planning.highway.common.collision_check import CollisionPredictionMixin
+        self.obj.position=Point(10.,.5)
+        with patch.object(self.settings,'ASSUME_HIGHWAY_VEHICLES_KEEP_LANE',True):
+            point,yaw=self.safety._pose(self.obj,self.match,0.)[0]
+            self.assertEqual(point.y,.5)
+            self.assertTrue(CollisionPredictionMixin._obb_collision(Point(8.,0.),0.,point,yaw,self.obj))
+            self.obj.position=Point(10.,3.5)
+            self.match.lane_link.road_id='other_road'
+            point,_=self.safety._pose(self.obj,self.match,2.)[0]
+            self.assertLess(point.y,1.)
+
+    def test_mapped_convergence_is_still_predicted(self):
+        self.safety.lane_map.advance_options=lambda match,d: [(Point(10.+d,0.),0.,match.lane_link)]
+        with patch.object(self.settings,'ASSUME_HIGHWAY_VEHICLES_KEEP_LANE',True):
+            point,_=self.safety._pose(self.obj,self.match,2.)[0]
+            self.assertEqual(point.y,0.)
+
+
 if __name__=='__main__': unittest.main()

@@ -69,10 +69,17 @@ class MergeSafety:
         offset = (-(obj.position.x - match.x) * math.sin(match.yaw)
                   + (obj.position.y - match.y) * math.cos(match.yaw))
         angle_error = self.lane_map._angle_difference(yaw, match.yaw)
-        # Integrate the same decaying heading error used below. Otherwise a
-        # matched car pointing into Ego's lane would keep its old lateral
-        # position forever, hiding a real cut-in.
-        offset += speed * math.sin(angle_error) * (1.0 - math.exp(-time_value))
+        # On the configured no-cut-in highway, preserve the measured lateral
+        # offset along the mapped road instead of extrapolating heading noise
+        # into a lane change. Keep measured geometry and road successors:
+        # current overlaps, Ego lane changes and road convergence still collide.
+        # Other roads retain the existing cut-in prediction.
+        lane_keeping = (
+            p.ASSUME_HIGHWAY_VEHICLES_KEEP_LANE
+            and getattr(match.lane_link, 'road_id', None) in {road for _, road in p.SECTION_ROADS}
+        )
+        if not lane_keeping:
+            offset += speed * math.sin(angle_error) * (1.0 - math.exp(-time_value))
         return [
             (Point(point.x - offset * math.sin(angle), point.y + offset * math.cos(angle)),
              angle + angle_error * math.exp(-time_value))

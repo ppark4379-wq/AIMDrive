@@ -54,6 +54,7 @@ class RoiDisplay(OriginalDisplay):
                 marker.text = ('GREEN moving | ORANGE stationary | PURPLE uncertain\n'
                                'RED vehicle = selected merge leader | YELLOW outline = merge search range\n'
                                'CYAN rectangle = model output ROI, not guaranteed detection\n'
+                               'SECOND MERGE: ORANGE conflict area | PURPLE approach area\n'
                                'Paths: RED selected candidate | GREEN valid | GREY rejected | BLUE executed\n'
                                'Object speed = Expert input, not raw model output\n'
                                'STALE: faded geometry is the last record, not live perception')
@@ -67,10 +68,13 @@ class RoiDisplay(OriginalDisplay):
             candidates = self.renderer._build_path_markers(state['result'], vehicle, stamp)
             for marker in candidates.markers:
                 if marker.action != Marker.ADD or not (marker.ns.startswith('candidate_paths_')
+                        or marker.ns.startswith('second_merge_')
                         or marker.ns in ('merge_search_range', 'merge_follow_target')):
                     continue
                 marker.header.frame_id = 'base_link'
                 marker.points = [local_point(p, p.z) for p in marker.points]
+                if marker.ns == 'second_merge_label':
+                    marker.pose.position = local_point(marker.pose.position, 1.5)
                 if marker.ns == 'merge_follow_target':
                     marker.pose.position = local_point(marker.pose.position, 1.)
                     marker.pose.position.y -= 5.

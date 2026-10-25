@@ -18,6 +18,46 @@ from AIM2026.UDP.VehicleStatus import VehicleStatusReceiver
 from inference.ve_object_tracking import VeObjectTracker
 
 
+def test_planner_telemetry_serializes_numpy_values_without_mutation():
+    import numpy as np
+    from AIM2026.Expert.runtime import telemetry_json
+    record = {'planning': {'entry_merge': {'ready': np.bool_(True), 'blocked': np.bool_(False),
+                                         'count': np.int64(2), 'speed': np.float32(4.5)}},
+              'path': np.array([[1., 2.]])}
+    decoded = json.loads(telemetry_json(record, allow_nan=False))
+    assert decoded['planning']['entry_merge'] == dict(ready=True, blocked=False, count=2, speed=4.5)
+    assert decoded['path'] == [[1., 2.]]
+    assert isinstance(record['planning']['entry_merge']['ready'], np.bool_)
+    with pytest.raises(ValueError):
+        telemetry_json({'value': np.float32('nan')}, allow_nan=False)
+    with pytest.raises(TypeError):
+        telemetry_json({'unsupported': object()})
+
+
+@pytest.mark.parametrize('cap, expected', [(None, 80.), (70., 70.), (100., 80.)])
+def test_highway_tuning_changes_only_highway_ceiling(monkeypatch, cap, expected):
+    from AIM2026.Expert.adapter import configure_highway_speed
+    from AIM2026.Expert.src.config.parameters import highway
+    monkeypatch.setattr(highway, 'HIGHWAY_CRUISE_SPEED_KPH', 80.)
+    config = {'planning': {'velocity_profile': {'max_velocity': 60., 'speed_limit_zones': [
+        {'name': 'high_speed_to_tollgate', 'max_velocity': 60.},
+        {'name': 'north_crosswalk_pair', 'max_velocity': 20.}]}}}
+    configure_highway_speed(config, cap)
+    profile = config['planning']['velocity_profile']
+    assert profile['max_velocity'] == 60.
+    assert profile['speed_limit_zones'][0]['max_velocity'] == expected
+    assert profile['speed_limit_zones'][1]['max_velocity'] == 20.
+
+
+@pytest.mark.parametrize('speed', [0., -1., float('nan'), float('inf')])
+def test_highway_tuning_rejects_invalid_speed(monkeypatch, speed):
+    from AIM2026.Expert.adapter import configure_highway_speed
+    from AIM2026.Expert.src.config.parameters import highway
+    monkeypatch.setattr(highway, 'HIGHWAY_CRUISE_SPEED_KPH', speed)
+    with pytest.raises(ValueError):
+        configure_highway_speed({'planning': {'velocity_profile': {}}})
+
+
 def packets():
     now = time.monotonic_ns()
     received = now-10_000_000

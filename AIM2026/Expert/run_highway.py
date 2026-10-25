@@ -41,6 +41,8 @@ class StartupContactBaseline:
         initial = {str(value).strip() for value in state.get('collision_objects', [])
                    if str(value).strip()}
         self.initial = initial.copy()
+        self.initial_live_actor_ids = (sorted(str(v) for v in live_actor_ids)
+                                       if live_actor_ids is not None else None)
         self.seen = initial.copy()
         self.previous = initial.copy()
         numeric = {value for value in initial if value.isdecimal()}
@@ -120,13 +122,15 @@ class ExpertController:
 
     def command(self, check=False):
         args = self.scenario.args
-        return [args.expert_python, '-X', 'utf8', '-u', '-B', self.child_path(ROOT / 'AIM2026/main.py'),
+        command = [args.expert_python, '-X', 'utf8', '-u', '-B', self.child_path(ROOT / 'AIM2026/main.py'),
                 '--check' if check else '--drive', '--visualize',
                 '--config', self.child_path(args.config),
                 '--scenario-context', self.child_path(self.context_path),
                 '--output', self.child_path(self.scenario.driver_output),
-                '--stop-file', self.child_path(self.stop_file),
-                '--speed-cap-kmh', str(args.speed_cap_kmh)]
+                '--stop-file', self.child_path(self.stop_file)]
+        if args.speed_cap_kmh is not None:
+            command.extend(['--speed-cap-kmh', str(args.speed_cap_kmh)])
+        return command
 
     def child_environment(self):
         environment = os.environ.copy()
@@ -229,8 +233,8 @@ class HighwayScenario(MissionScenario):
             self._last_contact_signature = signature
         return state
 
-    def record_collision_stop(self, state, elapsed):
-        """Called AFTER stopping control and BEFORE destroying scenario actors.
+    def record_collision_stop(self, state, elapsed, phase='driving'):
+        """Called before launch or AFTER stopping control, before actor cleanup.
 
         Actor snapshots are verification evidence only, never Expert input.
         Observation time is not a simulator-provided collision timestamp.
@@ -238,8 +242,10 @@ class HighwayScenario(MissionScenario):
         baseline = getattr(self, '_startup_contact_baseline', None)
         report = dict(
             observed_at=datetime.now().astimezone().isoformat(), scenario_elapsed_s=elapsed,
+            phase=phase, control_backend_started=phase != 'startup',
             decision='stop_on_unexempted_MORAI_report', ego_state=state,
             startup_raw=sorted(baseline.initial) if baseline else [],
+            startup_live_actor_ids=baseline.initial_live_actor_ids if baseline else None,
             first_observations=getattr(self, '_contact_first_reports', {}),
             collision_time_known=False, target_snapshots={},
             note='Positions below are sampled after stop request, not at physical impact. '
@@ -300,10 +306,16 @@ class HighwayScenario(MissionScenario):
         destination.write_text(json.dumps(dict(ego_state=state, collision_objects=collisions,
             control_backend_started=False), ensure_ascii=False, indent=2), encoding='utf-8')
         if collisions:
+            try:
+                self.record_collision_stop(state, 0., phase='startup')
+            except Exception as exc:
+                print('[Highway] Startup collision evidence failed: {}'.format(exc), flush=True)
             before_path = self.output / 'before_placement.json'
             before = json.loads(before_path.read_text(encoding='utf-8')) if before_path.exists() else {}
-            phase = ('already present before placement' if before.get('collision_objects')
-                     else 'detected after placement; inspect before_placement.json')
+            initial = {str(v).strip() for v in before.get('collision_objects', [])}
+            added = sorted(set(collisions) - initial)
+            phase = ('new reports after placement: ' + repr(added) if added else
+                     'already present before placement; not verified as retired actors')
             raise RuntimeError('MORAI startup collision ' + repr(collisions) + ': ' + phase
                 + '. UDP Expert was NOT started. Reset/reload Ego in MORAI and verify contact clears. '
                 + 'Evidence: ' + str(destination))
@@ -321,7 +333,8 @@ def main(argv=None):
     parser.add_argument('--check', action='store_true', help='Validate without connecting to MORAI')
     parser.add_argument('--config', type=Path, default=ROOT / 'AIM2026/config_local.yaml')
     parser.add_argument('--expert-python', default=expert_python())
-    parser.add_argument('--speed-cap-kmh', type=validate_max_velocity_kmh, default=60.)
+    parser.add_argument('--speed-cap-kmh', type=validate_max_velocity_kmh, default=None,
+                        help='Optional additional ceiling; tune highway.py for the highway speed')
     parser.add_argument('--seed', type=int)
     parser.add_argument('--strict-collisions', action='store_true',
                         help='Stop even for verified persistent pre-start contact records')
@@ -337,7 +350,8 @@ def main(argv=None):
         if key.startswith('ve_'):
             config.pop(key)
     config.update(mission_mode='full_loop_highway', drive_control_mode='aimdrive_expert',
-                  expert_speed_cap_kmh=args.speed_cap_kmh, expert_ros_remaps=[],
+                  expert_speed_cap_kmh=60. if args.speed_cap_kmh is None else args.speed_cap_kmh,
+                  expert_ros_remaps=[],
                   expert_traffic_light_control=False, route_debug_enabled=False,
                   max_laps=1, auto_repeat=False, route_setup_attempts=1)
     config.setdefault('sync_runtime', {})['enabled'] = False

@@ -13,6 +13,18 @@ def configure_udp_steering(config, sim_profile='normal'):
     # transport adaptation in this run's private config, outside Expert core.
     config['common']['realtime_steering_sign'] = UDP_STEERING_SIGNS[sim_profile]
 
+def configure_highway_speed(config, explicit_cap_kmh=None):
+    """Set only the highway route ceiling; all later merge/hazard limits remain."""
+    from AIM2026.Expert.src.config.parameters import highway
+    from scenario_runner.adapters.expert_controller import validate_max_velocity_kmh
+    speed = validate_max_velocity_kmh(highway.HIGHWAY_CRUISE_SPEED_KPH)
+    if explicit_cap_kmh is not None:
+        speed = min(speed, validate_max_velocity_kmh(explicit_cap_kmh))
+    for zone in config['planning']['velocity_profile'].get('speed_limit_zones', []):
+        if zone.get('name') == 'high_speed_to_tollgate':
+            zone['max_velocity'] = speed
+    return speed
+
 def prepare(args, output):
     from scenario_runner.main_runner import load_configuration
     from scenario_runner.scenarios.full_loop_scenario import FullLoopScenario
@@ -25,7 +37,8 @@ def prepare(args, output):
     else:
         global_cfg, _zone, config = load_configuration()
     global_cfg['paths']['runtime_root'] = str(output)
-    config.update(expert_speed_cap_kmh=args.speed_cap_kmh, route_debug_enabled=False)
+    config.update(expert_speed_cap_kmh=60. if args.speed_cap_kmh is None else args.speed_cap_kmh,
+                  route_debug_enabled=False)
     # Only export the existing map/route and private Expert config. No simulator
     # connection, scenario setup, reset, spawn, or vehicle GT query is performed.
     mission = config.get('mission_mode')
@@ -49,6 +62,8 @@ def prepare(args, output):
     controller = context.expert_controller
     path = Path(controller.runtime_config_path)
     config = json.loads(path.read_text())
+    highway_speed = configure_highway_speed(config, args.speed_cap_kmh)
+    print('[Expert] 일반 고속도로 목표속도 상한: {:g}km/h (highway.py; 합류·위험 제한 별도)'.format(highway_speed), flush=True)
     config['common']['perception_source'] = 'ros'  # Original tracked-object planner.
     config['common']['sync_grpc_inputs']['enabled'] = False
     configure_udp_steering(config, args.sim_profile)

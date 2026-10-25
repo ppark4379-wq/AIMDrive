@@ -27,6 +27,20 @@ from AIM2026.Inference.timer_resolution import high_resolution_timer
 HARD_NOT_READY = ('publisher_stopped', 'position_unavailable')
 
 
+def telemetry_json(value, **options):
+    """Serialize NumPy planner diagnostics without changing planner values."""
+    import numpy as np
+
+    def convert(item):
+        if isinstance(item, np.generic):
+            return item.item()
+        if isinstance(item, np.ndarray):
+            return item.tolist()
+        raise TypeError('Object of type {} is not JSON serializable'.format(type(item).__name__))
+
+    return json.dumps(value, default=convert, **options)
+
+
 def wire_command(command, max_steering, hold_steer=0.):
     """Expert command -> MORAI wire values. ``None`` brakes fully.
 
@@ -135,7 +149,8 @@ def main(argv=None, control_tick=None):
     parser.add_argument('--visualize', action='store_true', help='Write read-only RViz input logs')
     parser.add_argument('--seconds', type=float, default=0.)
     parser.add_argument('--output', type=Path)
-    parser.add_argument('--speed-cap-kmh', type=float, default=60.)
+    parser.add_argument('--speed-cap-kmh', type=float, default=None,
+                        help='Optional additional speed ceiling; highway default comes from highway.py')
     parser.add_argument('--sim-profile', choices=('normal','competition'), default=None,
                         help='Override the configured simulator steering direction')
     parser.add_argument('--competition', action='store_true',
@@ -289,7 +304,7 @@ def main(argv=None, control_tick=None):
                 if path_log:
                     points = [[float(p.x),float(p.y)] if hasattr(p,'x') else [float(p[0]),float(p[1])]
                               for p in list(path or [])[:80]]
-                    path_log.write(json.dumps(dict(ego=[vehicle.position.x,vehicle.position.y,vehicle.yaw],
+                    path_log.write(telemetry_json(dict(ego=[vehicle.position.x,vehicle.position.y,vehicle.yaw],
                                                    path=points), allow_nan=False)+'\n')
                     if now >= next_snapshot:
                         from AIM2026.Visualization.snapshot import write_snapshot
@@ -317,7 +332,7 @@ def main(argv=None, control_tick=None):
             log_time_ns = time.monotonic_ns()
             plan_result = driving.lattice_planning_process.last_result if fresh else None
             plan_details = getattr(plan_result, 'debug_details', {})
-            control_log.write(json.dumps(dict(row, monotonic_ns=log_time_ns,
+            control_log.write(telemetry_json(dict(row, monotonic_ns=log_time_ns,
                 control_dt_s=control_dt,
                 inference_age_ms=(round((log_time_ns-inputs.packet['sensor_received_ns'])/1e6, 1)
                                   if inputs.packet else None),
@@ -333,10 +348,10 @@ def main(argv=None, control_tick=None):
                             phase_age_ms=round((now - policy.received) * 1e3, 1) if policy.received else None),
                 control_pose=inputs.pose))+'\n')
             if now >= next_status:
-                print(json.dumps(row), flush=True)
+                print(telemetry_json(row), flush=True)
                 # Lifecycle file for launchers (the scenario runner waits for DRIVING before it starts the course).
                 state = ('DRIVING' if sender else 'SHADOW') if fresh else 'WAITING'
-                (output/'status.json').write_text(json.dumps(dict(row, status=state, elapsed_s=round(now-started, 1))),
+                (output/'status.json').write_text(telemetry_json(dict(row, status=state, elapsed_s=round(now-started, 1))),
                                                   encoding='utf-8')
                 next_status = now+2.
             last_tick = tick_time

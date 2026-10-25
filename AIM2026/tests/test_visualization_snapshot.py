@@ -18,6 +18,30 @@ from AIM2026.Expert.src.planning.highway.common.types import LaneMatch
 
 
 class SnapshotTests(unittest.TestCase):
+    def test_second_merge_geometry_is_shared_by_map_and_roi(self):
+        try:
+            import rospy
+        except ImportError:
+            self.skipTest('ROS renderer runs in WSL')
+        from AIM2026.Visualization.roi import RoiDisplay
+        from AIM2026.Expert.src.visualization.rviz_visualizer import LatticeRvizVisualizer
+        from AIM2026.Expert.src.config.parameters import highway as p
+        state = self.snapshot()
+        state['vehicle'].yaw = 0.
+        renderer = object.__new__(LatticeRvizVisualizer)
+        markers = renderer._build_second_merge_markers(state['result'], rospy.Time(0))
+        outline = next(m for m in markers if m.ns == 'second_merge_zone')
+        self.assertAlmostEqual(outline.points[0].x, p.CONSERVATIVE_MERGE_POINT[0]+p.CONSERVATIVE_MERGE_ENTRY_RADIUS)
+        self.assertAlmostEqual(outline.points[0].x, outline.points[-1].x)
+        display = object.__new__(RoiDisplay)
+        display.renderer = renderer
+        local = display.markers(state, rospy.Time(0), False).markers
+        converted = next(m for m in local if m.ns == 'second_merge_zone')
+        self.assertEqual(converted.header.frame_id, 'base_link')
+        self.assertAlmostEqual(converted.points[0].x, outline.points[0].x-state['vehicle'].position.x)
+        label = next(m for m in local if m.ns == 'second_merge_label')
+        self.assertAlmostEqual(label.pose.position.y, p.CONSERVATIVE_MERGE_POINT[1]-state['vehicle'].position.y)
+
     def test_merge_overlay_uses_planner_target_and_world_to_ego_transform(self):
         try:
             import rospy

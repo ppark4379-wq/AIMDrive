@@ -48,6 +48,13 @@ class HighwayLauncherTest(unittest.TestCase):
             lmdrive.touch()
             self.assertEqual(integrated_main.runtime_python(), lmdrive)
 
+    def test_default_launcher_does_not_override_highway_tuning_with_60(self):
+        self.scenario.args.speed_cap_kmh = None
+        self.assertNotIn('--speed-cap-kmh', self.controller.command())
+        self.scenario.args.speed_cap_kmh = 70.
+        command = self.controller.command()
+        self.assertEqual(command[command.index('--speed-cap-kmh') + 1], '70.0')
+
     def test_integrated_entry_forwards_scene_arguments_and_check_never_drives(self):
         interpreter = self.output / 'python.exe'
         interpreter.touch()
@@ -122,6 +129,24 @@ class HighwayLauncherTest(unittest.TestCase):
         report = json.loads((self.output / 'collision_stop.json').read_text(encoding='utf-8'))
         self.assertEqual(set(report['target_snapshots']), {'27'})
         self.assertEqual(report['targets_absent_at_query'], [])
+
+    def test_startup_19_report_saves_why_exemption_was_not_granted(self):
+        scenario = object.__new__(HighwayScenario)
+        scenario.output = self.output
+        scenario.grpc = SimpleNamespace(world=Mock())
+        scenario.grpc.world.get_all_actors_state.return_value = SimpleNamespace(states=[])
+        raw = {'collision_objects': ['Ego', '19']}
+        scenario._startup_contact_baseline = StartupContactBaseline(raw, {'Ego', '19'})
+        state = scenario._startup_contact_baseline.apply(raw)
+        scenario.get_ego_motion_state = Mock(return_value=state)
+        (self.output / 'before_placement.json').write_text(json.dumps(raw), encoding='utf-8')
+        with self.assertRaisesRegex(RuntimeError, 'not verified as retired actors'):
+            scenario.check_startup_contact()
+        report = json.loads((self.output / 'collision_stop.json').read_text(encoding='utf-8'))
+        self.assertEqual(report['phase'], 'startup')
+        self.assertFalse(report['control_backend_started'])
+        self.assertEqual(report['startup_live_actor_ids'], ['19', 'Ego'])
+        self.assertEqual(report['ego_state']['collision_objects'], ['Ego', '19'])
 
     def test_only_preexisting_anonymous_contact_is_baselined(self):
         baseline = StartupContactBaseline({'collision_objects': ['Ego', '-100']})
