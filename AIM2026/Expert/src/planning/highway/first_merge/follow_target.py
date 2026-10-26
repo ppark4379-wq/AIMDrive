@@ -62,9 +62,10 @@ class MergeFollowing:
             # A lost selected car is not evidence of a newly empty slot. The
             # caller holds/slows the command until a fresh target is available.
             return 'target_lost'
-        if not committed:
+        if self.lead is None:
             candidates = [r for r in rows if r['age'] == 0.
                           and -p.ENTRY_MERGE_SEARCH_REAR <= r['gap'] <= p.ENTRY_MERGE_SEARCH_FRONT
+                          and (not committed or r['gap'] > p.VEHICLE_LENGTH + .5*r['length'])
                           and r['identity'] is not None]
             if candidates:
                 self.lead = dict(min(candidates, key=lambda r: abs(r['gap'])))

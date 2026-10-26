@@ -401,6 +401,12 @@ def main(argv=None, control_tick=None):
                               target_lane=getattr(plan_result, 'target_link_id', None),
                               entry_merge=plan_details.get('entry_merge'),
                               second_merge_follow=(plan_details.get('merge_safety') or {}).get('second_follow'),
+                              merge_safety={k: v for k, v in (plan_details.get('merge_safety') or {}).items()
+                                            if k != 'predicted_paths'},
+                              second_merge_preparation=plan_details.get('second_merge_preparation'),
+                              merge_checks=plan_details.get('merge_checks'),
+                              keep_lane_evidence=plan_details.get('keep_lane_evidence'),
+                              highway_brake_release=plan_details.get('highway_brake_release'),
                               lane_change_cruise=plan_details.get('lane_change_cruise')),
                 # Signal decision of this tick (VE phase after policy; 0 = unknown -> stop).
                 signal=dict(id=policy.target_id, code=code, head=getattr(policy, 'head_source', None),

@@ -4,10 +4,109 @@ HighwayLanePlanner의 동일 인스턴스 상태를 사용하는 메서드 묶�
 생성자나 별도 상태를 추가하지 않으며, 기존 메서드 본문과 호출 순서를 유지한다.
 """
 import math
+from copy import copy
+from ....interfaces.geometry import Point
 from ....config.parameters import highway as parameters
 
 
 class LaneFollowingMixin:
+    def _keep_lane_observations(self, ego, ego_match, entries):
+        """Separate keep-lane braking evidence from raw lane-change evidence.
+
+        Under the explicit no-cut-in assumption, a recently established
+        parallel neighbor cannot jump sideways by a metre in one observation.
+        Keep its measured longitudinal position and last lateral offset for at
+        most 0.5 s. Only keep-lane checks see this view; all raw boxes remain in
+        lane-change admission and committed-maneuver checks.
+        """
+        if not parameters.ASSUME_HIGHWAY_VEHICLES_KEEP_LANE:
+            self._lane_observation_memory.clear()
+            return entries
+        self._lane_observation_clock += self.control_dt
+        now = self._lane_observation_clock
+        memory = self._lane_observation_memory
+        for key in list(memory):
+            if now-memory[key]['seen'] > .5:
+                del memory[key]
+        ordinary = self.state not in (self.CHANGE_LEFT, self.CHANGE_RIGHT)
+        self._keep_lane_evidence = dict(corrected=[], duplicate=[], side_only=[])
+        output = []
+        neighbors = []
+        for entry in entries:
+            obj = entry['object_info']
+            key = getattr(obj, 'unique_id', None)
+            old = memory.get(key)
+            stamp = (getattr(obj, 'observation_x', obj.position.x),
+                     getattr(obj, 'observation_y', obj.position.y))
+            match = self.lane_map.match(obj.position, heading=math.radians(obj.heading_deg))
+            adjusted = obj
+            if old is not None:
+                lane = self.lane_map.links[old['lane']]
+                projected = self.lane_map.project(obj.position, lane)
+                # Reuse the existing topology/heading checks: exclude actual
+                # convergence, our lane and crossing/non-moving traffic.
+                neighbor = self._parallel_lane_margin(ego, ego_match, obj, projected) == 0.
+                offset = (-(obj.position.x-projected.x)*math.sin(projected.yaw)
+                          +(obj.position.y-projected.y)*math.cos(projected.yaw))
+                if ordinary and neighbor:
+                    if stamp != old['stamp'] and abs(offset-old['offset']) <= .6:
+                        # A low-pass lateral anchor also rejects several small
+                        # consecutive shifts that together fabricate a cut-in.
+                        old['offset'] += .15*(offset-old['offset'])
+                        old.update(seen=now, stamp=stamp)
+                    adjusted = copy(obj)
+                    adjusted.position = Point(projected.x-old['offset']*math.sin(projected.yaw),
+                                              projected.y+old['offset']*math.cos(projected.yaw))
+                    # An established non-converging neighbor belongs to the
+                    # adjacent corridor while Ego is centered in its own lane.
+                    # Small footprint inflation must not turn it into an ACC
+                    # obstacle. Never carry this exception into our maneuver.
+                    adjusted.keep_lane_side_only = ego_match.distance <= .5
+                    if adjusted.keep_lane_side_only:
+                        self._keep_lane_evidence['side_only'].append(key)
+                    if abs(offset-old['offset']) > .05:
+                        self._keep_lane_evidence['corrected'].append(key)
+                    # Do not refresh the timeout from repeated bad observations.
+                elif stamp != old['stamp']:
+                    old = None
+            if old is None and key is not None and match is not None and not getattr(obj, 'motion_uncertain', False):
+                offset = (-(obj.position.x-match.x)*math.sin(match.yaw)
+                          +(obj.position.y-match.y)*math.cos(match.yaw))
+                memory[key] = dict(lane=match.lane_link.id, offset=offset, seen=now, stamp=stamp)
+            view = dict(entry, object_info=adjusted)
+            if adjusted is not obj and 'local_position' in view:
+                dx, dy = adjusted.position.x-ego.position.x, adjusted.position.y-ego.position.y
+                view['local_position'] = Point(dx*math.cos(ego.yaw)+dy*math.sin(ego.yaw),
+                                              -dx*math.sin(ego.yaw)+dy*math.cos(ego.yaw))
+            output.append(view)
+            adjusted_match = self.lane_map.match(adjusted.position, heading=math.radians(adjusted.heading_deg))
+            if (ordinary and not getattr(obj, 'motion_uncertain', False)
+                    and self._parallel_lane_margin(ego, ego_match, adjusted, adjusted_match) == 0.):
+                neighbors.append(adjusted)
+        if not ordinary:
+            return entries
+        result = []
+        for entry in output:
+            obj = entry['object_info']
+            supports = []
+            if getattr(obj, 'motion_uncertain', False) and not getattr(obj, 'speed_unknown', False) and obj.velocity >= 2.:
+                for other in neighbors:
+                    angle = math.radians(other.heading_deg)
+                    dx, dy = obj.position.x-other.position.x, obj.position.y-other.position.y
+                    size_ratio = max(max(getattr(obj,k),getattr(other,k))/max(.1,min(getattr(obj,k),getattr(other,k)))
+                                     for k in ('size_x','size_y'))
+                    if (size_ratio <= 1.35
+                            and abs(self.lane_map._angle_difference(math.radians(obj.heading_deg),angle)) < math.radians(10.)
+                            and abs(obj.velocity-other.velocity) <= max(3., .3*other.velocity)
+                            and abs(dx*math.cos(angle)+dy*math.sin(angle)) < .5*min(obj.size_x,other.size_x)
+                            and abs(-dx*math.sin(angle)+dy*math.cos(angle)) < .8*min(obj.size_y,other.size_y)):
+                        supports.append(other)
+            if len(supports) == 1:
+                self._keep_lane_evidence['duplicate'].append(obj.unique_id)
+            else:
+                result.append(entry)
+        return result
+
     def _project_maneuver_route(self, position, link_id):
         """Project only onto the committed lane and its actual route successors."""
         matches, visited = [], set()
@@ -92,6 +191,8 @@ class LaneFollowingMixin:
         matched_object_ids = set()
         for entry, object_match in object_matches:
             matched_object_ids.add(id(entry["object_info"]))
+            if getattr(entry['object_info'], 'keep_lane_side_only', False):
+                continue
             # Stationary body overlap is measured on the path, not by snapping
             # the obstacle center to a lane (a shoulder object may be harmless).
             if self.obstacle_motion.is_static(entry["object_info"]):
@@ -100,11 +201,23 @@ class LaneFollowingMixin:
             if center_distance is None or center_distance > parameters.FRONT_RELEVANCE_DISTANCE:
                 continue
             object_info = entry["object_info"]
+            if (parameters.ASSUME_HIGHWAY_VEHICLES_KEEP_LANE
+                    and self.state not in (self.CHANGE_LEFT, self.CHANGE_RIGHT)
+                    and object_match.lane_link.id != ego_match.lane_link.id):
+                # A reachable branch is not necessarily the lane Ego commands.
+                # Once the object's body is clear of our actual lane corridor,
+                # it must not remain an ACC lead merely through graph reachability.
+                point, yaw, _ = self.lane_map.advance_default(ego_match, center_distance)
+                _, _, _, overlaps = self.merge_safety.body_gap(
+                    point, yaw, object_info.position, math.radians(object_info.heading_deg),
+                    object_info, lateral_margin=0.)
+                if not overlaps:
+                    continue
             object_length = max(1.0, float(getattr(object_info, "size_x", 0.0)))
             gap = max(
                 0.0,
                 center_distance
-                - 0.5 * parameters.VEHICLE_LENGTH
+                - parameters.VEHICLE_LENGTH
                 - 0.5 * object_length,
             )
             # Use available speed consistently with trajectory prediction.
@@ -135,7 +248,7 @@ class LaneFollowingMixin:
             gap = max(
                 0.0,
                 local_position.x
-                - 0.5 * parameters.VEHICLE_LENGTH
+                - parameters.VEHICLE_LENGTH
                 - 0.5 * object_length,
             )
             if gap > parameters.FRONT_RELEVANCE_DISTANCE:
@@ -160,6 +273,12 @@ class LaneFollowingMixin:
             parameters.ACC_STANDSTILL_DISTANCE
             + max(0.0, ego_speed) * parameters.ACC_TIME_GAP
         )
+        # Ego position is the rear axle. Reserve room to shed relative speed
+        # before reaching the minimum gap, including actuator response delay.
+        # A short time-gap setting alone cannot stop a fast approach safely.
+        closing = max(0.0, ego_speed - lead_speed)
+        desired_gap += (closing * parameters.LANE_CHANGE_CONTROL_DELAY
+                        + closing * closing / (2.0 * parameters.ACC_APPROACH_DECEL))
         if math.isinf(ttc) and gap >= desired_gap:
             # Once the lead vehicle has opened a safe gap, remove the ceiling.
             # Capping by current Ego speed here would lock a stopped car at 0.

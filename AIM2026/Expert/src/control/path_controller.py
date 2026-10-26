@@ -80,7 +80,16 @@ class PathController:
         entry_merge_release = (entry_merge_launch_gain is not None
                                and self.previous_target_velocity is not None
                                and self.previous_target_velocity <= .05)
-        fast_stop_release = fast_roundabout_release or fast_pedestrian_release or second_merge_release or entry_merge_release
+        merge_safety = lattice_result.debug_details.get('merge_safety', {})
+        merge_brake_release = (merge_safety.get('brake_release_verified', False)
+                               and target_velocity >= max(.05, vehicle_state.velocity)
+                               and target_velocity >= merge_safety.get('brake_release_target', float('inf')) - 1e-6)
+        highway_release = lattice_result.debug_details.get('highway_brake_release', {})
+        highway_brake_release = (highway_release.get('verified', False)
+                                 and target_velocity >= max(.05, vehicle_state.velocity,
+                                                            highway_release.get('speed', float('inf'))))
+        fast_stop_release = (fast_roundabout_release or fast_pedestrian_release or second_merge_release
+                             or entry_merge_release or merge_brake_release or highway_brake_release)
         if fast_stop_release:
             self.pid.reset()
         # 속도 제어를 위한 PID control
@@ -273,7 +282,6 @@ class PathController:
     def _entry_merge_launch_acceleration_gain(target_velocity, vehicle_state, lattice_result):
         details = getattr(lattice_result, 'debug_details', {}).get('entry_merge', {})
         if (details.get('phase') != 'MERGING' or not details.get('verified')
-                or vehicle_state.velocity >= 3.0
                 or target_velocity <= max(.05, vehicle_state.velocity)
                 or target_velocity < details.get('target_speed', float('inf'))-1e-6):
             return None

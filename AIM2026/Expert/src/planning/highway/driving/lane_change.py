@@ -139,9 +139,12 @@ class LaneChangeMixin:
         entries = list(entries)
         matches = list(matches)
         ids = {id(entry["object_info"]) for entry in entries}
-        for obj, match, age in self.merge_safety.tracks.values():
+        held_tracks = list(self.merge_safety.tracks.values())
+        held_tracks.extend(self.second_merge_preparation.observations.values())
+        for obj, match, age in held_tracks:
             if id(obj) in ids:
                 continue
+            ids.add(id(obj))
             held = {"object_info": obj, "prediction_age": age}
             entries.append(held)
             if match is not None:

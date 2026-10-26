@@ -133,6 +133,35 @@ STATIC_HOLD_MIN_STATIONARY_S = 3.   # only an object that has stood still this l
 
 
 class VeObjectTracker:
+    @staticmethod
+    def _moving_fragment_match(track, box, predicted, dt):
+        """A partial body must not discard a coherent moving track's history.
+
+        This only relaxes the size-ratio gate. Independent displacement still
+        determines motion/speed below, and raw geometry remains untouched.
+        Tight centre/axis/containment gates restrict this exception to recent
+        observations along the measured trajectory, rather than nearby boxes.
+        """
+        if (track.get('state') != 'moving' or dt > .25
+                or np.linalg.norm(track.get('velocity', (0., 0.))) < 2.):
+            return False
+        old = track['box']
+        if min(old['length_m'], box['length_m']) < 1. or min(old['width_m'], box['width_m']) < .8:
+            return False
+        yaw = math.atan2(track['velocity'][1], track['velocity'][0])
+        if any(abs(math.cos(math.radians(b['heading_deg'])-yaw)) < math.cos(math.radians(15.))
+               for b in (old, box)):
+            return False
+        delta = np.asarray(box['center_world']) - predicted
+        if np.linalg.norm(delta) > 1.5:
+            return False
+        along = abs(delta[0]*math.cos(yaw) + delta[1]*math.sin(yaw))
+        across = abs(-delta[0]*math.sin(yaw) + delta[1]*math.cos(yaw))
+        # Either a full box shrank to a fragment, or the full body reappeared.
+        # Require containment on both axes, not simply touching rectangles.
+        return all(offset + .5*min(old[key], box[key]) <= .5*max(old[key], box[key]) + .25
+                   for offset, key in ((along, 'length_m'), (across, 'width_m')))
+
     def _support_overlapping_motion(self, boxes, now):
         """Retain both footprints of a duplicate detection, without inventing a stop.
 
@@ -295,12 +324,18 @@ class VeObjectTracker:
                     # predicted centre: a stopped car can have a large VE speed.
                     gate = max(.8, min(2., previous['length_m'] / 2.)) + min(
                         3., max(track['speed'], box['speed_mps'] or 0.) * dt)
-                    if ratio <= 2. and distance <= gate:
+                    fragment_match = (2. < ratio <= 4.
+                                      and self._moving_fragment_match(track, box, predicted, dt))
+                    if (ratio <= 2. or fragment_match) and distance <= gate:
                         # Prefer recent observations over a stale duplicate when
                         # their geometry is similarly plausible. Keep gap tracks
                         # eligible so a genuine short occlusion can reconnect.
                         gap_cost = .15 * min(1., max(0., dt-.15)/.6)
-                        cost[i, j] = .8 * distance / gate + .15 * (ratio - 1.) + gap_cost
+                        # Size is unreliable for a verified partial footprint.
+                        # Penalizing its shrink/growth again would let a young
+                        # duplicate steal the full body on the next frame.
+                        size_cost = 0. if fragment_match else .15 * (ratio - 1.)
+                        cost[i, j] = .8 * distance / gate + size_cost + gap_cost
             rows, columns = linear_sum_assignment(cost)
             assignments = {i: ids[j] for i, j in zip(rows, columns) if j < len(ids) and cost[i, j] < 1.}
         output = []
@@ -447,7 +482,7 @@ class VeObjectTracker:
                                motion_fit_residual_m=motion['residual_m'],
                                motion_path_efficiency=motion['path_efficiency']))
         self._support_overlapping_motion(output, now)
-        policy = 'world_position_supported_speed_v4_provisional_ve'
+        policy = 'world_position_supported_speed_v4_provisional_ve+moving_fragment_association_v1'
         if self.static_geometry_fusion:
             policy += '+stationary_geometry_fusion_v1'
         return dict(packet, boxes=output, tracking_policy=policy)

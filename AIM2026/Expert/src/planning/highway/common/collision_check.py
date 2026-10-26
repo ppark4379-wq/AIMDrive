@@ -14,6 +14,7 @@ class CollisionPredictionMixin:
         ego_speed = max(parameters.PREDICTION_MIN_SPEED, vehicle_state.velocity)
         minimum_clearance = float("inf")
         collision_time = float("inf")
+        ego_match = self.lane_map.match(vehicle_state.position, heading=vehicle_state.yaw)
 
         for time_value in self._prediction_times(parameters.PREDICTION_TIME_STEP):
             ego_point, ego_yaw = self._pose_at_distance(
@@ -21,6 +22,10 @@ class CollisionPredictionMixin:
             )
             for entry, object_match in object_matches:
                 object_info = entry["object_info"]
+                if (candidate.direction == 'keep' and getattr(object_info, 'keep_lane_side_only', False)
+                        and ego_match is not None and ego_match.distance <= .5
+                        and self._parallel_lane_margin(vehicle_state, ego_match, object_info, object_match) == 0.):
+                    continue
                 local_position = entry.get("local_position")
                 if (
                     candidate.direction == "keep"
@@ -33,11 +38,14 @@ class CollisionPredictionMixin:
                     # path; braking increases the rear-end collision risk.
                     continue
                 predicted_options = self.merge_safety._pose(object_info, object_match, time_value)
+                side_margin = (self._parallel_lane_margin(vehicle_state, ego_match, object_info, object_match)
+                               if candidate.direction == 'keep' else parameters.COLLISION_MARGIN)
                 for object_point, object_yaw in predicted_options:
                     clearance = ego_point.distance(object_point)
                     minimum_clearance = min(minimum_clearance, clearance)
                     if self._obb_collision(
-                        ego_point, ego_yaw, object_point, object_yaw, object_info
+                        ego_point, ego_yaw, object_point, object_yaw, object_info,
+                        lateral_margin=side_margin,
                     ):
                         candidate.valid = False
                         candidate.cost = float("inf")
@@ -82,8 +90,40 @@ class CollisionPredictionMixin:
             values.append(horizon)
         return values
 
+    def _parallel_lane_margin(self, ego, ego_match, obj, object_match):
+        """No extra side padding for mapped, parallel lane-keeping neighbors.
+
+        Actual boxes and longitudinal padding remain checked at every future
+        pose. Never apply this to our lane change, a lead, unmatched traffic,
+        a crossing heading or lanes converging within the next two links.
+        """
+        margin = parameters.COLLISION_MARGIN
+        if (not parameters.ASSUME_HIGHWAY_VEHICLES_KEEP_LANE
+                or ego_match is None or object_match is None
+                or self.state in (self.CHANGE_LEFT, self.CHANGE_RIGHT)
+                or getattr(obj, 'speed_unknown', False) or obj.velocity <= .5):
+            return margin
+        own, other = ego_match.lane_link, object_match.lane_link
+        roads = {road for _, road in parameters.SECTION_ROADS}
+        if (own.id == other.id or own.road_id not in roads or own.road_id != other.road_id
+                or other.id not in (own.left_id, own.right_id)):
+            return margin
+        angle = math.radians(obj.heading_deg)
+        if any(abs(self.lane_map._angle_difference(a, b)) > math.radians(5.)
+               for a, b in ((ego.yaw, ego_match.yaw), (angle, object_match.yaw), (ego.yaw, angle))):
+            return margin
+        def downstream(identity):
+            seen, frontier = {identity}, {identity}
+            for _ in range(2):
+                frontier = {n for link in frontier for n in self.lane_map.successors.get(link, ())}
+                seen.update(frontier)
+            return seen
+        if downstream(own.id) & downstream(other.id):
+            return margin
+        return 0.0
+
     @staticmethod
-    def _obb_collision(ego_rear, ego_yaw, object_center, object_yaw, object_info):
+    def _obb_collision(ego_rear, ego_yaw, object_center, object_yaw, object_info, *, lateral_margin=None):
         ego_forward = (math.cos(ego_yaw), math.sin(ego_yaw))
         ego_left = (-ego_forward[1], ego_forward[0])
         ego_center = (
@@ -92,7 +132,8 @@ class CollisionPredictionMixin:
         )
         ego_extents = (
             0.5 * parameters.VEHICLE_LENGTH + parameters.COLLISION_MARGIN,
-            0.5 * parameters.VEHICLE_WIDTH + parameters.COLLISION_MARGIN,
+            0.5 * parameters.VEHICLE_WIDTH + (parameters.COLLISION_MARGIN
+                                             if lateral_margin is None else lateral_margin),
         )
         object_forward = (math.cos(object_yaw), math.sin(object_yaw))
         object_left = (-object_forward[1], object_forward[0])

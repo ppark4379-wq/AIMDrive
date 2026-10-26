@@ -344,6 +344,7 @@ class SecondMergeFollowTest(unittest.TestCase):
         safety._second_merge_entered=lambda *args:False
         safety._route=lambda *args:([Point(0.,0.),Point(100.,0.)],[0.,100.])
         safety._pose=lambda *args:[(Point(20.,0.),0.)]
+        safety.planner._parallel_lane_margin=lambda *args:.25
         safety._conflict=Mock(return_value={'id':'later','rear':True,'time':1.,'kind':'obb'})
         result=safety.limit(self.ego,self.source,[],[],desired_velocity=12.5)
         self.assertEqual(result,0.)
