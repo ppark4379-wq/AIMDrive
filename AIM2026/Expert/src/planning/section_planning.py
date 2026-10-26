@@ -65,6 +65,7 @@ class LatticePlanningProcess:
                                  else None)
         self.centerline_lattice = CenterlineLattice(map_data_dir)
         self.static_corridor = None   # set by attach_static_map(): receding-horizon static section planning
+        self.map_data_dir = map_data_dir
 
         self.highway_zone_points = tuple(highway_zone_points or ())
         self.highway_zone_half_width = float(highway_zone_half_width)
@@ -80,12 +81,19 @@ class LatticePlanningProcess:
         self.last_result = None
         self._last_log_state = None
 
-    def attach_static_map(self, occupancy):
-        """Plan the static-obstacle section every tick on an accumulated occupancy map (static_map.py)."""
+    def attach_static_map(self, occupancy, tunnel_map=None, global_path=None):
+        """Plan standing obstacles every tick on accumulated occupancy maps: the static-obstacle section on
+        ``occupancy`` (static_map.py), the Jamming section on ``tunnel_map`` (tunnel_map.py). Elsewhere nothing
+        changes. With the global route both planners are set up now, not on their first tick in the section."""
         from .static_obstacle.recorded_planner import RecordedStaticPlanner
         from .static_obstacle.corridor_optimizer import StaticCorridorPlanner
-        if self.recorded_static is not None:
-            self.static_corridor = StaticCorridorPlanner(RecordedStaticPlanner(self.planner), occupancy)
+        if self.recorded_static is not None and occupancy is not None:
+            self.static_corridor = StaticCorridorPlanner(RecordedStaticPlanner(self.planner), occupancy,
+                                                         map_data_dir=self.map_data_dir)
+            if global_path is not None:
+                self.static_corridor.prepare(list(global_path))
+        if self.recorded_jamming is not None and tunnel_map is not None:
+            self.recorded_jamming.attach_map(tunnel_map, global_path)
         return self.static_corridor
 
     def set_static_editor_mode(self, enabled):

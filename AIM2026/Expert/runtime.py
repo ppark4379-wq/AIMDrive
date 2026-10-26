@@ -22,6 +22,10 @@ from AIM2026.UDP.Cmd import CmdSender, Command
 from AIM2026.Expert.adapter import prepare, planner_inputs
 from AIM2026.Expert.static_memory import StaticMemory
 from AIM2026.Expert.static_map import StaticObstacleMap
+from AIM2026.Expert.tunnel_map import TunnelObstacleMap
+from AIM2026.Expert.stationary_resolver import StationaryResolver
+from AIM2026.Expert.box_dedup import drop_contained
+from AIM2026.Expert.track_alias import TrackAliaser
 from AIM2026.Inference.timer_resolution import high_resolution_timer
 
 # VE not-ready reasons that must stop using the last detection at once.
@@ -79,10 +83,15 @@ def wire_command(command, max_steering, hold_steer=0.):
 
 class Inputs:
     """Pin one publisher and reject stale/reordered frames before updating state."""
-    def __init__(self, generation, digest, tracker, memory=None, static_map=None):
+    def __init__(self, generation, digest, tracker, memory=None, static_map=None, resolver=None, dedup=True, alias=None,
+                 tunnel_map=None):
         self.generation, self.digest, self.tracker = generation, digest, tracker
+        self.dedup = dedup
+        self.alias = alias
+        self.resolver = resolver
         self.memory = memory
         self.static_map = static_map
+        self.tunnel_map = tunnel_map
         self.packet = self.pose = None
         self.sequences = {False: 0, True: 0}
         self.frames = self.pose_frames = self.held_frames = 0
@@ -127,11 +136,19 @@ class Inputs:
             self.pose = row
             self.pose_frames += 1
             return 'pose'
+        if self.dedup:
+            row = dict(row, boxes=drop_contained(row['boxes'])[0])
         self.packet = self.tracker.update(row)
+        if self.alias is not None:
+            self.packet = self.alias.apply(self.packet)
+        if self.resolver is not None:
+            self.packet = self.resolver.apply(self.packet)
         if self.memory is not None:
             self.packet = self.memory.apply(self.packet)
         if self.static_map is not None:
             self.packet = self.static_map.apply(self.packet)
+        if self.tunnel_map is not None:
+            self.tunnel_map.observe_packet(self.packet)
         self.frames += 1
         return 'detection'
 
@@ -192,11 +209,19 @@ def main(argv=None, control_tick=None):
     parser.add_argument('--slow-window-s', type=float, default=0.,
                         help='Tracker: slow-mover confirmation window in seconds (0 = off)')
     parser.add_argument('--no-static-map', action='store_true',
-                        help='Plan the static-obstacle section on instantaneous VE boxes instead of the accumulated map')
+                        help='Plan the static-obstacle and Jamming sections on instantaneous VE boxes instead of the accumulated maps')
     parser.add_argument('--no-static-memory', action='store_true',
                         help='Do not remember small obstacles the detector reports on only some frames')
-    parser.add_argument('--stationary-hold-s', type=float, default=0.,
-                        help='Tracker: seconds a long-stopped object stays stationary (0 = off)')
+    parser.add_argument('--stationary-hold-s', type=float, default=4.,
+                        help='Tracker: seconds a long-stopped object stays stationary through weak evidence (0 = off)')
+    parser.add_argument('--no-box-dedup', action='store_true',
+                        help='Keep a VE box that duplicates another box of the same frame (mostly inside it, or same size and centre)')
+    parser.add_argument('--no-track-alias', action='store_true',
+                        help='Keep separate ids for the piece and whole boxes VE alternates between on one parked object')
+    parser.add_argument('--no-stationary-resolver', action='store_true',
+                        help='Keep the tracker\'s uncertain label for parked objects (no 3 s position-history check)')
+    parser.add_argument('--no-fragment-gate', action='store_true',
+                        help='Tracker: do not continue a track through a VE box that is only a piece of the same object')
     args = parser.parse_args(argv)
     if args.ignore_signals is None:
         args.ignore_signals = [] if args.competition else ['LCS01']
@@ -239,9 +264,13 @@ def main(argv=None, control_tick=None):
     from AIM2026.Expert.src.autonomous_driving import AutonomousDriving
     inputs = Inputs(generation, sha, VeObjectTracker(
         static_geometry_fusion=args.static_geometry_fusion, moving_carry_s=args.moving_carry_s,
-        slow_window_s=args.slow_window_s, stationary_hold_s=args.stationary_hold_s),
+        slow_window_s=args.slow_window_s, stationary_hold_s=args.stationary_hold_s,
+        fragment_gate=not args.no_fragment_gate),
         memory=None if args.no_static_memory else StaticMemory(),
-        static_map=None if args.no_static_map else StaticObstacleMap())
+        resolver=None if args.no_stationary_resolver else StationaryResolver(), dedup=not args.no_box_dedup,
+        alias=None if args.no_track_alias else TrackAliaser(),
+        static_map=None if args.no_static_map else StaticObstacleMap(),
+        tunnel_map=None if args.no_static_map else TunnelObstacleMap())
     stop = []
     old_handlers = {sig: signal.signal(sig, lambda *_: stop.append(True))
                     for sig in (signal.SIGINT, signal.SIGTERM)}
@@ -253,7 +282,8 @@ def main(argv=None, control_tick=None):
         with contextlib.redirect_stdout(expert_log):
             driving = AutonomousDriving()
         if inputs.static_map is not None and hasattr(driving.lattice_planning_process, 'attach_static_map'):
-            driving.lattice_planning_process.attach_static_map(inputs.static_map)
+            driving.lattice_planning_process.attach_static_map(inputs.static_map, inputs.tunnel_map,
+                                                               getattr(driving, 'path', None))
         if os.environ.get('VE_CORRIDOR_TIMEOUT_S'):
             # Development experiment only: corridor search time budget of the recorded static planner.
             jam = getattr(driving.lattice_planning_process, 'recorded_jamming', None)
@@ -287,7 +317,9 @@ def main(argv=None, control_tick=None):
         inference_command = [sys.executable, '-u', '-B', str(ROOT/'AIM2026/Inference/main.py'), '--config', str(config_path)]
         if args.run_id:
             inference_command += ['--run-id', args.run_id, '--audit-dir', str(output)]
-        process = subprocess.Popen(inference_command,
+        capped = set(filter(None, os.environ.get('AIM_EXPERT_BLAS_CAPPED', '').split(',')))
+        inference_env = {k: v for k, v in os.environ.items() if k not in capped and k != 'AIM_EXPERT_BLAS_CAPPED'}
+        process = subprocess.Popen(inference_command, env=inference_env,
                                    cwd=ROOT, stdout=publisher_log, stderr=subprocess.STDOUT, **child_options)
         started = next_status = time.monotonic()
         next_snapshot = 0.

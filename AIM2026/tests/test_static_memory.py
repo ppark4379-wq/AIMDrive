@@ -50,3 +50,16 @@ def test_position_behind_the_vehicle_is_dropped():
         memory.apply(packet(t, [box(20., 0.)]))
     assert memory.apply(packet(1., [], ego=(10., 0., 0.)))['boxes']           # 10 m ahead: kept
     assert memory.apply(packet(1.5, [], ego=(30., 0., 0.)))['boxes'] == []     # passed: dropped
+
+
+def test_a_fragment_is_not_remembered_next_to_the_whole_object_that_replaces_it():
+    memory = StaticMemory()
+    for t in (0., .3, .6):
+        memory.apply(packet(t, [box(20., 0., length=1.9, width=1.6)]))
+    # the detector now reports the whole car (4.5 m) around the remembered fragment: no ghost beside it
+    car = box(20.2, .2, length=4.5, width=2.2)
+    for t in (1., 1.3, 2.):
+        out = memory.apply(packet(t, [dict(car)]))
+        assert [b['track_id'] for b in out['boxes']] == [7]
+    # and the fragment is forgotten for good, even if the car box disappears for a moment
+    assert memory.apply(packet(3., []))['boxes'] == []

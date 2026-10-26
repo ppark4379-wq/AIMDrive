@@ -6,13 +6,16 @@ set -euo pipefail
 gt_scenario_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 gt_scenario_once=(--once)
 case "${1:-}" in
-    highway) gt_scenario_mode=full_loop_highway ;;
+    # Highway validation repeats randomized laps until Ctrl+C by default.
+    # Explicit --once or --max-runs N still limits the runner.
+    highway) gt_scenario_mode=full_loop_highway; gt_scenario_once=() ;;
     roundabout) gt_scenario_mode=full_loop_roundabout ;;
     # Tunnel static: one approved layout per run; pass --max-runs N to repeat (no forced --once).
     tunnel_static) gt_scenario_mode=full_loop_tunnel_static; gt_scenario_once=() ;;
     # Checkpoint 10 -> highway exit -> tunnel, with the enabled tunnel sudden-brake vehicle.
     highway_tunnel) gt_scenario_mode=full_loop_highway_tunnel_test ;;
     *) echo "사용법: bash $0 {highway|roundabout|tunnel_static|highway_tunnel} [--check] [--expert-speed-cap-kmh N]
+  highway는 Ctrl+C까지 반복. 1회는 --once, 횟수 제한은 --max-runs N.
   highway만 속도 캡 허용. tunnel_static은 --once 또는 --max-runs N을 직접 지정" >&2; exit 2 ;;
 esac
 shift

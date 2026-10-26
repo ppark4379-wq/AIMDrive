@@ -479,5 +479,26 @@ class StationaryHoldTests(unittest.TestCase):
             VeObjectTracker(stationary_hold_s=7.)
 
 
+class FragmentGateTests(unittest.TestCase):
+    def ids(self, gate):
+        tracker = VeObjectTracker(fragment_gate=gate)
+        out = []
+        sizes = [(4.5, 2.2)] * 4 + [(1.9, 1.6)] * 2 + [(4.5, 2.2)] * 3     # the car is reported as a piece, then whole again
+        for i, (length, width) in enumerate(sizes):
+            out.append(tracker.update(packet(i * .1, [box(30., 4., speed=0., length=length, width=width)]))['boxes'][0]['track_id'])
+        return out
+
+    def test_a_reported_piece_does_not_start_a_new_identity_when_the_gate_is_on(self):
+        self.assertEqual(1, len(set(self.ids(True))))
+        self.assertGreater(len(set(self.ids(False))), 1)      # the default behaviour is unchanged
+
+    def test_two_separate_nearby_objects_are_not_merged(self):
+        tracker = VeObjectTracker(fragment_gate=True)
+        for i in range(4):
+            rows = tracker.update(packet(i * .1, [box(30., 4., speed=0., length=4.5, width=2.2),
+                                                  box(36., 4., speed=0., length=1.0, width=1.0)]))['boxes']
+        self.assertEqual(2, len({b['track_id'] for b in rows}))
+
+
 if __name__ == '__main__':
     unittest.main()

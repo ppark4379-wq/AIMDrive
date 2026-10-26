@@ -62,7 +62,7 @@ CORRIDOR_LATERAL_STEP = .1            # 통과 쪽 선택(동적 계획)의 횡�
 CORRIDOR_MIN_CLEARANCE = .35          # 차체와 점유 칸 사이 최소 여유; 계획·현재 자세 정지 판정에 공통 [m]
 CORRIDOR_DESIRED_CLEARANCE = 1.0      # 공간이 있으면 확보하려는 여유; 이보다 가까우면 비용 [m]
 CORRIDOR_MAX_SLOPE = .6               # 1 m 전진당 최대 횡이동 (약 31도) [m/m]
-CORRIDOR_BODY_CIRCLES = 6             # 차체를 덮는 원 개수
+CORRIDOR_BODY_CIRCLES = 10            # 차체를 덮는 원 개수; 10개면 차 옆면이 실제보다 약 0.03 m 두꺼움
 CORRIDOR_WEIGHTS = dict(clearance=4.0, reference=.05, previous=.5, slope=1.0,   # 통과 쪽 선택 비용
                         target=.2, curvature=100.0, jerk=200.0)                  # 경로 다듬기 비용 (목표는 통과 쪽 안내용)
 CORRIDOR_LATERAL_ACCEL = 2.0          # 곡률 속도 제한의 횡가속도 [m/s^2]
@@ -71,3 +71,5 @@ CORRIDOR_STOP_BUFFER = 1.0            # 통과 불가 지점 앞에 남길 정�
 # 기록 경로는 모두 오른쪽 회피라 차로 왼쪽 절반이 통로에서 빠진다. 지도 차로 폭으로 왼쪽을 보충한다.
 CORRIDOR_LANE_HALF_WIDTH = 1.75       # 자차 차로 반폭; MGeo A2256W000222 width 3.5 m, 왼쪽은 중앙선 [m]
 CORRIDOR_LANE_EDGE_MARGIN = .3        # 차체와 차로 왼쪽 경계 사이에 남길 여유 [m]
+# 구간 입구 오른쪽의 지도 차로도 통로로 쓴다. 장애물이 구간 앞쪽에 있으면 기록 경로보다 먼저 비켜야 한다.
+CORRIDOR_MAP_LINKS = ("A2256W000111",) # 정적 구간 입구 우회전 차로 (y -155.4 -> -144.9, 폭 3.5 m)

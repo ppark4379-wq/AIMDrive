@@ -6,7 +6,7 @@ import random
 import time
 
 from ...utils.transform_utils import interpolate_on_polyline, polyline_length
-from . import actor_lifecycle
+from . import actor_lifecycle, highway_traffic
 
 
 _MERGE_STATIC_MODEL_SEED_XOR = 0x48574D45524745
@@ -16,6 +16,7 @@ def _merge_static_vehicle_model_candidates(self):
     """Return one reproducibly shuffled, fully available passenger-car pool."""
     cfg = dict(self.cfg.get("highway_merge_static_vehicle", {}))
     models = [str(value).strip() for value in cfg.get("models", [])]
+    models = [model for model in models if model not in highway_traffic.EXCLUDED_MODELS]
     if not models or any(not value for value in models):
         raise RuntimeError(
             "Highway merge static vehicle requires a non-empty model pool"
@@ -240,6 +241,8 @@ def _collection_spawn_models(self, specs):
 
 def spawn_highway_npcs(self):
     """Create native MORAI SpawnPoints and let them settle while disabled."""
+    if highway_traffic.enabled(self):
+        return highway_traffic.prepare(self)
     cfg = self.cfg["highway_npc"]
     model = str(cfg.get("model", "DEFAULT_SEDAN"))
     if model not in self.vehicle_models():
@@ -376,7 +379,9 @@ def _nearest_official_link(self, x, y):
         if best is None or dist < best[0]:
             best = (dist, index, waypoint)
     return best
-def activate_highway_spawn_points(self, elapsed, current_s):
+def activate_highway_spawn_points(self, elapsed, current_s, ego_state=None):
+    if highway_traffic.enabled(self):
+        return highway_traffic.activate(self, current_s, ego_state=ego_state, elapsed=elapsed)
     if getattr(self, "nearby_highway_stopped", False):
         return False
     active_points = [
@@ -562,6 +567,9 @@ def _set_highway_spawn_points_enabled(self, enabled):
     return changed
 
 def update_highway_actor_lifecycle(self, elapsed, ego_state, current_s):
+    if highway_traffic.enabled(self):
+        from . import highway_flow
+        return highway_flow.update(self, elapsed, ego_state, current_s)
     if (
         getattr(self, "nearby_highway_stopped", False)
         or self.highway_traffic_cleared

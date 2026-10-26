@@ -227,9 +227,16 @@ def verify_feature_contract(package_root, scenario_cfg):
         "Highway SpawnPoints must activate 100m before their activation point",
     )
     require(
-        int(highway.get("collection_maximum_total_vehicles", -1)) == 12,
-        "Highway total vehicle cap must remain 12",
+        int(highway.get("collection_maximum_total_vehicles", -1)) == 25,
+        "Highway moving traffic cap must be 25",
     )
+    managed = highway.get('managed_traffic', {})
+    require(managed.get('enabled') is True
+            and sum(len(lane['offsets_m']) for lane in managed.get('lanes', [])) == 25
+            and sum(len(lane['offsets_m']) for lane in managed.get('lanes', [])
+                    if lane.get('merge_adjacent')) >= 4
+            and 'SE_CT797F_2009' in managed.get('excluded_models', []),
+            'Highway explicit population/diversity/exclusion contract changed')
     require(
         all(not bool(spec.get("is_lane_change", True)) for spec in spawn_points),
         "Highway native SpawnPoints must keep lane changes disabled",

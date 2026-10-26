@@ -205,7 +205,8 @@ class VeObjectTracker:
                 track['carry'] = (now,box['speed_mps'],velocity,other['planning_heading_deg'],velocity)
                 break
 
-    def __init__(self, max_gap=.75, static_geometry_fusion=False, moving_carry_s=0., slow_window_s=0., stationary_hold_s=0., provisional_static_mps=0.):
+    def __init__(self, max_gap=.75, static_geometry_fusion=False, moving_carry_s=0., slow_window_s=0., stationary_hold_s=0., provisional_static_mps=0.,
+                 fragment_gate=False):
         """``moving_carry_s``: a track that was confirmed moving and only lost its evidence (no stationary
         evidence) keeps its last planning speed/velocity for this long. Slow vehicles (1-2 m/s) otherwise flip
         to ``uncertain`` and fall back to the provisional model speed."""
@@ -233,6 +234,10 @@ class VeObjectTracker:
         # mover and resets its plan when the label later flips, so each newly seen parked object delays the avoidance plan.
         self.provisional_static_mps = float(provisional_static_mps)
         self.static_memory = []
+        # ``fragment_gate``: VE sometimes reports one parked car as a 1-2 m piece and then whole again; the size-ratio gate
+        # (<= 2) then starts a new identity. With this on, boxes whose centres nearly coincide relative to the larger
+        # footprint (<= 0.35 of its longest side) still continue the track, at a higher cost than a normal match.
+        self.fragment_gate = bool(fragment_gate)
         self.max_gap = max_gap
         self.static_geometry_fusion = static_geometry_fusion
         self.tracks = {}
@@ -336,6 +341,10 @@ class VeObjectTracker:
                         # duplicate steal the full body on the next frame.
                         size_cost = 0. if fragment_match else .15 * (ratio - 1.)
                         cost[i, j] = .8 * distance / gate + size_cost + gap_cost
+                    elif self.fragment_gate:
+                        limit = .35 * max(box['length_m'], box['width_m'], previous['length_m'], previous['width_m'])
+                        if distance <= limit:
+                            cost[i, j] = .5 + .3 * distance / limit + .15 * min(1., max(0., dt - .15) / .6)
             rows, columns = linear_sum_assignment(cost)
             assignments = {i: ids[j] for i, j in zip(rows, columns) if j < len(ids) and cost[i, j] < 1.}
         output = []
