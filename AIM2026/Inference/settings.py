@@ -27,7 +27,7 @@ def read_config(path):
         raise ValueError('Inference.vision.checkpoint must be one of %s' % sorted(CHECKPOINTS))
     if vision.get('object_head') not in (None, 'truck'):
         raise ValueError('Inference.vision.object_head: null or truck')
-    if type(vision.get('lidar_heading', False)) is not bool:
+    if type(vision.get('lidar_heading', True)) is not bool:
         raise ValueError('Inference.vision.lidar_heading: true or false')
     if type(vision.get('signal_head')) is not bool:
         raise ValueError('Inference.vision.signal_head: true or false')

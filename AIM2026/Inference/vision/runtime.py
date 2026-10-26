@@ -151,7 +151,7 @@ class VisionRuntime:
 
     def __init__(self, checkpoint='P1', *, device='cuda', lidar_to_base=DEFAULT_LIDAR_TO_BASE,
                  signal_head=True, checkpoint_path=None, checkpoint_sha256=None, cpu_threads=4,
-                 object_head=None, lidar_heading=False, lidar_centers=True):
+                 object_head=None, lidar_heading=True, lidar_centers=True):
         if checkpoint_path is not None:
             if not checkpoint_sha256:
                 raise ValueError('checkpoint_sha256 is required with checkpoint_path')
