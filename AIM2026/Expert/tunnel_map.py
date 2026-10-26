@@ -7,8 +7,10 @@ the existing moving-object handling.
 
 What is a mover: the tracker labels standing objects ``uncertain`` or ``moving`` on single frames (box jitter, heading
 flips), so the label alone is not used. A track is a mover once its centre has travelled MOVER_DISPLACEMENT from
-where it was first seen, or the tracker called it moving for MOVER_FRAMES frames in a row. Movers do not enter the map;
-the cells of a mover seen before it was recognised are cleared by the map's free-space evidence.
+where it was first seen within MOVER_RANGE of the vehicle (farther boxes jump by metres as the detector sees more of
+the object), or the tracker called it moving for MOVER_FRAMES frames in a row. A mover that then stays within
+STILL_RADIUS for STILL_S is standing again (a pedestrian who crossed and stopped). Movers do not enter the map; the
+cells of a mover seen before it was recognised are cleared by the map's free-space evidence.
 The packet is not rewritten; the map is read by the Jamming planner.
 """
 import math
@@ -16,7 +18,10 @@ import math
 from AIM2026.Expert.static_map import StaticObstacleMap
 
 MOVER_DISPLACEMENT = 2.0  # a track whose centre moved this far from its first position is a mover [m]
+MOVER_RANGE = 20.         # ... counting only positions seen this close to the vehicle [m]
 MOVER_FRAMES = 5          # ... or one labelled moving this many frames in a row
+STILL_RADIUS = .5         # a mover whose centre stays this close to one spot ... [m]
+STILL_S = 2.              # ... for this long, without a moving label, is standing again [s]
 TRACK_TIMEOUT_S = 5.      # forget a track not seen for this long
 REGION_LATERAL = (-8.5, 3.)  # section-frame lateral extent of the evidence region (road: -6.5 .. +0.5) [m]
 REGION_BEFORE = 25.       # evidence starts this far before the section start line [m]
@@ -31,16 +36,26 @@ class TrackMotion:
     def reset(self):
         self.tracks = {}
 
-    def update(self, boxes, now):
+    def update(self, boxes, now, ego=None):
+        """``ego`` = (x, y) of the vehicle, world frame; without it every position counts."""
         for box in boxes:
             identity = box.get('track_id')
             if identity is None:
                 continue
             x, y = box['center_world']
-            track = self.tracks.setdefault(identity, dict(first=(x, y), run=0, mover=False))
-            track['run'] = track['run']+1 if box.get('motion_state') == 'moving' else 0
+            track = self.tracks.setdefault(identity, dict(first=None, run=0, mover=False, anchor=(x, y), still=now))
+            moving = box.get('motion_state') == 'moving'
+            track['run'] = track['run']+1 if moving else 0
             track['seen'] = now
-            if (math.hypot(x-track['first'][0], y-track['first'][1]) >= MOVER_DISPLACEMENT
+            if math.hypot(x-track['anchor'][0], y-track['anchor'][1]) > STILL_RADIUS or moving:
+                track['anchor'], track['still'] = (x, y), now
+            near = ego is None or math.hypot(x-ego[0], y-ego[1]) <= MOVER_RANGE
+            if near and track['first'] is None:
+                track['first'] = (x, y)
+            if track['mover']:
+                if now-track['still'] >= STILL_S:
+                    track.update(mover=False, first=(x, y) if near else None, run=0)
+            elif ((near and math.hypot(x-track['first'][0], y-track['first'][1]) >= MOVER_DISPLACEMENT)
                     or track['run'] >= MOVER_FRAMES):
                 track['mover'] = True
         self.tracks = {k: v for k, v in self.tracks.items() if now-v['seen'] <= TRACK_TIMEOUT_S}
@@ -76,5 +91,6 @@ class TunnelObstacleMap(StaticObstacleMap):
             x, y, _ = self.to_map(*box['center_world'])
             if self.contains(float(x), float(y)):
                 boxes.append(box)
-        self.motion.update(boxes, packet.get('sent_ns', 0)/1e9)
+        ego = packet.get('ego_pose')
+        self.motion.update(boxes, packet.get('sent_ns', 0)/1e9, None if ego is None else (ego['x'], ego['y']))
         self.observe(packet, [b for b in boxes if not self.motion.is_mover(b.get('track_id'))])
