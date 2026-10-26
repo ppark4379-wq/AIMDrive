@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 static_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-# The runner uses system Python for its ROS/gRPC environment, while the Expert
-# and its inference child need the Python selected in the caller's shell.
-export AIM_STATIC_EXPERT_PYTHON="${AIM_STATIC_EXPERT_PYTHON:-${AIM_EXPERT_PYTHON:-$(command -v python3)}}"
+# Keep the runner on system Python for ROS/gRPC. Let run_static.py select the
+# Expert through runtime_python(): Windows lmdrive/vldrive receives MORAI's
+# Windows localhost UDP. Do not force the caller's WSL/Conda interpreter here.
+# AIM_STATIC_EXPERT_PYTHON, AIM_EXPERT_PYTHON and --expert-python remain overrides.
 export PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1
 export GRPC_POLL_STRATEGY=epoll1
 export PYTHONPATH="$static_repo:$static_repo/MoraiDrive/data_collection/internal_sensor_record${PYTHONPATH:+:$PYTHONPATH}"

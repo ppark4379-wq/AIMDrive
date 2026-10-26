@@ -204,10 +204,10 @@ def main(argv=None):
     stamp = 'static-' + datetime.now().strftime('%Y%m%d-%H%M%S-%f')
     output = ROOT / 'AIM2026/outputs/scenarios' / stamp
     output.mkdir(parents=True)
-    # Use local-build defaults only when the chosen config has no values.
-    # Teammates can select their own packet layout and steering sign in --config.
+    # Preserve the selected build's packet layout. Without local_status_bytes,
+    # VehicleStatusReceiver uses the competition 181-byte format (verified on
+    # this MORAI build); local 229/245-byte builds must opt in via --config.
     sensor_config = yaml.safe_load(args.config.read_text(encoding='utf-8'))
-    sensor_config['Ego'].setdefault('local_status_bytes', 229)
     # Run static-20261026-212827-521332: with 'right' the Expert's +15deg left
     # command went out as negative wire steer, yaw fell 60 -> -13deg, steer
     # saturated and the pose left the route corridor. A positive wire value

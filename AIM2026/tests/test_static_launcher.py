@@ -75,6 +75,26 @@ class StaticLauncherTests(unittest.TestCase):
                              ['--seed', '124', '--validation-events',
                               '--static-obstacle-count', '2'])
 
+    def test_competition_config_does_not_enable_local_status_layout(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / 'config.yaml'
+            config.write_text('Ego: {vehicle_status_port: 9099}\n', encoding='utf-8')
+            scenario = Mock()
+            scenario.expert_controller.command.return_value = ['python', '--check']
+            scenario.expert_controller.child_environment.return_value = {}
+            with patch.object(run_static, 'ROOT', root), \
+                 patch.object(run_static, 'load_configuration', return_value=(
+                     {'paths': {'mgeo_root': 'map'}}, {}, {})), \
+                 patch.object(run_static, 'StaticScenario', return_value=scenario), \
+                 patch.object(run_static, 'MGeoMapLoader'), \
+                 patch.object(run_static.events, 'prepare_mission'), \
+                 patch.object(run_static.subprocess, 'run',
+                              return_value=SimpleNamespace(returncode=0)):
+                self.assertEqual(run_static.main(['--check', '--config', str(config)]), 0)
+            generated = yaml.safe_load(scenario.args.config.read_text(encoding='utf-8'))
+            self.assertNotIn('local_status_bytes', generated['Ego'])
+
 
 if __name__ == '__main__':
     unittest.main()
