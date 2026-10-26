@@ -132,6 +132,9 @@ class MissionModesTest(unittest.TestCase):
         global_cfg = copy.deepcopy(self.global_cfg)
         global_cfg["paths"]["runtime_root"] = self.tmp.name
         cfg = copy.deepcopy(self.base_cfg)
+        # These historical integration cases exercise native SpawnPoint retries.
+        # Explicit population/topology/diversity is covered by test_highway_traffic.
+        cfg['highway_npc']['managed_traffic']['enabled'] = False
         # Existing tests exercise the strict approval contract. Report-only
         # standalone behavior is selected explicitly in dedicated tests.
         cfg["dynamic_obstacle"]["assessment_policy"] = "strict"

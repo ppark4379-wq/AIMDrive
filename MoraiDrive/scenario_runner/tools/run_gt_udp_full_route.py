@@ -17,6 +17,8 @@ sys.path[:0] = [str(REPO / 'MoraiDrive'), str(REPO / 'MoraiDrive/scenario_runner
 from scenario_runner.main_runner import load_configuration
 from scenario_runner.adapters.expert_controller import ExpertController
 from scenario_runner.scenarios.full_loop_scenario import FullLoopScenario
+from scenario_runner.scenarios.segment_modes.scenario import MissionScenario
+from scenario_runner.scenarios.segment_modes import events as mission_events
 from scenario_runner.utils.map_loader import MGeoMapLoader
 from run_gt_udp_expert import running_controllers, write
 
@@ -37,6 +39,9 @@ def configure_scenario(config, args):
     result['ve_stop_before_tunnel'] = args.stop_before_tunnel
     result['route_debug_enabled'] = False
     result['random_seed'] = args.seed
+    if getattr(args, 'scenario', 'full_loop') == 'full_loop_highway':
+        result['mission_mode'] = 'full_loop_highway'
+        result['ve_stop_before_tunnel'] = False
     for key in list(result):
         if key.startswith('ve_') and key != 've_stop_before_tunnel':
             result.pop(key)
@@ -136,6 +141,36 @@ class GtUdpFullLoop(FullLoopScenario):
                 + '진단: ' + str(self.gt_output / 'startup_contact.json'))
 
 
+class GtUdpMission(GtUdpFullLoop, MissionScenario):
+    """Use existing segment placement/events with the same UDP Expert."""
+
+
+def scenario_class(args):
+    return GtUdpMission if getattr(args, 'scenario', 'full_loop') == 'full_loop_highway' else GtUdpFullLoop
+
+
+def run_scenarios(grpc, global_config, config, args, output):
+    """Each completed run owns a fresh scenario, controller and runtime folder."""
+    sequence = 1
+    limit = args.max_runs if args.max_runs is not None else (None if args.repeat else 1)
+    while True:
+        run_output = output / ('run_{:04d}'.format(sequence))
+        run_output.mkdir(parents=True, exist_ok=True)
+        run_global = copy.deepcopy(global_config)
+        run_global['paths']['runtime_root'] = str(run_output)
+        scenario = scenario_class(args)(grpc_client=grpc,
+            map_loader=MGeoMapLoader(run_global['paths']['mgeo_root']),
+            global_cfg=run_global, scenario_cfg=copy.deepcopy(config))
+        scenario.gt_args, scenario.gt_output = args, run_output
+        print('[GT UDP] scenario={} sequence={}'.format(args.scenario, sequence), flush=True)
+        scenario.run()
+        if limit is not None and sequence >= limit:
+            return
+        sequence += 1
+        print('[GT UDP] 구간 시작점에서 다음 회차를 시작합니다.', flush=True)
+        time.sleep(2.)
+
+
 def network_args(args):
     return ['--bind-ip', args.bind_ip, '--sim-ip', args.sim_ip, '--ego-port', str(args.ego_port),
             '--object-port', str(args.object_port), '--signal-port', str(args.signal_port),
@@ -145,10 +180,12 @@ def network_args(args):
 
 
 def prepare_controller(global_config, config, args, output):
-    context = GtUdpFullLoop(
+    context = scenario_class(args)(
         grpc_client=SimpleNamespace(make_transform=lambda *values: values),
         map_loader=MGeoMapLoader(global_config['paths']['mgeo_root']),
         global_cfg=global_config, scenario_cfg=copy.deepcopy(config))
+    if isinstance(context, GtUdpMission):
+        mission_events.prepare_mission(context)
     context.route_definition = context.load_route_definition()
     context.prepare_full_loop_route()
     context.gt_args, context.gt_output = args, output
@@ -160,6 +197,9 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--check', action='store_true')
     parser.add_argument('--probe', action='store_true', help='소켓으로 수신만 검사; 주행·시나리오 변경 없음')
+    parser.add_argument('--scenario', choices=('full_loop', 'full_loop_highway'), default='full_loop')
+    parser.add_argument('--repeat', action='store_true', help='완주 후 구간 시작점에서 반복; Ctrl+C로 종료')
+    parser.add_argument('--max-runs', type=int, help='실행 횟수 제한 (기본 1회, --repeat이면 무제한)')
     parser.add_argument('--stop-before-tunnel', action='store_true')
     parser.add_argument('--seed', type=int)
     parser.add_argument('--speed-cap-kmh', type=float, default=60.)
@@ -168,7 +208,7 @@ def main(argv=None):
     parser.add_argument('--ego-port', type=int, default=8000)
     parser.add_argument('--object-port', type=int, default=8100)
     parser.add_argument('--signal-port', type=int, default=7700)
-    parser.add_argument('--signal-source', choices=('udp', 'grpc'), default='grpc',
+    parser.add_argument('--signal-source', choices=('udp', 'grpc', 'none'), default=None,
                         help='대회판 촬영 기본값: 신호만 gRPC GT 조회. 자차·장애물·제어는 UDP')
     parser.add_argument('--grpc-target', default='auto')
     parser.add_argument('--control-port', type=int, default=7601)
@@ -177,7 +217,15 @@ def main(argv=None):
     args = parser.parse_args(argv)
     from scenario_runner.adapters.expert_controller import validate_max_velocity_kmh
     args.speed_cap_kmh = validate_max_velocity_kmh(args.speed_cap_kmh)
-    if args.probe and args.signal_source == 'udp':
+    if args.signal_source is None:
+        args.signal_source = 'none' if args.scenario == 'full_loop_highway' else 'grpc'
+    if args.signal_source == 'none' and args.scenario != 'full_loop_highway':
+        parser.error('--signal-source none is only supported for the highway segment')
+    if args.max_runs is not None and args.max_runs < 1:
+        parser.error('--max-runs must be at least 1')
+    if args.scenario == 'full_loop_highway' and args.stop_before_tunnel:
+        parser.error('고주로 전용 실행에서는 --stop-before-tunnel을 빼세요')
+    if args.probe and args.signal_source != 'grpc':
         from run_gt_udp_expert import main as probe
         return probe(['--probe', *network_args(args)])
     global_config, _zone, base_config = load_configuration()
@@ -192,7 +240,8 @@ def main(argv=None):
     config = configure_scenario(base_config, args)
     # Isolate the profile history, keeping the ordinary VE run's history intact.
     config['profile_state_path'] = str(output / 'profile_state.json')
-    plan = dict(transport='UDP' if args.signal_source == 'udp' else 'UDP_and_gRPC_signal_GT',
+    plan = dict(scenario=args.scenario, repeat=args.repeat, max_runs=args.max_runs,
+                transport='UDP_and_gRPC_signal_GT' if args.signal_source == 'grpc' else 'UDP',
                 signal_source=args.signal_source, Expert='existing_AutonomousDriving', VE_used=False,
                 control_format=args.control_format,
                 sensor_capture=False, gt_fallback=False, stop_before_tunnel=args.stop_before_tunnel,
@@ -233,15 +282,11 @@ def main(argv=None):
     if args.sim_ip == 'auto':
         args.sim_ip = grpc.host
     args.grpc_target = '{}:{}'.format(grpc.host, grpc.port)
-    scenario = GtUdpFullLoop(grpc_client=grpc,
-        map_loader=MGeoMapLoader(global_config['paths']['mgeo_root']),
-        global_cfg=global_config, scenario_cfg=config)
-    scenario.gt_args, scenario.gt_output = args, output
     status, error = 'COMPLETE', None
     try:
-        print('[촬영용 GT] 풀루트 1회 · 자차/장애물/제어=UDP · 신호={} GT · 60km/h 기본'.format(args.signal_source), flush=True)
+        print('[GT UDP] 자차/장애물/제어=UDP · 신호={} GT'.format(args.signal_source), flush=True)
         print('[로그] ' + str(output), flush=True)
-        scenario.run()
+        run_scenarios(grpc, global_config, config, args, output)
     except KeyboardInterrupt:
         status = 'STOPPED'
     except Exception as exc:

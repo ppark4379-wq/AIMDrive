@@ -18,6 +18,7 @@ REPO = Path(__file__).resolve().parents[3]
 DEFAULT_RUNTIME = Path(os.environ.get('VE_DEFAULT_RUNTIME') or REPO / 'MoraiDrive/.runtime/aim2026_wsl_blackout.yaml')
 sys.path[:0] = [str(REPO/'MoraiDrive'), str(REPO/'MoraiDrive/scenario_runner/legacy_expert')]
 from scenario_runner.main_runner import load_configuration, resolve_static_preset
+from scenario_runner.core.startup_contact import StartupContactExemption
 from scenario_runner.scenarios.full_loop_scenario import FullLoopScenario
 from scenario_runner.scenarios.segment_modes.modes import MISSION_MODES
 from scenario_runner.scenarios.segment_modes.scenario import MissionScenario
@@ -198,7 +199,20 @@ class GpsController:
             self.log = None
 
 
-class GpsDriverMixin:
+class GpsDriverMixin(StartupContactExemption):
+    contact_label = 'GPS+VE'
+
+    def _contact_output_dir(self):
+        return self.gps_output
+
+    def _strict_contact_mode(self):
+        return bool(getattr(self.gps_args, 'strict_collisions', False))
+
+    def configure_drive_from_start(self):
+        # Some MORAI builds report the Ego itself before the drive; note it now so only new contacts stop the run.
+        self.begin_startup_contact_baseline()
+        return super().configure_drive_from_start()
+
     def require_async_ros_control_path(self):
         print('[GPS+VE] ROS 제어 연결 불필요; GPS 실행기의 센서·UDP 검사 사용', flush=True)
 
@@ -377,6 +391,8 @@ class GtLayoutMission(LayoutMission):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--check', action='store_true', help='시뮬레이터 변경 없이 경로·입력 설정 검사')
+    parser.add_argument('--strict-collisions', action='store_true',
+                        help='Stop even for the self/anonymous contact records MORAI reports before the drive')
     parser.add_argument('--stop-before-tunnel', action='store_true')
     parser.add_argument('--mission', choices=sorted(MISSION_MODES),
                         help='풀루프 대신 미션 구간만 주행 (예: full_loop_tunnel_normal = 터널 입구 약 40m 전부터)')

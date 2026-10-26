@@ -169,7 +169,8 @@ def build_parser():
     parser.add_argument('--ego-port', type=int, default=8000)
     parser.add_argument('--object-port', type=int, default=8100)
     parser.add_argument('--signal-port', type=int, default=7700)
-    parser.add_argument('--signal-source', choices=('udp', 'grpc'), default='udp')
+    parser.add_argument('--signal-source', choices=('udp', 'grpc', 'none'), default='udp',
+                        help='none is for routes without traffic lights, such as the highway segment')
     parser.add_argument('--grpc-target', default='auto')
     parser.add_argument('--control-port', type=int, default=7601)
     parser.add_argument('--control-source-port', type=int, default=7600)
@@ -262,8 +263,9 @@ def main(argv=None):
         while not stopped.is_set():
             now = time.monotonic()
             data, ages, counts, errors = inputs.snapshot()
+            required = ('ego', 'objects') if args.signal_source == 'none' else ('ego', 'objects', 'signal')
             ready = all(k in data and ages[k] <= (2. if k == 'signal' else args.max_age)
-                        for k in ('ego', 'objects', 'signal'))
+                        for k in required)
             ready = ready and data.get('signal', {}).get('valid', True)
             # Once initialized, the existing signal controller owns per-signal
             # expiry. A UDP signal is not necessarily broadcast outside junctions.

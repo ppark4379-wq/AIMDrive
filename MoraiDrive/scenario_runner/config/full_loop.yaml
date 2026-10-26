@@ -404,17 +404,123 @@ scenarios:
       # the full-loop Ego reaches the highway.
       background_warmup_distance_m: 100.0
       spawn_point_activation_retry_period_sec: 1.0
-      collection_maximum_total_vehicles: 12
+      collection_maximum_total_vehicles: 25
 
+      # Explicit population, not a theoretical SpawnPoint cap. All vehicles
+      # are prepared paused before Ego drives, then released near the highway.
+      # No native random model selection: each run uses 25 distinct models.
+      managed_traffic:
+        randomize_adjacent_count: true
+        speed_range_kmh: [20, 100]
+        flowing_traffic:
+          enabled: true
+          departure_link: A2256W000846
+          departure_distance_from_link_start_m: 60.0
+          recycle_after_merge_m: 120.0
+          observation_radius_m: 120.0
+          respawn_clearance_m: 35.0
+          minimum_ego_distance_m: 80.0
+        merge_sync:
+          enabled: false
+          lane_entry_distance_m: 1.75
+          arm_distance_m: 180.0
+          minimum_ego_speed_mps: 2.0
+          lead_pass_before_ego_s: 6.0
+          npc_speed_ratio: 0.9
+          minimum_npc_speed_kmh: 18.0
+          maximum_npc_speed_kmh: 42.0
+        enabled: true
+        previous_total_vehicles: 13  # 12 moving + the independent stopped car
+        ego_merge_link: A2256W000411
+        forbidden_route_links: [A2256W000054, A2256W000846, A2256W000411]
+        excluded_models: [SE_CT797F_2009, RandomVehicle, AR_DJMini3pro_2022]
+        model_groups:
+          sedan:
+            - 2017_Hyundai_Grandeur
+            - 2016_Hyundai_Sonata
+            - 2015_Kia_K5
+            - 2014_Kia_K7
+            - 2016_Hyundai_Ioniq
+            - 2020_hyundai_sonata
+            - 2020_Kia_Stinger
+            - 2021_Hyundai_G80
+            - 2019_Toyota_Prius
+            - 2019_hyundai_genesis_g90
+            - 2016_Hyundai_Genesis_DH
+            - 2020_Kia_K5
+            - 2015_Toyota_Prius(HEV)
+          suv:
+            - 2016_Hyundai_Santafe
+            - 2017_Kia_Sorento
+            - 2017_Kia_Niro(HEV)
+            - 2019_Hyundai_Nexo
+            - 2020_volvo_xc90
+            - 2021_Hyundai_Genesis_GV80
+            - 2021_Volkswagen_Golf_GTI
+            - 2021_Hyundai_GV70
+            - 2023_Kia_EV6
+            - 2023_Hyundai_Ioniq5
+            - DR_KGTorres_EVX_2024
+            - 2019_Hyundai_Kona(EV)
+            - 2020_Kia_Niro(EV)
+            - 2016_Kia_Soul(EV)
+            - 2020_Kia_Soul(EV)
+          van:
+            - 2017_hyundai_solati_h350
+            - 2019_kia_sedona
+            - 2021_Kia_Carnival
+            - 2020_chrysler_pacifica_hybrid
+          truck:
+            - 2013_Hyundai_Porter2
+            - 2012_Hyundai_HD65
+            - 2013_Hyundai_Xcient(P520)
+            - 2013_Hyundai_Xcient(P540)
+            - 2014_Hyundai_Xcient(Mixer)
+          bus:
+            - 2016_Hyundai_Universe
+        lanes:
+          # The upstream mainline approach is shared until the three routes
+          # split. Stagger upstream slots by at least 30m.
+          # Choose 4/5/6 adjacent vehicles; transfer the unused slots to the
+          # other lanes upstream so the total stays 25 distinct vehicles.
+          # Offsets are relative to each original three-lane route's start.
+          # Negative offsets are upstream, away from Ego's separate on-ramp.
+          # After the fork, stagger neighbouring lanes: their map
+          # centre lines are still too close for side-by-side spawn slots.
+          # A2256W000409 is the legal left neighbour of Ego's merge link.
+          - name: merge_adjacent
+            merge_adjacent: true
+            route: [A2256W000157, A2256W000868, A2256W000168, A2256W000419, A2256W000415, A2256W000404, A2256W000406, A2256W000409, A2256W000420, A2256W000179, A2256W001105]
+            offset_origin_link: A2256W000406
+            offsets_m: [-25, -5, 15, 35, 55, 75]
+            speed_kmh: 34.0
+          - name: middle
+            # Continue beyond the mainline fork; never terminate in the barrel taper.
+            route: [A2256W000157, A2256W000868, A2256W000168, A2256W000419, A2256W000415, A2256W000404, A2256W000175, A2256W000410, A2256W000430, A2256W000434, A2256W000422, A2256W000153, A2256W000451, A2256W000446]
+            offset_origin_link: A2256W000175
+            offsets_m: [-460, -400, -340, -280, -250, -130, -55, 25, 65, 105]
+            additional_upstream_offset_m: -190
+            speed_kmh: 42.0
+          - name: left
+            route: [A2256W000157, A2256W000868, A2256W000168, A2256W000419, A2256W000415, A2256W000404, A2256W000029, A2256W000418, A2256W000431, A2256W000435, A2256W000423, A2256W000432, A2256W000427, A2256W000444]
+            offset_origin_link: A2256W000029
+            offsets_m: [-430, -370, -310, -220, -100, 5, 45, 85, 125]
+            additional_upstream_offset_m: -160
+            speed_kmh: 50.0
+
+      # Legacy fallback only (managed_traffic.enabled=false).
       # Highway-only native SpawnPoints copied from the competition sample.
       # competition_spawn_4 starts beside/through the roundabout, so it is
       # intentionally excluded: roundabout traffic is owned exclusively by
       # roundabout_npc, which owns its population and placement policy.
       # Enum values follow scenario_enum.proto:
-      #   vehicle length 2=MIDDLE_SIZE, parameter 2=VARIABLE,
+      #   vehicle length 0=MINI, 1=COMPACT, 2=MIDDLE_SIZE, 3=LARGE,
+      #   parameter 2=VARIABLE,
       #   velocity type 2=CUSTOM, lateral bias 1=FIX.
       spawn_point_defaults: &highway_spawn_point_defaults
-        vehicle_length_types: [2]
+        # Empty model_name on each point lets MORAI choose a model per spawn.
+        # Include every size class for mixed mainline traffic at the merge.
+        vehicle_length_types: [0, 1, 2, 3]
         is_close_loop: false
         is_lane_change: false
         parameter_type: 2

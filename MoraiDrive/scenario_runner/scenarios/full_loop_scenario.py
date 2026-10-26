@@ -262,7 +262,7 @@ class FullLoopScenario(FullLoopDriveBase):
         signal_truth_log.update(self, elapsed, ego_state)
         self.update_dynamic_obstacle(ego_state, current_s)
         traffic_light_override.update(self, elapsed, ego_state, current_s)
-        self.activate_highway_spawn_points(elapsed, current_s)
+        self.activate_highway_spawn_points(elapsed, current_s, ego_state)
         if (
             self.highway_spawn_point_activation_started
             and not self.highway_traffic_cleared

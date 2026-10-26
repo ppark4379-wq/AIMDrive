@@ -150,9 +150,9 @@ def update_dynamic_obstacle(context, ego_state, current_s):
         return dynamic_obstacle.update_dynamic_obstacle(context, ego_state, current_s)
 
 
-def activate_highway_spawn_points(context, elapsed, current_s):
+def activate_highway_spawn_points(context, elapsed, current_s, ego_state=None):
     if context.mission_mode.zones.highway:
-        return highway.activate_highway_spawn_points(context, elapsed, current_s)
+        return highway.activate_highway_spawn_points(context, elapsed, current_s, ego_state)
     return False
 
 

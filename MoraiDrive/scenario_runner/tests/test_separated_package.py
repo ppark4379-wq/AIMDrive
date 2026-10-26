@@ -185,7 +185,7 @@ class SeparatedPackageTest(unittest.TestCase):
             'Scripted highway lead settings must stay removed',
         )
         self.assertEqual(highway_cfg["background_warmup_distance_m"], 100.0)
-        self.assertEqual(highway_cfg["collection_maximum_total_vehicles"], 12)
+        self.assertEqual(highway_cfg["collection_maximum_total_vehicles"], 25)
         self.assertEqual(roundabout_cfg["min_count"], 3)
         self.assertEqual(roundabout_cfg["max_count"], 5)
         self.assertEqual(
