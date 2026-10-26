@@ -75,3 +75,32 @@ def test_new_publisher_generation_resets_the_map():
         frame(m, [box(-60.6, -142.)])
     mapped, _ = frame(m, [], generation='other')
     assert mapped == []
+
+
+def test_distance_is_exact_near_obstacles_and_never_longer_than_true():
+    import numpy as np
+    m = StaticObstacleMap()
+    for _ in range(4):
+        frame(m, [box(-56.35, -146.6, length=3.2, width=1.9), box(-60.9, -140.5, length=3.8, width=1.2, heading=96., track=2),
+                  box(-54.2, -138.1, length=.9, width=.5, heading=27., track=3)])
+    rng = np.random.default_rng(1)
+    x, y = rng.uniform(m.x0-2, m.x1+2, 5000), rng.uniform(m.y0-2, m.y1+2, 5000)
+    occ = np.argwhere(m.occupied)
+    left, low = m.x0+occ[:, 1]*m.cell, m.y0+occ[:, 0]*m.cell
+    dx = np.maximum(np.maximum(left[None]-x[:, None], 0), x[:, None]-(left[None]+m.cell))
+    dy = np.maximum(np.maximum(low[None]-y[:, None], 0), y[:, None]-(low[None]+m.cell))
+    truth = np.hypot(dx, dy).min(axis=1)
+    fast = m.distance(x, y)
+    assert np.all(fast <= truth+1e-9)                       # never longer: no hidden loss of clearance
+    near = truth < 1.5
+    assert np.allclose(fast[near], truth[near], atol=1e-9)  # exact where planning decisions are made
+
+
+def test_screening_bound_outside_the_map_is_still_exact():
+    import numpy as np
+    m = StaticObstacleMap()
+    for _ in range(4):
+        frame(m, [box(-60.3, -150.1, length=1.6, width=1.3)])
+    x, y = np.array([-61.8, -60.0, -55.]), np.array([-178.5, -170., -120.])   # before and after the map
+    assert np.allclose(m.distance(x, y, exact_below=0.), m.distance(x, y))
+    assert np.all(m.distance(x, y, exact_below=0.) > 10.)

@@ -65,6 +65,7 @@ class LatticePlanningProcess:
                                  else None)
         self.centerline_lattice = CenterlineLattice(map_data_dir)
         self.static_corridor = None   # set by attach_static_map(): receding-horizon static section planning
+        self.map_data_dir = map_data_dir
 
         self.highway_zone_points = tuple(highway_zone_points or ())
         self.highway_zone_half_width = float(highway_zone_half_width)
@@ -85,7 +86,8 @@ class LatticePlanningProcess:
         from .static_obstacle.recorded_planner import RecordedStaticPlanner
         from .static_obstacle.corridor_optimizer import StaticCorridorPlanner
         if self.recorded_static is not None:
-            self.static_corridor = StaticCorridorPlanner(RecordedStaticPlanner(self.planner), occupancy)
+            self.static_corridor = StaticCorridorPlanner(RecordedStaticPlanner(self.planner), occupancy,
+                                                         map_data_dir=self.map_data_dir)
         return self.static_corridor
 
     def set_static_editor_mode(self, enabled):

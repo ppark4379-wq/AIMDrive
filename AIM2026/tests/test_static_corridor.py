@@ -143,7 +143,7 @@ def test_failed_new_solve_keeps_the_still_valid_committed_path(monkeypatch):
     assert details(first)['source'] == 'new' and plan.committed is not None
     pts = np.array([(q.x, q.y) for q in first.path])
     on_path = ego(x=float(np.interp(-156., pts[:, 1], pts[:, 0])), y=-156.)
-    monkeypatch.setattr(StaticCorridorPlanner, '_choose_side', lambda *a: ([], 0))   # the new solve fails
+    monkeypatch.setattr(StaticCorridorPlanner, '_choose_side', lambda *a: ([], [], 0))   # the new solve fails
     kept = plan.run(on_path, [], ROUTE)
     assert details(kept)['phase'] == 'follow' and details(kept)['source'] == 'previous'
     assert kept.acc_target_velocity > 0.
@@ -157,6 +157,45 @@ def test_committed_path_is_dropped_when_it_becomes_unsafe(monkeypatch):
     pts = np.array([(q.x, q.y) for q in first.path])
     beside = dict(center_world=[float(np.interp(-145., pts[:, 1], pts[:, 0])), -145.], length_m=1., width_m=1., heading_deg=0.)
     plan.occupancy = occupancy([IN_LANE, beside]+RIGHT)          # a new obstacle on the committed path
-    monkeypatch.setattr(StaticCorridorPlanner, '_choose_side', lambda *a: ([], 0))
+    monkeypatch.setattr(StaticCorridorPlanner, '_choose_side', lambda *a: ([], [], 0))
     result = plan.run(ego(x=float(np.interp(-156., pts[:, 1], pts[:, 0])), y=-156.), [], ROUTE)
     assert details(result)['phase'] == 'blocked'
+
+
+def test_approach_from_outside_the_map_is_not_blocked_by_a_distant_obstacle():
+    # The planner starts at y=-180 while the map starts at the section (-162.4): points before the map
+    # must get real distances, not a collapsed screening bound.
+    plan = planner([dict(center_world=[-60.3, -150.1], length_m=1.6, width_m=1.3, heading_deg=90.)])
+    result = plan.run(ego(x=-61.84, y=-178.46, heading=82.), [], ROUTE)
+    d = details(result)
+    # Seen 28 m ahead, the obstacle may still decide where to stop, but not block the road right ahead.
+    assert d['feasible_stations'] > 15 and result.acc_target_velocity > 0.
+
+
+MAP_DIR = Path(__file__).resolve().parents[1]/'Expert/map_data/R_KR_PG_KATRI_2025'
+
+
+def test_obstacle_at_the_section_entrance_is_passed_on_the_right_turn_lane():
+    # Run 20261026-192930: a car-sized box early in the section, before the recorded bypasses turn right. The gap
+    # needs the right half of the own lane, the right-turn lane at the fork, and the body turned about 15 degrees.
+    entrance = dict(center_world=[-60.50, -149.04], length_m=4.09, width_m=1.73, heading_deg=98.)
+    plan = StaticCorridorPlanner(RecordedStaticPlanner(LatticePlanner()), occupancy([entrance]), map_data_dir=MAP_DIR)
+    result = plan.run(ego(x=-59.9, y=-170.), [], ROUTE)
+    d = details(result)
+    assert d['phase'] == 'follow' and d['path_validated'] and result.acc_target_velocity > 0.
+    assert d['min_clearance_m'] >= CORRIDOR_MIN_CLEARANCE-.05
+    assert d['max_curvature'] <= MAX_CURVATURE+1e-6
+    assert lateral_at(result, -151.) > -58.4                    # right of the obstacle's rear corner
+
+
+def test_box_qp_matches_bounded_least_squares():
+    from scipy.optimize import lsq_linear
+    rng = np.random.default_rng(3)
+    for _ in range(20):
+        A = np.vstack([np.eye(30), rng.normal(size=(30, 30))*5.])
+        b = rng.normal(size=60)*3.
+        lower = rng.uniform(-1., 0., 30); upper = lower+rng.uniform(.01, 1., 30)
+        solution = StaticCorridorPlanner._box_qp(A.T@A, A.T@b, lower, upper, lower.copy())
+        reference = lsq_linear(A, b, bounds=(lower, upper), method='bvls').x
+        assert solution is not None
+        assert np.sum((A@solution-b)**2) <= np.sum((A@reference-b)**2)*(1+1e-9)+1e-9

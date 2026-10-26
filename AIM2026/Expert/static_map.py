@@ -13,7 +13,7 @@ import math
 
 import numpy as np
 from scipy import ndimage
-from scipy.spatial import ConvexHull, QhullError
+from scipy.spatial import ConvexHull, QhullError, cKDTree
 
 from AIM2026.Expert.src.config.parameters.sections import STATIC_OBSTACLE_CERTAIN_X, STATIC_OBSTACLE_CERTAIN_Y
 
@@ -30,13 +30,18 @@ MIN_CELLS = 3             # smaller clusters are ignored
 MIN_FILL = .5             # a cluster filling less of its rectangle is split along its long axis (merged neighbours)
 MAX_SPLIT_DEPTH = 3
 MATCH_M = 1.5             # a cluster keeps its ID if its centre moved less than this
+EXACT_RANGE = 2.0         # below this the bound is replaced by the exact distance (speed saturates beyond) [m]
 ID_BASE = 1_000_000       # positive IDs, disjoint from tracker serials (VE-unknown contract needs id > 0)
+GRID_MARGIN_X = 3.        # the grid reaches past the evidence region so the planner's poses from the approach (y -180)
+GRID_MARGIN_Y = 20.       # to the end of its horizon (about y -101) stay on it; off-grid points need the slow exact
+                          # distance [m]
 
 
 class StaticObstacleMap:
     def __init__(self, x_range=STATIC_OBSTACLE_CERTAIN_X, y_range=STATIC_OBSTACLE_CERTAIN_Y, cell=CELL_M):
-        self.x0, self.y0, self.cell = float(x_range[0]), float(y_range[0]), float(cell)
-        self.x1, self.y1 = float(x_range[1]), float(y_range[1])
+        self.region = (float(x_range[0]), float(x_range[1]), float(y_range[0]), float(y_range[1]))  # evidence
+        self.x0, self.x1 = self.region[0]-GRID_MARGIN_X, self.region[1]+GRID_MARGIN_X
+        self.y0, self.y1, self.cell = self.region[2]-GRID_MARGIN_Y, self.region[3]+GRID_MARGIN_Y, float(cell)
         self.shape = (int(math.ceil((self.y1-self.y0)/cell)), int(math.ceil((self.x1-self.x0)/cell)))
         rows, cols = np.indices(self.shape)
         self.cx = self.x0 + (cols+.5)*cell
@@ -52,26 +57,60 @@ class StaticObstacleMap:
         self.version = 0            # increments whenever the occupied cells change
         self._field = None
 
-    def distance(self, x, y):
-        """Lower bound [m] of the distance from world points to the nearest occupied cell area.
+    def distance(self, x, y, exact_below=EXACT_RANGE):
+        """Distance [m] from world points to the nearest occupied cell square (inf with no occupied cell).
 
-        Points outside the map, or with no occupied cell, are at infinite distance.
+        Never longer than the true distance. A cheap bound from the distance transform is used everywhere;
+        within EXACT_RANGE it is replaced by the exact distance to the occupied squares (k-d tree over cell
+        centres). A square can be nearest only if its centre lies within half a cell diagonal of the nearest
+        centre distance, and the exact value is taken only when every such square was compared; otherwise the
+        bound stays. A fixed cell-diagonal deduction everywhere would add about 0.14 m of hidden margin.
+        exact_below=0 returns only the bound (at most 1.5 cell diagonals short), for screening many points.
         """
-        x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
+        x, y = np.broadcast_arrays(np.asarray(x, dtype=float), np.asarray(y, dtype=float))
         if self._field is None or self._field[0] != self.version:
-            field = (ndimage.distance_transform_edt(~self.occupied)*self.cell if self.occupied.any()
-                     else np.full(self.shape, np.inf))
-            self._field = (self.version, field)
-        col = np.floor((x-self.x0)/self.cell).astype(int)
-        row = np.floor((y-self.y0)/self.cell).astype(int)
-        inside = (row >= 0) & (row < self.shape[0]) & (col >= 0) & (col < self.shape[1])
-        out = np.full(np.broadcast(x, y).shape, np.inf)
-        # A point anywhere in its cell, to the edge of an occupied cell: subtract one cell diagonal.
-        out[inside] = self._field[1][row[inside], col[inside]] - math.sqrt(2.)*self.cell
+            field = tree = None
+            if self.occupied.any():
+                field = ndimage.distance_transform_edt(~self.occupied)*self.cell
+                rows, cols = np.nonzero(self.occupied)
+                tree = cKDTree(np.column_stack((self.cx[rows, cols], self.cy[rows, cols])))
+            self._field = (self.version, field, tree)
+        _, field, tree = self._field
+        if field is None:
+            return np.full(x.shape, np.inf)
+        half = .5*math.sqrt(2.)*self.cell        # centre-to-corner of a cell
+        row = np.clip(np.floor((y-self.y0)/self.cell).astype(int), 0, self.shape[0]-1)
+        col = np.clip(np.floor((x-self.x0)/self.cell).astype(int), 0, self.shape[1]-1)
+        # Nearest centre from p >= nearest centre from p's cell centre - |p - that centre|; a square is at
+        # least its centre distance minus half a diagonal.
+        offset = np.hypot(x-self.cx[row, col], y-self.cy[row, col])
+        out = np.maximum(0., field[row, col]-offset-half)
+        flat, px, py = out.reshape(-1), x.reshape(-1), y.reshape(-1)
+        # Outside the map the bound collapses (the clamped cell can be metres away), so those points are
+        # always measured exactly, whatever exact_below asks for.
+        outside = (px < self.x0) | (px > self.x1) | (py < self.y0) | (py > self.y1)
+        todo = np.flatnonzero((flat < exact_below) | outside)
+        for k in (8, 64):
+            if not len(todo):
+                break
+            k = min(k, tree.n)
+            d, index = tree.query(np.column_stack((px[todo], py[todo])), k=k)
+            d, index = d.reshape(len(todo), k), index.reshape(len(todo), k)
+            qx, qy = px[todo][:, None], py[todo][:, None]
+            left, low = tree.data[index, 0]-.5*self.cell, tree.data[index, 1]-.5*self.cell
+            dx = np.maximum(np.maximum(left-qx, 0.), qx-(left+self.cell))
+            dy = np.maximum(np.maximum(low-qy, 0.), qy-(low+self.cell))
+            candidate = np.hypot(dx, dy).min(axis=1)
+            # Every square not compared is at least (k-th centre distance - half) away.
+            complete = (k == tree.n) | (d[:, -1]-half >= candidate)
+            flat[todo[complete]] = candidate[complete]
+            todo = todo[~complete]           # left with the safe bound if still incomplete
         return out
 
     def contains(self, x, y):
-        return self.x0 <= x <= self.x1 and self.y0 <= y <= self.y1
+        """Detections centred in the evidence region are mapped; the grid itself is larger."""
+        x0, x1, y0, y1 = self.region
+        return x0 <= x <= x1 and y0 <= y <= y1
 
     def _window(self, x0, x1, y0, y1):
         """Grid slices covering a world rectangle (clipped to the map)."""
