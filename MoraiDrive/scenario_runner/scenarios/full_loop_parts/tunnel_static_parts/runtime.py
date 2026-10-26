@@ -5,7 +5,6 @@ caller holds the shared execution lock only during its live trial stage.
 """
 
 import copy
-import fcntl
 import hashlib
 import json
 import math
@@ -116,6 +115,7 @@ class ExecutionLock:
         self.stream = None
 
     def __enter__(self):
+        import fcntl  # POSIX-only; imported here so the Windows Expert launcher can import this module
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.stream = self.path.open("a+")
         try:
@@ -128,6 +128,7 @@ class ExecutionLock:
 
     def __exit__(self, _kind, _value, _traceback):
         if self.stream is not None:
+            import fcntl
             try:
                 fcntl.flock(self.stream.fileno(), fcntl.LOCK_UN)
             finally:

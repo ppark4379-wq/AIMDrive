@@ -1,7 +1,6 @@
 """Full-course competition coverage using the existing scene and Expert code."""
 
 import copy
-import fcntl
 import json
 import os
 from pathlib import Path
@@ -96,6 +95,8 @@ class FullLoopCompetitionScenario(FullLoopScenario):
     def _acquire_lock(self):
         if self._competition_lock is not None:
             return
+        # POSIX-only; imported here so the Windows Expert launcher can still import the scenario registry.
+        import fcntl
         profile = Path(self.profile_state_path())
         profile.parent.mkdir(parents=True, exist_ok=True)
         self._competition_lock = profile.with_suffix(".lock").open("a+")
