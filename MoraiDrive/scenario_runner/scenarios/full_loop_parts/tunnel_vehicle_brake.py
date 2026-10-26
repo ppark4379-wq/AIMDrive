@@ -8,6 +8,10 @@ from statistics import median
 from .tunnel_dynamic_catalog import _finite
 
 
+TROUGH_HOLD_REFRESH_SEC = 0.5
+TROUGH_RECONFIRM_SEC = 0.25
+
+
 def validate_sudden_brake(config):
     cfg = dict(config)
     cfg.setdefault("departure_wait_enabled", False)
@@ -120,6 +124,7 @@ class TunnelVehicleBrakeEvent:
         self.ego_deceleration_observed = False
         self.last_wait_log = None
         self.hold_until = None
+        self.last_trough_command_elapsed = None
         self.resume_at = None
         self.resume_xy = None
         self.departure_previous = None
@@ -145,6 +150,10 @@ class TunnelVehicleBrakeEvent:
                 "hold_start": None,
                 "hold_end": None,
                 "actual_hold_duration_sec": 0.0,
+                "trough_hold_refresh_count": 0,
+                "trough_overshoot_pending": None,
+                "trough_overshoot_rechecks": [],
+                "hold_restart_count": 0,
                 "resume_command_speed_mps": None,
                 "resume_motion_verified": False,
             }
@@ -172,6 +181,67 @@ class TunnelVehicleBrakeEvent:
         )
         c.tunnel_vehicle_command_speed = speed
         return bool(limit_ok and velocity_ok and pause_ok is not False)
+
+    def _refresh_trough(self, elapsed, sample, label):
+        accepted = self.command(self.cfg["trough_speed_mps"], label)
+        self.last_trough_command_elapsed = elapsed
+        self.metrics["trough_hold_refresh_count"] += 1
+        self.metrics["last_trough_refresh_elapsed"] = elapsed
+        if not accepted:
+            self.recover(elapsed, sample, "Low-speed hold trough command rejected")
+        return accepted
+
+    def _hold_trough(self, elapsed, sample, dt):
+        """Reassert the same target; only eight uninterrupted low-speed seconds pass."""
+        cfg, m = self.cfg, self.metrics
+        if dt > cfg["maximum_sample_interval_sec"]:
+            self.recover(elapsed, sample, "Low-speed hold observations have a time gap")
+            return False
+        speed = sample["speed_mps"]
+        upper = cfg["trough_speed_mps"] + cfg["trough_speed_tolerance_mps"]
+        pending = m["trough_overshoot_pending"]
+        if pending is not None:
+            pending["peak_speed_mps"] = max(pending["peak_speed_mps"], speed)
+            delay = elapsed - pending["start_elapsed_sec"]
+            if delay > TROUGH_RECONFIRM_SEC or (
+                speed > upper and delay >= TROUGH_RECONFIRM_SEC
+            ):
+                m["trough_overshoot_rechecks"].append({
+                    **pending, "outcome": "not_reconfirmed",
+                    "end_elapsed_sec": elapsed, "end_speed_mps": speed,
+                })
+                m["trough_overshoot_pending"] = None
+                self.recover(elapsed, sample, "NPC did not maintain trough speed")
+                return False
+            if speed > upper:
+                return False
+            m["trough_overshoot_rechecks"].append({
+                **pending, "outcome": "reconfirmed",
+                "end_elapsed_sec": elapsed, "end_speed_mps": speed,
+            })
+            m["trough_overshoot_pending"] = None
+            m["hold_restart_count"] += 1
+            m.update(hold_start=elapsed, hold_end=None, actual_hold_duration_sec=0.0)
+            self.hold_until = elapsed + cfg["hold_duration_sec"]
+        elif speed > upper:
+            m["trough_overshoot_pending"] = {
+                "start_elapsed_sec": elapsed, "initial_speed_mps": speed,
+                "peak_speed_mps": speed,
+            }
+            # An unverified interval cannot contribute to the eight-second hold.
+            m["actual_hold_duration_sec"] = 0.0
+            self.hold_until = None
+            self._refresh_trough(elapsed, sample, "trough_overshoot_reconfirm")
+            return False
+        m["actual_hold_duration_sec"] = elapsed - m["hold_start"]
+        if elapsed >= self.hold_until:
+            return True
+        if (
+            self.last_trough_command_elapsed is None
+            or elapsed - self.last_trough_command_elapsed >= TROUGH_HOLD_REFRESH_SEC
+        ):
+            self._refresh_trough(elapsed, sample, "trough_hold_refresh")
+        return False
 
     def wait_for_departure(self, elapsed, ego, sample, gap):
         """Observe a paused actor until actual Ego approach releases its driver."""
@@ -358,38 +428,27 @@ class TunnelVehicleBrakeEvent:
                         elapsed, sample, "Sudden brake actual deceleration not verified"
                     )
             else:
-                if dt > cfg["maximum_sample_interval_sec"]:
-                    self.recover(
-                        elapsed, sample, "Low-speed hold observations have a time gap"
+                if self._hold_trough(elapsed, sample, dt):
+                    m.update(
+                        hold_verified=True,
+                        hold_end=elapsed,
+                        resume_command_speed_mps=cfg["cruise_speed_mps"],
+                        resume_start_elapsed=elapsed,
                     )
-                elif (
-                    speed > cfg["trough_speed_mps"] + cfg["trough_speed_tolerance_mps"]
-                ):
-                    self.recover(elapsed, sample, "NPC did not maintain trough speed")
-                else:
-                    m["actual_hold_duration_sec"] = elapsed - m["hold_start"]
-                    if elapsed >= self.hold_until:
-                        m.update(
-                            hold_verified=True,
-                            hold_end=elapsed,
-                            resume_command_speed_mps=cfg["cruise_speed_mps"],
-                            resume_start_elapsed=elapsed,
+                    if not self.command(
+                        cfg["cruise_speed_mps"], "resume", unpause=True
+                    ):
+                        self.recover(
+                            elapsed, sample, "Sudden brake resume command rejected"
                         )
-                        if not self.command(
-                            cfg["cruise_speed_mps"], "resume", unpause=True
-                        ):
-                            self.recover(
-                                elapsed, sample, "Sudden brake resume command rejected"
-                            )
-                        else:
-                            m["resumed_after_event"] = True
-                            self.resume_at, self.resume_xy = elapsed, (
-                                sample["x"],
-                                sample["y"],
-                            )
-                            self.handler._phase(
-                                c, "departing", "eight_second_trough_hold_verified"
-                            )
+                    else:
+                        m["resumed_after_event"] = True
+                        self.resume_at, self.resume_xy = elapsed, (
+                            sample["x"], sample["y"],
+                        )
+                        self.handler._phase(
+                            c, "departing", "eight_second_trough_hold_verified"
+                        )
         elif phase in ("departing", "recovering_failed"):
             displacement = math.dist((sample["x"], sample["y"]), self.resume_xy)
             verified = (
@@ -560,6 +619,7 @@ class TunnelVehicleBrakeEvent:
         if not self.command(cfg["trough_speed_mps"], "sudden_drop"):
             self.recover(elapsed, sample, "Sudden brake trough command rejected")
             return
+        self.last_trough_command_elapsed = elapsed
         m["brake_commanded"] = True
         print(
             f"[TunnelVehicleBrake] stable_follow gap={observed_gap:.2f}m "

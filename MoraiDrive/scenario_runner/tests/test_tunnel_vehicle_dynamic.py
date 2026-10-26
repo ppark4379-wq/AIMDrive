@@ -23,8 +23,11 @@ from ..scenarios.full_loop_parts.tunnel_vehicle_catalog import (
 from ..scenarios.segment_modes.modes import MISSION_MODES
 from ..tools.generate_tunnel_dynamic_candidates import (
     build_catalog as pedestrian_catalog,
+    load_catalog_inputs,
 )
 from ..tools.generate_tunnel_vehicle_candidates import build_catalog
+from ..utils.map_loader import MGeoMapLoader
+from ..utils.transform_utils import interpolate_on_polyline, project_distance_on_polyline
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE = yaml.safe_load((ROOT / "config/full_loop.yaml").read_text(encoding="utf-8-sig"))[
@@ -402,6 +405,152 @@ class TunnelVehicleTest(unittest.TestCase):
             )
         )
 
+    def test_real_map_oncoming_native_request_reaches_existing_cleanup_before_route_end(self):
+        metadata, points, zone = load_catalog_inputs()
+        loader = MGeoMapLoader(str(ROOT / "data/R_KR_PR_K-city_2025"))
+        for competition in (False, True):
+            with self.subTest(competition=competition):
+                c, a = self.make_context("vehicle_oncoming", seed=2709)
+                c.route_points, c.map_loader = points, loader
+                c.tunnel_entry_s = metadata["tunnel_entry_s_m"]
+                c.tunnel_exit_s = metadata["tunnel_exit_s_m"]
+                c.route_definition = {"zones": {"tunnel": copy.deepcopy(zone)}}
+                if competition:
+                    c.scenario_name = "full_loop_competition"
+                    c.cfg["competition_tunnel_scene"] = "vehicle"
+                prepare_tunnel_vehicle(c)
+                h = c.tunnel_vehicle_handler
+                h.arm(c)
+                c.tunnel_vehicle_runtime_timeout = c.cfg["tunnel_vehicle_dynamic"]["max_run_sec"]
+                plan = copy.deepcopy(c.tunnel_vehicle_plan)
+                rng_before = c.random.getstate()
+
+                def spawn(**kw):
+                    p = c.tunnel_vehicle_plan["spawn_target"]
+                    observed = state(p["x"], speed=kw["velocity"], link=p["link"],
+                                     y=p["y"], yaw=p["yaw_deg"])
+                    observed.transform.location.z = p["z"]
+                    a.get_actor_state.return_value = observed
+                    return a
+
+                c.grpc.spawn_vehicle.side_effect = spawn
+                ex, ey, _, _ = interpolate_on_polyline(points, c.tunnel_entry_s + 10.)
+                h._spawn(c, {"x": ex, "y": ey, "speed": 21.6})
+                request = c.grpc.set_vehicle_route.call_args
+                route, indices = request.args[1], request.kwargs["route_waypoint_indices"]
+                last = route[-1]
+                self.assertEqual(last, "A2256W000028")
+                last_points = loader.get_link_points(last)
+                self.assertEqual(indices[last], len(last_points) - 1)
+                old_end_s = project_distance_on_polyline(
+                    c.tunnel_vehicle_cleanup_points, *last_points[0][:2])
+                actual_end_s = project_distance_on_polyline(
+                    c.tunnel_vehicle_cleanup_points, *last_points[indices[last]][:2])
+                self.assertLess(old_end_s, plan["cleanup_route_s_m"])
+                self.assertGreater(actual_end_s, plan["cleanup_route_s_m"])
+                self.assertEqual(route, plan["route_links"][plan["spawn_target"]["route_index"]:])
+                self.assertEqual(c.tunnel_vehicle_plan, plan)
+                self.assertEqual(c.random.getstate(), rng_before)
+                self.assertEqual(c.grpc.spawn_vehicle.call_args.kwargs["model_name"], plan["model"])
+                self.assertEqual(c.grpc.spawn_vehicle.call_args.kwargs["velocity"], plan["speed_mps"])
+                self.assertEqual(c.tunnel_vehicle_result["motion_commands"]["route_endpoint"]["waypoint"],
+                                 len(last_points) - 1)
+
+    def test_native_slow_brake_and_oncoming_preserve_plan_and_request_full_last_link(self):
+        for behavior in ("vehicle_slow", "vehicle_sudden_brake", "vehicle_oncoming"):
+            for competition in (False, True):
+                with self.subTest(behavior=behavior, competition=competition):
+                    c, a = self.make_context(behavior, seed=71)
+                    if competition:
+                        c.scenario_name = "full_loop_competition"
+                        c.cfg["competition_tunnel_scene"] = "vehicle"
+                        c.competition_tunnel_start_s = 0.
+                    prepare_tunnel_vehicle(c)
+                    h = c.tunnel_vehicle_handler
+                    h.arm(c)
+                    c.tunnel_vehicle_runtime_timeout = c.cfg["tunnel_vehicle_dynamic"]["max_run_sec"]
+                    plan = copy.deepcopy(c.tunnel_vehicle_plan)
+                    before_rng = c.random.getstate()
+                    h._spawn(c, {"x": 0., "y": 0., "speed": 36.})
+                    request = c.grpc.set_vehicle_route.call_args
+                    route, indices = request.args[1], request.kwargs["route_waypoint_indices"]
+                    self.assertEqual(route, plan["route_links"])
+                    self.assertEqual(indices[route[0]], plan["spawn_target"]["waypoint"])
+                    self.assertEqual(indices[route[-1]], len(c.map_loader.get_link_points(route[-1])) - 1)
+                    self.assertEqual(c.tunnel_vehicle_plan, plan)
+                    self.assertEqual(c.random.getstate(), before_rng)
+                    self.assertEqual(c.grpc.spawn_vehicle.call_args.kwargs["model_name"], plan["model"])
+                    c.grpc.set_vehicle_velocity.assert_called_once_with(a, plan["speed_mps"])
+                    c.grpc.set_vehicle_speed_limit.assert_called_once_with(a, plan["speed_mps"], enabled=True)
+
+    def test_oncoming_native_endpoint_lifetime_allows_cleanup_before_actor_disappears(self):
+        for competition in (False, True):
+            with self.subTest(competition=competition):
+                c, a = self.make_context("vehicle_oncoming")
+                if competition:
+                    c.scenario_name = "full_loop_competition"
+                    c.cfg["competition_tunnel_scene"] = "vehicle"
+                    c.competition_tunnel_start_s = 0.
+                prepare_tunnel_vehicle(c)
+                h = c.tunnel_vehicle_handler
+                h.arm(c)
+                self.start(c, h)
+                request = c.grpc.set_vehicle_route.call_args
+                last_link = request.args[1][-1]
+                endpoint = c.map_loader.get_link_points(last_link)[
+                    request.kwargs["route_waypoint_indices"].get(last_link, 0)]
+                # MORAI may drop the actor as soon as its requested route ends.
+                # The old implicit waypoint 0 was x=0, before cleanup at x=-40.
+                self.assertEqual(c.map_loader.get_link_points(last_link)[0][0], 0.)
+                observed = {"actor": a.get_actor_state.return_value}
+                a.get_actor_state.side_effect = lambda: (
+                    observed["actor"] if observed["actor"].transform.location.x > endpoint[0] else None)
+                for t, x, ego_x, link in ((5., 97., 30., "opposite"),
+                                          (10., 67., 83., "opposite"),
+                                          (20., 7., 120., "opposite"),
+                                          (28., -41., 137., "outlet")):
+                    c.now = t
+                    observed["actor"] = state(x, speed=6., link=link, y=3.5, yaw=180.)
+                    h.update(c, t, {"x": ego_x, "y": 0., "speed": 36.}, ego_x)
+                self.assertTrue(c.tunnel_vehicle_result["passed"])
+                self.assertTrue(c.tunnel_vehicle_result["completed"])
+                self.assertTrue(c.tunnel_vehicle_result["cleanup_verified"])
+                self.assertEqual(c.tunnel_vehicle_result["cleanup_reason"],
+                                 "outside_tunnel_continuation_and_ego_clearance")
+                c.grpc.destroy_vehicle_by_id.assert_called_once_with("npc-1")
+                self.assertEqual(c.grpc.spawn_vehicle.call_count, 1)
+
+    def test_bad_actual_native_endpoint_is_rejected_before_spawn(self):
+        for bad_points in ([], [(0., 3.5, 0.)],
+                           [(0., 3.5, 0.), (float("nan"), 3.5, 0.)],
+                           [(0., 3.5, 0.), (-50., 3.5)],
+                           [(0., 3.5, 0.), (-40., 3.5, 0.)],
+                           [(0., 3.5, 0.), (-10., 3.5, 0.)]):
+            with self.subTest(points=bad_points):
+                c, _ = self.make_context("vehicle_oncoming")
+                prepare_tunnel_vehicle(c)
+                h = c.tunnel_vehicle_handler
+                h.arm(c)
+                original = c.map_loader.get_link_points
+                c.map_loader.get_link_points = lambda link: bad_points if link == "outlet" else original(link)
+                with self.assertRaisesRegex(RuntimeError, "native route endpoint"):
+                    h._spawn(c, {"x": 0., "y": 0., "speed": 36.})
+                c.grpc.spawn_vehicle.assert_not_called()
+                c.grpc.set_vehicle_route.assert_not_called()
+                self.assertEqual(c.scenario_actors, [])
+                self.assertFalse(c.tunnel_vehicle_result["completed"])
+
+    def test_native_assigned_route_cannot_stop_at_a_prefix_before_cleanup(self):
+        c, _ = self.make_context("vehicle_oncoming")
+        prepare_tunnel_vehicle(c)
+        h = c.tunnel_vehicle_handler
+        h.arm(c)
+        c.tunnel_vehicle_plan["route_links"] = ["opposite"]
+        with self.assertRaisesRegex(RuntimeError, "native route endpoint"):
+            h._spawn(c, {"x": 0., "y": 0., "speed": 36.})
+        c.grpc.spawn_vehicle.assert_not_called()
+        c.grpc.set_vehicle_route.assert_not_called()
+
     def test_slow_runtime_spawn_keeps_same_actor_across_sections(self):
         c, a, h = self.armed()
         self.assertEqual(c.grpc.spawn_vehicle.call_count, 1)
@@ -571,7 +720,10 @@ class TunnelVehicleTest(unittest.TestCase):
         metrics = c.tunnel_vehicle_result["brake"]
         self.assertTrue(metrics["resume_motion_verified"])
         self.assertTrue(c.tunnel_vehicle_result["interaction_complete"])
-        self.assertEqual([cmd["speed_mps"] for cmd in metrics["commands"]], [4, 0.5, 4])
+        commands = metrics["commands"]
+        self.assertEqual((commands[0]["speed_mps"], commands[-1]["speed_mps"]), (4., 4.))
+        self.assertTrue(all(cmd["speed_mps"] == .5 for cmd in commands[1:-1]))
+        self.assertGreater(len(commands), 3)
         self.assertEqual(c.grpc.spawn_vehicle.call_count, 1)
         self.tick(c, a, h, 45, 190, 137, speed=4)
         self.assertTrue(c.tunnel_vehicle_result["completed"])
@@ -807,10 +959,87 @@ class TunnelVehicleTest(unittest.TestCase):
         c, a, h = self.stable_brake()
         self.tick_after_brake(c, a, h, 0.25, 0.125, gap=22, ego_speed=7.2)
         self.tick_after_brake(c, a, h, 0.5, 0.5, gap=22, speed=1.5)
+        self.assertEqual(c.tunnel_vehicle_phase, "low_speed_hold")
+        c.grpc.set_vehicle_velocity.assert_called_with(a, 0.5)
+        self.tick_after_brake(c, a, h, 0.75, 0.875, gap=22, speed=1.5)
         self.assertEqual(c.tunnel_vehicle_phase, "recovering_failed")
         self.assertFalse(c.tunnel_vehicle_result["brake"].get("hold_verified", False))
         c.grpc.set_vehicle_velocity.assert_called_with(a, 4.0)
         a.destroy.assert_not_called()
+
+    def test_single_07025_overshoot_reapplies_command_then_requires_fresh_eight_second_hold(self):
+        c, a, h = self.stable_brake()
+        original_cfg, original_plan = copy.deepcopy(c.cfg), copy.deepcopy(c.tunnel_vehicle_plan)
+        self.tick_after_brake(c, a, h, .25, .125, gap=22, ego_speed=7.2)
+        before = c.grpc.set_vehicle_velocity.call_count
+        self.tick_after_brake(c, a, h, .5, .300625, gap=22, speed=.7025)
+        metrics = c.tunnel_vehicle_result["brake"]
+        self.assertEqual(c.tunnel_vehicle_phase, "low_speed_hold")
+        self.assertFalse(metrics.get("failure_pending", False))
+        self.assertEqual(metrics["actual_hold_duration_sec"], 0.)
+        self.assertGreater(c.grpc.set_vehicle_velocity.call_count, before)
+        c.grpc.set_vehicle_velocity.assert_called_with(a, .5)
+        c.grpc.set_vehicle_speed_limit.assert_called_with(a, .5, enabled=True)
+        self.tick_after_brake(c, a, h, .75, .425625, gap=22, speed=.5)
+        self.assertEqual(metrics["hold_start"], c.brake_test_time + .75)
+        for i in range(4, 35):
+            offset = i / 4.
+            self.tick_after_brake(c, a, h, offset, .425625 + .5 * (offset - .75), gap=22)
+        self.assertEqual(c.tunnel_vehicle_phase, "low_speed_hold")
+        self.assertFalse(metrics.get("hold_verified", False))
+        self.assertEqual(metrics["actual_hold_duration_sec"], 7.75)
+        self.tick_after_brake(c, a, h, 8.75, 4.425625, gap=22)
+        self.assertEqual(c.tunnel_vehicle_phase, "departing")
+        self.assertTrue(metrics["hold_verified"])
+        self.assertEqual(metrics["hold_end"] - metrics["hold_start"], 8.)
+        self.assertEqual(metrics["actual_hold_duration_sec"], 8.)
+        self.assertEqual(metrics["hold_restart_count"], 1)
+        self.assertGreater(metrics["trough_hold_refresh_count"], 1)
+        self.assertEqual(c.cfg, original_cfg)
+        self.assertEqual(c.tunnel_vehicle_plan, original_plan)
+        self.assertTrue(all(call.args[0] is a for call in c.grpc.set_vehicle_velocity.call_args_list))
+        self.assertTrue(all(call.args[0] is a for call in c.grpc.set_vehicle_speed_limit.call_args_list))
+        self.assertEqual(c.grpc.spawn_vehicle.call_count, 1)
+        a.destroy.assert_not_called()
+
+    def test_continuous_small_overshoot_cannot_relax_original_trough_threshold(self):
+        c, a, h = self.stable_brake()
+        self.tick_after_brake(c, a, h, .25, .125, gap=22, ego_speed=7.2)
+        self.tick_after_brake(c, a, h, .5, .300625, gap=22, speed=.7025)
+        self.tick_after_brake(c, a, h, .75, .47625, gap=22, speed=.7025)
+        self.assertEqual(c.tunnel_vehicle_phase, "recovering_failed")
+        self.assertEqual(c.tunnel_vehicle_result["failure_reason"], "NPC did not maintain trough speed")
+        self.assertFalse(c.tunnel_vehicle_result["brake"].get("hold_verified", False))
+        self.assertFalse(c.tunnel_vehicle_result["interaction_complete"])
+        self.assertFalse(c.tunnel_vehicle_result["completed"])
+        c.grpc.set_vehicle_velocity.assert_called_with(a, 4.)
+        a.destroy.assert_not_called()
+
+    def test_late_reconfirmation_cannot_claim_continuous_observed_trough(self):
+        c, a, h = self.stable_brake()
+        self.tick_after_brake(c, a, h, .25, .125, gap=22, ego_speed=7.2)
+        self.tick_after_brake(c, a, h, .5, .300625, gap=22, speed=.7025)
+        # A good sample arriving after the confirmation budget cannot prove
+        # what happened in the unobserved interval.
+        self.tick_after_brake(c, a, h, 1., .550625, gap=22, speed=.5)
+        self.assertEqual(c.tunnel_vehicle_phase, "recovering_failed")
+        self.assertEqual(c.tunnel_vehicle_result["failure_reason"], "NPC did not maintain trough speed")
+        self.assertFalse(c.tunnel_vehicle_result["brake"].get("hold_verified", False))
+
+    def test_trough_refresh_command_rejection_is_observed_failure_not_success(self):
+        for method in ("set_vehicle_velocity", "set_vehicle_speed_limit"):
+            with self.subTest(method=method):
+                c, a, h = self.stable_brake()
+                self.tick_after_brake(c, a, h, .25, .125, gap=22, ego_speed=7.2)
+                getattr(c.grpc, method).side_effect = [False, True]
+                self.tick_after_brake(c, a, h, .5, .300625, gap=22, speed=.7025)
+                self.assertEqual(c.tunnel_vehicle_phase, "recovering_failed")
+                self.assertIn("command rejected", c.tunnel_vehicle_result["failure_reason"])
+                self.assertTrue(c.tunnel_vehicle_result["failed"])
+                self.assertFalse(c.tunnel_vehicle_result["brake"].get("hold_verified", False))
+                self.assertFalse(c.tunnel_vehicle_result["completed"])
+                c.grpc.set_vehicle_velocity.assert_called_with(a, 4.)
+                a.destroy.assert_not_called()
 
     def test_stable_follow_gap_report_and_immediate_trough_command(self):
         c, a, h = self.stable_brake()
@@ -887,7 +1116,11 @@ class TunnelVehicleTest(unittest.TestCase):
         self.assertEqual(metrics["hold_end"], c.brake_test_time + 8.25)
         self.assertEqual(metrics["actual_hold_duration_sec"], 8.0)
         self.assertEqual(metrics["resume_command_speed_mps"], 4.0)
-        self.assertEqual([cmd["speed_mps"] for cmd in metrics["commands"]], [0.5, 4.0])
+        commands = metrics["commands"]
+        self.assertEqual((commands[0]["label"], commands[-1]["label"]), ("sudden_drop", "resume"))
+        self.assertGreater(len(commands), 2)
+        self.assertTrue(all(cmd["speed_mps"] == .5 for cmd in commands[:-1]))
+        self.assertEqual(commands[-1]["speed_mps"], 4.)
         a.destroy.assert_not_called()
         self.tick_after_brake(c, a, h, 8.5, 5.125, gap=22, speed=4.0)
         self.assertTrue(metrics["resume_motion_verified"])
@@ -926,10 +1159,33 @@ class TunnelVehicleTest(unittest.TestCase):
         self.assertTrue(c.tunnel_vehicle_result["brake"]["recovery_motion_verified"])
         self.tick(c, a, h, 25, 140, 100, speed=4)
         a.destroy.assert_not_called()
+        self.tick(c, a, h, 35, 180, 167, speed=4)
+        self.assertEqual(c.tunnel_vehicle_phase, "recovering_failed")
+        a.destroy.assert_not_called()  # Standalone still requires 30 m clearance.
         with self.assertRaisesRegex(RuntimeError, "emergency gap"):
             self.tick(c, a, h, 38, 190, 137, speed=4)
         a.destroy.assert_called_once()
         self.assertEqual(c.grpc.spawn_vehicle.call_count, 1)
+
+    def test_later_missing_state_preserves_original_failed_brake_reason(self):
+        c, a, h = self.stable_brake()
+        self.tick_after_brake(c, a, h, .25, .125, gap=6, ego_speed=3.6)
+        original_failure = c.tunnel_vehicle_result["failure_reason"]
+        a.get_actor_state.return_value = None
+        c.now += .25
+        with self.assertRaisesRegex(RuntimeError, "state unavailable"):
+            h.update(c, c.now, {"x": 50., "y": 0., "speed": 0.}, 50.)
+        result = c.tunnel_vehicle_result
+        self.assertEqual(result["failure_reason"], original_failure)
+        self.assertEqual(result["brake"]["failure_reason"], original_failure)
+        self.assertIn("state unavailable", result["secondary_failure_reason"])
+        self.assertFalse(result["completed"])
+        self.assertFalse(result["interaction_complete"])
+        self.assertTrue(result["cleanup_verified"])
+        self.assertEqual(c.tunnel_vehicle_phase, "failed")
+        saved = json.loads(c.tunnel_vehicle_report_path.read_text())
+        self.assertEqual(saved["failure_reason"], original_failure)
+        self.assertIn("state unavailable", saved["secondary_failure_reason"])
 
     def test_command_acks_without_actual_drop_recover_and_mark_failed(self):
         c, a, h = self.stable_brake()
@@ -1054,6 +1310,7 @@ class TunnelVehicleTest(unittest.TestCase):
 
     def test_cut_in_direct_merge_verified_before_same_actor_route_handoff(self):
         c, a, h = self.begin_cut_in()
+        self.assertNotIn("route_endpoint", c.tunnel_vehicle_result["motion_commands"])
         self.tick(c, a, h, 6, 77, 52, speed=7, link="opposite", y=2, yaw=-10)
         c.grpc.set_vehicle_route.assert_not_called()
         self.tick(c, a, h, 7, 84, 59, speed=7, link="opposite", y=0.3, yaw=-3)
@@ -1063,6 +1320,7 @@ class TunnelVehicleTest(unittest.TestCase):
         self.assertFalse(c.tunnel_vehicle_result.get("lane_change_verified", False))
         c.grpc.set_vehicle_route.assert_called_once()
         self.assertEqual(c.grpc.set_vehicle_route.call_args.args[1], ["lane", "tail"])
+        self.assertEqual(set(c.grpc.set_vehicle_route.call_args.kwargs["route_waypoint_indices"]), {"lane"})
         c.grpc.set_vehicle_direct_control.assert_called_with(a, False, speed_mps=7.0)
         self.tick(c, a, h, 7.75, 89.25, 64, speed=7, link="lane")
         self.assertTrue(c.tunnel_vehicle_result["lane_change_verified"])

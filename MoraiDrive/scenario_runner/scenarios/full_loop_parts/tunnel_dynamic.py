@@ -347,6 +347,11 @@ class TunnelDynamicHandler:
             route_length = sum(math.hypot(b[0] - a[0], b[1] - a[1])
                                for a, b in zip(context.route_points[:-1], context.route_points[1:]))
         context.tunnel_dynamic_goal_s = trajectory_timing.goal_progress_s(route_length, context.cfg)
+        if context.cfg.get("competition_tunnel_scene") == "pedestrian":
+            # Keep the standalone tunnel window's scheduling budget while the
+            # competition driver continues over the rest of the full route.
+            context.tunnel_dynamic_goal_s = _number(
+                context.competition_tunnel_goal_s, "competition_tunnel_goal_s")
         context.tunnel_dynamic_report_path = None
         if context.cfg.get("profile_state_path"):
             context.tunnel_dynamic_report_path = (

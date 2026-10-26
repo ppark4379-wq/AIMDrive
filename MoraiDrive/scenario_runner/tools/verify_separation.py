@@ -14,12 +14,14 @@ from ..utils.map_loader import MGeoMapLoader
 from ..utils.transform_utils import polyline_length
 from ..scenarios.segment_modes.modes import MISSION_MODES
 from ..scenarios.segment_modes.scenario import MissionScenario
+from ..scenarios.full_loop_competition import FullLoopCompetitionScenario
 from .verify_segment_modes import verify_mission_mode
 
 
 EXPECTED_MAP = "R_KR_PR_K-city_2025"
 EXPECTED_SCENARIOS = {
     "full_loop": FullLoopScenario,
+    "full_loop_competition": FullLoopCompetitionScenario,
     "full_loop_after_static": FullLoopAfterStaticScenario,
     "full_loop_highway_tunnel_test": FullLoopHighwayTunnelTestScenario,
     **{name: MissionScenario for name in MISSION_MODES},
@@ -77,6 +79,7 @@ def verify_source_boundary(package_root):
         path
         for path in package_root.rglob("*.py")
         if path.name != "verify_separation.py"
+        and ".runtime" not in path.relative_to(package_root).parts
     )
     require(python_files, "No Python files found in separated package")
 

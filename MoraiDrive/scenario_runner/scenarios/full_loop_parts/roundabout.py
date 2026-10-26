@@ -30,8 +30,9 @@ def _roundabout_variant(self):
 
 
 def _select_common_speed_kph(self, npc_cfg):
-    """Choose one run-scoped speed for the basic roundabout mission only."""
-    if getattr(getattr(self, "mission_mode", None), "name", None) != "full_loop_roundabout":
+    """Share the basic mission's speed selection with competition full-course runs."""
+    if (getattr(getattr(self, "mission_mode", None), "name", None) != "full_loop_roundabout"
+            and getattr(self, "scenario_name", None) != "full_loop_competition"):
         return None
     selected = getattr(self, "roundabout_common_speed_kph", None)
     if selected is None:

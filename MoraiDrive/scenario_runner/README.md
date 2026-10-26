@@ -50,11 +50,45 @@ python3 -m scenario_runner.main_runner \
 
 ## 구간별 모드 선택
 
+전체 점검용 `full_loop_competition`은 기존 전체 경로·정적·동적·고속도로와
+외부 Expert 연결을 그대로 사용합니다. 회전교차로 공통 속도만 구간 단독 실행처럼
+10·15·20·25km/h 중 선택하고, 터널은 `legacy → static → pedestrian → vehicle`
+순서로 한 회차에 한 종류를 실행합니다. 기존 `full_loop`와 단독 명령은 변경하지 않습니다.
+
+```bash
+/usr/bin/python3 -m scenario_runner.main_runner --scenario full_loop_competition --once --no-sync-runtime
+# 한 프로세스에서 4회 전체 주행 (--once 제외)
+/usr/bin/python3 -m scenario_runner.main_runner --scenario full_loop_competition --max-runs 4 --no-sync-runtime
+```
+
+경쟁 모드의 순서·날씨·시간은 `.runtime/full_loop_competition_profile.json`에 따로 저장합니다.
+주행 준비가 완료된 회차를 기록하므로 `--once`로 재실행해도 다음 터널 종류로 이어집니다.
+준비 실패는 순서를 소비하지 않고, 준비 이후 충돌·중단된 회차는 소비합니다.
+시간은 직전과 다른 11/13/15시, 날씨는 첫 회차 랜덤 후 SUNNY/FOGGY 교대입니다.
+4종 고정 순환과 날씨 2종 교대가 맞물리므로 같은 터널 종류는 같은 날씨에 배정됩니다.
+회차·터널 종류·시드·시간·날씨·회전교차로 속도·종료 결과는
+`.runtime/competition_runs/`에 기록합니다. 차량은 기존 랜덤 후보 3종을 사용하며
+끼어들기를 임의로 추가하지 않습니다. 보행자·동물은 기존 `--tunnel-random-mix` 동작을 사용합니다.
+전체 주행은 터널 단독 종점에서도 Ego가 계속 진행하므로, 차량 정리에 구간 종료 조건을 추가합니다.
+상호작용이 완료되고 NPC가 기존 터널 밖 삭제 지점을, Ego가 단독 터널 종점을 모두 통과하면
+차량을 정리합니다. 실제 간격과 정리 사유를 기록하며, 단독 명령의 30m 이격 조건은 바꾸지 않습니다.
+터널 정적은 기존 활성 배치 라이브러리가 필요하며, 전용 단독 실행기의 Expert 제어·정지·설정 변경 없이
+환경 배치·실측·정리만 재사용합니다. 과거 단독 주행 승인을 새 전체 주행 성공으로 간주하지 않습니다.
+정적 장애물의 배치 간격은 주행 준비 단계에서 검증합니다. 주행 중에는 객체 식별·정지 상태·외부 객체 침입을
+확인하고 기존 전체 주행의 실제 충돌 판정을 사용하며, 주차 배치용 Ego 여유 간격을 다시 강제하지 않습니다.
+
+`--check`는 네 터널 종류의 전체 경로 연결을 오프라인 확인하며 순서나 날씨 기록을 바꾸지 않습니다.
+정적 라이브러리와 검증 자료는 Git에 포함되지 않으며, 기존 자료에 기록된 경로에서 접근할 수 있어야 합니다.
+다른 PC나 작업 경로에서는 자료 배치 후 `--check`를 먼저 확인합니다.
+회전교차로에서 다시 활성화한 Golf GTI·Genesis G90·Volvo XC90·Genesis GV80·Kia Carnival은
+MORAI 설치에도 해당 차량 파일이 있어야 합니다. 설치 폴더에서 복구한 차량 파일은 이 저장소에 포함되지 않습니다.
+
 위 실행 명령의 `--scenario` 값만 바꿉니다. 일반 사용 모드는 아래 표와 같습니다.
 
 | 모드 | 주행 범위 | 장애물·NPC |
 |---|---|---|
 | `full_loop` | 기존 전체 START → END | 기존 모든 이벤트 |
+| `full_loop_competition` | 같은 전체 START → END | 기존 일반 구간 + 회전교차로 4속도 랜덤 + 터널 4종 회차별 순환 |
 | `full_loop_normal` | 기존 전체 START → END | 러너 생성 장애물·NPC 없음 |
 | `full_loop_static` | 인덱스 483 → 753 (132.4m) | 정적 장애물만 랜덤 생성 |
 | `full_loop_dynamic` | 인덱스 753 → 1081 (160.0m) | 좁힌 NPC 배치 영역에서 승인된 동적 횡단을 1~2개 순차 실행 |

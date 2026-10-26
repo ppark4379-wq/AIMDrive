@@ -322,6 +322,7 @@ class FullLoopScenario(FullLoopDriveBase):
             "run_seed": self.run_seed,
             "saved_at_unix": time.time(),
         }
+        state.update(self.profile_state_metadata())
         previous = self.previous_profile_state
         for key in ("weather", "time_hour"):
             forced_key = {
@@ -344,6 +345,10 @@ class FullLoopScenario(FullLoopDriveBase):
             f.write("\n")
         os.replace(temporary, path)
         print(f"[FullLoop] profile state saved: {path}")
+
+    def profile_state_metadata(self):
+        """Optional run metadata; ordinary full_loop keeps its existing profile."""
+        return {}
 
     def restart_to_start_and_drive(self):
         raise RuntimeError(
