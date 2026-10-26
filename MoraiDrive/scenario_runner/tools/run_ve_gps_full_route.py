@@ -70,6 +70,8 @@ def configure_scenario(config, args):
     result['highway_merge_static_vehicle_explicitly_disabled'] = True
     result.setdefault('traffic_light_wait_override', {})['enabled'] = False
     result.setdefault('progress_watchdog', {}).update(enabled=True, timeout_sec=180.)
+    if os.environ.get('VE_PROGRESS_WATCHDOG_S'):
+        result['progress_watchdog']['timeout_sec'] = float(os.environ['VE_PROGRESS_WATCHDOG_S'])
     if args.ego_trace:
         result['ego_trace_path'] = str(args.ego_trace.resolve())
     if args.static_preset:
@@ -289,6 +291,11 @@ class LayoutMission(MissionScenario):
         return report
 
     def spawn_static_obstacle(self):
+        if os.environ.get('MORAI_NO_DEFAULT_STATIC'):
+            # Perception benchmark: the only obstacle is the one MORAI_EXTRA_OBSTACLES places.
+            self.static_obstacle_expected, self.static_obstacle_expectations = None, []
+            print('[FullLoop] default static obstacles OFF (MORAI_NO_DEFAULT_STATIC)', flush=True)
+            return None
         layout = self.cfg.get('gps_tunnel_layout')
         if not layout:
             return super().spawn_static_obstacle()

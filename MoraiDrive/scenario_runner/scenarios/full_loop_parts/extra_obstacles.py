@@ -20,5 +20,12 @@ def spawn_extra_obstacles(self):
         if actor is None:
             raise RuntimeError("Extra obstacle {} ({}) was not spawned".format(index, row["model"]))
         self.scenario_actors.append(actor)
+        # Props can fall through a road collider that has not streamed in yet: freeze them at the pose and prove it holds.
+        from .static_obstacle import lock_static_obstacle_transform
+        state, diagnostics = lock_static_obstacle_transform(
+            self, actor, str(actor.get_id()), transform, (row["x"], row["y"], row.get("z", 0.)))
+        if state is None:
+            raise RuntimeError("Extra obstacle {} ({}) could not be held at its pose: {}".format(
+                index, row["model"], str(diagnostics[-1])[:200]))
         print("[FullLoop] extra obstacle {} model={} at ({:.2f},{:.2f},{:.2f}) yaw={:.1f}".format(
             index, row["model"], row["x"], row["y"], row.get("z", 0.), row.get("yaw_deg", 0.)), flush=True)
