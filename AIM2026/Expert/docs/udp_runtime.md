@@ -10,6 +10,14 @@
 `config.yaml`, `config_local.yaml`의 센서 포트·장착 위치·회전·카메라 규격을 이 파일에 맞춘다.
 IP는 모두 127.0.0.1이며 현재 WSL 명령도 Windows Python을 실행한다.
 
+`run_static.sh`도 Windows `lmdrive`, `vldrive` 순서로 Expert Python을 선택한다.
+시나리오 실행기는 WSL 시스템 Python에 남고, 센서 수신·추론·제어는 Windows에서 실행한다.
+WSL NAT 환경에서 WSL Python으로 강제하면 Windows localhost 센서를 받을 수 없다.
+기존 강제 설정을 지우려면 `unset AIM_STATIC_EXPERT_PYTHON AIM_EXPERT_PYTHON`을 실행한다.
+명시적인 `--expert-python` 또는 위 환경 변수는 기본 선택보다 우선한다.
+대회판 차량 상태는 181바이트이므로 `local_status_bytes`를 지정하지 않는다.
+229/245바이트 로컬 빌드에서만 해당 값을 설정한다.
+
 | 항목 | MORAI Host Port | MORAI Destination Port |
 |---|---:|---:|
 | 전방 카메라 | 7501 | 9090 |
