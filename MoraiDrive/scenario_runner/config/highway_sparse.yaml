@@ -1,0 +1,101 @@
+# Native highway NPC settings before commit 8dbf5e42f4d294ac6a35ee5a077966cd7512ce3b.
+# Kept separately so sparse runs do not inherit dense traffic settings.
+# Exception: terminate spawn_8 before the lane-ending taper instead of merging.
+highway_npc:
+  # Fixed to a model already verified to spawn on this map via 26.R1 gRPC.
+  model: DEFAULT_SEDAN
+
+  # MORAI may allocate a runtime SpawnPoint ID before the object is ready
+  # for EnableSpawnPoint. Stabilize, retry, and recreate only that point.
+  spawn_point_lifecycle:
+    create_attempts: 3
+    create_settle_sec: 0.5
+    enable_attempts: 5
+    enable_retry_delay_sec: 0.5
+    disable_attempts: 3
+    disable_retry_delay_sec: 0.5
+    recreate_delay_sec: 1.0
+    max_runtime_replacements: 3
+    cleanup_settle_sec: 1.5
+
+  # Reference values stored in the official competition JSON. The 26.R1
+  # VehicleSpawnPointConfig protobuf does not expose these two fields, so
+  # native MORAI following/safety defaults provide the closest behavior.
+  reference_safety_distance_m: 5.0
+  reference_ttc_sec: 1.0
+
+  # Create SpawnPoints at setup but enable them only as Ego approaches.
+  # This avoids accumulating irrelevant traffic for several minutes before
+  # the full-loop Ego reaches the highway.
+  background_warmup_distance_m: 100.0
+  spawn_point_activation_retry_period_sec: 1.0
+  collection_maximum_total_vehicles: 12
+
+  # Highway-only native SpawnPoints copied from the competition sample.
+  # competition_spawn_4 starts beside/through the roundabout, so it is
+  # intentionally excluded: roundabout traffic is owned exclusively by
+  # roundabout_npc, which owns its population and placement policy.
+  # Enum values follow scenario_enum.proto:
+  #   vehicle length 2=MIDDLE_SIZE, parameter 2=VARIABLE,
+  #   velocity type 2=CUSTOM, lateral bias 1=FIX.
+  spawn_point_defaults: &highway_spawn_point_defaults
+    vehicle_length_types: [2]
+    is_close_loop: false
+    is_lane_change: false
+    parameter_type: 2
+    maximum_spawn_vehicle: 4
+    pause: true
+    spawn_velocity_type: 2
+    min_spawn_velocity_custom_kmh: 0.0
+    max_spawn_velocity_custom_kmh: 0.0
+    min_spawn_velocity_link_percent: 0.0
+    max_spawn_velocity_link_percent: 10.0
+    desired_velocity_type: 2
+    min_desired_velocity_link_percent: 85.0
+    max_desired_velocity_link_percent: 100.0
+    lateral_bias_mode: 1
+    min_lateral_bias_m: 0.0
+    max_lateral_bias_m: 0.0
+
+  spawn_points:
+    - <<: *highway_spawn_point_defaults
+      name: competition_spawn_10
+      id: 10
+      destination_id: 11
+      position: {x: 73.00800323486328, y: 265.6050109863281, z: 28.34600067138672}
+      model_name: ''
+      reference_vehicle_type_id: -1
+      min_spawn_period_sec: 5.0
+      max_spawn_period_sec: 5.0
+      min_desired_velocity_custom_kmh: 60.0
+      max_desired_velocity_custom_kmh: 60.0
+      start_link: {id: A2256W000029, point_idx: 167}
+      end_link: {id: A2256W000432, point_idx: 246}
+
+    - <<: *highway_spawn_point_defaults
+      name: competition_spawn_6
+      id: 6
+      destination_id: 7
+      position: {x: 65.76899719238281, y: 309.2770080566406, z: 28.28800010681152}
+      model_name: ''
+      reference_vehicle_type_id: -1
+      min_spawn_period_sec: 5.0
+      max_spawn_period_sec: 5.0
+      min_desired_velocity_custom_kmh: 40.0
+      max_desired_velocity_custom_kmh: 40.0
+      start_link: {id: A2256W000406, point_idx: 78}
+      end_link: {id: A2256W001105, point_idx: 83}
+
+    - <<: *highway_spawn_point_defaults
+      name: competition_spawn_8
+      id: 8
+      destination_id: 9
+      position: {x: 69.322998046875, y: 309.6799926757812, z: 28.32099914550781}
+      model_name: ''
+      reference_vehicle_type_id: -1
+      min_spawn_period_sec: 5.0
+      max_spawn_period_sec: 5.0
+      min_desired_velocity_custom_kmh: 50.0
+      max_desired_velocity_custom_kmh: 50.0
+      start_link: {id: A2256W000175, point_idx: 78}
+      end_link: {id: A2256W000434, point_idx: 300}

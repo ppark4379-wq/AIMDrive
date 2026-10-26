@@ -113,6 +113,8 @@ def build_plan(context):
                               offset_origin_link=origin_link, route_distance_m=absolute_s,
                               spawn_link_s_m=absolute_s - start,
                               x=x, y=y, z=z, yaw_deg=yaw, speed_kmh=speed))
+            if lane.get('retire_at_route_end', False):
+                plans[-1]['retire_at_route_end'] = True
     # Different destination lanes can share a one-lane upstream approach.
     # Check that their spawn slots do not overlap on that shared link.
     for index, first in enumerate(plans):
@@ -145,6 +147,18 @@ def build_plan(context):
         rng.shuffle(choices)
         for index, plan in enumerate(plans):
             plan['speed_kmh'] = float(choices[index % len(choices)])
+    lead_speed = config.get('downstream_lead_speed_kmh')
+    if lead_speed is not None:
+        lead_speed = float(lead_speed)
+        if not math.isfinite(lead_speed) or not 0 < lead_speed <= 100:
+            raise ValueError('Highway downstream lead speed must be in (0, 100] km/h')
+        lead_count = config.get('downstream_lead_count', 7)
+        if type(lead_count) is not int or not 1 <= lead_count <= len(plans):
+            raise ValueError('Highway downstream lead count must be within the NPC population')
+        # All lane routes start at the same upstream approach. Compare distance
+        # from that shared start to select the furthest downstream NPCs overall.
+        for lead in sorted(plans, key=lambda p: p['route_distance_m'], reverse=True)[:lead_count]:
+            lead['speed_kmh'] = lead_speed
     candidates = model_candidates(context)
     if len(candidates) < len(plans):
         raise RuntimeError(f'Need {len(plans)} distinct highway models; only {len(candidates)} available')
@@ -256,8 +270,44 @@ def prepare(context):
     print(f'[HighwayTraffic] target speeds km/h: {[p["speed_kmh"] for p in context.highway_npcs]}')
 
 
+def retire_lane_end_vehicles(context):
+    """Remove only owned taper-bound NPCs, before their lane ends.
+
+    Called on every activation tick, independently of merge evaluation, which
+    finishes earlier. The terminal route contains no converging/adjacent link.
+    """
+    retiring = [p for p in context.highway_npcs if p.get('retire_at_route_end')]
+    if not retiring:
+        return
+    try:
+        states = {str(s.actor_info.id.value): s for s in context.grpc.get_all_vehicle_states()}
+    except (AttributeError, TypeError):
+        return  # Missing telemetry is not evidence that an actor reached the end.
+    for item in retiring:
+        state = states.get(item['actor_id'])
+        if state is None:
+            continue
+        position = state.transform.location
+        x, y = float(position.x), float(position.y)
+        if not math.isfinite(x) or not math.isfinite(y):
+            continue
+        points = context.map_loader.get_link_points(item['route'][-1])
+        distance = project_distance_on_polyline(points, x, y)
+        px, py, _, _ = interpolate_on_polyline(points, distance)
+        if polyline_length(points) - distance > 5. or math.hypot(x-px, y-py) > 5.:
+            continue
+        if not context.grpc.destroy_vehicle_by_id(item['actor_id']):
+            item['actor'].set_pause(True)
+            raise RuntimeError('Cannot remove highway NPC at lane end: ' + item['label'])
+        context.scenario_actors.remove(item['actor'])
+        context.highway_npcs.remove(item)
+        print(f'[HighwayTraffic] LANE_END_REMOVED {item["label"]} link={item["route"][-1]}')
+        _persist(context, 'lane_end_removed')
+
+
 def activate(context, current_s, ego_state=None, elapsed=None):
     if context.highway_spawn_points_active:
+        retire_lane_end_vehicles(context)
         return True
     config = context.cfg['highway_npc']
     threshold = max(0., context.highway_activation_s - float(config.get('background_warmup_distance_m', 100.)))

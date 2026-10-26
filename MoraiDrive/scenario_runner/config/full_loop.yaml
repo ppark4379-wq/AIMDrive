@@ -412,6 +412,8 @@ scenarios:
       managed_traffic:
         randomize_adjacent_count: true
         speed_range_kmh: [20, 100]
+        downstream_lead_speed_kmh: 80.0
+        downstream_lead_count: 7
         flowing_traffic:
           enabled: true
           departure_link: A2256W000846
@@ -495,8 +497,9 @@ scenarios:
             offsets_m: [-25, -5, 15, 35, 55, 75]
             speed_kmh: 34.0
           - name: middle
-            # Continue beyond the mainline fork; never terminate in the barrel taper.
-            route: [A2256W000157, A2256W000868, A2256W000168, A2256W000419, A2256W000415, A2256W000404, A2256W000175, A2256W000410, A2256W000430, A2256W000434, A2256W000422, A2256W000153, A2256W000451, A2256W000446]
+            # End before 422 converges into the neighbouring lane at the taper.
+            route: [A2256W000157, A2256W000868, A2256W000168, A2256W000419, A2256W000415, A2256W000404, A2256W000175, A2256W000410, A2256W000430, A2256W000434]
+            retire_at_route_end: true
             offset_origin_link: A2256W000175
             offsets_m: [-460, -400, -340, -280, -250, -130, -55, 25, 65, 105]
             additional_upstream_offset_m: -190

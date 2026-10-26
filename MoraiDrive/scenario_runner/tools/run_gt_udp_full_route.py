@@ -20,11 +20,13 @@ from scenario_runner.scenarios.full_loop_scenario import FullLoopScenario
 from scenario_runner.scenarios.segment_modes.scenario import MissionScenario
 from scenario_runner.scenarios.segment_modes import events as mission_events
 from scenario_runner.utils.map_loader import MGeoMapLoader
+from scenario_runner.utils.highway_density import add_highway_density_argument, apply_highway_density
 from run_gt_udp_expert import running_controllers, write
 
 
 def configure_scenario(config, args):
     result = copy.deepcopy(config)
+    apply_highway_density(result, getattr(args, 'highway_density', None))
     result.setdefault('sync_runtime', {})['enabled'] = False
     result['clean_road_mode'] = False
     result['expert_speed_cap_kmh'] = args.speed_cap_kmh
@@ -195,6 +197,7 @@ def prepare_controller(global_config, config, args, output):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
+    add_highway_density_argument(parser)
     parser.add_argument('--check', action='store_true')
     parser.add_argument('--probe', action='store_true', help='소켓으로 수신만 검사; 주행·시나리오 변경 없음')
     parser.add_argument('--scenario', choices=('full_loop', 'full_loop_highway'), default='full_loop')
@@ -215,6 +218,8 @@ def main(argv=None):
     parser.add_argument('--control-source-port', type=int, default=7600)
     parser.add_argument('--control-format', choices=('single_steer55', 'front_rear59'), default='single_steer55')
     args = parser.parse_args(argv)
+    if args.highway_density is not None and args.scenario != 'full_loop_highway':
+        parser.error('--highway-density requires --scenario full_loop_highway')
     from scenario_runner.adapters.expert_controller import validate_max_velocity_kmh
     args.speed_cap_kmh = validate_max_velocity_kmh(args.speed_cap_kmh)
     if args.signal_source is None:

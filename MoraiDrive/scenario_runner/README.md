@@ -72,6 +72,36 @@ bash MoraiDrive/scenario_runner/tools/run_gt_udp_full_route.sh \
 GT Expert 고주로 검증은 아래 명령 한 번으로 Ctrl+C를 누를 때까지 반복합니다.
 기존 MORAI/ROS 연결이 준비된 터미널에서 실행합니다.
 
+고주로 NPC는 `--highway-density dense|sparse`로 선택합니다. 생략하면 현재의
+빽빽한 `dense` 설정을 유지합니다.
+
+| 옵션 | NPC 스폰 방식 |
+|---|---|
+| `dense` | 현재 25대 배치·순환 교통. 가장 하행 쪽 7대의 목표속도 80km/h 유지 |
+| `sparse` | `8dbf5e42f4d294ac6a35ee5a077966cd7512ce3b`의 부모 커밋에 있던 NPC 설정. 기존 3개 지점에서 5초 간격 생성, 지점당 최대 4대(총 최대 12대), 지점별 목표속도 60·40·50km/h |
+
+```bash
+# 빽빽한 배치, 1회
+bash scenario_runner/tools/run_gt_scenario.sh highway --highway-density dense --once
+# 이전의 널널한 스폰, 1회
+bash scenario_runner/tools/run_gt_scenario.sh highway --highway-density sparse --once
+```
+
+`--once`를 빼면 반복합니다. VE 실행(`run_ve_scenario.sh highway`)과 UDP 실행
+(`run_gt_udp_full_route.sh --scenario full_loop_highway`)에도 같은 옵션을 붙일 수 있습니다.
+이 옵션은 고주로 단독 실행에만 적용되며, 이동 NPC 설정만 선택합니다.
+정차 차량·Ego·주행 구간 등 다른 조건은 각 실행 명령의 기존 설정을 유지합니다.
+`sparse`는 현재의 25대 사전 배치·상류 재생성 대신 기존 MORAI SpawnPoint를 사용하므로,
+12대는 동시 생성 보장이 아닌 상한입니다. 이전 설정은 `config/highway_sparse.yaml`에 보관합니다.
+
+두 모드 모두 차선 종료 합류부의 NPC는 옆 차선으로 이어지는 `A2256W000422`에
+진입하지 않도록 기존 차선의 마지막 링크 `A2256W000434`에서 경로를 끝냅니다.
+`dense`의 해당 차량은 끝점 5m 이내에서 삭제하며 재생성하지 않습니다. 합류 평가가
+끝난 뒤에도 삭제 검사는 계속됩니다. 따라서 25대는 초기 배치 대수입니다.
+`sparse`는 차선변경 금지(`is_lane_change: false`)와 단방향 경로를 유지하고
+해당 SpawnPoint 목적지를 같은 끝점으로 바꿔 MORAI의 목적지 도착 처리를 사용합니다.
+다른 차량의 초기 배치·속도·출발 조건은 유지합니다.
+
 ```bash
 cd ~/AIMDrive/MoraiDrive
 bash scenario_runner/tools/run_gt_scenario.sh highway
@@ -148,7 +178,10 @@ Ego ETA 계산이나 시나리오 시작 직후 출발은 사용하지 않습니
 초기 배치는 본선 기준 `[-25, -5, 15, 35, 55, 75]`m 중 앞에서 선택한 대수만큼 사용합니다.
 초기 중심 간격은 20m입니다. 5대·6대 회차의 추가 슬롯은 55·75m입니다.
 `speed_range_kmh: [20, 100]`에 따라 회차별로 20~100km/h의 정수 속도를 섞어 NPC 25대에
-각각 다른 목표속도를 배정합니다. 동일 시드에서는 같은 배정이며, 배치·차종·대수 선택과는
+각각 목표속도를 배정합니다. 공통 상류 시작점으로부터 경로상 거리가 큰 순서로
+가장 하행 쪽 NPC 총 7대(`downstream_lead_count: 7`)는
+`downstream_lead_speed_kmh: 80.0`으로 고정하며, 나머지 차량의 무작위 속도는 유지합니다.
+동일 시드에서는 같은 배정이며, 배치·차종·대수 선택과는
 별도 난수로 결정합니다. 각 NPC는 회차 동안 배정된 목표속도를 사용하고 재공급 때도 유지합니다.
 실제 속도는 선행 차량과 MORAI AI의 가감속에 따라 달라질 수 있습니다. 속도 제한은 m/s,
 주행 속도 명령은 km/h로 전달하며, 로그 `target speeds km/h`와 `highway_traffic.json`에 기록합니다.
