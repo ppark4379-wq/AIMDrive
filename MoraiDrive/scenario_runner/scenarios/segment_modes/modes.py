@@ -133,7 +133,7 @@ MISSION_MODES = {
 }
 # Tunnel static collection uses its guarded fixture/evidence adapter, while
 # primary modes use the shared ordinary scenario constructor.
-PRIMARY_SCENARIOS = ("full_loop",) + tuple(
+PRIMARY_SCENARIOS = ("full_loop", "full_loop_competition") + tuple(
     name for name in MISSION_MODES if name != "full_loop_tunnel_static"
 )
 FULL_LOOP_ZONES = ZoneSelection(
@@ -150,7 +150,7 @@ def get_mission_mode(name):
 
 def get_scenario_zones(name):
     """Return the canonical enabled zones for every public collection mode."""
-    if name == "full_loop":
+    if name in ("full_loop", "full_loop_competition"):
         return FULL_LOOP_ZONES
     return get_mission_mode(name).zones
 

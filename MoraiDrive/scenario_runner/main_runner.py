@@ -18,12 +18,14 @@ from .scenarios.full_loop_scenario import (
 from .utils.map_loader import MGeoMapLoader
 from .scenarios.segment_modes.modes import MISSION_MODES, automatic_repeat_enabled
 from .scenarios.segment_modes.scenario import MissionScenario
+from .scenarios.full_loop_competition import FullLoopCompetitionScenario
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = PACKAGE_ROOT.parent
 SUPPORTED_SCENARIOS = {
     "full_loop": FullLoopScenario,
+    "full_loop_competition": FullLoopCompetitionScenario,
     "full_loop_after_static": FullLoopAfterStaticScenario,
     "full_loop_highway_tunnel_test": FullLoopHighwayTunnelTestScenario,
     **{name: MissionScenario for name in MISSION_MODES},
@@ -357,6 +359,9 @@ def run_offline_check(global_cfg, scenario_cfg, scenario_name):
         print("[TrafficLight] 실제 Expert 경로·신호 정책 오프라인 검증:")
         print(json.dumps(verify_traffic_light_expert(global_cfg, scenario_cfg),
                          indent=2, ensure_ascii=False, allow_nan=False))
+    if scenario_name == "full_loop_competition":
+        from .scenarios.full_loop_competition import verify_competition
+        verify_competition(global_cfg, scenario_cfg, MGeoMapLoader(global_cfg['paths']['mgeo_root']))
     if scenario_name == "full_loop_tunnel_vehicle":
         from .tools.generate_tunnel_dynamic_candidates import load_catalog_inputs
         from .scenarios.full_loop_parts.tunnel_vehicle_dynamic import prepare_tunnel_vehicle

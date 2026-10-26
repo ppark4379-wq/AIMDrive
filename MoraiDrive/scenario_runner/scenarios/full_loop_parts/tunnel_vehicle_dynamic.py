@@ -406,7 +406,12 @@ class TunnelVehicleHandler:
         ):
             return
         result = context.tunnel_vehicle_result
-        result["failure_reason"] = str(error) or type(error).__name__
+        reason = str(error) or type(error).__name__
+        brake = result.get("brake", {})
+        primary = brake.get("failure_reason") if brake.get("failure_pending") else None
+        if primary and reason != primary:
+            result["secondary_failure_reason"] = reason
+        result["failure_reason"] = primary or reason
         self._phase(context, "failed", result["failure_reason"])
         try:
             self._remove(context)
@@ -577,6 +582,40 @@ class TunnelVehicleHandler:
                 self._fail(context, "Oncoming vehicle entered Ego lane")
         return sample
 
+    def _native_route_endpoint(self, context, route):
+        """Resolve the native destination on the already planned final link."""
+        plan = context.tunnel_vehicle_plan
+        try:
+            cleanup_links = plan["cleanup_route_links"]
+            if not route or list(route) != cleanup_links[-len(route):]:
+                raise ValueError("assigned links differ from the planned continuation")
+            points = context.map_loader.get_link_points(route[-1])
+            if len(points) < 2:
+                raise ValueError("final link has insufficient geometry")
+            waypoint = len(points) - 1
+            x, y, z = (
+                _finite(points[waypoint][i], "native_route_endpoint_xyz")
+                for i in range(3)
+            )
+            endpoint_s = _finite(project_distance_on_polyline(
+                context.tunnel_vehicle_cleanup_points, x, y
+            ), "native_route_endpoint_s_m")
+            cleanup_s = _finite(plan["cleanup_route_s_m"], "cleanup_route_s_m")
+            if endpoint_s <= cleanup_s:
+                raise ValueError("destination does not extend beyond planned cleanup")
+        except (KeyError, IndexError, TypeError, ValueError) as error:
+            self._fail(context, f"Tunnel vehicle native route endpoint invalid: {error}")
+        return {
+            "policy": "explicit_last_waypoint_after_cleanup",
+            "link": route[-1],
+            "waypoint": waypoint,
+            "x": x, "y": y, "z": z,
+            "npc_route_s_m": endpoint_s,
+            "cleanup_route_s_m": cleanup_s,
+            "continuation_margin_m": endpoint_s - cleanup_s,
+            "assigned_route_links": list(route),
+        }
+
     def _spawn(self, context, ego):
         plan = context.tunnel_vehicle_plan
         p = plan["spawn_target"]
@@ -650,16 +689,16 @@ class TunnelVehicleHandler:
                     velocity_accepted=True,
                 )
         else:
+            route = plan["route_links"][p["route_index"] :]
+            endpoint = self._native_route_endpoint(context, route)
+            context.tunnel_vehicle_result["motion_commands"]["route_endpoint"] = endpoint
             actor = context._spawn_highway_vehicle(
                 context.grpc.make_transform(p["x"], p["y"], p["z"], p["yaw_deg"]),
-                (
-                    [plan["route_links"][0]]
-                    if plan["behavior"] == "vehicle_cut_in"
-                    else plan["route_links"][p["route_index"] :]
-                ),
+                route,
                 p["waypoint"],
                 plan["behavior"],
                 spawn_speed,
+                end_waypoint=endpoint["waypoint"],
                 configure_ai=False,
                 unpause=not wait_departure,
                 spawn_paused=wait_departure,
@@ -761,6 +800,15 @@ class TunnelVehicleHandler:
         if not all(isinstance(v, (int, float)) and math.isfinite(v) for v in values):
             self._fail(context, "Runtime Ego state is malformed")
         full_s = current_s + context.tunnel_vehicle_route_prefix_s
+        if context.cfg.get("competition_tunnel_scene") == "vehicle":
+            competition_start_s = _finite(
+                context.competition_tunnel_start_s, "competition_tunnel_start_s")
+            if current_s < competition_start_s:
+                return self._waiting(context, {
+                    "ego_speed_mps": max(0.0, ego["speed"] / 3.6),
+                    "progress_m": full_s - plan["entry_s_m"],
+                    "ego_s_m": full_s,
+                }, "before_competition_tunnel_start")
         projected_s = project_distance_on_polyline(
             context.tunnel_vehicle_route_points, ego["x"], ego["y"]
         )
@@ -1030,14 +1078,53 @@ class TunnelVehicleHandler:
             recovery and result["brake"].get("recovery_motion_verified")
         ):
             return False
+        if sample["npc_route_s_m"] < plan["cleanup_route_s_m"]:
+            return False
+        clearance = math.hypot(
+            sample["x"] - ego_state["x"], sample["y"] - ego_state["y"]
+        )
+        clearance_met = clearance >= cfg["cleanup_ego_clearance_m"]
+        scene_boundary = None
         if (
-            sample["npc_route_s_m"] >= plan["cleanup_route_s_m"]
-            and math.hypot(sample["x"] - ego_state["x"], sample["y"] - ego_state["y"])
-            >= cfg["cleanup_ego_clearance_m"]
+            not clearance_met
+            and (not recovery or result["brake"].get("recovery_motion_verified"))
+            and getattr(context, "scenario_name", None) == "full_loop_competition"
+            and context.cfg.get("competition_tunnel_scene") == "vehicle"
         ):
+            goal_s = _finite(
+                context.competition_tunnel_goal_s, "competition_tunnel_goal_s"
+            )
+            ego_s = context.tunnel_vehicle_last_ego_s + (
+                context.tunnel_vehicle_route_prefix_s
+            )
+            if ego_s >= goal_s:
+                # The full-course Ego keeps driving after the dedicated tunnel
+                # mission's goal. A following Ego may therefore never fall 30 m
+                # behind this NPC before its native route ends. End only this
+                # scene after the original outside-tunnel continuation. A failed
+                # recovery is removed here with its failure outcome preserved;
+                # keep actual clearance distinct from the original criterion.
+                scene_boundary = {
+                    "ego_s_m": ego_s,
+                    "ego_goal_s_m": goal_s,
+                    "npc_route_s_m": sample["npc_route_s_m"],
+                    "npc_cleanup_route_s_m": plan["cleanup_route_s_m"],
+                    "outcome": "failed_recovery" if recovery else "verified_interaction",
+                }
+        if clearance_met or scene_boundary is not None:
             result["cleanup_observation"] = dict(sample)
+            result["cleanup_actual_ego_clearance_m"] = clearance
+            result["cleanup_required_ego_clearance_m"] = cfg["cleanup_ego_clearance_m"]
+            result["cleanup_ego_clearance_met"] = clearance_met
+            if scene_boundary is not None:
+                result["cleanup_scene_boundary"] = scene_boundary
             self._remove(context)
-            result["cleanup_reason"] = "outside_tunnel_continuation_and_ego_clearance"
+            result["cleanup_reason"] = (
+                ("competition_tunnel_failed_recovery_boundary" if recovery
+                 else "competition_tunnel_scene_boundary")
+                if scene_boundary is not None
+                else "outside_tunnel_continuation_and_ego_clearance"
+            )
             if recovery:
                 result["completed"] = False
                 self._phase(context, "failed", result["failure_reason"])
@@ -1368,13 +1455,12 @@ class TunnelVehicleTraffic:
 
 def prepare_tunnel_vehicle(context):
     context.tunnel_vehicle_handler = None
-    if getattr(
-        context, "scenario_name", None
-    ) != "full_loop_tunnel_vehicle" or not context.cfg.get(
-        "tunnel_vehicle_dynamic", {}
-    ).get(
-        "enabled", False
-    ):
+    scenario_name = getattr(context, "scenario_name", None)
+    competition_vehicle = (
+        scenario_name == "full_loop_competition"
+        and context.cfg.get("competition_tunnel_scene") == "vehicle")
+    enabled = context.cfg.get("tunnel_vehicle_dynamic", {}).get("enabled", False)
+    if (scenario_name != "full_loop_tunnel_vehicle" and not competition_vehicle) or not enabled:
         return False
     if context.clean_road_mode:
         raise ValueError("tunnel_vehicle_dynamic cannot run with clean_road_mode")
