@@ -1,0 +1,10 @@
+# Optional machine-specific overrides. Copy to local.yaml when needed.
+grpc:
+  # 기본 auto를 유지하거나 MORAI가 다른 host에 있을 때만 명시한다.
+  host: auto
+  port: 7789
+
+paths:
+  # Keep "auto" when the standard current-repo or AIMDrive layout is used.
+  grpc_src: auto
+  expert_root: auto

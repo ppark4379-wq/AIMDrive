@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package morai_sim_api.infrastructure;
+
+import "morai/common/object_identifier.proto";
+import "morai/infrastructure/infrastructure_enum.proto";
+
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Infrastructure";
+option optimize_for = SPEED;
+
+/**
+ * 신호등 정보 조회를 위한 매개변수
+ */
+message GetTrafficLightInfoParam
+{
+    // 요청 타입 
+    GetTrafficLightInfoType type = 1;
+
+    // 값
+    string value = 2;
+}
+
+/**
+ * 신호등 정보
+ */
+message TrafficLightInfo
+{
+    // 신호등 아이디, 신호등 상태를 얻어오지 못하면 비어있는 문자열을 반환한다.
+	ObjectIdentifier id = 2;
+
+    // 신호등의 상태
+	TrafficLightColor color = 3;
+}
+
+/**
+ * 신호등 정보 리스트
+ */
+message TrafficLightInfoList
+{
+	repeated TrafficLightInfo res_list = 1;
+}
+
+/**
+ * 신호등 상태 설정을 위한 매개변수
+ */
+message TrafficLightStateParam
+{
+    // 신호등 정보
+    TrafficLightInfo info = 1;
+
+    /**
+     * True : 일시적으로 신호등 color 변경, False : 영구적인 신호등 color 변경
+     * 단, 기차 신호등일 때는 의미 없음
+     */
+	bool is_impulse = 2;
+
+	// True : tl_id와 동일한 진입로에 위치한 신호등들의 color 변경, Fasle : tl_id에 해당하는 신호등만 color 변경
+	bool set_sibling = 3;
+}
+
+/**
+ * 신호등 스케쥴. 신호등 스케쥴은 교차로를 통해 설정한다.
+ */
+message TrafficLightSchedule
+{    
+	message Vehicle
+    {
+		int32 duration = 1;
+		repeated string str_light_color_list = 2;
+	}
+	message Pedestrian
+    {
+		int32 tl_state_idx = 1;
+		int32 synced_tl_idx = 2;
+		int32 before_sec = 3;
+		int32 green_light_sec = 4;
+		int32 flicker_light_sec = 5;
+	}
+	message Yellow
+    {
+		int32 duration = 1;
+	}
+}

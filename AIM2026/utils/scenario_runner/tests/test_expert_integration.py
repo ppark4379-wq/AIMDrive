@@ -1,0 +1,475 @@
+# Runtime signal topology export, without ROS or starting an Expert process.
+import json
+import tempfile
+import unittest
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+
+from ..adapters.expert_controller import ExpertController
+from ..core.full_loop_drive_base import FullLoopDriveBase
+from ..core import full_loop_drive_base
+
+
+class ExpertSignalRouteExportTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        config = self.root / "expert/src/config/config.json"
+        config.parent.mkdir(parents=True)
+        config.write_text(json.dumps({
+            "map": {"route_signal_route_links": ["STALE"], "route_signal_targets": {"stale": True}},
+            "planning": {"velocity_profile": {"max_velocity": 60}},
+        }), encoding="utf-8")
+
+    def controller(self, links=None, speed_cap=None):
+        return ExpertController(
+            expert_root=str(self.root / "expert"), runtime_root=str(self.root / "runtime"),
+            map_name="test", mgeo_root=str(self.root / "map"),
+            route_points=[(0, 0), (1, 0)], route_signal_route_links=links, speed_cap_kmh=speed_cap,
+        )
+
+    def test_defaults_follow_current_expert_speed_settings_without_changing_source(self):
+        source = self.root / "expert/src/config/config.json"
+        for maximum, window in ((37, 23), (43, 31)):
+            with self.subTest(maximum=maximum, window=window):
+                original = json.loads(source.read_text())
+                original["planning"]["velocity_profile"].update(
+                    max_velocity=maximum, window_size=window,
+                )
+                source.write_text(json.dumps(original))
+                before = source.read_bytes()
+                controller = self.controller()
+                runtime = json.loads(Path(controller.runtime_config_path).read_text())
+                self.assertEqual(runtime["planning"], original["planning"])
+                self.assertTrue(controller.speed_contract["inherited"])
+                self.assertIsNone(controller.requested_max_velocity_kmh)
+                self.assertIsNone(controller.speed_cap_kmh)
+                self.assertEqual(source.read_bytes(), before)
+
+    def test_runtime_speed_cap_limits_highway_preserves_lower_limits_and_source(self):
+        source = self.root / "expert/src/config/config.json"
+        config = json.loads(source.read_text())
+        config["planning"]["velocity_profile"].update(
+            max_velocity=100, speed_limit_zones=[
+                {"name": "highway", "max_velocity": 100},
+                {"name": "slow", "max_velocity": 20}])
+        source.write_text(json.dumps(config))
+        before = source.read_bytes()
+        controller = self.controller(speed_cap=60)
+        runtime = json.loads(Path(controller.runtime_config_path).read_text())
+        profile = runtime["planning"]["velocity_profile"]
+        self.assertEqual(profile["max_velocity"], 60)
+        self.assertEqual([z["max_velocity"] for z in profile["speed_limit_zones"]], [60, 20])
+        self.assertEqual(source.read_bytes(), before)
+        unbounded = self.controller()
+        profile = json.loads(Path(unbounded.runtime_config_path).read_text())["planning"]["velocity_profile"]
+        self.assertEqual(profile["max_velocity"], 100)
+        self.assertEqual([z["max_velocity"] for z in profile["speed_limit_zones"]], [100, 20])
+
+    def test_uncapped_zone_keeps_its_own_limit_under_a_runtime_cap(self):
+        source = self.root / "expert/src/config/config.json"
+        config = json.loads(source.read_text())
+        config["planning"]["velocity_profile"].update(
+            max_velocity=100, speed_limit_zones=[
+                {"name": "high_speed_to_tollgate", "max_velocity": 100},
+                {"name": "slow", "max_velocity": 80}])
+        source.write_text(json.dumps(config))
+        controller = ExpertController(
+            expert_root=str(self.root / "expert"), runtime_root=str(self.root / "runtime"),
+            map_name="test", mgeo_root=str(self.root / "map"), route_points=[(0, 0), (1, 0)],
+            speed_cap_kmh=60, uncapped_speed_zones=["high_speed_to_tollgate"])
+        profile = json.loads(Path(controller.runtime_config_path).read_text())["planning"]["velocity_profile"]
+        self.assertEqual(profile["max_velocity"], 60)
+        self.assertEqual([z["max_velocity"] for z in profile["speed_limit_zones"]], [100, 60])
+
+    def test_invalid_speed_cap_rejected(self):
+        for value in (0, -1, float("nan"), float("inf"), True):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                self.controller(speed_cap=value)
+
+    def test_exports_full_ordered_links_for_cropped_path_and_clears_stale_targets(self):
+        links = ["BEFORE-CROP", "CROP-APPROACH", "LEFT-EXIT", "AFTER-CROP"]
+        controller = self.controller(links)
+        config = json.loads(Path(controller.runtime_config_path).read_text(encoding="utf-8"))
+        self.assertEqual(config["map"]["route_signal_route_links"], links)
+        self.assertNotIn("route_signal_targets", config["map"])
+        self.assertIsNone(controller.process)
+        links.append("MUTATED-CALLER")
+        self.assertEqual(controller.route_signal_route_links[-1], "AFTER-CROP")
+
+    def test_missing_contract_preserves_legacy_mode_without_stale_route_from_base_config(self):
+        controller = self.controller()
+        config = json.loads(Path(controller.runtime_config_path).read_text(encoding="utf-8"))
+        self.assertNotIn("route_signal_route_links", config["map"])
+        self.assertNotIn("route_signal_targets", config["map"])
+
+    def test_invalid_explicit_route_contract_fails_before_runtime_export(self):
+        for links in ([], "APPROACH", [None], [""], ["   "], [12]):
+            with self.subTest(links=links), self.assertRaisesRegex(ValueError, "ordered list"):
+                self.controller(links)
+        self.assertFalse((self.root / "runtime/path.csv").exists())
+
+    def test_drive_base_passes_original_full_links_instead_of_cropped_link_selection(self):
+        context = SimpleNamespace(
+            global_cfg={"paths": {"expert_root": "expert", "runtime_root": "runtime",
+                                  "mgeo_root": "map"}},
+            cfg={}, route_points=[(10, 0), (11, 0)], start_link="CROP", end_link="END",
+            route_links=["CROP", "END"],
+            route_definition={"route_links": ["START", "CROP", "LEFT-EXIT", "END", "TAIL"]},
+        )
+        with patch.object(full_loop_drive_base, "ExpertController") as export:
+            FullLoopDriveBase.setup_expert_controller(context)
+        self.assertEqual(export.call_args.kwargs["route_signal_route_links"],
+                         context.route_definition["route_links"])
+
+
+# The Expert must use the same ROS message build as the MORAI bridge.
+import sys
+
+from ..adapters.expert_process import configure_ros_message_path
+
+
+class ExpertMessagePathTest(unittest.TestCase):
+    def test_bundled_messages_override_inherited_old_overlay(self):
+        with tempfile.TemporaryDirectory() as root:
+            message_path = Path(root).resolve() / "devel/lib/python3/dist-packages"
+            package = message_path / "morai_msgs/msg"
+            package.mkdir(parents=True)
+            (package / "__init__.py").touch()
+            inherited = ["/home/seoyeon/morai_ws/devel/lib/python3/dist-packages",
+                         str(message_path), "/opt/ros/noetic/lib/python3/dist-packages"]
+            with patch.object(sys, "path", inherited.copy()):
+                self.assertEqual(configure_ros_message_path(root), message_path)
+                configure_ros_message_path(root)
+                self.assertEqual(sys.path[0], str(message_path))
+                self.assertEqual(sys.path.count(str(message_path)), 1)
+                self.assertIn(inherited[0], sys.path)
+
+    def test_external_expert_without_message_build_keeps_environment(self):
+        with tempfile.TemporaryDirectory() as root:
+            inherited = sys.path.copy()
+            with patch.object(sys, "path", inherited.copy()):
+                self.assertIsNone(configure_ros_message_path(root))
+                self.assertEqual(sys.path, inherited)
+
+
+# Regression tests using the installed, unmodified external expert initializer.
+#
+# No simulator/ROS connection or expert process control loop is started.
+# Temporary runtime exports stay inside scenario_runner/.runtime.
+import copy
+import csv
+import io
+import os
+import subprocess
+from contextlib import redirect_stdout
+from unittest.mock import Mock
+
+from ..main_runner import PACKAGE_ROOT, load_configuration
+from ..scenarios.segment_modes import events as mission_events
+from ..scenarios.segment_modes import expert as mission_expert
+from ..scenarios.segment_modes.route import RouteWindow
+from ..scenarios.segment_modes.scenario import MissionScenario
+from ..utils.map_loader import MGeoMapLoader
+from .test_segment_modes import make_grpc
+
+
+EXPERT_INITIALIZE = """
+import numpy as np
+from AIM2026.Expert.src.autonomous_driving import AutonomousDriving
+from AIM2026.Expert.src.config.config import Config
+driver = AutonomousDriving()
+profile = driver.path_manager.velocity_profile
+assert len(profile) == len(driver.path)
+assert np.isfinite(profile).all()
+expected_jamming = Config()['planning'].get('jamming', {}).get('enabled', True)
+assert (driver.lattice_planning_process.recorded_jamming is not None) == expected_jamming
+print('REAL_EXPERT_INIT_OK points=' + str(len(profile)))
+"""
+
+
+class MissionExpertTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        with redirect_stdout(io.StringIO()):
+            cls.global_cfg, _, cls.base_cfg = load_configuration()
+        cls.map_loader = MGeoMapLoader(cls.global_cfg["paths"]["mgeo_root"])
+
+    def setUp(self):
+        (PACKAGE_ROOT / ".runtime").mkdir(parents=True, exist_ok=True)
+        self.tmp = tempfile.TemporaryDirectory(
+            prefix="mission-expert-test-", dir=PACKAGE_ROOT / ".runtime",
+        )
+        self.addCleanup(self.tmp.cleanup)
+
+    def make_scenario(self, name):
+        global_cfg, cfg = copy.deepcopy(self.global_cfg), copy.deepcopy(self.base_cfg)
+        global_cfg["paths"]["runtime_root"] = self.tmp.name
+        cfg["mission_mode"] = name
+        cfg["route_debug_enabled"] = False
+        cfg["profile_state_path"] = str(Path(self.tmp.name) / "profile.json")
+        scenario = MissionScenario(make_grpc(cfg), self.map_loader, global_cfg, cfg)
+        with redirect_stdout(io.StringIO()):
+            mission_events.prepare_mission(scenario)
+            scenario.route_definition = scenario.load_route_definition()
+            scenario.prepare_full_loop_route()
+        return scenario
+
+    def test_roundabout_uses_original_expert_maximum_and_curvature_window(self):
+        source = Path(self.global_cfg["paths"]["expert_root"]) / "src/config/config.json"
+        before = source.read_bytes()
+        original = json.loads(before)["planning"]["velocity_profile"]
+        scenario = self.make_scenario("full_loop_roundabout")
+        with redirect_stdout(io.StringIO()):
+            scenario.setup_expert_controller()
+        controller = scenario.expert_controller
+        runtime = json.loads(Path(controller.runtime_config_path).read_text())
+        profile = runtime["planning"]["velocity_profile"]
+        self.assertEqual(profile["max_velocity"], original["max_velocity"])
+        self.assertEqual(profile["window_size"], original["window_size"])
+        self.assertTrue(controller.speed_contract["inherited"])
+        self.assertIsNone(controller.speed_cap_kmh)
+        self.assertEqual(Path(controller.expert_root), source.parents[2])
+        self.assertEqual(source.read_bytes(), before)
+
+    def test_highway_temporary_60_cap_reaches_real_expert_profile(self):
+        scenario = self.make_scenario("full_loop_highway")
+        scenario.cfg["expert_speed_cap_kmh"] = 60.0
+        with redirect_stdout(io.StringIO()):
+            scenario.setup_expert_controller()
+        controller = scenario.expert_controller
+        config = json.loads(Path(controller.runtime_config_path).read_text())
+        vp = config["planning"]["velocity_profile"]
+        self.assertLessEqual(vp["max_velocity"], 60.0)
+        self.assertTrue(vp["speed_limit_zones"])
+        self.assertTrue(all(z["max_velocity"] <= 60 for z in vp["speed_limit_zones"]))
+        result = self.initialize_expert(controller, EXPERT_INITIALIZE + "\nassert max(profile) <= 60.0/3.6 + 1e-6\n")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def initialize_expert(self, controller, script=EXPERT_INITIALIZE):
+        environment = os.environ.copy()
+        environment.update({
+            "PYTHONPATH": str(Path(controller.expert_root).parents[1]) + os.pathsep + environment.get("PYTHONPATH", ""),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "GT_BEV_CONFIG_PATH": controller.runtime_config_path,
+            "GT_BEV_PATH_CSV": controller.runtime_path_csv,
+            "GT_BEV_MAP_DIR": controller.mgeo_root,
+            "GT_BEV_DIRECT_USE_ENV_CONFIG": "1",
+        })
+        return subprocess.run(
+            [sys.executable, "-B", "-c", script],
+            env=environment, cwd=self.tmp.name, capture_output=True,
+            text=True, timeout=45,
+        )
+
+    def test_three_reported_crashes_then_real_expert_initializes(self):
+        for name, last_index, expected_zone_names in (
+            ("full_loop_static", 270, ()),
+            ("full_loop_dynamic", 328, ("north_crosswalk_pair",)),
+            ("full_loop_roundabout", 307, ()),
+            ("full_loop_roundabout_nonuniform", 307, ()),
+            ("full_loop_roundabout_speed_random", 307, ()),
+            ("full_loop_roundabout_brake", 307, ()),
+        ):
+            with self.subTest(mode=name):
+                scenario = self.make_scenario(name)
+                with redirect_stdout(io.StringIO()):
+                    FullLoopDriveBase.setup_expert_controller(scenario)
+                controller = scenario.expert_controller
+                before = json.loads(Path(controller.runtime_config_path).read_text())
+                route = Path(controller.runtime_path_csv).read_bytes()
+                failed = self.initialize_expert(controller)
+                self.assertNotEqual(failed.returncode, 0)
+                self.assertIn(
+                    f"Open-path speed zone ends before it starts: {last_index} -> 0",
+                    failed.stderr,
+                )
+                with redirect_stdout(io.StringIO()):
+                    scenario.setup_expert_controller()
+                controller = scenario.expert_controller
+                after = json.loads(Path(controller.runtime_config_path).read_text())
+                expected = copy.deepcopy(before)
+                zones = expected["planning"]["velocity_profile"]["speed_limit_zones"]
+                expected["planning"]["velocity_profile"]["speed_limit_zones"] = [
+                    zone for zone in zones
+                    if zone["name"] in expected_zone_names
+                ]
+                self.assertEqual(after, expected)
+                extended_route = Path(controller.runtime_path_csv).read_bytes()
+                self.assertTrue(extended_route.startswith(route))
+                self.assertGreater(len(extended_route), len(route))
+                success = self.initialize_expert(controller)
+                self.assertEqual(success.returncode, 0, success.stdout + success.stderr)
+                expected_points = extended_route.count(bytes([10])) - 1
+                self.assertIn(f"REAL_EXPERT_INIT_OK points={expected_points}", success.stdout)
+
+    def test_normal_export_remains_byte_identical(self):
+        scenario = self.make_scenario("full_loop_normal")
+        with redirect_stdout(io.StringIO()):
+            FullLoopDriveBase.setup_expert_controller(scenario)
+        config_path = Path(scenario.expert_controller.runtime_config_path)
+        expected = config_path.read_bytes()
+        with redirect_stdout(io.StringIO()):
+            scenario.setup_expert_controller()
+        self.assertEqual(config_path.read_bytes(), expected)
+        result = self.initialize_expert(scenario.expert_controller)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_highway_keeps_link_zone_and_excludes_coordinate_zone(self):
+        scenario = self.make_scenario("full_loop_highway")
+        with redirect_stdout(io.StringIO()):
+            scenario.setup_expert_controller()
+        config_path = Path(scenario.expert_controller.runtime_config_path)
+        config = json.loads(config_path.read_text())
+        zones = config["planning"]["velocity_profile"]["speed_limit_zones"]
+        self.assertEqual(
+            [zone["name"] for zone in zones],
+            ["high_speed_to_tollgate"],
+        )
+        result = self.initialize_expert(scenario.expert_controller)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_current_crosswalk_and_signal_settings_survive_dynamic_export(self):
+        scenario = self.make_scenario("full_loop_dynamic")
+        with redirect_stdout(io.StringIO()):
+            scenario.setup_expert_controller()
+        config = json.loads(
+            Path(scenario.expert_controller.runtime_config_path).read_text()
+        )
+        zones = config["planning"]["velocity_profile"]["speed_limit_zones"]
+        crosswalk = next(
+            zone for zone in zones if zone["name"] == "north_crosswalk_pair"
+        )
+        self.assertEqual(crosswalk["max_velocity"], 20.0)
+        self.assertEqual(crosswalk["entry_buffer_m"], 4.635)
+        self.assertEqual(crosswalk["exit_buffer_m"], 4.635)
+        self.assertEqual(
+            config["planning"]["traffic_light_stop"]["stop_margin"], 13.0,
+        )
+
+    def test_tunnel_vehicle_enables_avoidance_with_official_rejoin_tail(self):
+        scenario = self.make_scenario("full_loop_tunnel_vehicle")
+        mission_points = list(scenario.route_points)
+        mission_goal = (scenario.goal_x, scenario.goal_y, scenario.goal_z)
+        mission_length = scenario.route_length_m
+        with redirect_stdout(io.StringIO()):
+            scenario.setup_expert_controller()
+        controller = scenario.expert_controller
+        config = json.loads(Path(controller.runtime_config_path).read_text(encoding="utf-8"))
+        self.assertTrue(config["planning"]["jamming"]["enabled"])
+        # The mission/trial still finishes at the same approved END. Only the
+        # Expert's private planning route includes the original downstream path.
+        self.assertEqual(scenario.route_points, mission_points)
+        self.assertEqual((scenario.goal_x, scenario.goal_y, scenario.goal_z), mission_goal)
+        self.assertEqual(scenario.route_length_m, mission_length)
+        with open(controller.runtime_path_csv, newline="", encoding="utf-8") as source:
+            exported = [(float(p["x"]), float(p["y"])) for p in csv.DictReader(source)]
+        self.assertEqual(exported[:len(mission_points)], [tuple(p[:2]) for p in mission_points])
+        self.assertGreater(len(exported), len(mission_points))
+        window = scenario.mission_route
+        self.assertEqual(exported, [tuple(p[:2]) for p in
+                                   window.full_points[window.first_index:window.first_index + len(exported)]])
+        # Use the real external Expert and recorded-section transform. Enabling
+        # Jamming alone is insufficient if the mission crop omits its rejoin.
+        script = EXPERT_INITIALIZE + """
+import math
+from AIM2026.Expert.src.vehicle_state import VehicleState
+planner = driver.lattice_planning_process.recorded_jamming
+assert planner is not None
+ego = VehicleState(-12.50, -511.28, math.radians(-151.55), 1.22)
+assert planner.contains(ego), 'Reported slow-follow pose must enter Jamming'
+forward_y = [planner.section.to_local(p)[1] for p in driver.path]
+required_end = planner.section.length + planner.section.global_tail_m
+assert max(forward_y) >= required_end, (max(forward_y), required_end)
+planner.close()
+print('TUNNEL_AVOIDANCE_EXPORT_OK')
+"""
+        result = self.initialize_expert(controller, script)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("TUNNEL_AVOIDANCE_EXPORT_OK", result.stdout)
+
+    def test_tunnel_vehicle_replaces_stale_acc_only_runtime_setting(self):
+        scenario = self.make_scenario("full_loop_tunnel_vehicle")
+        with redirect_stdout(io.StringIO()):
+            scenario.setup_expert_controller()
+        config_path = Path(scenario.expert_controller.runtime_config_path)
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config["planning"]["jamming"]["enabled"] = False
+        config_path.write_text(json.dumps(config), encoding="utf-8")
+        with redirect_stdout(io.StringIO()):
+            mission_expert.prepare_speed_zones(scenario)
+        updated = json.loads(config_path.read_text(encoding="utf-8"))
+        self.assertTrue(updated["planning"]["jamming"]["enabled"])
+
+    def test_tunnel_pedestrian_keeps_existing_jamming_policy(self):
+        scenario = self.make_scenario("full_loop_tunnel_dynamic")
+        with redirect_stdout(io.StringIO()):
+            scenario.setup_expert_controller()
+        config = json.loads(Path(scenario.expert_controller.runtime_config_path).read_text(encoding="utf-8"))
+        self.assertTrue(config["planning"].get("jamming", {}).get("enabled", True))
+        result = self.initialize_expert(scenario.expert_controller)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_filter_runs_before_process_start(self):
+        scenario = self.make_scenario("full_loop_static")
+        with redirect_stdout(io.StringIO()):
+            scenario.setup_expert_controller()
+        self.assertIsNone(scenario.expert_controller.process)
+
+
+class SpeedZoneSelectionTest(unittest.TestCase):
+    def setUp(self):
+        self.points = tuple((float(i), 0.0, 0.0) for i in range(10))
+        self.window = RouteWindow(self.points, 0.0, 3, 6)
+        self.loader = Mock()
+
+    def select_zone(self, first, last):
+        self.loader.get_link_points.side_effect = [
+            [self.points[first]], [self.points[last]],
+        ]
+        zone = {"name": "test", "start_link_id": "start", "end_link_id": "end", "max_velocity": 20.0}
+        return zone, mission_expert.select_speed_zones([zone], self.window, self.loader)
+
+    def test_outside_zone_is_excluded(self):
+        _, result = self.select_zone(7, 9)
+        self.assertEqual(result, ([], ["test"]))
+
+    def test_inside_zone_keeps_all_settings(self):
+        zone, result = self.select_zone(4, 5)
+        self.assertEqual(result, ([zone], []))
+
+    def test_coordinate_zone_is_selected_without_map_lookup(self):
+        zone = {
+            "name": "coordinate",
+            "start_point": self.points[4],
+            "end_point": self.points[5],
+            "entry_buffer_m": 4.635,
+            "exit_buffer_m": 4.635,
+            "max_velocity": 20.0,
+        }
+        result = mission_expert.select_speed_zones(
+            [zone], self.window, self.loader,
+        )
+        self.assertEqual(result, ([zone], []))
+        self.loader.get_link_points.assert_not_called()
+
+    def test_closed_route_wrapping_zone_outside_mission(self):
+        _, result = self.select_zone(8, 1)
+        self.assertEqual(result, ([], ["test"]))
+
+    def test_partial_or_covering_zone_fails_before_launch(self):
+        for bounds in ((2, 4), (5, 8), (1, 8), (8, 4)):
+            with self.subTest(bounds=bounds), self.assertRaisesRegex(ValueError, "partially overlaps"):
+                self.select_zone(*bounds)
+
+    def test_other_modes_do_not_access_runtime_config(self):
+        for name in ("full_loop", "full_loop_normal"):
+            mission_expert.prepare_speed_zones(SimpleNamespace(
+                mission_mode=SimpleNamespace(name=name),
+            ))
+
+
+if __name__ == "__main__":
+    unittest.main()

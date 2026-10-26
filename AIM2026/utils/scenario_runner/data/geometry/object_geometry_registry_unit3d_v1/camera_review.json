@@ -1,0 +1,513 @@
+{
+  "schema": "morai_static_unit_camera_review_v1",
+  "reviewer": "assistant_visual_review",
+  "profile_sha256": "12b0949b91a2d19020254c1846eb6db6a1d3e51b3b166dea714c2ba2cdd00ffc",
+  "confirmation_sha256": "3b0271c52bb8db9c5f44eac2945c027248ed2fe2d190a1839a42f06d74d19ef3",
+  "scope": "Visible physical asset including attached person, child, wheels, mirrors; four diagonal calibration views and four independent confirmation headings per model. Near views can be hood-occluded; calibration views supply complementary coverage. No claim of invisible mesh exactness.",
+  "models": {
+    "BabyStroller1": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/BabyStroller1.jpg",
+          "sha256": "c6f47c886a55cab706f37fca2f3d0190136bc55ff7213b45045b89de06f23dce"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/BabyStroller1.jpg",
+          "sha256": "aa223e8c90d51cdd5ae38d9f9d8a73a12bbbc1ad773232dc8f40bb30bd882ece"
+        }
+      ]
+    },
+    "BabyStroller2": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/BabyStroller2.jpg",
+          "sha256": "0356cdc7e9e14d0591831128ca8a3ec855ecb2f9aefd8e8eeb19a008514333e1"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/BabyStroller2.jpg",
+          "sha256": "be093a7cf744fa7c8c8b9d45cd9db3a5a9dcbf1f74283fcd4f481214315c59c6"
+        }
+      ]
+    },
+    "BabyStroller3": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/BabyStroller3.jpg",
+          "sha256": "b16ad304fdb4f6858eef2fcd4a00d049613c01a8542d5891102c41395b2cc1f8"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/BabyStroller3.jpg",
+          "sha256": "a35c01271fddb806f4a23f33afb016b6f09cb115fdc7f5ea456446230e41fd15"
+        }
+      ]
+    },
+    "Barbed_Wirefence": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/Barbed_Wirefence.jpg",
+          "sha256": "f9f641102708daa95d7e5ee8b2e7e34ce69463b5b7d66c50e60ec511c85ce2cb"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/Barbed_Wirefence.jpg",
+          "sha256": "65a5796f39cee40e490c8b1d00252e4ecb85b0d21ddc9ca8fbf29278ae561e5d"
+        }
+      ]
+    },
+    "Bicycle_city": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/Bicycle_city.jpg",
+          "sha256": "47c8c718e630a55bbf71b03f80715880086d1b2285f53e09f6329fe36f8fa7ff"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/Bicycle_city.jpg",
+          "sha256": "556da74162dca9e2230ebd01092f24d6a7a4999daf2171f0fdb1d28ed489f1d6"
+        }
+      ]
+    },
+    "Bicycle_mountain": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/Bicycle_mountain.jpg",
+          "sha256": "7d6345dec1ab6dc16afe1ca76ddf02af83852bf96472448d7ff6a618fcdb1cff"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/Bicycle_mountain.jpg",
+          "sha256": "45f453a8da53779bc928ae5d1d88ef82bff9680a0a3fc90af137f4ce143287f6"
+        }
+      ]
+    },
+    "Bike1": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/Bike1.jpg",
+          "sha256": "67187b388ff486431943b5d8087c6933e417a6f293a519498a34f454148b0a18"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/Bike1.jpg",
+          "sha256": "ac20f31995bf4811904a4ec4d46604a1a2ab7893ecba78feae1d88e22e58993a"
+        }
+      ]
+    },
+    "Bike2": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/Bike2.jpg",
+          "sha256": "2e651cf1c1ed1de6bc1e14f3f3645d7929535806c1aa7267c2690688c1e34917"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/Bike2.jpg",
+          "sha256": "15f8c85bf900b3f4ade9089ad4e58dfeba5dc998a9c028705a8d672f0868c75e"
+        }
+      ]
+    },
+    "Bike3": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/Bike3.jpg",
+          "sha256": "829bcdb82201063a6e66c2563970dc367e31429afe3e6517a01ef0279644224e"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/Bike3.jpg",
+          "sha256": "e280a1cf4739f94ae10b5be1d6d26acb7c55b8183a4fd0527a714bb581e3af1d"
+        }
+      ]
+    },
+    "Bollard01": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/Bollard01.jpg",
+          "sha256": "c755f329a94d053cb8b5e0e6523e71ca49a07d66f628888afc390c0e15e352c1"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/Bollard01.jpg",
+          "sha256": "a42eda4a79bb8757ec95bdce989e2a26b31234b57415be1d1a2f4d95148cbf44"
+        }
+      ]
+    },
+    "Bollard04": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/Bollard04.jpg",
+          "sha256": "2324c52fc43bfb64deb448de4de2fbb8a97890fe0e5b2b8ddea553ccf9b374b1"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/Bollard04.jpg",
+          "sha256": "737e2f08a70078305b72a58a5541ff2dd746041b7b98935b99575cc8e7dadaaa"
+        }
+      ]
+    },
+    "CargoBox": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/CargoBox.jpg",
+          "sha256": "c1b3f61a4a4586c899b9f477ce83b8bfb0b8f77cd0faf226398be47e8ef679b8"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/CargoBox.jpg",
+          "sha256": "cf128726f1dc5a2353b4e13f4a66bb316e06f230066523843e0b31ec8c847dfb"
+        }
+      ]
+    },
+    "Color_Cone": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/Color_Cone.jpg",
+          "sha256": "82047a9abd4e8168cd6aceec3b885ad9947cc8eb708557fa03da2924c09c8abd"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/Color_Cone.jpg",
+          "sha256": "8e0816dd92c189702c3547a68ff62ea2e798f0c385c8091138269dae29dd3e37"
+        }
+      ]
+    },
+    "Concrete_Barricade01": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/Concrete_Barricade01.jpg",
+          "sha256": "866e53e53599965d4b5a84d446ece0483535f339f8b0636c1e3b232fbb9a78b7"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/Concrete_Barricade01.jpg",
+          "sha256": "7caef43758f74e47851d62680dd708cb0596e02ece18b526645db3835c01e86d"
+        }
+      ]
+    },
+    "Concrete_Barricade02": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/Concrete_Barricade02.jpg",
+          "sha256": "a655f3970981d4e035f6f0e7ac965c19c459a169d5aaf8675325bcb9551cce0f"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/Concrete_Barricade02.jpg",
+          "sha256": "57f190147b02dbfb276011b787f92df4e65a3fccbbdcdbbbeba9ef9a4b512561"
+        }
+      ]
+    },
+    "ElectricScooter1": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/ElectricScooter1.jpg",
+          "sha256": "aa02728c6ab57b8aa060513582ef44984c0f6234ac99441de9204cfc81704e42"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/ElectricScooter1.jpg",
+          "sha256": "ead94a48dcef9a28c381521eb22fc78ba5ed3d62ee8ccb59845fa09411b94835"
+        }
+      ]
+    },
+    "ElectricScooter2": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/ElectricScooter2.jpg",
+          "sha256": "44dc0c2b26a424cc383ff57d4c45daf0e30acf56041a4c873a90ef5df7ed0910"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/ElectricScooter2.jpg",
+          "sha256": "d784ba2a82d64c065dd181a663412c0069545f121b58dfac4550f802277de3f4"
+        }
+      ]
+    },
+    "Lane_Separation_Bar": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/Lane_Separation_Bar.jpg",
+          "sha256": "a3ccfce55c3096d682c55c68a6885c3fe28685f178b2270d035419d7139f3370"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/Lane_Separation_Bar.jpg",
+          "sha256": "f6980b59ab2f804670be212905bc694b3f7fdee61735e9c67bdd89c2d6ce4673"
+        }
+      ]
+    },
+    "NCAP_GVT": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/NCAP_GVT.jpg",
+          "sha256": "5c0f74a2c13d86c3cfac0c4dadeab0d7f3435be800b5c6056f9b1d2e19651da4"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/NCAP_GVT.jpg",
+          "sha256": "97d999f740e2cd538e24116463c02b04bc3c4d71ad88ef0ab6538e8d669eb878"
+        }
+      ]
+    },
+    "PE_Drum": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/PE_Drum.jpg",
+          "sha256": "420562a1d641c8d8b30d920137387813beb74a0b2912c17eaa4296ad11d12dd6"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/PE_Drum.jpg",
+          "sha256": "6bc449705b97e078c47e94f770d2c8521d825b356b3aff1d0c836cf519952825"
+        }
+      ]
+    },
+    "PE_Firewall_Orange": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/PE_Firewall_Orange.jpg",
+          "sha256": "5eb4b26bbe270460dc9e2ca5810dc2572977321f09457e5658a37ab53cc22c66"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/PE_Firewall_Orange.jpg",
+          "sha256": "8693769a4774342f8417fda01ad80357f9fa4f47808ef148539f33e0ea917140"
+        }
+      ]
+    },
+    "PE_Firewall_White": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/PE_Firewall_White.jpg",
+          "sha256": "ebfca53ca962f36ea604ebcf25d3bd0fe1aae6c86cbcb354b601facd63448552"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/PE_Firewall_White.jpg",
+          "sha256": "ba5c0ac1ccd4dcaf156779399a0b07e9fa60ce52b251fafb99d1c301f5c39e18"
+        }
+      ]
+    },
+    "RedBarrel": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/RedBarrel.jpg",
+          "sha256": "a21054eee1047ffbc35df5b5b6561cfdc2ca3abd4e9550a14064999becee3135"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/RedBarrel.jpg",
+          "sha256": "1977e46cedde16763557c1c248a389eda8adca4dfc82d19c703489b94476cd2e"
+        }
+      ]
+    },
+    "Rockslide": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/Rockslide.jpg",
+          "sha256": "2b9a1fda695767cc3f9b9c829547f37649f8abcf71e29b6c494f19e01171e32f"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/Rockslide.jpg",
+          "sha256": "92d8b747505ff8add0a453fdb55a5c981d002974aae91b8194fecdf53dad7e63"
+        }
+      ]
+    },
+    "Rubber_Cone": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/Rubber_Cone.jpg",
+          "sha256": "6acb898189d9dd5b16dadce14ca1a76a84ca9814bd078f8eddd24b76dc704714"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/Rubber_Cone.jpg",
+          "sha256": "c9d56b65341fcebb3ee9354df965657f71549bce5078cb6d07e3cf5f5999e37c"
+        }
+      ]
+    },
+    "Scooter1": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/Scooter1.jpg",
+          "sha256": "87a14fac19d8ed121702be6d84bf573a8ae4b8984384ab1590df0b92b855dcc6"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/Scooter1.jpg",
+          "sha256": "102456c3e25851feb3d1fb412c5ec9b3e96c616131e88249e786f5c31041d84d"
+        }
+      ]
+    },
+    "Scooter2": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/Scooter2.jpg",
+          "sha256": "99326dbd0b19562c82110f8f5f89cedbd708445bf70ae58d5761d1d5b1b237a1"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/Scooter2.jpg",
+          "sha256": "54a380f94e852e2fb6eea3ca13741ba647ac95b0743dfe0d00fc2a99e74f5567"
+        }
+      ]
+    },
+    "Scooter_02": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/Scooter_02.jpg",
+          "sha256": "254973613db88cd2af8eedcf8a2b873594961bb974511a34c1bbe603cc2026b9"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/Scooter_02.jpg",
+          "sha256": "400d523aabcafc8d3dac76768e9e98d8c630cf8193c5a54740f72722e97da3c1"
+        }
+      ]
+    },
+    "SportBike": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/SportBike.jpg",
+          "sha256": "5a0519ddb7c30cd3db94d1b00767278aab3ad9cd97b0b9b42870eace297e647c"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/SportBike.jpg",
+          "sha256": "a35a7275010338acbac3bbb193e90c23eef913ab962350849d16d26475c194c3"
+        }
+      ]
+    },
+    "Sportbike_01": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/Sportbike_01.jpg",
+          "sha256": "d39314ef35a22aef0cf2d5e39a22a6c4f20e17f269b86cb0206d16b5857f141b"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/Sportbike_01.jpg",
+          "sha256": "10604ec497cdf1a3beea5d6715447f45fe1e225e9e37489de13ef5e9614649fe"
+        }
+      ]
+    },
+    "Steel_Barricade": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/Steel_Barricade.jpg",
+          "sha256": "013e48473b96af821df9cc961db372c40f69eecb9c3741190134ee34a416d954"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/Steel_Barricade.jpg",
+          "sha256": "a7d19ce94e2a7107cfa9262f1784492ff83d029273c6b4ffac61d082fc8a1128"
+        }
+      ]
+    },
+    "TrafficBarrel": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/TrafficBarrel.jpg",
+          "sha256": "97c11f4bb4721ff47664d097eb10c92a71717f27e73603c2453b5dd7389edec2"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/TrafficBarrel.jpg",
+          "sha256": "f47e72a2ee4d99583072388451f570b4a95abcfceebf178c1c1a09ca852e70ea"
+        }
+      ]
+    },
+    "WoodBox": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/WoodBox.jpg",
+          "sha256": "c448a68000126c4707e8899b499968ec848e40984ac29102b415d60f0fc4a4e9"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/WoodBox.jpg",
+          "sha256": "c7c17054b233d7712182ca33bbb213fa1386ce31ae460185d622c7beb69fb317"
+        }
+      ]
+    },
+    "YellowBarrel": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/YellowBarrel.jpg",
+          "sha256": "a9a8e1af2020ddf0b265b95f7c6f1438a3d747db6e62319c56e0c7e982695be6"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/YellowBarrel.jpg",
+          "sha256": "b4bd954df7e98b2ef8e183e679c4107e1b84e9cd6a8633afcc597032bfbdd6df"
+        }
+      ]
+    },
+    "concrete-barrier": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/concrete-barrier.jpg",
+          "sha256": "77f819ba51ebdc568bce1ce8fd24e2828671021254f19c8b66e80dde59ce5af8"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/concrete-barrier.jpg",
+          "sha256": "30d9156f75fb5d8854b948ffafdc90e962a6c9c0809db802427ac52303759076"
+        }
+      ]
+    },
+    "obj_obstacle_dog": {
+      "pass": true,
+      "reviewed_headings": 8,
+      "images": [
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/calibration_review/obj_obstacle_dog.jpg",
+          "sha256": "2ca15f24c9e36e17bf8587c329d3a741c3dcc872a1ccba74c33983f759b15627"
+        },
+        {
+          "path": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_surface_profiles_v4_20260929/confirmation/obj_obstacle_dog.jpg",
+          "sha256": "75b696cc83e722e007fc74b98ad11908b7cae94cf0a21acd9ea299e05527f86c"
+        }
+      ]
+    }
+  }
+}

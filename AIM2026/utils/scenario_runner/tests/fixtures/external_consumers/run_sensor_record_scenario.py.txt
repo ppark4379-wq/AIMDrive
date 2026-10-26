@@ -1,0 +1,691 @@
+"""Run the current team scenario/expert with local Sensor Record capture.
+
+This adapter does not edit or copy scenario/expert source. Sensor Record covers
+a bounded interior window; capture boundaries remain explicit in the journal.
+"""
+import argparse
+from collections import Counter, defaultdict
+import json
+import os
+from pathlib import Path
+import shutil
+import signal
+import subprocess
+import sys
+import threading
+import time
+
+ROOT=Path(__file__).resolve().parents[1]
+PROJECT_ROOT=Path(os.environ.get('MORAI_PROJECT_ROOT',str(ROOT.parents[1]))).expanduser().resolve()
+sys.path[:0]=[str(ROOT),str(ROOT/'tools'),str(PROJECT_ROOT)]
+from async_capture.internal_sensor_record_contract import (
+    DEFAULT_ASSEMBLY, DEFAULT_SENSOR_SET, capture_preflight,
+)
+from async_capture.journal import digest, write_json
+from async_capture.sensor_record_admission import build_capture_contract
+from async_capture.sensor_record import inspect_directory
+from async_capture.native_session import native_root_from_links
+from async_capture.sim_mode import require_free_running_mode
+from nas_storage import powershell
+from native_capture.ground_truth import GrpcGroundTruth, default_grpc_target
+from ssd_storage import SSD_ROOT, WINDOWS_ROOT, require_ssd, windows_path
+from network_config import runtime_environment
+from runtime_paths import (
+    ANALYSIS_PYTHON, WINDOWS_SENSOR_DATA_ROOT,
+    ensure_runtime_directory,
+)
+from run_sensor_record_probe import verify_native_targets
+from python_environment import (
+    build_analysis_environment, build_capture_environment,
+    probe_analysis_environment,
+)
+from sensor_record_barrier import (
+    prepare_coordination_directory, require_stop_acknowledgement,
+    wait_for_native_quiescence, request_stop_for_finished_scenario,
+)
+from async_capture.scenario_catalog import COLLECTION_SCENARIOS, TUNNEL_STATIC_SCENARIO
+
+
+def quick_native_capture_summary(native, *, progress=None):
+    """Metadata-only barrier used before redirecting Sensor Record to a new lap.
+
+    The expensive byte hashes and image/point-cloud decodes belong to the
+    offline validator.  This barrier still rejects an empty, malformed, or
+    sensor-incomplete native session before the campaign advances.
+    """
+    rows = inspect_directory(native, progress=progress)
+    counts = Counter(row['role'] for row in rows)
+    bytes_by_role = Counter()
+    keys_by_role = defaultdict(set)
+    for row in rows:
+        bytes_by_role[row['role']] += int(row['size_bytes'])
+        keys_by_role[row['role']].add(tuple(row['filename_time_candidates_ns']))
+    expected = {'camera_1', 'camera_2', 'camera_3', 'camera_4',
+                'lidar', 'gps', 'imu'}
+    failures = []
+    if set(counts) != expected:
+        failures.append('native sensor roles are incomplete')
+    if not counts or any(counts.get(role, 0) == 0 for role in expected):
+        failures.append('one or more native sensor streams are empty')
+    if keys_by_role and any(keys_by_role.get(role, set()) != keys_by_role.get('lidar', set())
+                            for role in expected):
+        failures.append('native filename-time keys do not form complete seven-sensor bundles')
+    summary = dict(
+        schema='morai_native_capture_quick_barrier_v1',
+        metadata_only=True,
+        file_count=sum(counts.values()),
+        total_bytes=sum(bytes_by_role.values()),
+        counts=dict(counts),
+        bytes_by_role=dict(bytes_by_role),
+        complete_filename_bundles=len(keys_by_role.get('lidar', set())),
+        failures=failures,
+        passed=not failures,
+        authoritative_byte_audit_deferred=True,
+        training_visible=False,
+        physical_simultaneity_verified=False,
+    )
+    if failures:
+        raise RuntimeError('Quick native capture barrier failed: '+str(failures))
+    return summary
+
+
+def run_logged_stage(command, *, env, log, label, heartbeat_seconds=30):
+    """Run one offline stage while keeping the operator informed."""
+    started = time.monotonic()
+    next_heartbeat = started + heartbeat_seconds
+    process = subprocess.Popen(command, env=env, stdout=log,
+                               stderr=subprocess.STDOUT)
+    while process.poll() is None:
+        time.sleep(1)
+        now = time.monotonic()
+        if now >= next_heartbeat:
+            print('[REVIEW] %s running: %.0fs elapsed (details in supervisor log)' %
+                  (label, now-started), flush=True)
+            next_heartbeat = now + heartbeat_seconds
+    return int(process.returncode)
+
+
+def powershell_with_heartbeat(script, *, timeout, label, heartbeat_seconds=30,
+                              scenario_process=None, coordination=None):
+    """Keep the terminal visibly alive while the Windows UI owner blocks."""
+    finished = threading.Event()
+    started = time.monotonic()
+
+    def heartbeat():
+        next_heartbeat = started + heartbeat_seconds
+        while not finished.wait(.5):
+            if scenario_process is not None and coordination is not None:
+                request = request_stop_for_finished_scenario(scenario_process, coordination)
+                if request is not None:
+                    print("[CAPTURE] %s: scenario exited (code=%s); requesting Record OFF; "
+                          "details in supervisor.log" %
+                          (label, request["scenario_exit_code"]), flush=True)
+            if time.monotonic() < next_heartbeat:
+                continue
+            next_heartbeat = time.monotonic() + heartbeat_seconds
+            print(
+                "[CAPTURE] %s: %.0fs elapsed; Sensor Record UI가 ON이며 "
+                "상위 센서 감시가 계속 실행 중입니다." %
+                (label, time.monotonic() - started),
+                flush=True,
+            )
+
+    worker = threading.Thread(
+        target=heartbeat,
+        name="sensor-record-heartbeat",
+        daemon=True,
+    )
+    worker.start()
+    try:
+        return powershell(script, timeout=timeout)
+    finally:
+        finished.set()
+        worker.join(timeout=2)
+
+
+def abort_before_native_redirect(run, evidence, args, stage, exc):
+    """Seal and stop after a failure before any SensorData redirect.
+
+    This narrowly scoped record lets campaign cleanup distinguish a failure
+    before junction mutation from an ambiguous recording failure.
+    """
+    run.mkdir(parents=True, exist_ok=False)
+    error = repr(exc)
+    seal = dict(
+        schema='morai_sensor_record_pre_capture_failure_v1',
+        run_name=args.name,
+        scenario_name=args.scenario,
+        failure_stage=stage,
+        sensor_record_owner_invoked=False,
+        sensor_record_paths_mutated=False,
+        error=error,
+        created_wall_ns=time.time_ns(),
+        training_visible=False,
+    )
+    seal_path=evidence/'pre_capture_failure.json'
+    write_json(seal_path,seal)
+    write_json(run/'NATIVE_CAPTURE_RESULT.json',dict(
+        error=error,
+        scenario_name=args.scenario,
+        scenario_runtime=args.scenario_runtime,
+        scenario_exit_code=None,
+        failure_stage=stage,
+        sensor_record_owner_invoked=False,
+        sensor_record_paths_mutated=False,
+        pre_capture_failure_evidence=str(seal_path),
+        training_visible=False,
+        physical_simultaneity_verified=False,
+    ))
+    print(json.dumps(dict(
+        output=str(run),scenario_name=args.scenario,error=error,
+    )),flush=True)
+    raise SystemExit(2)
+
+
+def main():
+    p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--name',required=True)
+    p.add_argument('--run-root', type=Path,
+                   help='Direct dataset run directory; sensors and topic evidence are written together')
+    p.add_argument('--session-evidence-root', type=Path,
+                   help='Campaign-private directory for pre-creation junction plans and UI evidence')
+    p.add_argument('--scenario', choices=COLLECTION_SCENARIOS, default='full_loop',
+                   help='Main Scenario Runner mode to execute (default: full_loop)')
+    p.add_argument('--static-preset',
+                   help='Static editor preset name or YAML path; full_loop_static only')
+    p.add_argument(
+        '--scenario-weather', choices=('SUNNY', 'FOGGY'),
+        help='Force weather from the sealed collection plan',
+    )
+    p.add_argument(
+        '--scenario-hour', type=int, choices=(11, 13, 15),
+        help='Force hour from the sealed collection plan',
+    )
+    p.add_argument(
+        '--scenario-runtime', choices=('current',), default='current',
+        help=(
+            'Execute AIM2026/Expert (current); the frozen proven mode '
+            'has been removed'
+        ),
+    )
+    p.add_argument('--pid',type=int,required=True)
+    p.add_argument('--seconds',type=int,default=180)
+    p.add_argument('--full-lap',action='store_true',help='Stop Sensor Record at selected-scenario route completion or the wall bound')
+    p.add_argument('--seed',type=int,default=260910,
+                   help='Deterministic per-lap seed for weather/time/obstacle selection')
+    p.add_argument('--profile-state',type=Path,
+                   help='Local-storage campaign state shared across laps so environment choices do not repeat silently')
+    p.add_argument('--assembly',type=Path,default=DEFAULT_ASSEMBLY)
+    p.add_argument('--sensor-set',type=Path,default=DEFAULT_SENSOR_SET)
+    p.add_argument('--static-evidence',type=Path,
+                   default=ROOT/'evidence/internal_sensor_record_contract_v1.json')
+    p.add_argument('--raw-camera-transport',choices=('required','unrecorded','bridge_dropped','absent'),
+                   default='bridge_dropped',
+                   help=('Keep native Sensor Record cameras; by default discard duplicate ROS camera '
+                         'payloads at the instrumented bridge before ROS publication'))
+    p.add_argument('--defer-offline-review',action='store_true',
+                   help=('After a metadata-only seven-sensor completion barrier, return so the next '
+                         'lap can start. Full hashes, decodes, GT association and admission are then '
+                         'performed by validate_sensor_record_campaign.py.'))
+    p.add_argument('--check',action='store_true',help='Read-only storage/configuration preflight; no driving or UI action')
+    a=p.parse_args()
+    analysis_python=Path(os.environ.get(
+        'MORAI_ANALYSIS_PYTHON',
+        str(ANALYSIS_PYTHON),
+    )).resolve()
+    analysis_env=None
+    analysis_environment_report=None
+    if not a.defer_offline_review:
+        analysis_env=build_analysis_environment(
+            analysis_python, os.environ,
+            OPENBLAS_NUM_THREADS='2', OMP_NUM_THREADS='2',
+        )
+        analysis_environment_report=probe_analysis_environment(
+            analysis_python, analysis_env)
+    max_seconds=3570 if a.full_lap else 930
+    if (not a.name.replace('_','').isalnum() or len(a.name)>80
+            or not 90<=a.seconds<=max_seconds):p.error('Simple unique name up to 80 characters, 90..%d wall seconds'%max_seconds)
+    if not 0 <= a.seed < 2**31:
+        p.error('Seed must be in [0, 2^31)')
+    if a.static_preset and a.scenario != 'full_loop_static':
+        p.error('--static-preset requires --scenario full_loop_static')
+    if (a.scenario_weather is None) != (a.scenario_hour is None):
+        p.error('--scenario-weather and --scenario-hour must be provided together')
+    immutable_preflight=capture_preflight(a.assembly,a.sensor_set,a.static_evidence)
+    if not immutable_preflight['ready']:
+        raise RuntimeError('Pinned MORAI build/sensor-set preflight failed: '+str(immutable_preflight['failures']))
+    legacy_base=SSD_ROOT/'sensor_record_auto_v1'
+    direct = a.run_root is not None
+    if direct:
+        run=a.run_root.expanduser().resolve()
+        require_ssd(run.parent, reserve_bytes=0)
+        evidence=(a.session_evidence_root.expanduser().resolve()
+                  if a.session_evidence_root is not None else run.parent/'_campaign'/'runtime'/a.name)
+        require_ssd(evidence.parent, reserve_bytes=0)
+        evidence.mkdir(parents=True, exist_ok=False)
+    else:
+        run=legacy_base/a.name
+        evidence=legacy_base
+    ep=run/'episode_000'
+    if a.profile_state is not None:
+        a.profile_state=a.profile_state.expanduser().resolve()
+        require_ssd(a.profile_state.parent,reserve_bytes=0)
+        if a.profile_state.is_dir():
+            raise ValueError('Campaign profile state must be a file path')
+    session_plan_path=(evidence/'native_session_plan.json' if direct
+                       else evidence/(a.name+'_native_session_plan.json'))
+    session_apply_path=(evidence/'native_session_apply.json' if direct
+                        else evidence/(a.name+'_native_session_apply.json'))
+    preflight_ui_path=(evidence/'preflight_ui' if direct
+                       else evidence/(a.name+'_preflight_ui'))
+    storage=require_ssd(run,check_volume=True)
+    ui_path=(evidence/'ui' if direct else legacy_base/(a.name+'_ui'))
+    collision_paths=(run,ui_path,preflight_ui_path,session_plan_path,session_apply_path)
+    if not direct:
+        collision_paths += (legacy_base/'native_sessions'/a.name,)
+    if any(path.exists() for path in collision_paths):
+        raise FileExistsError('Run or native-session namespace exists')
+    expected_volume=os.environ.get(
+        'MORAI_STORAGE_VOLUME_ID',
+        os.environ.get('MORAI_D_SSD_VOLUME_ID',''),
+    )
+    target_argument=(" -TargetRoot '%s'" % windows_path(run)) if direct else ''
+    session_script='& {\n'+(ROOT/'tools/prepare_sensor_record_session.ps1').read_text()+(
+        "\n} -SessionName '%s' -StorageRoot '%s' -SensorDataRoot '%s' "
+        "-ExpectedVolumeId '%s' -ReserveBytes %d%s"%
+        (a.name,WINDOWS_ROOT,WINDOWS_SENSOR_DATA_ROOT,expected_volume,
+         storage['reserve_bytes'],target_argument))
+    try:
+        session_plan=json.loads(powershell(session_script,timeout=30))
+    except Exception as exc:
+        if not direct:
+            raise
+        abort_before_native_redirect(
+            run,evidence,a,'native_session_plan',exc)
+    if session_plan.get('bootstrap'):
+        previous_links=[]
+        previous_native=None
+    else:
+        previous_links=[dict(
+            role=row['role'],source=row['source'],link_type='Junction',
+            target=[row['old_target']],
+        ) for row in session_plan['entries']]
+        previous_native=native_root_from_links(previous_links,SSD_ROOT)
+    # The old namespace is preserved by prepare_sensor_record_session.ps1. Do
+    # not scan every old file; long histories otherwise make startup unbounded.
+    previous_native_files=None
+    env=build_capture_environment(
+        dict(os.environ,**runtime_environment()))
+    capture_environment_report=dict(
+        schema='morai_capture_python_environment_v1',
+        python='/usr/bin/python3',
+        pythonpath=env['PYTHONPATH'].split(os.pathsep),
+        pythonhome_removed='PYTHONHOME' not in env,
+        no_user_site=env.get('PYTHONNOUSERSITE') == '1',
+        bytecode_disabled=env.get('PYTHONDONTWRITEBYTECODE') == '1',
+    )
+    # Establish pre-reset receive evidence. A live gRPC Ego alone is insufficient
+    # when the actual /Ego_topic vehicle-info connection has stopped sending.
+    log_root=ensure_runtime_directory('sensor_record_preflight_logs')
+    env['ROS_LOG_DIR']=str(log_root)
+    try:
+        preflight=subprocess.run(['/usr/bin/python3',str(ROOT/'tools/probe_sensor_record_readiness.py'),
+            '--raw-camera-transport',a.raw_camera_transport],
+            env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=20)
+    except Exception as exc:
+        if not direct:
+            raise
+        abort_before_native_redirect(
+            run,evidence,a,'live_sensor_preflight',exc)
+    print(preflight.stdout,flush=True)
+    if preflight.returncode:
+        exc=RuntimeError(
+            'Live sensor preflight failed before any scenario reset: '
+            +preflight.stderr[-1000:])
+        if direct:
+            abort_before_native_redirect(
+                run,evidence,a,'live_sensor_preflight',exc)
+        raise exc
+    grpc_target=default_grpc_target()
+    try:
+        gt=GrpcGroundTruth(grpc_target,timeout=3)
+        try:
+            mode_observation=gt.call(gt.simulation.GetSynchronousMode,gt.Empty())
+            observed_mode=require_free_running_mode(mode_observation,'simulation_free_run')
+        finally:gt.close()
+    except Exception as exc:
+        if not direct:
+            raise
+        abort_before_native_redirect(
+            run,evidence,a,'simulation_mode_preflight',exc)
+    coordination=ep/'sensor_record_coordination'
+    # Keep the established production runner path for process-lock identity
+    # and recorded software provenance; it now uses only AIM2026/Expert.
+    runner = ROOT/'tools/run_proven_three_lap_scenario.py'
+    command=['/usr/bin/python3',str(runner),
+             '--scenario',a.scenario,'--nearby-actors',
+             '--expert-runtime',a.scenario_runtime]
+    if a.static_preset:
+        command += ['--static-preset', a.static_preset]
+    if a.scenario_weather is not None:
+        command += [
+            '--scenario-weather', a.scenario_weather,
+            '--scenario-hour', str(a.scenario_hour),
+        ]
+    command += [
+        '--time-mode','simulation_free_run','--collision-policy','record',
+        '--seconds',str(a.seconds),'--audit-scope','timing','--output',str(run),
+        '--audit-python',str(analysis_python),
+        '--sensor-record-coordination',str(coordination),
+        '--raw-camera-transport',a.raw_camera_transport,'--seed',str(a.seed),
+        '--grpc-target',grpc_target]
+    if a.scenario == 'full_loop_traffic_light':
+        command += ['--max-speed-kmh','30']
+    elif a.scenario != TUNNEL_STATIC_SCENARIO:
+        command += ['--max-speed-kmh','60']
+    if direct:
+        command.append('--prepared-output-root')
+    if a.profile_state is not None:
+        command += ['--profile-state',str(a.profile_state)]
+    if a.full_lap:command.append('--full-lap')
+    if a.check:
+        subprocess.run(command+['--check'],env=env,check=True)
+        print(json.dumps(dict(storage=storage,previous_links=previous_links,
+                              previous_native_root=(str(previous_native)
+                                                    if previous_native else None),
+                              previous_native_files=previous_native_files,
+                              previous_native_inventory_scanned=False,
+                              proposed_native_session=session_plan,observed_mode=observed_mode,
+                              capture_wall_seconds=a.seconds-30,scenario_command=command,
+                              capture_environment=capture_environment_report,
+                              immutable_capture_preflight=immutable_preflight)))
+        return
+    # Ctrl-C can terminate the WSL parent before the Windows UI owner finishes
+    # its finally block.  Before changing any SensorData junction, observe the
+    # real MORAI lamp and close a stale recording session if necessary.
+    try:
+        ensure_off_process=subprocess.run(
+            [sys.executable,str(ROOT/'tools/recover_sensor_record_stop.py'),
+             '--pid',str(a.pid),'--name',a.name+'_preflight_ui',
+             '--output',str(preflight_ui_path)],
+            stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=45,
+        )
+    except Exception as exc:
+        if not direct:
+            raise
+        abort_before_native_redirect(
+            run,evidence,a,'record_off_preflight',exc)
+    if ensure_off_process.returncode:
+        exc=RuntimeError(
+            'Cannot establish Sensor Record OFF before native redirect: '
+            +ensure_off_process.stderr[-1000:])
+        if direct:
+            abort_before_native_redirect(
+                run,evidence,a,'record_off_preflight',exc)
+        raise exc
+    try:
+        ensure_off_result=json.loads(ensure_off_process.stdout)
+    except Exception as exc:
+        if not direct:
+            raise
+        abort_before_native_redirect(
+            run,evidence,a,'record_off_preflight',exc)
+    if ensure_off_result.get('status') != 'off_verified':
+        exc=RuntimeError('Sensor Record OFF recovery returned an invalid result')
+        if direct:
+            abort_before_native_redirect(
+                run,evidence,a,'record_off_preflight',exc)
+        raise exc
+    try:
+        write_json(session_plan_path,session_plan)
+    except Exception as exc:
+        if not direct:
+            raise
+        abort_before_native_redirect(
+            run,evidence,a,'native_session_plan_seal',exc)
+    windows_plan=windows_path(session_plan_path)
+    apply_script='& {\n'+(ROOT/'tools/prepare_sensor_record_session.ps1').read_text()+(
+        "\n} -SessionName '%s' -StorageRoot '%s' -SensorDataRoot '%s' "
+        "-ExpectedVolumeId '%s' -ReserveBytes %d "
+        "-Apply -PlanPath '%s' -SimulatorProcessId %d%s"%
+        (a.name,WINDOWS_ROOT,WINDOWS_SENSOR_DATA_ROOT,expected_volume,
+         storage['reserve_bytes'],windows_plan,a.pid,target_argument))
+    session_apply=json.loads(powershell(apply_script,timeout=90))
+    write_json(session_apply_path,session_apply)
+    links=verify_native_targets()
+    native=native_root_from_links(links,SSD_ROOT)
+    expected_native=run if direct else legacy_base/'native_sessions'/a.name
+    if native != expected_native:
+        raise ValueError('New native junction set has an unexpected target')
+    initial=inspect_directory(native)
+    if initial:
+        raise ValueError('New isolated native session is not empty')
+    session_record=native/'SESSION.json'
+    native_session_snapshot=dict(prepared_before_capture=True,session_name=a.name,
+        native_root=str(native),previous_native_root=(str(previous_native)
+                                                      if previous_native else None),
+        source_directories_preserved=True,source_files_deleted=False,
+        first_workstation_bootstrap=bool(session_plan.get('bootstrap')),
+        session_plan=dict(path=str(session_plan_path),sha256=digest(session_plan_path)),
+        session_apply=dict(path=str(session_apply_path),sha256=digest(session_apply_path)),
+        session_record=dict(path=str(session_record),sha256=digest(session_record)))
+    log_path=(run/'supervisor.log' if direct else legacy_base/(a.name+'_supervisor.log'))
+    proc=None;error=None;scenario_warning=None;offline_stage_results=[]
+    native_storage_quiescence=None
+    postprocess_status='pending' if a.defer_offline_review else 'running'
+    with log_path.open('x') as log:
+        proc=subprocess.Popen(command,env=env,stdout=log,stderr=subprocess.STDOUT)
+        try:
+            ready_timeout = 240 if a.scenario == TUNNEL_STATIC_SCENARIO else 65
+            deadline=time.monotonic()+ready_timeout
+            while not (ep/'ready.json').exists():
+                if proc.poll() is not None or (ep/'outcome.json').exists():
+                    supervisor_tail=(log_path.read_text(
+                        encoding='utf-8',errors='replace')[-4000:]
+                        if log_path.is_file() else '')
+                    raise RuntimeError(
+                        'Scenario ROS capture exited before readiness '
+                        '(exit=%s). Supervisor tail:\n%s' %
+                        (proc.poll(),supervisor_tail)
+                    )
+                if time.monotonic()>deadline:
+                    raise TimeoutError(
+                        'Scenario ROS capture did not become ready within '+str(ready_timeout)+' seconds; '
+                        'inspect '+str(log_path)
+                    )
+                time.sleep(.2)
+            plan_path=run/'plan.json'
+            acquisition_path=run/'sensor_contract.json'
+            plan=json.loads(plan_path.read_text())
+            if not acquisition_path.is_file():
+                raise RuntimeError('Scenario acquisition contract missing before Sensor Record')
+            producer_paths = sorted({
+                path.resolve()
+                for pattern in (
+                    '*.py', 'tools/*.py', 'tools/*.ps1', 'tools/*.sh',
+                    'async_capture/*.py', 'native_capture/*.py',
+                    'ros/*.py', 'bridge/*.py', 'morai_pretraining/*.py',
+                )
+                for path in ROOT.glob(pattern)
+                if path.is_file()
+            })
+            snapshot_root=run/'software_snapshot'
+            snapshot_root.mkdir(exist_ok=False)
+            producer_hashes={}
+            for path in producer_paths:
+                relative=path.relative_to(ROOT)
+                destination=snapshot_root/relative
+                destination.parent.mkdir(parents=True,exist_ok=True)
+                with path.open('rb') as source,destination.open('xb') as target:
+                    shutil.copyfileobj(source,target)
+                    target.flush();os.fsync(target.fileno())
+                producer_hashes[str(relative)]=digest(destination)
+            contract=build_capture_contract(immutable_preflight,plan,
+                plan_sha256=digest(plan_path),
+                producer_software=producer_hashes,
+                producer_software_snapshot=dict(root=str(snapshot_root),files=producer_hashes),
+                native_session=native_session_snapshot,
+                acquisition_contract=dict(path=str(acquisition_path),sha256=digest(acquisition_path)))
+            if not contract['ready']:
+                raise RuntimeError('Runtime capture contract failed before Sensor Record: '+str(contract['failures']))
+            write_json(run/'capture_contract.json',contract)
+            write_json(run/'native_setup.json',dict(storage=storage,links=links,native_root=str(native),initial_files=initial,
+                pre_reset_sensor_preflight=json.loads(preflight.stdout),command=command,
+                capture_environment=capture_environment_report,
+                raw_camera_transport=a.raw_camera_transport,
+                capture_contract_sha256=digest(run/'capture_contract.json')))
+            write_json(run/'native_files_before.json',inspect_directory(native))
+            ui=windows_path(ui_path)
+            windows_coord=windows_path(coordination)
+            prepare_coordination_directory(coordination,ep)
+            script='& {\n'+(ROOT/'tools/bounded_sensor_record.ps1').read_text()+(
+                "\n} -SimulatorProcessId %d -OutputDirectory '%s' -AllowedRoot '%s' "
+                "-WallSeconds %d -CoordinationDirectory '%s' -RestoreWindow"%
+                (a.pid,ui,WINDOWS_ROOT,a.seconds-30,windows_coord))
+            print('ROS ready; starting bounded automatic Sensor Record',flush=True)
+            result=json.loads(powershell_with_heartbeat(
+                script, timeout=a.seconds+10, label=a.name,
+                scenario_process=proc, coordination=coordination,
+            ))
+            result['coordination_stop_acknowledgement']=(
+                require_stop_acknowledgement(coordination))
+            write_json(run/'native_ui_result.json',result)
+            proc.wait(timeout=1200 if a.full_lap else 300)
+            if proc.returncode:
+                raw_seal=ep/'raw/RAW_COMPLETE.json'
+                raw_completed=(raw_seal.is_file() and
+                    json.loads(raw_seal.read_text()).get('status')=='completed')
+                quality_seal=ep/'quality/QUALITY_COMPLETE.json'
+                if raw_completed and quality_seal.is_file():
+                    scenario_warning='Scenario process exited %d after sealed raw/quality capture; preserve outcome separately'%proc.returncode
+                else:
+                    raise RuntimeError('Scenario/raw audit failed before sealed capture; inspect preserved logs')
+            print('[BARRIER] Sensor Record stopped; waiting for native files to settle',
+                  flush=True)
+            native_storage_quiescence=wait_for_native_quiescence(native)
+            print('[BARRIER] Native files stable for %.1fs; scanning metadata' %
+                  native_storage_quiescence['stable_seconds'], flush=True)
+            def native_scan_progress(role, phase, role_checked, role_files):
+                if phase == 'listing':
+                    print('[BARRIER] %s: listing files' % role, flush=True)
+                elif phase == 'listed':
+                    print('[BARRIER] %s: %d files found' %
+                          (role, int(role_files or 0)), flush=True)
+                else:
+                    print('[BARRIER] %s: %d/%d files checked' %
+                          (role, role_checked, int(role_files or 0)), flush=True)
+            quick_summary=quick_native_capture_summary(
+                native, progress=native_scan_progress)
+            quick_summary['storage_quiescence']=native_storage_quiescence
+            write_json(run/'native_files_after.json',quick_summary)
+            print('Native capture barrier: %d complete seven-sensor bundles, %.2f GiB; byte audit %s'%(
+                quick_summary['complete_filename_bundles'],
+                quick_summary['total_bytes']/float(1024**3),
+                'deferred to 03' if a.defer_offline_review else 'starting now'),flush=True)
+            if scenario_warning is not None:
+                outcome_path=ep/'outcome.json'
+                outcome=(json.loads(outcome_path.read_text())
+                         if outcome_path.is_file() else {})
+                error=('Full-lap scenario did not complete after raw capture: '
+                       +str(outcome.get('reason') or scenario_warning))
+                postprocess_status='raw_captured_scenario_failed'
+
+            # Drive and Sensor Record are already stopped. Complete the same
+            # offline review without requiring another manual command/run.
+            # Offline tools deserialize ROS1 wire payloads, so they need the
+            # same Noetic/catkin message paths as the capture child even when
+            # this supervisor was launched from a clean conda shell.
+            stages=[] if a.defer_offline_review else [
+                ('audit_sensor_record_probe.py',['--run',str(run),'--raw',str(ep/'raw'),'--output',str(ep/'native_audit')]),
+                ('build_sensor_record_associations.py',['--episode',str(ep)]),
+                ('build_sensor_record_gt_timeline.py',['--episode',str(ep),'--output',str(ep/'gt_timeline_v1')]),
+                ('audit_sensor_record_direct_traffic.py',['--episode',str(ep),'--output',str(ep/'traffic_audit_v1')]),
+                ('audit_sensor_record_actor_inventory.py',['--episode',str(ep),'--output',str(ep/'actor_inventory_audit_v1')]),
+                ('audit_sensor_record_object_geometry.py',['--episode',str(ep),'--output',str(ep/'object_geometry_audit_v1')]),
+                ('audit_sensor_record_observer_overhead.py',['--episode',str(ep),'--output',str(ep/'observer_overhead_v1')]),
+                ('audit_sensor_record_route_signals.py',['--episode',str(ep),'--output',str(ep/'route_signal_audit_v1')]),
+                ('audit_sensor_record_motion_time.py',['--episode',str(ep),'--output',str(ep/'motion_time_v1')]),
+                ('audit_sensor_record_exposure.py',['--audit',str(ep/'native_audit'),'--quality',str(ep/'quality'),'--output',str(ep/'exposure_v1')]),
+            ]
+            if a.full_lap:
+                if not a.defer_offline_review:
+                    stages.append(('audit_scenario_interventions.py',[
+                    '--episode',str(ep),
+                    '--output',str(ep/'scenario_intervention_audit_v3'),
+                    ]))
+            if not a.defer_offline_review:
+                stages.extend([
+                ('summarize_sensor_record_review.py',['--episode',str(ep),'--output',str(ep/'review_closeout')]),
+                ('admit_sensor_record_collection.py',['--episode',str(ep),'--capture-contract',str(run/'capture_contract.json'),
+                    '--run-plan',str(plan_path),'--output',str(ep/'admission_v1')]),
+                ])
+            for tool,args in stages:
+                print('Offline review: '+tool,flush=True)
+                return_code=run_logged_stage(
+                    [str(analysis_python),str(ROOT/'tools'/tool)]+args,
+                    env=analysis_env,log=log,label=tool)
+                offline_stage_results.append(dict(
+                    tool=tool,return_code=return_code))
+            failed_stages=[row for row in offline_stage_results
+                           if row['return_code'] != 0]
+            if failed_stages:
+                # A scenario-specific audit can reject an incomplete lap while
+                # the raw/native sensor evidence remains valid.  Run every
+                # independent stage, including admission, before preserving a
+                # fail-closed overall result so those two conclusions are not
+                # conflated.
+                raise RuntimeError('Offline review stage failures: '
+                                   +str(failed_stages))
+            postprocess_status='pending' if a.defer_offline_review else 'completed'
+        except BaseException as exc:
+            error=repr(exc)
+            if isinstance(exc, KeyboardInterrupt) and proc is not None and proc.poll() is None:
+                # Let the scenario owner run its cleanup (expert stop, Ego
+                # brake, raw seal, owned-actor cleanup) instead of orphaning
+                # the capture lock when the campaign launcher is interrupted.
+                proc.send_signal(signal.SIGINT)
+                try:
+                    proc.wait(timeout=75)
+                except subprocess.TimeoutExpired:
+                    pass
+        finally:
+            if proc is not None and proc.poll() is None:
+                # Once the raw stop intent exists, allow the child to finish
+                # its sealed journal even if the independent UI owner failed.
+                if (ep/'stop.json').is_file():
+                    try:proc.wait(timeout=120)
+                    except subprocess.TimeoutExpired:pass
+                if proc.poll() is None:
+                    proc.terminate()
+                    try:proc.wait(timeout=45)
+                    except subprocess.TimeoutExpired:error=(error or '')+'; scenario shutdown still pending'
+            if (not run.exists() and error
+                    and 'Scenario ROS capture exited before readiness' in error
+                    and proc is not None and proc.poll() not in (None, 0)):
+                run.mkdir(parents=True, exist_ok=False)
+            if run.exists():
+                admission_path=ep/'admission_v1/report.json'
+                admission=json.loads(admission_path.read_text()) if admission_path.exists() else None
+                write_json(run/'NATIVE_CAPTURE_RESULT.json',dict(error=error,
+                    scenario_name=a.scenario,
+                    scenario_runtime=a.scenario_runtime,
+                    scenario_exit_code=(proc.poll() if proc is not None else None),
+                    scenario_warning=scenario_warning,
+                    capture_environment=capture_environment_report,
+                    analysis_python=str(analysis_python),
+                    analysis_dependencies=[
+                        'cv2','numpy','pyproj','scipy','PIL','rospkg','rospy'],
+                    analysis_environment=analysis_environment_report,
+                    postprocess_status=postprocess_status,
+                    quick_native_capture=(json.loads((run/'native_files_after.json').read_text())
+                        if (run/'native_files_after.json').is_file() else None),
+                    native_storage_quiescence=native_storage_quiescence,
+                    offline_stage_results=offline_stage_results,
+                    capture_contract_sha256=(digest(run/'capture_contract.json')
+                        if (run/'capture_contract.json').exists() else None),admission=admission,
+                    training_visible=False,physical_simultaneity_verified=False))
+    print(json.dumps(dict(output=str(run),scenario_name=a.scenario,error=error)),flush=True)
+    if error:raise SystemExit(2)
+
+
+if __name__=='__main__':main()

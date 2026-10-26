@@ -1,0 +1,36 @@
+{
+  "baseline": "16f718b48762a1de969a5979365ed252211286d5",
+  "purpose": "Immutable external consumer inputs for runner interface tests; these snapshots are not runnable AIM2026 collection tools and do not establish deployment of external collectors.",
+  "files": [
+    {
+      "source": "MoraiDrive/data_collection/internal_sensor_record/tools/collect_scenario_laps.sh",
+      "fixture": "collect_scenario_laps.sh.txt",
+      "sha256": "90242d79d4451193469f917380d89bcf920f3a54a4e8706b418157208070f8bd",
+      "size": 33238
+    },
+    {
+      "source": "MoraiDrive/data_collection/internal_sensor_record/tools/run_sensor_record_scenario.py",
+      "fixture": "run_sensor_record_scenario.py.txt",
+      "sha256": "876ac2fcaed13809f8ec56959e420bc361c004dad6875251ae928c38fc20ee4a",
+      "size": 36106
+    },
+    {
+      "source": "MoraiDrive/data_collection/internal_sensor_record/tools/run_proven_three_lap_scenario.py",
+      "fixture": "run_proven_three_lap_scenario.py.txt",
+      "sha256": "db4efec8c17003839193602834368dfb021d88565fcddec46da769f5612bd71d",
+      "size": 58016
+    },
+    {
+      "source": "MoraiDrive/data_collection/tools/01_internal_sensor_record_preflight.sh",
+      "fixture": "01_internal_sensor_record_preflight.sh.txt",
+      "sha256": "bdfef8789ca6ffe71929ef324d9bd76a5cca712f721443b6d2f216788fedc05b",
+      "size": 14437
+    },
+    {
+      "source": "MoraiDrive/data_collection/internal_sensor_record/async_capture/traffic_light_collection.py",
+      "fixture": "traffic_light_collection.py.txt",
+      "sha256": "6d50b9cb290c3a267bddd21cd67b374f71a1a86ff06ae0bbbd471d2a17a1908f",
+      "size": 22785
+    }
+  ]
+}

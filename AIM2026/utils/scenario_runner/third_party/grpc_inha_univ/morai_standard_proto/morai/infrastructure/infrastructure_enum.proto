@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package morai_sim_api.infrastructure;
+
+option optimize_for = SPEED;
+option csharp_namespace = "CoreLib.Grpc.Protobuf.MoraiSimAPI.Infrastructure";
+
+enum TrafficLightColor 
+{
+    TL_COLOR_UNSPECIFIED        = 0;
+    TL_COLOR_R              = 1;				// 0b000000000001
+    TL_COLOR_Y              = 4;				// 0b000000000100
+    TL_COLOR_SG             = 16;				// 0b000000010000 
+    TL_COLOR_LG             = 32;				// 0b000000100000
+    TL_COLOR_RG             = 64;				// 0b000001000000
+    TL_COLOR_UTG            = 128;				// 0b000010000000
+    TL_COLOR_ULG            = 256;				// 0b000100000000
+    TL_COLOR_URG            = 512;				// 0b001000000000
+    TL_COLOR_LLG            = 1024;				// 0b010000000000
+    TL_COLOR_LRG            = 2048;				// 0b100000000000
+    
+    TL_COLOR_R_WITH_Y       = 5;		// R | Y
+    TL_COLOR_Y_WITH_G       = 20;		// Y | SG
+    TL_COLOR_Y_WITH_GLEFT   = 36;		// Y | LG
+    TL_COLOR_G_WITH_GLEFT   = 48;		// SG | LG
+    TL_COLOR_R_WITH_GLEFT   = 33;		// R | LG
+    TL_COLOR_LLG_SG         = 1040;		// SG | LLG
+    TL_COLOR_R_LLG          = 1025;		// R | LLG
+    TL_COLOR_ULG_URG        = 768;		// ULG | URG
+
+    TL_COLOR_UNDEFINED      = -1;
+    TL_COLOR_NOT_DETECTED   = -2;
+}
+
+enum GetTrafficLightInfoType
+{
+    GET_TL_INFO_UNSPECIFIED = 0;
+    GET_TL_INFO_BY_LINK_ID = 1;
+    GET_TL_INFO_BY_TL_ID = 2;
+}
