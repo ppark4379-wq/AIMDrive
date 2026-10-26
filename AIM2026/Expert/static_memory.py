@@ -17,6 +17,7 @@ HOLD_S = 6.0              # a remembered position is published this long after i
 MAX_SIZE_M = 4.0          # only small objects: vehicles are tracked, not remembered
 PASSED_M = -4.0           # drop a position once it is this far behind the vehicle (forward coordinate)
 MAX_SPEED_MPS = 1.0       # planning speed below which a detection counts as not moving
+COVER_MARGIN_M = 0.5      # a remembered position inside a reported box (grown by this) is that box, not a second object
 
 
 class StaticMemory:
@@ -29,6 +30,15 @@ class StaticMemory:
     def _near(self, spot, point, radius=None):
         return math.hypot(spot['x'] - point[0], spot['y'] - point[1]) <= (radius or self.radius)
 
+    @staticmethod
+    def _inside(box, point, margin=COVER_MARGIN_M):
+        """Is ``point`` inside the box footprint (grown by ``margin``)?"""
+        a = math.radians(box['heading_deg'])
+        dx, dy = point[0] - box['center_world'][0], point[1] - box['center_world'][1]
+        along = dx * math.cos(a) + dy * math.sin(a)
+        across = -dx * math.sin(a) + dy * math.cos(a)
+        return abs(along) <= box['length_m'] / 2 + margin and abs(across) <= box['width_m'] / 2 + margin
+
     def apply(self, packet):
         """Add remembered boxes to a tracked packet (in place) and return it."""
         now = packet['sent_ns'] / 1e9
@@ -37,6 +47,7 @@ class StaticMemory:
         c, s = math.cos(yaw), math.sin(yaw)
         boxes = packet['boxes']
         movers = [b for b in boxes if b.get('motion_state') == 'moving']
+        real = list(boxes)   # what the detector reports now; the ghosts appended below are never part of it
         seen = set()
         for box in boxes:
             if (box.get('motion_state') == 'moving' or max(box['length_m'], box['width_m']) > MAX_SIZE_M
@@ -59,6 +70,10 @@ class StaticMemory:
             age = now - spot['last']
             forward = c * (spot['x'] - ego['x']) + s * (spot['y'] - ego['y'])
             if age > self.hold_s or forward < PASSED_M or any(self._near(spot, m['center_world']) for m in movers):
+                continue
+            if spot['id'] not in seen and any(self._inside(b, (spot['x'], spot['y'])) for b in real):
+                # A reported box (of any size) now covers this position: a fragment of that object was remembered, not a
+                # separate one. A ghost next to the real box would be a second, wrongly turned obstacle.
                 continue
             kept.append(spot)
             if spot['id'] in seen or age <= 0:
