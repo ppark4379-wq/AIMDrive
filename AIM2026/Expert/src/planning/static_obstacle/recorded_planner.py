@@ -41,6 +41,11 @@ from ...config.parameters.static_obstacle import (
     RUNTIME_ENVELOPE_TOLERANCE,
     REPLAN_STOPPED_SPEED,
     ALIGNMENT_PREVIEW,
+    STATIC_ZONE_KEEP_CLEARANCE,
+    STATIC_ZONE_WAIT_STANDOFF,
+    STATIC_ZONE_REPLAN_SPEED,
+    STATIC_ZONE_REPLAN_AFTER_S,
+    STATIC_ZONE_TRACKING_MARGIN,
 )
 
 # Failures of the committed path after which a stopped vehicle plans again from where it stands.
@@ -129,6 +134,23 @@ def connector(a, b):
 
 
 class RecordedStaticPlanner:
+    # Shared defaults: the Jamming and highway subclasses keep these unchanged.
+    # Only the static-obstacle section instance opts in via use_static_zone_policy().
+    keep_clearance = None                       # None: re-check with the planning margin
+    wait_standoff = p.STATIC_END_BUFFER
+    replan_speed = REPLAN_STOPPED_SPEED
+    replan_after_s = REPLAN_AFTER_BLOCKED_S
+    tracking_margin = p.STATIC_TRACKING_MARGIN
+
+    def use_static_zone_policy(self):
+        """Tolerate VE box jitter on a committed path, wait with room to swerve, replan while moving."""
+        self.keep_clearance = STATIC_ZONE_KEEP_CLEARANCE
+        self.wait_standoff = STATIC_ZONE_WAIT_STANDOFF
+        self.replan_speed = STATIC_ZONE_REPLAN_SPEED
+        self.replan_after_s = STATIC_ZONE_REPLAN_AFTER_S
+        self.tracking_margin = STATIC_ZONE_TRACKING_MARGIN
+        return self
+
     def __init__(self, planner, root=ROOT, background=False, geometry=None):
         self.planner = planner
         self.geometry = geometry or RecordedRouteGeometry()
@@ -406,7 +428,7 @@ class RecordedStaticPlanner:
         blocked = np.flatnonzero(~clear)
         available = sample_s[blocked[0]] if len(blocked) else distance[-1]
         speed = min(self._curve_speed_limit(reference_path)[0],
-                    math.sqrt(2*p.STATIC_END_DECELERATION*max(0., available-p.STATIC_END_BUFFER)))
+                    math.sqrt(2*p.STATIC_END_DECELERATION*max(0., available-self.wait_standoff)))
         result = self._result(reference_path, False, phase, error)
         result.acc_target_velocity = speed
         details = result.debug_details['static_avoidance']
@@ -650,7 +672,7 @@ class RecordedStaticPlanner:
         center = xy + .5*self.planner.vehicle_length*forward
         margin = self.planner.collision_margin + extra
         if tracking_reserve:
-            margin += p.STATIC_TRACKING_MARGIN
+            margin += self.tracking_margin
         length, width = .5*self.planner.vehicle_length+margin, self.planner.vehicle_half_width+margin
         for obj in obstacles:
             if not all(math.isfinite(v) for v in (obj.position.x, obj.position.y, obj.heading_deg, obj.size_x, obj.size_y)):
@@ -707,15 +729,22 @@ class RecordedStaticPlanner:
                 return np.vstack((first, rest[1:]))
         return search_corridor(self, ego, obstacles, connector, MAX_CURVATURE)
 
+    def _keep_clear(self, xy, yaw, obstacles):
+        """Re-check a committed path; a keep clearance below the planning margin absorbs box jitter."""
+        if self.keep_clearance is None:
+            return self.collision_free(xy, yaw, obstacles, .12)
+        return self.collision_free(xy, yaw, obstacles, self.keep_clearance-self.planner.collision_margin,
+                                   tracking_reserve=False)
+
     def _remaining_clear(self, points, yaw, obstacles):
         xy = np.asarray(points)
         if self.recovery_until_y is None:
-            return self.collision_free(xy, yaw, obstacles, .12)
+            return self._keep_clear(xy, yaw, obstacles)
         head = xy[:, 1] <= self.recovery_until_y+1e-6
         # Recovery edges are sampled every 2.5cm; retain translation/rotation
         # inflation as well as the full configured 0.5m obstacle clearance.
         return (self.collision_free(xy[head], yaw[head], obstacles, .03, tracking_reserve=False)
-                and self.collision_free(xy[~head], yaw[~head], obstacles, .12))
+                and self._keep_clear(xy[~head], yaw[~head], obstacles))
 
     def _reconnect_measured_pose(self, ego, obstacles):
         """Repair a small tracking discrepancy, never a blocked nominal route."""
@@ -980,7 +1009,7 @@ class RecordedStaticPlanner:
                 failure = 'alignment_recovery_unavailable'
             else:
                 points = self.path
-        if failure in REPLAN_FAILURES and abs(ego.velocity) < REPLAN_STOPPED_SPEED:
+        if failure in REPLAN_FAILURES and abs(ego.velocity) < self.replan_speed:
             # A new/moved obstacle first stops the vehicle on the committed path (above). If the
             # path stays blocked while stopped, plan again from the measured pose and current
             # obstacles instead of holding the obsolete path forever. A tracking error while
@@ -988,10 +1017,11 @@ class RecordedStaticPlanner:
             now = time.monotonic()
             if self.blocked_since is None:
                 self.blocked_since = now
-            elif now - self.blocked_since >= REPLAN_AFTER_BLOCKED_S:
-                print('[STATIC_REPLAN] committed path blocked for {:.1f}s while stopped; replanning from '
+            elif now - self.blocked_since >= self.replan_after_s:
+                print('[STATIC_REPLAN] committed path blocked for {:.1f}s at {:.1f} m/s; replanning from '
                       'pose ({:.2f}, {:.2f}) with {} obstacles'.format(
-                          now - self.blocked_since, ego.position.x, ego.position.y, len(self.known)), flush=True)
+                          now - self.blocked_since, ego.velocity, ego.position.x, ego.position.y,
+                          len(self.known)), flush=True)
                 self.reset()
                 return self._result(reference_path, False, 'blocked', 'replanning_after_block')
         else:

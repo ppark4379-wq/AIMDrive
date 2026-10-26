@@ -41,3 +41,33 @@ HEADING_SLOPES = tuple(np.arange(-.5, .51, .1)) # 전역 경로의 dx/dy 기울�
 SEARCH_TIMEOUT = 8.0                 # 횡방향 격자 탐색의 시간 제한; 선행 기록 경로 탐색 시간은 별도 [s]
 HEURISTIC_WEIGHT = 1.15               # 남은 거리 추정 비용의 가중치; 클수록 목표 방향 탐색 우선
 BODY_TRACKING_RESERVE = .15           # 기록된 통로 경계 안에 차체를 유지하기 위한 추종 여유 [m]
+
+# =============================================================================
+# 4. 정적 장애물 구간 전용 정책: 터널·고속도로가 공유하는 플래너에는 적용하지 않는다.
+# VE 박스는 프레임마다 크기·위치가 10~30 cm 흔들리고 가까워질수록 커진다.
+# =============================================================================
+STATIC_ZONE_KEEP_CLEARANCE = .40      # 확정 경로 유지 판정의 차체-박스 여유; 탐색 여유(약 0.62 m)보다 작게 두어 흔들림에 막히지 않게 함 [m]
+STATIC_ZONE_WAIT_STANDOFF = 6.0       # 탐색 대기 중 여유를 더한 장애물 앞에 남길 거리; 3.8 m 박스 중심에서 약 13 m [m]
+STATIC_ZONE_REPLAN_SPEED = 30.0       # 이 속도 미만이면 확정 경로가 막혔을 때 재계획; 사실상 주행 중에도 재계획 [m/s]
+STATIC_ZONE_REPLAN_AFTER_S = .5       # 확정 경로가 이 시간 동안 계속 막히면 현재 자세에서 재계획 [s]
+STATIC_ZONE_TRACKING_MARGIN = 0.0     # 경로 탐색 충돌 여유에 더할 추종 여유; 공통 STATIC_TRACKING_MARGIN(0.1) 대신 사용 [m]
+
+# =============================================================================
+# 5. 정적 구간 매 주기 재최적화 경로 (누적 점유 지도 사용 시): corridor_optimizer.py
+# 차체를 축 위 원들로 덮어 점유 칸과의 거리로 검사한다. 박스 방향을 쓰지 않는다.
+# =============================================================================
+CORRIDOR_STATION_STEP = 1.0           # 횡위치 변수를 두는 전방 간격 [m]
+CORRIDOR_HORIZON = 60.0               # 매 주기 최적화하는 전방 거리 [m]
+CORRIDOR_LATERAL_STEP = .1            # 통과 쪽 선택(동적 계획)의 횡위치 격자 [m]
+CORRIDOR_MIN_CLEARANCE = .35          # 차체와 점유 칸 사이 최소 여유; 계획·현재 자세 정지 판정에 공통 [m]
+CORRIDOR_DESIRED_CLEARANCE = 1.0      # 공간이 있으면 확보하려는 여유; 이보다 가까우면 비용 [m]
+CORRIDOR_MAX_SLOPE = .6               # 1 m 전진당 최대 횡이동 (약 31도) [m/m]
+CORRIDOR_BODY_CIRCLES = 6             # 차체를 덮는 원 개수
+CORRIDOR_WEIGHTS = dict(clearance=4.0, reference=.05, previous=.5, slope=1.0,   # 통과 쪽 선택 비용
+                        target=.2, curvature=100.0, jerk=200.0)                  # 경로 다듬기 비용 (목표는 통과 쪽 안내용)
+CORRIDOR_LATERAL_ACCEL = 2.0          # 곡률 속도 제한의 횡가속도 [m/s^2]
+CORRIDOR_CLEARANCE_SPEED = (2.5, 4.0) # 최소 여유에서의 속도 [m/s], 여유 1 m 증가당 속도 증가 [m/s]
+CORRIDOR_STOP_BUFFER = 1.0            # 통과 불가 지점 앞에 남길 정지 여유 [m]
+# 기록 경로는 모두 오른쪽 회피라 차로 왼쪽 절반이 통로에서 빠진다. 지도 차로 폭으로 왼쪽을 보충한다.
+CORRIDOR_LANE_HALF_WIDTH = 1.75       # 자차 차로 반폭; MGeo A2256W000222 width 3.5 m, 왼쪽은 중앙선 [m]
+CORRIDOR_LANE_EDGE_MARGIN = .3        # 차체와 차로 왼쪽 경계 사이에 남길 여유 [m]

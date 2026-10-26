@@ -120,6 +120,20 @@ def object_alignment_seconds(packet, control_pose):
     return min(.5, max(0., (position - observed) / 1e9))
 
 
+def static_zone_box(box):
+    """Only static obstacles stand in the static-obstacle section; drop VE motion uncertainty there.
+
+    The tracker's uncertain/moving labels come from box jitter, which resets the avoidance plan.
+    Raw tracker states stay in inputs.jsonl; only the planner input is normalized.
+    """
+    from AIM2026.Expert.src.config.parameters.sections import STATIC_OBSTACLE_CERTAIN_X, STATIC_OBSTACLE_CERTAIN_Y
+    x, y = box['center_world']
+    if (box['motion_state'] == 'stationary' or not STATIC_OBSTACLE_CERTAIN_X[0] <= x <= STATIC_OBSTACLE_CERTAIN_X[1]
+            or not STATIC_OBSTACLE_CERTAIN_Y[0] <= y <= STATIC_OBSTACLE_CERTAIN_Y[1]):
+        return box
+    return dict(box, motion_state='stationary', planning_speed_mps=0., planning_speed_source='static_zone')
+
+
 def planner_inputs(packet, control_pose=None, position_sources=('GPS',), coordinates=None):
     from AIM2026.Expert.src.vehicle_state import VehicleState
     from AIM2026.Expert.src.obstacle.object_info import ObjectInfo
@@ -137,12 +151,13 @@ def planner_inputs(packet, control_pose=None, position_sources=('GPS',), coordin
     vehicle = VehicleState(*values)
     alignment_s = object_alignment_seconds(packet, control_pose)
     from AIM2026.Expert.src.config.parameters.highway import UNKNOWN_OBJECT_SPEED_BOUND
+    boxes = [static_zone_box(box) for box in packet['boxes']]
     objects = [ObjectInfo(*box['center_world'],
         box['planning_speed_mps'] if box['planning_speed_mps'] is not None else UNKNOWN_OBJECT_SPEED_BOUND, -1,
         name='ve_tracked_unknown:'+box['motion_state'],
         is_static=box['motion_state'] == 'stationary', size_x=box['length_m'], size_y=box['width_m'],
-        heading_deg=box['planning_heading_deg'], unique_id=box['track_id']) for box in packet['boxes']]
-    for obj, box in zip(objects, packet['boxes']):
+        heading_deg=box['planning_heading_deg'], unique_id=box['track_id']) for box in boxes]
+    for obj, box in zip(objects, boxes):
         # Confidence is independent of the nominal model/observed speed.
         # Highway planning uses the supplied speed even before motion history
         # matures. Keep this confidence flag without inventing zero velocity.

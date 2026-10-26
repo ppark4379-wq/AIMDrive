@@ -45,7 +45,7 @@
   "planning": {
     "velocity_profile": {
       "max_velocity": 60.0,
-      "road_friction": 0.15,
+      "road_friction": 0.35,
       "window_size": 50,
       "speed_limit_deceleration": 3.0,
       "speed_limit_zones": [

@@ -51,7 +51,7 @@ class LatticePlanningProcess:
         self.planner = planner or LatticePlanner(sample_spacing=parameters.STATIC_SAMPLE_SPACING)
         self.static_avoidance = StaticAvoidance(self.planner)
         from .static_obstacle.recorded_planner import RecordedStaticPlanner
-        self.recorded_static = (RecordedStaticPlanner(self.planner, background=True)
+        self.recorded_static = (RecordedStaticPlanner(self.planner, background=True).use_static_zone_policy()
                                 if zone_bounds is None and zone_start == STATIC_OBSTACLE_ZONE_START
                                 else None)
         from .jamming.recorded_planner import JammingPlanner
@@ -64,6 +64,7 @@ class LatticePlanningProcess:
                                  and zone_start == STATIC_OBSTACLE_ZONE_START
                                  else None)
         self.centerline_lattice = CenterlineLattice(map_data_dir)
+        self.static_corridor = None   # set by attach_static_map(): receding-horizon static section planning
 
         self.highway_zone_points = tuple(highway_zone_points or ())
         self.highway_zone_half_width = float(highway_zone_half_width)
@@ -78,6 +79,14 @@ class LatticePlanningProcess:
 
         self.last_result = None
         self._last_log_state = None
+
+    def attach_static_map(self, occupancy):
+        """Plan the static-obstacle section every tick on an accumulated occupancy map (static_map.py)."""
+        from .static_obstacle.recorded_planner import RecordedStaticPlanner
+        from .static_obstacle.corridor_optimizer import StaticCorridorPlanner
+        if self.recorded_static is not None:
+            self.static_corridor = StaticCorridorPlanner(RecordedStaticPlanner(self.planner), occupancy)
+        return self.static_corridor
 
     def set_static_editor_mode(self, enabled):
         """Enable scene-change replanning only for the interactive editor."""
@@ -99,12 +108,14 @@ class LatticePlanningProcess:
                           if getattr(item['object_info'], 'is_static', False)
                           and -75 < item['object_info'].position.x < -40
                           and -180 < item['object_info'].position.y < -90]
-        if self.recorded_static is not None:
+        corridor = (self.static_corridor is not None and global_path is not None
+                    and self.static_corridor.contains(vehicle_state))
+        if self.recorded_static is not None and not corridor:
             self.recorded_static.refresh_live_preview(vehicle_state, static_objects)
             self.recorded_static.preplan(vehicle_state,
                 global_path if global_path is not None else (prediction_path or reference_path), static_objects)
         approach_result = (self.recorded_static.approach_result(vehicle_state, reference_path)
-                           if self.recorded_static is not None else None)
+                           if self.recorded_static is not None and not corridor else None)
         roundabout_result = self._run_roundabout_entry_guard(
             vehicle_state, reference_path, object_info_list, desired_velocity,
             prediction_path,
@@ -121,6 +132,10 @@ class LatticePlanningProcess:
             if self.highway_lane_planner is not None:
                 self.highway_lane_planner.reset()
             result = jamming_result
+        elif corridor and (corridor_result := self.static_corridor.run(
+                vehicle_state, reference_path, global_path)) is not None:
+            self.static_avoidance.reset()
+            result = corridor_result
         elif self.recorded_static is not None and (
                 (self.recorded_static.interactive_preview and (
                     self.recorded_static.active
