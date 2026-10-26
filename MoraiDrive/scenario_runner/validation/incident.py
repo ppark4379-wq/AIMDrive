@@ -18,7 +18,7 @@ from .paths import repo_root
 from .pipeline_log import read_window, read_ve_audit_window
 
 # Scenario launchers that drive the integrated AIM2026 VE -> Gate -> Planning -> Control stack.
-AIM2026_CONTROLLERS = ("aim2026_highway", "aim2026_roundabout")
+AIM2026_CONTROLLERS = ("aim2026_highway", "aim2026_roundabout", "aim2026_static")
 ROUNDABOUT_PREFIX = "full_loop_roundabout"
 
 
@@ -382,6 +382,9 @@ class IncidentRecorder:
         if manifest["controller"] == "aim2026_highway":
             rerun_command = shlex.join(["bash", "AIM2026/Expert/run_highway.sh",
                                         "--seed", str(manifest["seed"]), "--validation-events"])
+        elif manifest["controller"] == "aim2026_static":
+            static_options = list(self.run_options) or ["--seed", str(manifest["seed"])]
+            rerun_command = shlex.join(["bash", "AIM2026/Expert/run_static.sh", *static_options])
         elif manifest["controller"] == "aim2026_roundabout":
             variant = str(manifest["scenario_name"] or ROUNDABOUT_PREFIX)[len(ROUNDABOUT_PREFIX):].lstrip("_") or "normal"
             rerun_command = shlex.join(["bash", "AIM2026/Expert/run_roundabout.sh", "--variant", variant,
