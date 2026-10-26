@@ -10,6 +10,7 @@ from pathlib import Path
 import signal
 import subprocess
 import sys
+import threading
 import time
 import xmlrpc.client
 
@@ -155,10 +156,9 @@ class OriginalDisplay:
         observed.object_lane_matches = []
         objects = self.renderer._build_object_markers(observed,vehicle,state['objects'],stamp)
         self.renderer.objects_pub.publish(self.update_markers('objects', objects, stamp))
-        lanes = self.renderer._build_lane_markers(result,stamp)
         # WorldOverlay already publishes the highway lines once, latched.
-        # Drawing the same lines twice at almost identical Z causes shimmer.
-        lanes.markers = [m for m in lanes.markers if m.ns != 'highway_lane_centers']
+        # Skip their construction as well as publication on each live frame.
+        lanes = self.renderer._build_lane_markers(result,stamp,include_centers=False)
         self.renderer.lanes_pub.publish(self.update_markers('lanes', lanes, stamp))
         self.local_pub.publish(self.path_message(state['selected_path'],stamp))
         odom = Odometry(); odom.header.frame_id='map'; odom.header.stamp=stamp; odom.child_frame_id='gps'
@@ -216,6 +216,95 @@ class SnapshotReader:
         return self.state, self.state is None or now - self.written_at > max_age
 
 
+class RunDiscovery:
+    """Find active runs off the render thread; /mnt/c scans can take seconds.
+
+    Only a complete (folder, route) pair is exchanged under the lock. Directory
+    scans, heartbeat stats and route loading never hold it or pause live TF.
+    """
+    def __init__(self, root, interval=1.):
+        self.root = root
+        self.interval = interval
+        self._selection = (None, [])
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
+        self._thread = None
+        self._signatures = {}
+        self._activity = {}
+
+    def start(self):
+        self._thread = threading.Thread(target=self._run, name='rviz-run-discovery', daemon=True)
+        self._thread.start()
+
+    def close(self):
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=3.)
+
+    def latest(self):
+        with self._lock:
+            return self._selection
+
+    @staticmethod
+    def _run_order(path):
+        match = re.search(r'\d{8}-\d{6}', path.parent.name)
+        if match:
+            try:
+                return datetime.strptime(match.group(), '%Y%m%d-%H%M%S').timestamp()
+            except ValueError:
+                pass
+        return path.stat().st_mtime
+
+    def _scan(self):
+        candidates = list(self.root.glob('*/inference.yaml'))
+        started_runs = []
+        for candidate in candidates:
+            try:
+                info = (candidate.parent/'control.jsonl').stat()
+            except OSError:
+                continue
+            started_runs.append(candidate)
+            signature = (info.st_mtime_ns, info.st_size)
+            if candidate in self._signatures and signature != self._signatures[candidate]:
+                self._activity[candidate] = time.monotonic()
+            self._signatures[candidate] = signature
+        # --check creates a config, but no control heartbeat.
+        candidates = started_runs or candidates
+        active = [p for p in candidates if time.monotonic()-self._activity.get(p, -float('inf')) < 3.]
+        folder, _ = self.latest()
+        if active:
+            newest = max(active, key=lambda p: self._activity[p]).parent
+        elif folder is not None and (folder/'inference.yaml').is_file():
+            # Retain the observed run after it stops, including clock changes.
+            return
+        else:
+            current_clock_runs = []
+            for candidate in candidates:
+                try:
+                    if candidate.stat().st_mtime <= time.time()+5.:
+                        current_clock_runs.append(candidate)
+                except OSError:
+                    continue
+            candidates = current_clock_runs or candidates
+            newest = max(candidates, key=self._run_order).parent if candidates else None
+        if newest is None or newest == folder:
+            return
+        with (newest/'expert/path.csv').open(newline='', encoding='utf-8') as stream:
+            route = [(float(row['x']), float(row['y'])) for row in csv.DictReader(stream)]
+        with self._lock:
+            self._selection = (newest, route)
+
+    def _run(self):
+        while not self._stop.is_set():
+            try:
+                self._scan()
+            except (OSError, ValueError, KeyError):
+                # New/removed runs and partial route writes must not drop the
+                # last complete selection. Retry on the next background scan.
+                pass
+            self._stop.wait(self.interval)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--runs-root', type=Path, default=REPO/'AIM2026/outputs/expert')
@@ -240,7 +329,7 @@ def main():
     import rospy
     import tf
     from visualization_msgs.msg import MarkerArray
-    owned_master = viewer = None
+    owned_master = viewer = discovery = None
     exit_code = 0
     stopped = [False]
     for sig in (signal.SIGINT, signal.SIGTERM):
@@ -275,75 +364,28 @@ def main():
             if args.roi:
                 config = REPO/'AIM2026/Expert/ros/rviz/ve_roi_base_link.rviz'
             viewer = subprocess.Popen(['rviz', '-d', str(config)], start_new_session=True)
-        folder, route, newest = None, [], None
+        folder, route = None, []
         reader = SnapshotReader()
-        next_scan = 0.
         next_status = 0.
-        run_signatures = {}
-        run_activity = {}
+        discovery = RunDiscovery(args.runs_root)
+        discovery.start()
         started = time.monotonic()
         print('[RViz] Reading UDP Expert logs; no vehicle control. Start Expert with --visualize.', flush=True)
         print('[RViz] VIEW={} | data=VE detections -> tracker -> Expert snapshot'.format(
             'VE ROI (front 30m / rear 20m / left-right 25m)' if args.roi else 'MAP'), flush=True)
         while not stopped[0] and not rospy.is_shutdown():
+            frame_started = time.monotonic()
             if args.seconds and time.monotonic()-started >= args.seconds:
                 break
             if viewer is not None and viewer.poll() is not None:
                 exit_code = viewer.returncode
                 print('[RViz] Window process exited (code={}).'.format(exit_code), flush=True)
                 break
-            if time.monotonic() >= next_scan:
-                candidates = list(args.runs_root.glob('*/inference.yaml'))
-                # Follow the newest actual run even before its first snapshot.
-                # Preferring any old snapshot pins the viewer to a previous run
-                # while the new Expert is waiting for inference. Exclude checks
-                # when real runs exist: --check writes config but no control log.
-                started_runs = [p for p in candidates if (p.parent/'control.jsonl').is_file()]
-                candidates = started_runs or candidates
-                for candidate in candidates:
-                    heartbeat = candidate.parent/'control.jsonl'
-                    if heartbeat.is_file():
-                        info = heartbeat.stat()
-                        signature = (info.st_mtime_ns, info.st_size)
-                        if candidate in run_signatures and signature != run_signatures[candidate]:
-                            run_activity[candidate] = time.monotonic()
-                        run_signatures[candidate] = signature
-                active_runs = [p for p in candidates
-                               if time.monotonic()-run_activity.get(p, -float('inf')) < 3.]
-                candidates = active_runs or candidates
-                # A simulator session may follow a system-clock correction.
-                # Old runs dated in the future must not outrank today's run.
-                current_clock_runs = [p for p in candidates if p.stat().st_mtime <= time.time() + 5.]
-                candidates = current_clock_runs or candidates
-                def run_order(path):
-                    # Scenario run names originate in the WSL launcher, even
-                    # when Windows writes their files with a different clock.
-                    match = re.search(r'\d{8}-\d{6}', path.parent.name)
-                    if match:
-                        try:
-                            return datetime.strptime(match.group(), '%Y%m%d-%H%M%S').timestamp()
-                        except ValueError:
-                            pass
-                    return path.stat().st_mtime
-                if active_runs:
-                    newest = max(active_runs, key=lambda p: run_activity[p]).parent
-                elif folder is not None and (folder/'inference.yaml').is_file():
-                    # Keep the last observed run after it stops. WSL/Windows
-                    # clock differences must not switch us back to an old run.
-                    newest = folder
-                else:
-                    newest = max(candidates, key=run_order).parent if candidates else None
-                next_scan = time.monotonic() + 1.
+            newest, newest_route = discovery.latest()
             if newest is not None and newest != folder:
-                try:
-                    with (newest/'expert/path.csv').open(newline='', encoding='utf-8') as stream:
-                        route = [(float(r['x']), float(r['y'])) for r in csv.DictReader(stream)]
-                    folder = newest
-                    reader = SnapshotReader()
-                    print('[RViz] '+str(folder), flush=True)
-                except (OSError, ValueError):
-                    time.sleep(.1)
-                    continue
+                folder, route = newest, newest_route
+                reader = SnapshotReader()
+                print('[RViz] '+str(folder), flush=True)
             state, stale = reader.read(folder)
             display.snapshot_age_s = max(0., time.time() - reader.written_at) if state else None
             if time.monotonic() >= next_status:
@@ -369,8 +411,11 @@ def main():
             if render_key != getattr(display, '_render_key', None):
                 display.publish(route, state, stamp, stale)
                 display._render_key = render_key
-            time.sleep(.05)
+            # Account for rendering time instead of adding it to every period.
+            time.sleep(max(0., .05-(time.monotonic()-frame_started)))
     finally:
+        if discovery is not None:
+            discovery.close()
         rospy.signal_shutdown('viewer closed')
         for child in (viewer, owned_master):
             if child is not None and child.poll() is None:

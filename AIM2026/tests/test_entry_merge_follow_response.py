@@ -136,6 +136,79 @@ class EntryFollowResponseTests(unittest.TestCase):
         self.assertNotEqual(result.reason,'entry_merge_start')
         self.assertIsNone(self.planner.active_candidate)
 
+    def seed_recorded_lost_target(self, age=16.7):
+        # 22:39 replay: ID 22 vanished near y=252; Ego later stopped at y=169.
+        # Its last gap was only ~3 m, so the old forward-ROI-only release never ran.
+        following = self.planner.entry_merge.following
+        origin = self.lanes.project(Point(66.6, 252.), self.target)
+        following.lead = dict(identity=22, s=origin.s, gap=3.2, speed=5.788,
+                              length=6.35, x=66.6, y=252., yaw=-math.pi/2, age=0.)
+        following.age = age
+        following.command = 0.
+        self.planner.set_control_dt(.1)
+        return VehicleState(62.75, 168.89, math.radians(-89.), 0.)
+
+    def test_recorded_lost_target_cannot_lock_empty_merge_from_standstill(self):
+        ego = self.seed_recorded_lost_target()
+        for _ in range(15):
+            result = self.step(ego, [])
+            self.assertNotEqual(result.debug_details['entry_merge']['target_event'], 'target_lost')
+            if result.reason == 'entry_merge_start':
+                break
+        else:
+            self.fail('Expired ID still prevented a clear stopped-state merge')
+        self.assertGreater(result.acc_target_velocity, 0.)
+        self.assertEqual(result.target_link_id, p.ENTRY_MERGE_TARGET)
+
+    def test_expired_target_reselects_current_bus_and_does_not_force_merge(self):
+        ego = self.seed_recorded_lost_target()
+        bus = ObjectInfo(66.4, 169., 0., -1, unique_id=55, size_x=11.,
+                         size_y=2.6, heading_deg=-89., is_static=True)
+        result = self.step(ego, [{'object_info':bus}])
+        details = result.debug_details['entry_merge']
+        self.assertEqual(details['expired_lead_id'], 22)
+        self.assertEqual(details['lead_id'], 55)
+        self.assertEqual(details['target_event'], 'reselected_after_dropout')
+        self.assertNotEqual(result.reason, 'entry_merge_start')
+        self.assertIsNone(self.planner.active_candidate)
+
+    def test_short_dropout_still_holds_and_same_id_reconnects(self):
+        ego = self.seed_recorded_lost_target(age=0.)
+        following = self.planner.entry_merge.following
+        self.planner._requested_speed = 10.
+        following.update(ego, self.target, [], 30.)
+        self.assertEqual(following.details['target_event'], 'predicted_short_dropout')
+        self.assertEqual(following.details['lead_id'], 22)
+        obj = ObjectInfo(66.6, 251., 5.8, -1, unique_id=22, size_x=6.35,
+                         size_y=2.6, heading_deg=-90.)
+        entries = [{'object_info':obj}]
+        following.update(ego, self.target, self.planner._match_objects(entries), 30.)
+        self.assertEqual(following.details['lead_id'], 22)
+        self.assertEqual(following.details['lead_age'], 0.)
+        self.assertIsNone(following.details['expired_lead_id'])
+
+    def test_expired_target_still_rejects_a_fast_approaching_rear_car(self):
+        ego = self.seed_recorded_lost_target()
+        rear = ObjectInfo(66.4, 181., 25., -1, unique_id=56, size_x=4.8,
+                          size_y=2., heading_deg=-90.)
+        for _ in range(8):
+            result = self.step(ego, [{'object_info':rear}])
+            self.assertNotEqual(result.reason, 'entry_merge_start')
+        self.assertIsNone(self.planner.active_candidate)
+
+    def test_target_expiry_keeps_an_already_committed_path(self):
+        ego, _ = self.recorded_maneuver()
+        candidate = self.planner.active_candidate
+        following = self.planner.entry_merge.following
+        following.lead = dict(identity=22, s=1., gap=3.2, speed=5.8,
+                              length=6.35, x=66.6, y=252., yaw=-math.pi/2, age=0.)
+        following.age = 20.
+        result = self.step(ego, [])
+        self.assertIs(self.planner.active_candidate, candidate)
+        self.assertEqual(result.target_link_id, p.ENTRY_MERGE_TARGET)
+        self.assertGreater(result.acc_target_velocity, 0.)
+        self.assertIsNone(result.debug_details['entry_merge']['lead_id'])
+
 
 if __name__=='__main__':
     unittest.main()

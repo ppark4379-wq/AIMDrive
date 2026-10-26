@@ -122,9 +122,8 @@ class EntryMerge:
         # fallback. Longer paths may reach a newly visible source obstruction.
         distances = list(dict.fromkeys(round(value, 6) for value in distances if value >= 12.))
         details['attempts'] = []
+        self.last_conflict = None
         if not (allow_change and legal and ego.position.y <= p.ENTRY_MERGE_START_Y):
-            distances = []
-        if self.following.details['target_event'] == 'target_lost':
             distances = []
         for distance in distances:
             proposal = planner._build_candidate(ego, target, planner.lane_map.project(ego.position, target),

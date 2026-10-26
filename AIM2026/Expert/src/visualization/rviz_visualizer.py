@@ -417,33 +417,34 @@ class LatticeRvizVisualizer:
                 marker_array.markers.append(marker)
         return marker_array
 
-    def _build_lane_markers(self, result, stamp):
+    def _build_lane_markers(self, result, stamp, include_centers=True):
         marker_array = MarkerArray()
         marker_array.markers.append(self._delete_all("map", stamp))
         for marker_id, lane_link in enumerate(result.highway_lane_links):
-            marker = self._new_marker(
-                frame_id="map",
-                stamp=stamp,
-                namespace="highway_lane_centers",
-                marker_id=marker_id,
-                marker_type=Marker.LINE_STRIP,
-            )
-            marker.scale.x = 0.09
-            if lane_link.excluded:
-                self._set_color(marker, 1.0, 0.1, 0.1, 0.8)
-            elif lane_link.id == result.target_link_id:
-                marker.scale.x = 0.22
-                self._set_color(marker, 1.0, 0.85, 0.0, 1.0)
-            elif lane_link.id == result.current_link_id:
-                marker.scale.x = 0.17
-                self._set_color(marker, 1.0, 1.0, 1.0, 1.0)
-            else:
-                self._set_color(marker, 0.0, 0.75, 0.85, 0.5)
-            marker.points = [
-                RosPoint(x=point.x, y=point.y, z=0.03)
-                for point in lane_link.points
-            ]
-            marker_array.markers.append(marker)
+            if include_centers:
+                marker = self._new_marker(
+                    frame_id="map",
+                    stamp=stamp,
+                    namespace="highway_lane_centers",
+                    marker_id=marker_id,
+                    marker_type=Marker.LINE_STRIP,
+                )
+                marker.scale.x = 0.09
+                if lane_link.excluded:
+                    self._set_color(marker, 1.0, 0.1, 0.1, 0.8)
+                elif lane_link.id == result.target_link_id:
+                    marker.scale.x = 0.22
+                    self._set_color(marker, 1.0, 0.85, 0.0, 1.0)
+                elif lane_link.id == result.current_link_id:
+                    marker.scale.x = 0.17
+                    self._set_color(marker, 1.0, 1.0, 1.0, 1.0)
+                else:
+                    self._set_color(marker, 0.0, 0.75, 0.85, 0.5)
+                marker.points = [
+                    RosPoint(x=point.x, y=point.y, z=0.03)
+                    for point in lane_link.points
+                ]
+                marker_array.markers.append(marker)
 
             label = self._new_marker(
                 frame_id="map",
