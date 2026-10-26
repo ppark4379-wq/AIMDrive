@@ -106,3 +106,26 @@ class LidarHeadingTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def test_cluster_centres_ride_on_the_wire_only_with_lidar_evidence():
+    from AIM2026.UDP.Detection import Box
+    plain = Box(1., 2., 0., 1., 2., None)
+    assert 'lidar_center' not in plain.to_wire()
+    rich = Box(1., 2., 0., 1., 2., None, (1.1, 2.1), 30)
+    row = rich.to_wire()
+    assert row['lidar_center'] == [1.1, 2.1] and row['lidar_points'] == 30
+    assert Box.from_wire(row) == rich
+
+
+def test_a_short_box_grows_over_its_cluster_but_a_car_or_wall_cluster_does_not():
+    import numpy as np
+    from AIM2026.Inference.vision.postprocess import _cover
+    box = dict(center=np.array([0., 10.]), heading=np.array([0., 1.]), length=.9, width=.8)
+    barrier = np.array([[0., 10. + d] for d in np.linspace(-.9, .9, 20)])          # 1.8 m barrier, box shows half
+    grown = _cover(box, barrier)
+    assert abs(grown['length'] - 1.8) < 1e-6 and abs(grown['center'][1] - 10.) < 1e-6
+    wall = np.array([[0., 10. + d] for d in np.linspace(-3., 3., 40)])             # 6 m: not this object
+    assert _cover(box, wall) is box
+    inside = np.array([[0., 10.2], [.1, 9.9]])
+    assert _cover(box, inside) is box                                              # never shrunk, unchanged

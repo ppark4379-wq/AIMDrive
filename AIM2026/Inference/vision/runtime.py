@@ -151,7 +151,7 @@ class VisionRuntime:
 
     def __init__(self, checkpoint='P1', *, device='cuda', lidar_to_base=DEFAULT_LIDAR_TO_BASE,
                  signal_head=True, checkpoint_path=None, checkpoint_sha256=None, cpu_threads=4,
-                 object_head=None, lidar_heading=False):
+                 object_head=None, lidar_heading=False, lidar_centers=True):
         if checkpoint_path is not None:
             if not checkpoint_sha256:
                 raise ValueError('checkpoint_sha256 is required with checkpoint_path')
@@ -172,6 +172,7 @@ class VisionRuntime:
         self.contract = checkpoint_contract(payload, self.checkpoint_sha256)
         self.object_head = object_head
         self.lidar_heading = bool(lidar_heading)
+        self.lidar_centers = bool(lidar_centers)
         rotation = lidar_to_base['rotation_xyzw']
         self._lidar_offset = np.asarray(lidar_to_base['translation_xyz'], dtype=np.float64)
         self._lidar_rotation = _rotation_matrix(rotation)
@@ -208,9 +209,11 @@ class VisionRuntime:
         signal = (decode_signal(self.signal_head(light_token))[0]
                   if self.signal_head is not None else None)
         get = pose.get if isinstance(pose, dict) else lambda key: getattr(pose, key)
+        points = self._body_points(lidar) if self.lidar_heading or self.lidar_centers else None
         boxes, counts = decode_world_boxes(detection[0], float(get('x')), float(get('y')),
                                            float(get('yaw_grid_rad')), merge=bool(self.object_head),
-                                           lidar_points=self._body_points(lidar) if self.lidar_heading else None)
+                                           lidar_points=points if self.lidar_heading else None,
+                                           cluster_points=points if self.lidar_centers else None)
         if _RAW_DUMP:
             _dump_raw(detection[0], float(get('x')), float(get('y')), float(get('yaw_grid_rad')), lidar)
         return Perception(tuple(boxes), signal, decode_native_signal(light)[0], counts,

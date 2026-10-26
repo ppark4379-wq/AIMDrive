@@ -10,6 +10,13 @@ Here every track keeps up to WINDOW_S of world centres through gaps of up to GAP
 when, over at least MIN_SPAN_S, the median centre of the oldest third and of the newest third differ by at most
 MAX_NET_M, the newest centres still sit at the window median, and the detector's own speed is low. A 'moving' label is
 never changed, and the newest-centre test drops an object that starts to move within a few tenths of a second.
+
+When the boxes carry the Inference's LiDAR cluster centre (``lidar_center``), a second history keeps those centres and,
+once it alone spans the decision window, the same tests run on it instead. VE box centres of parked objects jump by up
+to a metre when the box flips between a piece and the whole object (68 % of the frames still uncertain after 0.6 s
+in the 30-run tunnel benchmark), and VE's speed of parked objects reads 2-4 m/s; the cluster centre stays within a few
+centimetres, so this cut the uncertain share there from 5.3 % to 4.5 % with no moving vehicle labelled stationary.
+The LiDAR history has no speed, so the VE speed test is skipped while it is used.
 """
 import math
 import statistics
@@ -35,7 +42,7 @@ def _median_point(points):
 
 class StationaryResolver:
     def __init__(self):
-        self.tracks = {}       # id -> dict(last=t, samples=[(t, x, y, raw_speed)], resolved=bool)
+        self.tracks = {}       # id -> dict(last=t, samples=[(t, x, y, raw_speed)], lidar=[(t, x, y, None)], resolved=bool)
         self.generation = None
         self.resolved = 0
 
@@ -51,16 +58,22 @@ class StationaryResolver:
             identity = box.get('track_id')
             if identity is None or identity < 0 or box.get('planning_speed_source') in ('static_memory', 'static_map'):
                 continue
-            track = self.tracks.setdefault(identity, dict(last=now, samples=[]))
+            track = self.tracks.setdefault(identity, dict(last=now, samples=[], lidar=[]))
             track['last'] = now
             if box.get('motion_state') == 'moving':
                 track['samples'].clear()          # a mover starts a fresh history when it stops
+                track['lidar'].clear()
                 track['resolved'] = False
                 continue
-            samples = track['samples']
+            samples, lidar = track['samples'], track['lidar']
             samples.append((now, *box['center_world'], box.get('speed_mps')))
-            while samples and now - samples[0][0] > WINDOW_S:
-                samples.pop(0)
+            if box.get('lidar_center') is not None:
+                lidar.append((now, *box['lidar_center'], None))
+            for history in (samples, lidar):
+                while history and now - history[0][0] > WINDOW_S:
+                    history.pop(0)
+            if len(lidar) >= MIN_SAMPLES and lidar[-1][0] - lidar[0][0] >= MIN_SPAN_S:
+                samples = lidar
             if box.get('motion_state') == 'stationary':
                 track['resolved'] = True          # the tracker agrees; keep it through its next uncertain frames
                 continue

@@ -8,6 +8,7 @@ The fixed policy is sigmoid >= 0.5, float64 oriented-IoU NMS at 0.3.
 import math
 
 import numpy as np
+from scipy.spatial import cKDTree
 
 from AIM2026.UDP.Detection import Box, MAX_BOX_SIZE_M, MAX_SPEED_MPS
 
@@ -222,18 +223,32 @@ def lshape_axis(points):
     return axis, max(l1, l2), min(l1, l2)
 
 
+LIDAR_VOXEL_M = .1
+
+
 def object_points(points, center):
-    """The LiDAR points connected to the detector's centre (gaps < LIDAR_CLUSTER_GAP_M), within LIDAR_CLUSTER_MAX_M."""
+    """The LiDAR points connected to the detector's centre (gaps < LIDAR_CLUSTER_GAP_M), within LIDAR_CLUSTER_MAX_M.
+
+    Connectivity is computed on 0.1 m voxels: the all-pairs version took up to 0.5 s on a frame next to a building
+    wall (4000 points), which stalled the inference; on the benchmark both give the same points for 1401 of 1403 boxes.
+    """
     near = points[np.hypot(points[:, 0] - center[0], points[:, 1] - center[1]) < LIDAR_CLUSTER_MAX_M]
     if not len(near):
         return near
-    member = np.hypot(near[:, 0] - center[0], near[:, 1] - center[1]) < LIDAR_SEED_RADIUS_M
-    frontier = member.copy()
-    while frontier.any():
-        gap = np.min(np.linalg.norm(near[:, None] - near[frontier][None], axis=2), axis=1)
-        frontier = (gap < LIDAR_CLUSTER_GAP_M) & ~member
-        member |= frontier
-    return near[member]
+    voxels, index = np.unique(np.floor(near / LIDAR_VOXEL_M).astype(np.int64), axis=0, return_inverse=True)
+    index = index.reshape(-1)
+    centres = np.zeros((len(voxels), 2))
+    np.add.at(centres, index, near)
+    centres /= np.bincount(index)[:, None]
+    member = np.zeros(len(voxels), dtype=bool)
+    member[index[np.hypot(near[:, 0] - center[0], near[:, 1] - center[1]) < LIDAR_SEED_RADIUS_M]] = True
+    tree = cKDTree(centres)
+    frontier = np.flatnonzero(member)
+    while len(frontier):
+        reached = np.unique(np.concatenate(tree.query_ball_point(centres[frontier], LIDAR_CLUSTER_GAP_M)))
+        frontier = reached[~member[reached]]
+        member[frontier] = True
+    return near[member[index]]
 
 
 def refine_heading_with_lidar(boxes, points):
@@ -276,12 +291,36 @@ def refine_heading_with_lidar(boxes, points):
     return changed
 
 
-def decode_world_boxes(prediction, x, y, yaw_grid_rad, merge=False, lidar_points=None):
+LIDAR_CENTER_MIN_POINTS = 5
+LIDAR_COVER_MAX_M = 3.        # grow a box over its cluster only while the result stays this small (not cars, not walls)
+
+
+def _cover(box, cluster):
+    """The box grown along its own axes to contain the cluster, or the box itself when that exceeds LIDAR_COVER_MAX_M."""
+    u = np.asarray(box['heading'], dtype=np.float64)
+    u = u / np.linalg.norm(u)
+    v = np.array([-u[1], u[0]])
+    center = np.asarray(box['center'], dtype=np.float64)
+    along, across = (cluster - center) @ u, (cluster - center) @ v
+    lo_u, hi_u = min(-box['length'] / 2, along.min()), max(box['length'] / 2, along.max())
+    lo_v, hi_v = min(-box['width'] / 2, across.min()), max(box['width'] / 2, across.max())
+    if max(hi_u - lo_u, hi_v - lo_v) > LIDAR_COVER_MAX_M or (hi_u - lo_u <= box['length'] and hi_v - lo_v <= box['width']):
+        return box
+    return dict(box, center=center + u * (lo_u + hi_u) / 2 + v * (lo_v + hi_v) / 2, length=hi_u - lo_u, width=hi_v - lo_v)
+
+
+def decode_world_boxes(prediction, x, y, yaw_grid_rad, merge=False, lidar_points=None, cluster_points=None):
     """Detection head + the pose the inputs were captured at -> (UDP Box list, counts).
 
     Speed is the head's scalar speed (no direction); invalid values become None.
     Values outside the Detection wire limits would make the sender reject the
     whole frame, so such a speed becomes None and such a box is dropped (counted).
+    ``lidar_points`` turns on the LiDAR heading fix; ``cluster_points`` (the same body points) adds each box's LiDAR
+    cluster centre. The Expert uses it to tell one object reported twice from two objects and to judge whether a
+    parked object moves: the cluster centre holds still where the detector's box centre jumps by up to a metre.
+    A box is also grown to cover its cluster when the result stays within LIDAR_COVER_MAX_M: a barrier lying across
+    the lane came out half its length (GT footprint covered 0.37 -> 0.98 in the tunnel benchmark, all objects
+    0.74 -> 0.82, area x1.2). Boxes are never shrunk; cars and wall-attached clusters exceed the limit and stay as they are.
     """
     boxes, counts = decode_boxes(prediction, merge=merge)
     if lidar_points is not None:
@@ -309,6 +348,14 @@ def decode_world_boxes(prediction, x, y, yaw_grid_rad, merge=False, lidar_points
         speed = float(values[box['cell_index'], 7]) * SPEED_SCALE
         if not math.isfinite(speed) or not 0. <= speed <= MAX_SPEED_MPS:
             speed, invalid_speeds = None, invalid_speeds + 1
+        lidar_center = lidar_count = None
+        if cluster_points is not None and len(cluster_points):
+            cluster = object_points(cluster_points, box['center'])
+            if len(cluster) >= LIDAR_CENTER_MIN_POINTS:
+                lidar_center = to_world(cluster.mean(0), (0., 1.), x, y, yaw_grid_rad)[0]
+                lidar_count = int(len(cluster))
+                box = _cover(box, cluster)
         (wx, wy), heading_deg = to_world(box['center'], box['heading'], x, y, yaw_grid_rad)
-        result.append(Box(wx, wy, heading_deg, float(box['width']), float(box['length']), speed))
+        result.append(Box(wx, wy, heading_deg, float(box['width']), float(box['length']), speed,
+                          lidar_center, lidar_count))
     return result, dict(counts, invalid_speed_values=invalid_speeds, oversize_boxes=oversize)

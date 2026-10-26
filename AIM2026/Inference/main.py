@@ -319,10 +319,11 @@ def main():
     runtime = VisionRuntime(vision['checkpoint'], device=options['device'], signal_head=vision['signal_head'],
                             lidar_to_base=lidar_to_base(lidar['pos'], lidar['rot_deg']),
                             cpu_threads=options['cpu_threads'], object_head=vision.get('object_head'),
-                            lidar_heading=bool(vision.get('lidar_heading', False)))
-    print('[VE] %s loaded (%s), signal head=%s, object head=%s, lidar heading=%s' % (
+                            lidar_heading=bool(vision.get('lidar_heading', False)),
+                            lidar_centers=bool(vision.get('lidar_centers', True)))
+    print('[VE] %s loaded (%s), signal head=%s, object head=%s, lidar heading=%s, lidar centers=%s' % (
         vision['checkpoint'], options['device'], runtime.signal_head is not None, runtime.object_head,
-        runtime.lidar_heading), flush=True)
+        runtime.lidar_heading, runtime.lidar_centers), flush=True)
     stop = []
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stop.append(True))

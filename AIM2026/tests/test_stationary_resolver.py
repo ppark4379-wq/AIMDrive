@@ -58,3 +58,26 @@ def test_a_vehicle_that_drives_off_is_released_within_a_second():
 def test_a_fast_detector_speed_keeps_it_uncertain():
     assert set(states(StationaryResolver(), [(20., 0.)] * 25, speed=3.)) == {'uncertain'}
 
+
+
+def lidar_states(resolver, centres, lidar_centres, speed=.2):
+    out = []
+    for i, ((x, y), lidar) in enumerate(zip(centres, lidar_centres)):
+        b = box(x, y, speed=speed)
+        if lidar is not None:
+            b['lidar_center'] = list(lidar)
+        out.append(resolver.apply(packet(i * .1, [b]))['boxes'][0]['motion_state'])
+    return out
+
+
+def test_a_jumping_box_on_a_still_lidar_cluster_is_stationary():
+    # VE flips between the whole barrier and a piece 1 m away; VE speed reads 3 m/s; the LiDAR cluster holds still
+    centres = [(20. + (1. if i % 3 == 0 else 0.), 0.) for i in range(20)]
+    assert StationaryResolver.__module__ and set(states(StationaryResolver(), centres, speed=3.)) == {'uncertain'}
+    out = lidar_states(StationaryResolver(), centres, [(20.2, .1)] * 20, speed=3.)
+    assert out[-5:] == ['stationary'] * 5
+
+
+def test_a_lidar_cluster_that_moves_is_not_stationary():
+    centres = [(20. + .1 * i, 0.) for i in range(20)]                   # 1 m/s
+    assert set(lidar_states(StationaryResolver(), centres, centres)) == {'uncertain'}

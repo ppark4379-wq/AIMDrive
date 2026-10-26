@@ -58,6 +58,9 @@ class Box:
     width_m: float
     length_m: float
     speed_mps: float = None  # VE scalar speed; None when the head abstains
+    # Optional: centre (map x, y) and size of the LiDAR point cluster on the box; absent without LiDAR evidence.
+    lidar_center: tuple = None
+    lidar_points: int = None
 
     def to_wire(self):
         width, length = _finite(self.width_m, 'box.width_m'), _finite(self.length_m, 'box.length_m')
@@ -66,17 +69,26 @@ class Box:
         speed = None if self.speed_mps is None else _finite(self.speed_mps, 'box.speed_mps')
         if speed is not None and not 0 <= speed <= MAX_SPEED_MPS:
             raise ValueError('box.speed_mps: expected 0..%g' % MAX_SPEED_MPS)
-        return dict(center_world=[_finite(self.x, 'box.x'), _finite(self.y, 'box.y')],
-                    heading_deg=_finite(self.heading_deg, 'box.heading_deg'),
-                    width_m=width, length_m=length, speed_mps=speed)
+        row = dict(center_world=[_finite(self.x, 'box.x'), _finite(self.y, 'box.y')],
+                   heading_deg=_finite(self.heading_deg, 'box.heading_deg'),
+                   width_m=width, length_m=length, speed_mps=speed)
+        if self.lidar_center is not None:
+            if not isinstance(self.lidar_center, (list, tuple)) or len(self.lidar_center) != 2:
+                raise ValueError('box.lidar_center: expected [x, y]')
+            if type(self.lidar_points) is not int or self.lidar_points < 1:
+                raise ValueError('box.lidar_points: expected a positive integer with lidar_center')
+            row.update(lidar_center=[_finite(v, 'box.lidar_center') for v in self.lidar_center],
+                       lidar_points=self.lidar_points)
+        return row
 
     @classmethod
     def from_wire(cls, row):
         center = row['center_world']
         if not isinstance(center, (list, tuple)) or len(center) != 2:
             raise ValueError('box.center_world: expected [x, y]')
-        box = cls(center[0], center[1], row['heading_deg'], row['width_m'], row['length_m'],
-                  row.get('speed_mps'))
+        lidar_center = row.get('lidar_center')
+        box = cls(center[0], center[1], row['heading_deg'], row['width_m'], row['length_m'], row.get('speed_mps'),
+                  tuple(lidar_center) if isinstance(lidar_center, list) else lidar_center, row.get('lidar_points'))
         box.to_wire()
         return box
 

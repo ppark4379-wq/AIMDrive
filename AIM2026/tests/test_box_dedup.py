@@ -23,3 +23,13 @@ def test_a_thin_barrier_reported_twice_is_one_object_but_a_line_of_barriers_is_n
     assert drop_contained([a, b])[1] == 1
     line = [box(20., 3. * k, 90., 2.8, .8) for k in range(3)]             # end to end along the lane
     assert drop_contained(line)[1] == 0
+
+
+def test_a_piece_on_the_same_lidar_cluster_is_dropped_but_a_neighbour_on_its_own_cluster_is_kept():
+    whole, piece = box(20., 0., 0., 2.3, 1.8), box(21.4, .3, 0., .9, 1.5)       # overlap too small for the rules above
+    whole['lidar_center'], piece['lidar_center'] = [20.3, .1], [20.4, .1]
+    assert drop_contained([whole, piece])[1] == 1
+    piece['lidar_center'] = [21.5, .3]                                         # its own cluster: a second object
+    assert drop_contained([whole, piece])[1] == 0
+    del whole['lidar_center'], piece['lidar_center']                           # no LiDAR evidence: unchanged rules
+    assert drop_contained([whole, piece])[1] == 0

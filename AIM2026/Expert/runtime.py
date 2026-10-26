@@ -25,6 +25,7 @@ from AIM2026.Expert.static_map import StaticObstacleMap
 from AIM2026.Expert.stationary_resolver import StationaryResolver
 from AIM2026.Expert.box_dedup import drop_contained
 from AIM2026.Expert.track_alias import TrackAliaser
+from AIM2026.Expert.stationary_geometry import StationaryGeometry
 from AIM2026.Inference.timer_resolution import high_resolution_timer
 
 # VE not-ready reasons that must stop using the last detection at once.
@@ -86,6 +87,7 @@ class Inputs:
         self.generation, self.digest, self.tracker = generation, digest, tracker
         self.dedup = dedup
         self.alias = alias
+        self.geometry = None       # StationaryGeometry, set by main()
         self.resolver = resolver
         self.memory = memory
         self.static_map = static_map
@@ -142,6 +144,8 @@ class Inputs:
             self.packet = self.resolver.apply(self.packet)
         if self.memory is not None:
             self.packet = self.memory.apply(self.packet)
+        if self.geometry is not None:
+            self.packet = self.geometry.apply(self.packet)
         if self.static_map is not None:
             self.packet = self.static_map.apply(self.packet)
         self.frames += 1
@@ -211,6 +215,8 @@ def main(argv=None, control_tick=None):
                         help='Tracker: seconds a long-stopped object stays stationary through weak evidence (0 = off)')
     parser.add_argument('--no-box-dedup', action='store_true',
                         help='Keep a VE box that duplicates another box of the same frame (mostly inside it, or same size and centre)')
+    parser.add_argument('--no-stationary-geometry', action='store_true',
+                        help='Report the latest VE box of a parked object instead of the median of its recent boxes')
     parser.add_argument('--no-track-alias', action='store_true',
                         help='Keep separate ids for the piece and whole boxes VE alternates between on one parked object')
     parser.add_argument('--no-stationary-resolver', action='store_true',
@@ -268,6 +274,7 @@ def main(argv=None, control_tick=None):
     stop = []
     old_handlers = {sig: signal.signal(sig, lambda *_: stop.append(True))
                     for sig in (signal.SIGINT, signal.SIGTERM)}
+    inputs.geometry = None if args.no_stationary_geometry else StationaryGeometry()
     process = sender = receiver = None
     pipeline = None
     logs = []
