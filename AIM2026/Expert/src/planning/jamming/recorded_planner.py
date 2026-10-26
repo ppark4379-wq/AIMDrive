@@ -362,7 +362,11 @@ class JammingPlanner:
             return None
         planned = global_path if global_path is not None else (
             prediction_path if prediction_path is not None else reference_path)
-        return self._world_result(self.corridor.run(local_ego, self._path(reference_path), self._path(planned)))
+        result = self._world_result(self.corridor.run(local_ego, self._path(reference_path), self._path(planned)))
+        if result is not None:
+            # No mover in the band: the map planner owns every VE object here (object_selection reads this).
+            result.debug_details['jamming_corridor'] = dict(standing_only=True)
+        return result
 
     def set_object_geometries(self, rows):
         """Install one immutable, observed geometry contract before planning."""

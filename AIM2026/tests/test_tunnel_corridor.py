@@ -115,3 +115,38 @@ def test_moving_traffic_keeps_the_existing_planner(road):
         assert result.reason.startswith('jamming_corridor')
     finally:
         jam.close()
+
+
+def test_far_box_jitter_is_not_motion_but_near_motion_is():
+    m = TunnelObstacleMap()
+    for k in range(10):                  # 25 m ahead the box centre slides 2.5 m as more of the car is seen
+        m.observe_packet(packet((-1.2, 20.), [box(-.25*k, 45., 4.5, 2., track=3, state='uncertain')], k*.1))
+    assert not m.motion.is_mover(3)
+    for k in range(10):                  # 12 m ahead a box crosses the lane
+        m.observe_packet(packet((-1.2, 20.), [box(-6.+.4*k, 32., .8, .6, track=4, state='uncertain')], 1.+k*.1))
+    assert m.motion.is_mover(4)
+
+
+def test_a_mover_that_stops_is_standing_again():
+    m = TunnelObstacleMap()
+    t = 0.
+    for k in range(8):                   # crosses ...
+        m.observe_packet(packet((-1.2, 50.), [box(-6.+.9*k, 62., .8, .6, track=11, state='moving')], t)); t += .1
+    assert m.motion.is_mover(11)
+    for k in range(25):                  # ... and stands at the road edge for 2.5 s
+        m.observe_packet(packet((-1.2, 50.), [box(.5+.05*(-1)**k, 62., .8, .6, track=11, state='stationary')], t)); t += .1
+    assert not m.motion.is_mover(11)
+    assert m.distance(.5, 62.) == 0.     # now it is mapped and planned around
+
+
+def test_legacy_acc_leaves_ve_objects_to_the_map_planner():
+    from types import SimpleNamespace
+    from AIM2026.Expert.src.planning.common.object_selection import _legacy_acc_entries
+    ve = ObjectInfo(0., 0., 30., -1, name='ve_tracked_unknown:uncertain', is_static=False,
+                    size_x=1., size_y=1., heading_deg=0., unique_id=4)
+    person = ObjectInfo(0., 0., 1., 0, name='walker', size_x=.5, size_y=.5, heading_deg=0.)
+    result = SimpleNamespace(mode='static_obstacle', active=True, acc_target_velocity=5.,
+                             debug_details={'static_avoidance': {'path_validated': True},
+                                            'jamming_corridor': {'standing_only': True}})
+    kept = _legacy_acc_entries(SimpleNamespace(), None, result, [dict(object_info=ve), dict(object_info=person)])
+    assert [entry['object_info'] for entry in kept] == [person]

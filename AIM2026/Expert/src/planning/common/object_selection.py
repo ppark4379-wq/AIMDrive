@@ -76,6 +76,13 @@ def _legacy_acc_entries(self, vehicle_state, lattice_result, forward_entries):
         # legacy ACC; avoid a second vehicle stop on the old path.
         return [entry for entry in forward_entries if entry['object_info'].type not in (1,2)
                 and not is_ve_tracked_unknown(entry['object_info'])]
+    if (jamming_details.get('jamming_corridor', {}).get('standing_only')
+            and static_details.get("path_validated", False)):
+        # Jamming section without movers: the accumulated-map planner already keeps clear of every VE object, which
+        # the tracker may still call 'uncertain' (unknown speed). Keep people and signals in legacy ACC.
+        return [entry for entry in forward_entries if not is_ve_tracked_unknown(entry['object_info'])
+                and not (getattr(entry['object_info'], 'type', -1) in (1, 2)
+                         and abs(getattr(entry['object_info'], 'velocity', 0.)) < .2)]
     now = time.monotonic()
     static_active = (getattr(lattice_result, "mode", "") == "static_obstacle"
                      and getattr(lattice_result, "active", False))
