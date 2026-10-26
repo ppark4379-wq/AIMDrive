@@ -23,6 +23,7 @@ class EntryMerge:
         self.last_conflict = None
         self.completed = False
         self.handoff_remaining = 0.
+        self.crossing_confirmation_age = 0.
         self.following.reset()
 
     @staticmethod
@@ -121,9 +122,8 @@ class EntryMerge:
         # fallback. Longer paths may reach a newly visible source obstruction.
         distances = list(dict.fromkeys(round(value, 6) for value in distances if value >= 12.))
         details['attempts'] = []
+        self.last_conflict = None
         if not (allow_change and legal and ego.position.y <= p.ENTRY_MERGE_START_Y):
-            distances = []
-        if self.following.details['target_event'] == 'target_lost':
             distances = []
         for distance in distances:
             proposal = planner._build_candidate(ego, target, planner.lane_map.project(ego.position, target),
@@ -141,36 +141,53 @@ class EntryMerge:
             curvature = (planner._max_curvature(proposal.points[:transition_end+1])
                          if geometry_valid else float('inf'))
             curvature_speed = math.sqrt(p.ENTRY_MERGE_LATERAL_ACCEL/max(curvature, 1e-6))
-            speed = min(follow_speed, curvature_speed)
+            speed_limit = min(curvature_speed, p.STATIC_CHANGE_MAX_SPEED
+                              if proposal.compact_static else float('inf'))
             if proposal.compact_static:
-                speed = min(speed, p.STATIC_CHANGE_MAX_SPEED)
                 geometry_valid = geometry_valid and curvature <= p.STATIC_CHANGE_MAX_CURVATURE
-            # Do all necessary slowing in the original lane, before lateral motion.
-            can_hold_speed = speed >= ego.velocity-.2 and speed > .5
             fits = geometry_valid and endpoint.y >= p.ENTRY_MERGE_END_Y+p.VEHICLE_LENGTH+p.ENTRY_MERGE_END_MARGIN-.1
-            if geometry_valid and fits and speed > .5:
-                conflict = planner.lane_change_safety.check(proposal, ego, traffic, traffic_matches, speed)
-                if conflict is None and self._clearance(ego, target, traffic, traffic_matches, speed):
-                    if not can_hold_speed:
-                        wait_target = min(wait_target, speed)
-                        self.last_conflict = {'kind': 'prepare_speed', 'target_speed': speed}
-                        details['attempts'].append(dict(distance=distance, speed=speed, conflict=self.last_conflict))
-                        continue
-                    proposal.maneuver_speed_limit = proposal.speed_limit = proposal.safety_speed = speed
-                    proposal.entry_speed_ceiling = min(p.ENTRY_MERGE_CRUISE_SPEED, curvature_speed,
-                        p.STATIC_CHANGE_MAX_SPEED if proposal.compact_static else float('inf'))
-                    proposal.lane_change_verified = True
-                    proposal.prediction_conflict = None
-                    planner.active_candidate = proposal
-                    planner.source_link_id, planner.target_link_id = source.id, target.id
-                    planner.state = planner.CHANGE_LEFT
-                    self.last_conflict = None
-                    details.update(distance=distance, launch_speed=ego.velocity)
-                    return self._result(proposal, speed, common, 'MERGING', 'entry_merge_start')
-                self.last_conflict = conflict or {'kind': 'target_clearance'}
-            else:
-                self.last_conflict = {'kind': 'approach_geometry_or_speed'}
-            details['attempts'].append(dict(distance=distance, speed=speed, conflict=self.last_conflict))
+            speeds = [('close_gap', min(follow_speed, speed_limit))]
+            lead_speed = self.following.details.get('lead_speed')
+            lead_gap = self.following.details.get('lead_gap')
+            desired_gap = self.following.details.get('desired_gap')
+            if (lead_speed is not None and lead_gap is not None and desired_gap is not None
+                    and lead_gap >= desired_gap and lead_speed > .5):
+                matched_speed = min(lead_speed, speed_limit)
+                if abs(matched_speed-speeds[0][1]) > .05:
+                    speeds.append(('match_lead', matched_speed))
+            for speed_policy, speed in speeds:
+                # A speed-matched slot may be safe even though continuously
+                # closing its gap would catch the leader during the maneuver.
+                # If Ego is faster, match speed BEFORE beginning lateral motion.
+                can_hold_speed = speed >= ego.velocity-.2 and speed > .5
+                if geometry_valid and fits and speed > .5:
+                    conflict = planner.lane_change_safety.check(proposal, ego, traffic, traffic_matches, speed)
+                    if conflict is None and self._clearance(ego, target, traffic, traffic_matches, speed):
+                        if not can_hold_speed:
+                            wait_target = min(wait_target, speed)
+                            self.last_conflict = {'kind': 'prepare_speed', 'target_speed': speed}
+                            details['attempts'].append(dict(distance=distance, speed=speed,
+                                speed_policy=speed_policy, conflict=self.last_conflict))
+                            continue
+                        proposal.maneuver_speed_limit = proposal.speed_limit = proposal.safety_speed = speed
+                        proposal.entry_speed_ceiling = min(p.ENTRY_MERGE_CRUISE_SPEED, speed_limit)
+                        # A matched-speed admission must not immediately switch
+                        # back to its previously rejected faster setpoint.
+                        proposal.entry_speed_policy = speed_policy
+                        self.following.command = speed
+                        proposal.lane_change_verified = True
+                        proposal.prediction_conflict = None
+                        planner.active_candidate = proposal
+                        planner.source_link_id, planner.target_link_id = source.id, target.id
+                        planner.state = planner.CHANGE_LEFT
+                        self.last_conflict = None
+                        details.update(distance=distance, launch_speed=ego.velocity, speed_policy=speed_policy)
+                        return self._result(proposal, speed, common, 'MERGING', 'entry_merge_start')
+                    self.last_conflict = conflict or {'kind': 'target_clearance'}
+                else:
+                    self.last_conflict = {'kind': 'approach_geometry_or_speed'}
+                details['attempts'].append(dict(distance=distance, speed=speed,
+                    speed_policy=speed_policy, conflict=self.last_conflict))
         details.update(target_speed=wait_target, remaining_to_wait=remaining, conflict=self.last_conflict)
         common['nearest_vehicle_distance'], common['ttc'] = front_gap, front_ttc
         common['debug_details'].update(front_acc_limit=front_cap, static_obstacle_distance=static_gap)
@@ -206,7 +223,16 @@ class EntryMerge:
         target = planner.lane_map.links[p.ENTRY_MERGE_TARGET]
         speed = self.following.update(ego, target, matches, 100., committed=True,
                                       speed_ceiling=candidate.entry_speed_ceiling)
+        # Apply the same rear-axle gap and closing-distance reserve before,
+        # during and after handoff. Newly observed leads must constrain speed
+        # even when the maneuver started into an empty perception window.
+        target_match = planner.lane_map.project(ego.position, target)
+        gap, ttc = planner._front_risk(ego, target_match, matches, entries)
+        front_limit = planner._acc_speed_limit(ego.velocity, gap, ttc, planner._front_lead_speed)
+        speed = min(speed, front_limit)
+        self.following.command = speed
         common['debug_details']['entry_merge'].update(self.following.details)
+        common['debug_details']['entry_merge']['front_follow_limit'] = front_limit
         aligned = abs(planner.lane_map._angle_difference(ego.yaw, match.yaw)) < math.radians(5.)
         if match.lane_link.id == target.id and match.distance <= p.MANEUVER_COMPLETE_DISTANCE and aligned:
             planner.state = planner.KEEP
@@ -234,6 +260,26 @@ class EntryMerge:
                 break
             remaining_entries = reduced
             front_conflict = planner.lane_change_safety.check(candidate, ego, remaining_entries, matches, speed, committed=True)
+        info = common['debug_details']['entry_merge']
+        info['front_conflict'] = front_conflict
+        # Verify raising a matched-speed command. A rejected acceleration is
+        # not a reason to brake if the admitted speed still clears the front.
+        held_speed = getattr(candidate, 'entry_last_verified_speed', candidate.safety_speed)
+        if front_conflict and speed > held_speed + .05:
+            held_front = self._front_conflict(candidate, ego, entries, matches, held_speed)
+            if held_front is None:
+                speed = held_speed
+                self.following.command = speed
+                front_conflict = None
+                info['acceleration_rejected'] = info['front_conflict']
+        if front_conflict and self._confirm_distant_crossing(
+                candidate, ego, entries, matches, speed, front_conflict, info):
+            # Hold measured speed briefly; do not accelerate toward an
+            # unconfirmed crossing, or command full brake for one bad heading.
+            return self._result(candidate, min(speed, max(0., ego.velocity)), common,
+                                'MERGING', 'entry_merge_confirm_crossing')
+        if front_conflict is None:
+            self.crossing_confirmation_age = 0.
         if front_conflict and not front_conflict.get('rear'):
             # A future stationary hypothesis needs a stopping-distance ceiling,
             # not an immediate zero-speed command. Keep enough distance to stop
@@ -258,12 +304,66 @@ class EntryMerge:
                     break
             speed = 0. if safe_speed is None else safe_speed
             return self._result(candidate, speed, common, 'EMERGENCY', 'entry_merge_front_hazard')
+        candidate.entry_last_verified_speed = speed
         return self._result(candidate, speed, common, 'MERGING', 'entry_merge_in_progress')
+
+    def _front_conflict(self, candidate, ego, entries, matches, speed):
+        """Do not let the first rear gap hide a second, genuine front hazard."""
+        remaining = list(entries)
+        while True:
+            conflict = self.planner.lane_change_safety.check(
+                candidate, ego, remaining, matches, speed, committed=True)
+            if not conflict or not conflict.get('rear'):
+                return conflict
+            identity = conflict.get('object_id')
+            reduced = [e for e in remaining if e['object_info'].unique_id != identity]
+            if len(reduced) == len(remaining):
+                return conflict
+            remaining = reduced
+
+    def _confirm_distant_crossing(self, candidate, ego, entries, matches, speed, conflict, info):
+        """Bounded confirmation only for distant, new, off-lane VE crossings.
+
+Near bodies, known vehicles, mapped traffic and insufficient stopping room
+retain immediate intervention. This never makes uncertain objects stationary.
+        """
+        obj = next((e['object_info'] for e in entries
+                    if e['object_info'].unique_id == conflict.get('object_id')), None)
+        if (conflict.get('kind') != 'collision' or obj is None
+                or not getattr(obj, 'motion_uncertain', False)
+                or getattr(obj, 'speed_unknown', False)
+                or any(e['object_info'] is obj for e, _ in matches)
+                or ego.velocity <= .5):
+            return False
+        duration = p.ENTRY_MERGE_CROSSING_CONFIRM_TIME
+        self.crossing_confirmation_age += max(0., self.planner.control_dt)
+        v = max(0., ego.velocity)
+        stopping_distance = (v*(p.LANE_CHANGE_CONTROL_DELAY + duration)
+                             + v*v/(2*p.LANE_CHANGE_PREDICT_DECEL)
+                             + p.ACC_STANDSTILL_DISTANCE)
+        conflict_distance = self.planner.lane_change_safety.travel(v, speed, conflict['time'])
+        # A currently close body or a nearer real stationary obstacle bypasses
+        # confirmation, regardless of track maturity or its predicted heading.
+        measured_clearance = ego.position.distance(obj.position) - p.VEHICLE_LENGTH - obj.size_x/2
+        static_distance = self.planner.lane_change_safety.static_distance(candidate.points, entries)
+        if (self.crossing_confirmation_age > duration
+                or conflict_distance <= stopping_distance
+                or measured_clearance <= stopping_distance
+                or static_distance <= stopping_distance):
+            return False
+        others = [e for e in entries if e['object_info'] is not obj]
+        if self._front_conflict(candidate, ego, others, matches, min(v, speed)) is not None:
+            return False
+        info['crossing_confirmation'] = dict(object_id=obj.unique_id,
+            age=self.crossing_confirmation_age, limit=duration,
+            predicted_distance=conflict_distance, stopping_distance=stopping_distance)
+        return True
 
     def _result(self, candidate, speed, common, phase, reason):
         info = common['debug_details']['entry_merge']
         info.update(phase=phase, target_speed=speed, compact=getattr(candidate, 'compact_static', False),
-                    committed=phase in ('MERGING', 'EMERGENCY'), verified=phase != 'EMERGENCY')
+                    committed=phase in ('MERGING', 'EMERGENCY'),
+                    verified=phase != 'EMERGENCY' and reason != 'entry_merge_confirm_crossing')
         return HighwayPlanningResult(candidate.points, active=True, acc_override=True,
             acc_target_velocity=speed, highway_state=self.planner.state, selected_offset=candidate.offset,
             candidates=[candidate], reason=reason, **common)

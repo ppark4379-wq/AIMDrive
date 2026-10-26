@@ -100,6 +100,25 @@ class SecondMergeRearSpacingTests(unittest.TestCase):
         self.safety.reset()
         self.assertFalse(self.safety.second_rear_gap_ids)
 
+    def test_recorded_32kph_approach_accelerates_instead_of_stopping_for_rear(self):
+        ego=VehicleState(69.84642723,-164.90075903,math.radians(-83.9),8.81190459)
+        match=self.lanes.match(ego.position,heading=ego.yaw)
+        rear=ObjectInfo(71.46,-143.95,52.9/3.6,2,unique_id=47,
+                       size_x=4.73,size_y=2.04,heading_deg=-88.2)
+        entries=[{'object_info':rear}]
+        matches=self.planner._match_objects(entries)
+        path=[v[0]for v in self.lanes.route_points(match,130.,.5)]
+        self.assertFalse(self.safety._second_merge_entered(match))
+        target=self.safety.limit(ego,match,matches,entries,path,desired_velocity=12.5)
+        self.assertEqual(target,12.5)
+        self.assertTrue(self.safety.details['launch_verified'])
+        self.assertEqual(self.safety.details['decision'],'GO')
+        # A real stopped front body must still prohibit this acceleration.
+        front=ObjectInfo(70.,-169.,0.,2,unique_id=99,size_x=4.5,size_y=2.,heading_deg=-85.)
+        entries.append({'object_info':front})
+        self.assertEqual(self.safety.limit(ego,match,self.planner._match_objects(entries),entries,
+                                          path,desired_velocity=12.5),0.)
+
 
 if __name__ == '__main__':
     unittest.main()

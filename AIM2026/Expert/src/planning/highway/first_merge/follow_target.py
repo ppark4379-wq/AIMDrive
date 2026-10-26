@@ -18,6 +18,7 @@ class MergeFollowing:
         self.lead = None
         self.command = None
         self.age = 0.0
+        self.expired_lead_id = None
         self.details = {}
 
     def _row(self, entry, match, origin):
@@ -35,6 +36,7 @@ class MergeFollowing:
 
     def _observe(self, rows, dt, committed):
         event = 'held'
+        self.expired_lead_id = None
         if self.lead is not None:
             self.age += dt
             fresh = [r for r in rows if r['age'] == 0.]
@@ -59,32 +61,29 @@ class MergeFollowing:
                 return event
             if self.age <= p.ENTRY_MERGE_TARGET_HOLD:
                 return 'predicted_short_dropout'
-            # A lost selected car is not evidence of a newly empty slot. The
-            # caller holds/slows the command until a fresh target is available.
-            return 'target_lost'
-        if not committed:
+            # A following ID is not a permanent occupancy lock. After the
+            # bounded dropout hold, select again from current observations.
+            # This does NOT grant a merge: all observed/held traffic still
+            # passes the full clearance and swept-path checks in EntryMerge.
+            self.expired_lead_id = self.lead['identity']
+            self.lead = None
+            self.age = 0.
+            event = 'target_expired'
+        if self.lead is None:
             candidates = [r for r in rows if r['age'] == 0.
                           and -p.ENTRY_MERGE_SEARCH_REAR <= r['gap'] <= p.ENTRY_MERGE_SEARCH_FRONT
+                          and (not committed or r['gap'] > p.VEHICLE_LENGTH + .5*r['length'])
                           and r['identity'] is not None]
             if candidates:
                 self.lead = dict(min(candidates, key=lambda r: abs(r['gap'])))
                 self.age = 0.
-                event = 'selected'
-        return event if self.lead else 'empty'
+                event = 'reselected_after_dropout' if self.expired_lead_id is not None else 'selected'
+        return event if self.lead or self.expired_lead_id is not None else 'empty'
 
     def update(self, ego, target, matches, room, committed=False, speed_ceiling=None):
         dt = min(.2, max(.001, self.planner.control_dt))
         origin = self.planner.lane_map.project(ego.position, target)
         rows = [r for entry, match in matches if (r := self._row(entry, match, origin)) is not None]
-        # The selected leader can leave the observed region ahead. It has
-        # cleared our slot; retain all normal rear/path checks when selecting
-        # another slot, rather than waiting forever for its vanished ID.
-        if (self.lead and self.age > p.ENTRY_MERGE_TARGET_HOLD
-                and self.lead['gap'] >= p.ENTRY_MERGE_SEARCH_FRONT-1.
-                and self.lead['speed'] >= ego.velocity
-                and self.lead['s']+self.lead['speed']*self.age-origin.s > p.ENTRY_MERGE_SEARCH_FRONT):
-            self.lead = None
-            self.age = 0.
         event = self._observe(rows, dt, committed)
         limit = p.ENTRY_MERGE_CRUISE_SPEED if speed_ceiling is None else speed_ceiling
         requested = min(limit, self.planner._requested_speed) if not committed else limit
@@ -100,8 +99,6 @@ class MergeFollowing:
             correction = max(-p.ENTRY_MERGE_GAP_SPEED_DELTA,
                              min(p.ENTRY_MERGE_GAP_SPEED_DELTA, (gap-desired_gap)/response))
             requested = min(requested, max(0., lead['speed']+correction))
-            if event == 'target_lost':
-                requested = min(requested, self.command or 0., ego.velocity)
         if self.command is not None:
             requested = max(self.command-p.ENTRY_MERGE_FOLLOW_DECEL*dt,
                             min(self.command+p.ENTRY_MERGE_FOLLOW_ACCEL*dt, requested))
@@ -112,6 +109,7 @@ class MergeFollowing:
             requested = min(limit, ego.velocity)
         self.command = max(0., min(limit, requested))
         self.details = dict(lead_id=self.lead['identity'] if self.lead else None,
+                            expired_lead_id=self.expired_lead_id,
                             lead_age=self.age, target_event=event, lead_gap=gap,
                             desired_gap=desired_gap, follow_speed=self.command,
                             lead_speed=self.lead['speed'] if self.lead else None,

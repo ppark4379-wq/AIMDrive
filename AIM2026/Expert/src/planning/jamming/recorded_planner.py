@@ -25,6 +25,8 @@ from .motion import stationary, moving, key as motion_key
 from .dynamic_planner import DynamicObstaclePlanner
 from .road_boundary import RoadBoundary
 
+QUIET_TICKS = 10          # planner ticks without a mover in the band before standing-obstacle planning resumes
+
 
 def _path_poses(points):
     """Remove repeated map nodes before calculating headings and dense poses."""
@@ -313,6 +315,58 @@ class JammingPlanner:
         self._object_geometries = {}
         self._scene_geometry_sha256 = None
         self._scene_error = None
+        self.corridor = None          # set by attach_map(): standing obstacles on the accumulated tunnel map
+        self.occupancy = None
+        self._quiet_ticks = QUIET_TICKS   # ticks since a mover was last seen in the section band
+        self._corridor_mode = False
+
+    def attach_map(self, occupancy, global_path=None):
+        """Plan standing obstacles on the accumulated tunnel map (Expert/tunnel_map.py) while no traffic moves.
+
+        Moving traffic keeps the recorded-route planner and its moving-object overlay unchanged. With the global
+        route the one-time corridor setup runs now instead of on the first tick in the tunnel."""
+        from .corridor import TunnelCorridorPlanner
+        if self.local.road_boundary is None:
+            return None
+        base = _LocalPlanner(self.section, self.local.planner, False, self.local.road_boundary)
+        self.corridor = TunnelCorridorPlanner(base, occupancy, self.section, self.local.road_boundary)
+        self.occupancy = occupancy
+        if global_path is not None:
+            self.corridor.prepare(self._path(global_path))
+        return self.corridor
+
+    def _traffic(self, objects):
+        """A mover in the section band: a VE track with sustained motion (tunnel map), other inputs by speed."""
+        for item in objects:
+            obj = item['object_info']
+            lateral, forward = self.section.to_local(obj.position)
+            if (abs(lateral) > self.section.activation_half_width_m
+                    or not -self.section.approach_distance_m-10. <= forward <= self.section.length+self.section.global_tail_m):
+                continue
+            if is_ve_tracked_unknown(obj):
+                if self.occupancy is not None and self.occupancy.motion.is_mover(obj.unique_id):
+                    return True
+            elif moving(obj):
+                return True
+        return False
+
+    def _run_corridor(self, ego, local_ego, reference_path, prediction_path, global_path):
+        x, y = local_ego.position
+        if not (abs(x) < self.section.activation_half_width_m
+                and -100. <= y <= self.section.length+self.section.global_tail_m and math.sin(local_ego.yaw) > .5):
+            return None
+        boundary = self.local.road_boundary
+        if y < self.local.geometry.entry_y and not bool(np.all(boundary.covers_world([ego.position], [ego.yaw]))):
+            return None
+        if not self.corridor.contains(local_ego):
+            return None
+        planned = global_path if global_path is not None else (
+            prediction_path if prediction_path is not None else reference_path)
+        result = self._world_result(self.corridor.run(local_ego, self._path(reference_path), self._path(planned)))
+        if result is not None:
+            # No mover in the band: the map planner owns every VE object here (object_selection reads this).
+            result.debug_details['jamming_corridor'] = dict(standing_only=True)
+        return result
 
     def set_object_geometries(self, rows):
         """Install one immutable, observed geometry contract before planning."""
@@ -596,6 +650,22 @@ class JammingPlanner:
         x, y = local_ego.position
         if global_path is not None:
             self._global_path = list(global_path)
+        if self.corridor is not None:
+            # Standing obstacles only: plan on the accumulated map. A mover hands the section to the planner
+            # below until the band has been quiet for QUIET_TICKS and no overtake is in progress.
+            self._quiet_ticks = 0 if self._traffic(objects) else self._quiet_ticks+1
+            corridor = self._quiet_ticks >= QUIET_TICKS and not self.dynamic.active
+            if corridor != self._corridor_mode:
+                self._corridor_mode = corridor
+                if corridor:
+                    self.dynamic.reset()
+                    self.local.reset()
+                else:
+                    self.corridor.previous = self.corridor.committed = None
+            if corridor:
+                result = self._run_corridor(ego, local_ego, reference_path, prediction_path, global_path)
+                if result is not None:
+                    return result
         self._scene_error = None
         states={motion_key(item['object_info']): moving(item['object_info']) for item in objects
                 if item['object_info'].type in (1,2) or is_ve_tracked_unknown(item['object_info'])}

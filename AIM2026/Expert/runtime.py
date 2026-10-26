@@ -22,6 +22,7 @@ from AIM2026.UDP.Cmd import CmdSender, Command
 from AIM2026.Expert.adapter import prepare, planner_inputs
 from AIM2026.Expert.static_memory import StaticMemory
 from AIM2026.Expert.static_map import StaticObstacleMap
+from AIM2026.Expert.tunnel_map import TunnelObstacleMap
 from AIM2026.Expert.stationary_resolver import StationaryResolver
 from AIM2026.Expert.box_dedup import drop_contained
 from AIM2026.Expert.track_alias import TrackAliaser
@@ -83,7 +84,8 @@ def wire_command(command, max_steering, hold_steer=0.):
 
 class Inputs:
     """Pin one publisher and reject stale/reordered frames before updating state."""
-    def __init__(self, generation, digest, tracker, memory=None, static_map=None, resolver=None, dedup=True, alias=None):
+    def __init__(self, generation, digest, tracker, memory=None, static_map=None, resolver=None, dedup=True, alias=None,
+                 tunnel_map=None):
         self.generation, self.digest, self.tracker = generation, digest, tracker
         self.dedup = dedup
         self.alias = alias
@@ -91,6 +93,7 @@ class Inputs:
         self.resolver = resolver
         self.memory = memory
         self.static_map = static_map
+        self.tunnel_map = tunnel_map
         self.packet = self.pose = None
         self.sequences = {False: 0, True: 0}
         self.frames = self.pose_frames = self.held_frames = 0
@@ -148,6 +151,8 @@ class Inputs:
             self.packet = self.geometry.apply(self.packet)
         if self.static_map is not None:
             self.packet = self.static_map.apply(self.packet)
+        if self.tunnel_map is not None:
+            self.tunnel_map.observe_packet(self.packet)
         self.frames += 1
         return 'detection'
 
@@ -208,7 +213,7 @@ def main(argv=None, control_tick=None):
     parser.add_argument('--slow-window-s', type=float, default=0.,
                         help='Tracker: slow-mover confirmation window in seconds (0 = off)')
     parser.add_argument('--no-static-map', action='store_true',
-                        help='Plan the static-obstacle section on instantaneous VE boxes instead of the accumulated map')
+                        help='Plan the static-obstacle and Jamming sections on instantaneous VE boxes instead of the accumulated maps')
     parser.add_argument('--no-static-memory', action='store_true',
                         help='Do not remember small obstacles the detector reports on only some frames')
     parser.add_argument('--stationary-hold-s', type=float, default=4.,
@@ -270,7 +275,8 @@ def main(argv=None, control_tick=None):
         memory=None if args.no_static_memory else StaticMemory(),
         resolver=None if args.no_stationary_resolver else StationaryResolver(), dedup=not args.no_box_dedup,
         alias=None if args.no_track_alias else TrackAliaser(),
-        static_map=None if args.no_static_map else StaticObstacleMap())
+        static_map=None if args.no_static_map else StaticObstacleMap(),
+        tunnel_map=None if args.no_static_map else TunnelObstacleMap())
     stop = []
     old_handlers = {sig: signal.signal(sig, lambda *_: stop.append(True))
                     for sig in (signal.SIGINT, signal.SIGTERM)}
@@ -283,7 +289,8 @@ def main(argv=None, control_tick=None):
         with contextlib.redirect_stdout(expert_log):
             driving = AutonomousDriving()
         if inputs.static_map is not None and hasattr(driving.lattice_planning_process, 'attach_static_map'):
-            driving.lattice_planning_process.attach_static_map(inputs.static_map)
+            driving.lattice_planning_process.attach_static_map(inputs.static_map, inputs.tunnel_map,
+                                                               getattr(driving, 'path', None))
         if os.environ.get('VE_CORRIDOR_TIMEOUT_S'):
             # Development experiment only: corridor search time budget of the recorded static planner.
             jam = getattr(driving.lattice_planning_process, 'recorded_jamming', None)
@@ -433,6 +440,12 @@ def main(argv=None, control_tick=None):
                               target_lane=getattr(plan_result, 'target_link_id', None),
                               entry_merge=plan_details.get('entry_merge'),
                               second_merge_follow=(plan_details.get('merge_safety') or {}).get('second_follow'),
+                              merge_safety={k: v for k, v in (plan_details.get('merge_safety') or {}).items()
+                                            if k != 'predicted_paths'},
+                              second_merge_preparation=plan_details.get('second_merge_preparation'),
+                              merge_checks=plan_details.get('merge_checks'),
+                              keep_lane_evidence=plan_details.get('keep_lane_evidence'),
+                              highway_brake_release=plan_details.get('highway_brake_release'),
                               lane_change_cruise=plan_details.get('lane_change_cruise')),
                 # Signal decision of this tick (VE phase after policy; 0 = unknown -> stop).
                 signal=dict(id=policy.target_id, code=code, head=getattr(policy, 'head_source', None),

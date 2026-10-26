@@ -165,6 +165,7 @@ class HighwayTrafficTests(unittest.TestCase):
 
     def test_per_vehicle_random_speeds_preserve_layout_and_repeat_with_seed(self):
         context = self.context()
+        context.cfg['highway_npc']['managed_traffic'].pop('downstream_lead_speed_kmh', None)
         all_speeds = set()
         first = None
         for seed in range(30):
@@ -186,6 +187,25 @@ class HighwayTrafficTests(unittest.TestCase):
             self.assertEqual([{k:v for k,v in p.items() if k != 'speed_kmh'} for p in plans],
                              [{k:v for k,v in p.items() if k != 'speed_kmh'} for p in baseline])
         self.assertEqual(all_speeds, set(range(20, 101)))
+
+    def test_only_seven_furthest_downstream_npcs_use_fixed_80_kmh(self):
+        context = self.context()
+        cfg = context.cfg['highway_npc']['managed_traffic']
+        for seed in range(30):
+            context.run_seed = seed
+            cfg['downstream_lead_speed_kmh'] = 80.0
+            plans, models = traffic.build_plan(context)
+            del cfg['downstream_lead_speed_kmh']
+            baseline, baseline_models = traffic.build_plan(context)
+            self.assertEqual(models, baseline_models)
+            self.assertEqual(cfg['downstream_lead_count'], 7)
+            leads = sorted(baseline, key=lambda p: p['route_distance_m'], reverse=True)[:7]
+            self.assertEqual(len(leads), 7)
+            for actual, original in zip(plans, baseline):
+                expected = dict(original)
+                if original in leads:
+                    expected['speed_kmh'] = 80.0
+                self.assertEqual(actual, expected)
 
     def test_invalid_random_speed_range_fails_before_spawn(self):
         for bounds in ([19, 60], [20, 101], [60, 20], [20], [20, float('nan')]):
@@ -240,20 +260,22 @@ class HighwayTrafficTests(unittest.TestCase):
         self.assertEqual(len({row['model'] for row in context.highway_npcs}), 25)
         self.assertNotIn(first, [row['model'] for row in context.highway_npcs])
 
-    def test_mainline_routes_continue_past_exit_without_moving_spawn_slots(self):
+    def test_taper_route_ends_in_own_lane_without_moving_spawn_slots(self):
         context = self.context()
         plans, _ = traffic.build_plan(context)
         baseline = self.context()
         for lane in baseline.cfg['highway_npc']['managed_traffic']['lanes']:
             if lane['name'] == 'middle':
-                lane['route'] = lane['route'][:lane['route'].index('A2256W000422') + 1]
-            elif lane['name'] == 'left':
-                lane['route'] = lane['route'][:lane['route'].index('A2256W000432') + 1]
+                lane['route'] += ['A2256W000422', 'A2256W000153', 'A2256W000451', 'A2256W000446']
         old, _ = traffic.build_plan(baseline)
         for before, after in zip(old, plans):
             for key in ('x', 'y', 'z', 'yaw_deg', 'waypoint', 'offset_m', 'speed_kmh'):
                 self.assertEqual(before[key], after[key])
-            if after['lane'] in ('middle', 'left'):
+            if after['lane'] == 'middle':
+                self.assertEqual(after['route'][-1], 'A2256W000434')
+                self.assertNotIn('A2256W000422', after['route'])
+                self.assertTrue(after['retire_at_route_end'])
+            elif after['lane'] == 'left':
                 end = self.loader.get_link_points(after['route'][-1])[-1]
                 self.assertLess(end[1], -460.)
         traffic.prepare(context)
@@ -262,6 +284,49 @@ class HighwayTrafficTests(unittest.TestCase):
             self.assertEqual(indices[item['route'][0]], item['waypoint'])
             self.assertEqual(indices[item['route'][-1]],
                              len(self.loader.get_link_points(item['route'][-1])) - 1)
+
+    def test_lane_end_removes_only_owned_terminal_npc_after_merge_evaluation(self):
+        context = self.context()
+        traffic.prepare(context)
+        traffic.activate(context, 10.)
+        item = next(p for p in context.highway_npcs if p.get('retire_at_route_end'))
+        points = self.loader.get_link_points(item['route'][-1])
+        def state(actor_id, point):
+            return SimpleNamespace(actor_info=SimpleNamespace(id=SimpleNamespace(value=actor_id)),
+                                   transform=SimpleNamespace(location=SimpleNamespace(
+                                       x=point[0], y=point[1])))
+        context.highway_flow = {'result': {'completed': True}}
+        context.grpc.get_all_vehicle_states.return_value = [state(item['actor_id'], points[0])]
+        traffic.activate(context, 600.)
+        context.grpc.destroy_vehicle_by_id.assert_not_called()
+        context.grpc.get_all_vehicle_states.return_value = [
+            state(item['actor_id'], points[-1]), state('foreign_vehicle', points[-1])]
+        traffic.activate(context, 610.)
+        context.grpc.destroy_vehicle_by_id.assert_called_once_with(item['actor_id'])
+        self.assertNotIn(item, context.highway_npcs)
+        self.assertNotIn(item['actor'], context.scenario_actors)
+        self.assertEqual(len(context.highway_npcs), 24)
+        self.assertEqual(context.grpc.spawn_vehicle.call_count, 25)
+        traffic.activate(context, 620.)
+        context.grpc.destroy_vehicle_by_id.assert_called_once()
+
+    def test_lane_end_missing_state_does_not_delete_and_failure_stops_run(self):
+        context = self.context()
+        traffic.prepare(context)
+        traffic.activate(context, 10.)
+        context.grpc.get_all_vehicle_states.return_value = []
+        traffic.activate(context, 600.)
+        context.grpc.destroy_vehicle_by_id.assert_not_called()
+        item = next(p for p in context.highway_npcs if p.get('retire_at_route_end'))
+        x, y, _ = self.loader.get_link_points(item['route'][-1])[-1][:3]
+        context.grpc.get_all_vehicle_states.return_value = [SimpleNamespace(
+            actor_info=SimpleNamespace(id=SimpleNamespace(value=item['actor_id'])),
+            transform=SimpleNamespace(location=SimpleNamespace(x=x, y=y)))]
+        context.grpc.destroy_vehicle_by_id.return_value = False
+        with self.assertRaisesRegex(RuntimeError, 'lane end'):
+            traffic.activate(context, 610.)
+        item['actor'].set_pause.assert_called_with(True)
+        self.assertIn(item, context.highway_npcs)
 
     def test_ai_false_ack_does_not_abort_native_route_following(self):
         context = self.context()

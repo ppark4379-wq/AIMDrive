@@ -18,6 +18,91 @@ from AIM2026.Expert.src.planning.highway.common.types import LaneMatch
 
 
 class SnapshotTests(unittest.TestCase):
+    def test_slow_run_scan_does_not_block_live_frame_reader(self):
+        import threading
+        from AIM2026.Visualization.rviz import RunDiscovery
+        discovery = RunDiscovery(Path('unused'))
+        entered, release, received = threading.Event(), threading.Event(), threading.Event()
+        def slow_scan():
+            entered.set()
+            release.wait(3.)
+        def read_selection():
+            discovery.latest()
+            received.set()
+        with patch.object(discovery, '_scan', side_effect=slow_scan):
+            discovery.start()
+            reader = threading.Thread(target=read_selection, daemon=True)
+            try:
+                self.assertTrue(entered.wait(1.))
+                reader.start()
+                # A blocked /mnt/c scan must not hold the display exchange lock.
+                self.assertTrue(received.wait(.5))
+            finally:
+                release.set()
+                discovery.close()
+                if reader.ident is not None:
+                    reader.join(timeout=1.)
+        self.assertFalse(discovery._thread.is_alive())
+
+    @staticmethod
+    def make_run(root, name, control=True):
+        folder = root/name
+        (folder/'expert').mkdir(parents=True)
+        (folder/'inference.yaml').write_text('test: true', encoding='utf-8')
+        (folder/'expert/path.csv').write_text('x,y\n1,2\n3,4\n', encoding='utf-8')
+        if control:
+            (folder/'control.jsonl').write_text('{}\n', encoding='utf-8')
+        return folder
+
+    def test_run_discovery_follows_new_activity_despite_run_name_clock_skew(self):
+        from AIM2026.Visualization.rviz import RunDiscovery
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            old = self.make_run(root, 'highway-20261026-120000')
+            self.make_run(root, 'check-20261026-140000', control=False)
+            discovery = RunDiscovery(root)
+            discovery._scan()
+            self.assertEqual(discovery.latest(), (old, [(1., 2.), (3., 4.)]))
+            # A Windows/WSL clock correction can make the new run name older.
+            current = self.make_run(root, 'highway-20261026-110000')
+            discovery._scan()
+            (current/'control.jsonl').write_text('{}\n{}\n', encoding='utf-8')
+            discovery._scan()
+            self.assertEqual(discovery.latest()[0], current)
+            with patch('AIM2026.Visualization.rviz.time.monotonic', return_value=float('inf')):
+                discovery._scan()
+            self.assertEqual(discovery.latest()[0], current)
+
+    def test_run_discovery_does_not_pair_new_folder_with_old_or_partial_route(self):
+        from AIM2026.Visualization.rviz import RunDiscovery
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            old = self.make_run(root, '20261026-120000')
+            discovery = RunDiscovery(root)
+            discovery._scan()
+            current = self.make_run(root, '20261026-130000')
+            discovery._scan()
+            (current/'control.jsonl').write_text('{}\n{}\n', encoding='utf-8')
+            (current/'expert/path.csv').write_text('x,y\n1,', encoding='utf-8')
+            with self.assertRaises(ValueError):
+                discovery._scan()
+            self.assertEqual(discovery.latest()[0], old)
+            (current/'expert/path.csv').write_text('x,y\n9,8\n', encoding='utf-8')
+            discovery._scan()
+            self.assertEqual(discovery.latest(), (current, [(9., 8.)]))
+
+    def test_run_discovery_ignores_old_future_dated_config_on_first_scan(self):
+        import os
+        from AIM2026.Visualization.rviz import RunDiscovery
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            current = self.make_run(root, '20261026-120000')
+            future = self.make_run(root, '20991026-120000')
+            os.utime(future/'inference.yaml', (4102444800., 4102444800.))
+            discovery = RunDiscovery(root)
+            discovery._scan()
+            self.assertEqual(discovery.latest()[0], current)
+
     def test_roundabout_check_start_and_hold_band_are_distinct(self):
         overlay = self.world_overlay()
         import rospy
@@ -217,6 +302,11 @@ class SnapshotTests(unittest.TestCase):
         self.assertEqual((candidates[1].color.r,candidates[1].color.g),(0.,1.))
         self.assertTrue(any(m.ns=='ego_shape' for m in paths.markers))
         self.assertTrue(any(m.ns=='highway_lane_labels' for m in lanes.markers))
+        # Map mode already has latched center lines: skipping their allocation
+        # must leave every label and merge/roundabout decision marker identical.
+        overlays = renderer._build_lane_markers(result, stamp, include_centers=False)
+        self.assertEqual(overlays.markers,
+                         [m for m in lanes.markers if m.ns != 'highway_lane_centers'])
         self.assertTrue(any(m.ns=='lattice_objects' for m in objects.markers))
         self.assertTrue(any(m.ns=='object_lane_labels' and m.text=='S1 L2 lane' for m in objects.markers))
         # A pre-fix recording must still show objects/predictions without crashing.

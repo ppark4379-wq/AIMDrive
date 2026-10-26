@@ -14,6 +14,7 @@ from .common.merge_safety import MergeSafety
 from .common.collision_check import LaneChangeSafety
 from .common.object_motion import ObstacleMotion
 from .first_merge.merge import EntryMerge
+from .second_merge.lane_preparation import SecondMergePreparation
 from .driving.obstacle_avoidance import HighwayStaticCorridor
 from .common.types import HighwayCandidatePath, HighwayPlanningResult
 
@@ -50,6 +51,7 @@ class HighwayLanePlanner(
         self._lane_change_cooldown_origin = None
         self._last_lane_change_direction = None
         self._merge_speed_limit_state = float("inf")
+        self._merge_brake_released = False
         self._last_merge_debug = []
         self._last_lane_checks = []
         self._merge_decisions = {}
@@ -69,10 +71,14 @@ class HighwayLanePlanner(
         self.obstacle_motion = ObstacleMotion()
         self.lane_change_safety = LaneChangeSafety(self)
         self.entry_merge = EntryMerge(self)
+        self.second_merge_preparation = SecondMergePreparation(self)
         self.static_corridor = None
         self._requested_speed = 0.0
         self.search_time_budget = None
         self._search_deadline = None
+        self._lane_observation_memory = {}
+        self._lane_observation_clock = 0.
+        self._keep_lane_evidence = {}
 
     def set_control_dt(self, control_dt):
         control_dt = float(control_dt)
@@ -112,6 +118,9 @@ class HighwayLanePlanner(
             remaining_active_candidate = self._remaining_active_candidate(vehicle_state)
         self.obstacle_motion.update(vehicle_entries, self.control_dt)
         object_matches = self._match_objects(vehicle_entries)
+        keep_entries = self._keep_lane_observations(vehicle_state, ego_match, vehicle_entries)
+        keep_matches = self._match_objects(keep_entries)
+        self.second_merge_preparation.update(vehicle_state, ego_match, vehicle_entries, object_matches)
         predicted_paths = self._prediction_paths(object_matches)
         entry_result = self.entry_merge.plan(vehicle_state, ego_match, vehicle_entries,
                                               object_matches, allow_lane_change)
@@ -120,11 +129,16 @@ class HighwayLanePlanner(
         keep_candidate = self._build_candidate(
             vehicle_state, current_link, ego_match, direction="keep"
         )
+        preparing_second_merge = self.second_merge_preparation.applies(vehicle_state, ego_match)
+        if preparing_second_merge:
+            # While waiting or holding, predict the actual lane. The old right
+            # route must not pull a middle/left-lane vehicle back toward a merge.
+            self.changed_lane_hold = True
         static_path = keep_candidate.points if allow_lane_change else (prediction_path or reference_path)
-        static_distance = self.lane_change_safety.static_distance(static_path, vehicle_entries)
+        static_distance = self.lane_change_safety.static_distance(static_path, keep_entries)
         static_avoidance = math.isfinite(static_distance)
         nearest_distance, ttc = self._front_risk(
-            vehicle_state, ego_match, object_matches, vehicle_entries
+            vehicle_state, ego_match, keep_matches, keep_entries
         )
         if static_distance < nearest_distance:
             nearest_distance = static_distance
@@ -154,7 +168,7 @@ class HighwayLanePlanner(
             # it would falsely predict a turn back into the passed obstacle.
             merge_reference = keep_candidate.points
         raw_merge_acc_target_velocity = self._merge_acc_speed_limit(
-            vehicle_state, ego_match, object_matches, vehicle_entries,
+            vehicle_state, ego_match, keep_matches, keep_entries,
             reference_path=merge_reference,
             desired_velocity=(min(desired_velocity, front_acc_target_velocity)
                               if desired_velocity is not None else None),
@@ -178,6 +192,7 @@ class HighwayLanePlanner(
             <= parameters.SECOND_MERGE_LANE_PREFERENCE_RADIUS
             and current_link.section_index in parameters.SECOND_MERGE_LANE_PREFERENCE_SECTIONS
             and current_link.lane_number in (2, 3, 4)
+            and (not parameters.SECOND_MERGE_PREP_ENABLED or preparing_second_merge)
         )
         second_merge_middle_lane = (
             second_merge_lane_preference
@@ -199,7 +214,7 @@ class HighwayLanePlanner(
         )
 
         self._evaluate_dynamic_collision(
-            keep_candidate, vehicle_state, object_matches
+            keep_candidate, vehicle_state, keep_matches
         )
         self._last_lane_checks = []
         if proactive_overtake and not static_avoidance:
@@ -208,6 +223,13 @@ class HighwayLanePlanner(
             if merge_source_lead:
                 self._last_lane_checks.append("source-lane following limit; checking adjacent paths")
         debug_details = {
+            "keep_lane_evidence": self._keep_lane_evidence,
+            "highway_brake_release": {
+                "verified": bool(getattr(self, '_merge_brake_released', False)
+                                 and keep_candidate.valid
+                                 and math.isinf(raw_merge_acc_target_velocity)),
+                "speed": max(0.0, float(vehicle_state.velocity)),
+            },
             "ego_speed": float(vehicle_state.velocity),
             "ego_lane": current_link.lane_number,
             "ego_s": float(ego_match.s),
@@ -258,6 +280,14 @@ class HighwayLanePlanner(
             safety = self.merge_safety.details
             debug_details["merge_safety"] = {key: value for key, value in safety.items()
                                              if key != "predicted_paths"}
+
+        preparation = self.second_merge_preparation.plan(
+            vehicle_state, ego_match, vehicle_entries, object_matches,
+            keep_candidate, acc_target_velocity, common, allow_lane_change)
+        if preparation is not None:
+            return preparation
+
+        if self._merge_guard_active:
             common["predicted_object_paths"] = safety.get("predicted_paths", [])
             # These paths also include unmatched/held tracks, so they must not
             # be zipped against the ordinary lane-match list by the renderer.
@@ -301,6 +331,11 @@ class HighwayLanePlanner(
                 self._lane_change_cooldown_origin = Point(
                     vehicle_state.position.x, vehicle_state.position.y
                 )
+                preparation = self.second_merge_preparation.plan(
+                    vehicle_state, ego_match, vehicle_entries, object_matches,
+                    keep_candidate, acc_target_velocity, common, allow_lane_change)
+                if preparation is not None:
+                    return preparation
             else:
                 active_candidate = remaining_active_candidate
                 if active_candidate is None:
@@ -643,6 +678,7 @@ class HighwayLanePlanner(
 
     def reset_lateral_state(self):
         self.entry_merge.reset()
+        self.second_merge_preparation.reset()
         if self.static_corridor is not None:
             self.static_corridor.reset()
         self.state = self.KEEP
@@ -655,10 +691,13 @@ class HighwayLanePlanner(
 
     def _reset(self):
         self.reset_lateral_state()
+        self._lane_observation_memory.clear()
+        self._lane_observation_clock = 0.
         self.obstacle_motion.reset()
         self.merge_safety.reset()
         self._merge_guard_active = False
         self._merge_speed_limit_state = float("inf")
+        self._merge_brake_released = False
         self._merge_decisions = {}
         self._merge_go_object_ids = set()
         self._merge_zone_priority = None

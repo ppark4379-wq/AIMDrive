@@ -1,6 +1,6 @@
 # Failure diagnosis MVP
 
-## Highway and roundabout launchers
+## Highway, roundabout, and static launchers
 
 The common launcher `AIM2026/Expert/run_highway.py` records the run when `--validation-events` is given
 (off by default; without it nothing is written and the run is unchanged):
@@ -11,7 +11,29 @@ bash AIM2026/Expert/run_roundabout.sh --variant normal       --seed 124 --valida
 bash AIM2026/Expert/run_roundabout.sh --variant nonuniform   --seed 124 --validation-events
 bash AIM2026/Expert/run_roundabout.sh --variant speed_random --seed 124 --validation-events
 bash AIM2026/Expert/run_roundabout.sh --variant brake        --seed 124 --validation-events
+bash AIM2026/Expert/run_static.sh --seed 124 --static-obstacle-count 2
 ```
+
+`run_static.sh` runs one `full_loop_static` segment with the same integrated UDP
+Expert as the highway and roundabout launchers. It enables validation events
+automatically. Use `--static-obstacle-count 1` or `2` to select the number of
+random obstacles; omitting it uses the scenario's existing default of one.
+Add `--check` to validate the route and Expert setup without connecting to
+MORAI. The actual drive requires MORAI and the same network/sensor setup as
+the other launchers.
+The static launcher writes a private sensor config and leaves the shared
+configuration unchanged. It defaults to a 229-byte local Vehicle Status packet
+and left-positive steering when the selected config omits those values.
+Set up MORAI sensor UDP addresses for your host and pass a matching AIM2026
+config with `--config` when the default `AIM2026/config_local.yaml` does not
+match your network. WSL IP addresses and MORAI sensor sets are host-specific.
+
+The run writes `AIM2026/outputs/scenarios/static-*/report.json` and, when a
+pipeline journal exists, `failure_report/report.html`. Collision or watchdog
+failure Incidents are diagnosed automatically and written under
+`MoraiDrive/scenario_runner/.runtime/incidents/incident_*/diagnosis.json` and
+`diagnosis.txt`. A clean run has no Incident; its observations and summary are
+under `.runtime/validation_runs/<run_id>/`.
 
 - Ego observations, Incidents (collision, Timeout, progress-watchdog stall) go under
   `MoraiDrive/scenario_runner/.runtime/validation_runs` and `.../incidents`.

@@ -16,16 +16,23 @@ from .scenarios.full_loop_scenario import (
     FullLoopScenario,
 )
 from .utils.map_loader import MGeoMapLoader
+from .utils.highway_density import add_highway_density_argument, apply_highway_density
 from .scenarios.segment_modes.modes import MISSION_MODES, automatic_repeat_enabled
 from .scenarios.segment_modes.scenario import MissionScenario
-from .scenarios.full_loop_competition import FullLoopCompetitionScenario
+
+
+def _make_competition_scenario(*args, **kwargs):
+    # Configuration is also read by the Windows UDP Expert. The competition
+    # scene owns POSIX file locks and must only load in its actual scene runner.
+    from .scenarios.full_loop_competition import FullLoopCompetitionScenario
+    return FullLoopCompetitionScenario(*args, **kwargs)
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parent
 PROJECT_ROOT = PACKAGE_ROOT.parent
 SUPPORTED_SCENARIOS = {
     "full_loop": FullLoopScenario,
-    "full_loop_competition": FullLoopCompetitionScenario,
+    "full_loop_competition": _make_competition_scenario,
     "full_loop_after_static": FullLoopAfterStaticScenario,
     "full_loop_highway_tunnel_test": FullLoopHighwayTunnelTestScenario,
     **{name: MissionScenario for name in MISSION_MODES},
@@ -155,6 +162,7 @@ def build_parser():
             "MORAI 26.R1 / R_KR_PR_K-city_2025 full-loop scenarios"
         )
     )
+    add_highway_density_argument(parser)
     parser.add_argument(
         "--zone",
         choices=("full_loop",),
@@ -417,6 +425,9 @@ def main():
         parser.error("full_loop_tunnel_vehicle requires --once")
 
     global_cfg, zone_cfg, base_scenario_cfg = load_configuration()
+    if args.highway_density is not None and args.scenario != 'full_loop_highway':
+        parser.error('--highway-density requires --scenario full_loop_highway')
+    apply_highway_density(base_scenario_cfg, args.highway_density)
     if args.stop_before_tunnel:
         if args.scenario != 'full_loop' or not args.ve_objects or not args.no_sync_runtime or not args.once:
             parser.error('--stop-before-tunnel requires full_loop --ve-objects --no-sync-runtime --once')

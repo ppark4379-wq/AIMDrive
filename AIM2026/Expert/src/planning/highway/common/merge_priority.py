@@ -31,6 +31,7 @@ class MergeSpeedMixin(SecondMergePriorityMixin):
     ):
         """Return a speed ceiling when two different links reach one merge."""
         ego_link = ego_match.lane_link
+        self._merge_brake_released = False
         self._last_merge_debug = []
         self._merge_go_object_ids = set()
         limit = self.merge_safety.limit(
@@ -338,13 +339,33 @@ class MergeSpeedMixin(SecondMergePriorityMixin):
         matched_object_ids = {
             id(entry["object_info"]) for entry, _ in object_matches
         }
-        time_value = step
         earliest_collision = float("inf")
         unmatched_count = sum(
             1
             for entry in vehicle_entries
             if id(entry["object_info"]) not in matched_object_ids
         )
+        # A new off-link detection is not evidence of a cut-in. Its motion
+        # confidence already comes from independent perception observations;
+        # repeated control ticks on one packet must not confirm it. Restrict
+        # this fallback to ordinary lane keeping, never our lateral maneuver
+        # or an actual road convergence. Keep measured speed/box unchanged.
+        ordinary_keep = (
+            parameters.ASSUME_HIGHWAY_VEHICLES_KEEP_LANE
+            and ego_match.lane_link.road_id in {road for _, road in parameters.SECTION_ROADS}
+            and self.state not in (self.CHANGE_LEFT, self.CHANGE_RIGHT)
+            and self.merge_safety.zone_for(ego_match) is None
+        )
+        provisional = {
+            id(entry['object_info']) for entry in vehicle_entries
+            if ordinary_keep and getattr(entry['object_info'], 'motion_uncertain', False)
+            and id(entry['object_info']) not in matched_object_ids
+        }
+        if provisional:
+            self._last_merge_debug.append('unmatched provisional road-parallel ids={}'.format(
+                [getattr(entry['object_info'], 'unique_id', None) for entry in vehicle_entries
+                 if id(entry['object_info']) in provisional]))
+        time_value = 0.0  # Current physical overlaps are never deferred.
         while time_value <= horizon + 1e-9:
             ego_point, ego_yaw, _ = self.lane_map.advance_default(
                 ego_match, ego_speed * time_value
@@ -373,11 +394,12 @@ class MergeSpeedMixin(SecondMergePriorityMixin):
                 object_yaw = math.radians(
                     float(getattr(object_info, "heading_deg", 0.0))
                 )
+                travel_yaw = ego_match.yaw if id(object_info) in provisional else object_yaw
                 object_point = Point(
                     object_info.position.x
-                    + math.cos(object_yaw) * object_speed * time_value,
+                    + math.cos(travel_yaw) * object_speed * time_value,
                     object_info.position.y
-                    + math.sin(object_yaw) * object_speed * time_value,
+                    + math.sin(travel_yaw) * object_speed * time_value,
                 )
                 if self._obb_collision(
                     ego_point,
@@ -439,9 +461,10 @@ class MergeSpeedMixin(SecondMergePriorityMixin):
 
         if math.isinf(previous):
             return float("inf")
-        recovered = previous + recovery_step
-        if recovered >= max(0.0, float(ego_speed)):
-            self._merge_speed_limit_state = float("inf")
-            return float("inf")
-        self._merge_speed_limit_state = recovered
-        return recovered
+        # The current trajectory check no longer requests a yield. Keeping
+        # yesterday's near-zero ceiling below measured speed would continue
+        # braking after the hazard cleared. Front/static/path limits still
+        # apply separately; the controller release also requires a valid path.
+        self._merge_speed_limit_state = float("inf")
+        self._merge_brake_released = True
+        return float("inf")

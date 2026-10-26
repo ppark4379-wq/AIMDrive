@@ -14,7 +14,7 @@ import math as _math
 # ==============================================================================
 ENTRY_MERGE_FRONT_GAP = 1.0  # [m, 범퍼 간] 411→409 진입·진행 중 최소 앞 간격이자 추종 기준. 줄이면 앞차에 더 붙어 합류 가능
 ENTRY_MERGE_FOLLOW_RESERVE = 0.0  # [m] FRONT_GAP에 더하는 추종 목표 여유. 늘리면 더 떨어져 추종; 0이면 최소 앞 간격을 목표로 함
-ENTRY_MERGE_REAR_GAP = 8.0  # [m, 범퍼 간] 411→409 최소 뒤 간격. 줄이면 뒤차에 더 가까이 진입 허용; 뒤차 탐색 범위는 아님
+ENTRY_MERGE_REAR_GAP = 3.0  # [m, 범퍼 간] 411→409 최소 뒤 간격. 줄이면 뒤차에 더 가까이 진입 허용; 뒤차 탐색 범위는 아님
 ENTRY_MERGE_SEARCH_FRONT = 30.0  # [m] 옆 차선에서 추종 타깃을 고르는 앞쪽 범위(409 진행거리 기준). 안전 검사는 범위 밖 객체도 포함
 ENTRY_MERGE_SEARCH_REAR = 15.0  # [m] 옆 차선에서 추종 타깃을 고르는 뒤쪽 범위. 줄여도 뒤차 충돌 검사를 끄지는 않음
 ENTRY_MERGE_CRUISE_SPEED = 20.0  # [m/s] 첫 합류 준비 속도 상한. 10=36km/h; 올리면 준비 구간을 더 빠르게 주행 가능
@@ -27,7 +27,7 @@ ENTRY_MERGE_TARGET_HOLD = 0.5  # [s] 타깃이 잠시 안 보일 때 예측으�
 ENTRY_MERGE_REASSOC_DISTANCE = 1.5  # [m] 객체 ID가 바뀌어도 같은 타깃으로 연결할 위치 차이 상한
 ENTRY_MERGE_REASSOC_SPEED = 3.5  # [m/s] ID가 바뀐 객체를 같은 타깃으로 연결할 속도 차이 상한
 ENTRY_MERGE_SPEED_FILTER_TIME = 0.35  # [s] 추종 기준 속도를 부드럽게 만드는 시간. 늘리면 반응이 완만해짐; 위험 검사는 원래 값 사용
-ENTRY_MERGE_FOLLOW_ACCEL = 2.0  # [m/s²] 추종 목표속도를 올리는 최대 변화율. 늘리면 더 빨리 가속 목표에 도달
+ENTRY_MERGE_FOLLOW_ACCEL = 3.0  # [m/s²] 합류 추종 목표속도를 올리는 변화율; 후보 안전 검사는 별도 적용
 ENTRY_MERGE_FOLLOW_DECEL = 2.0  # [m/s²] 추종 목표속도를 내리는 최대 변화율. 비상제동 한계와는 별개
 ENTRY_MERGE_HANDOFF_TIME = 2.0  # [s] 합류 정렬 후에도 같은 앞차 추종 명령을 유지하는 시간
 ENTRY_MERGE_SOURCE = "A2256W000411"  # 첫 합류를 시작하는 진입차선 MGeo 링크 ID(411)
@@ -44,7 +44,8 @@ ENTRY_MERGE_LATERAL_ACCEL = 2.0  # 짧은 변경의 속도 결정에 쓰는 횡�
 ENTRY_MERGE_OBSTACLE_MARGIN = 0.75  # 시작 전 정지/미확정 객체 박스 흔들림에 추가할 공간 여유 [m]
 ENTRY_MERGE_GAP_TIME = 2.0  # 합류 전에 앞차 뒤 간격을 확보하는 속도 응답 [s]
 ENTRY_MERGE_GAP_SPEED_DELTA = 3.0  # 간격 확보를 위해 앞차보다 낮출 속도의 최대 차이 [m/s]
-ENTRY_MERGE_LAUNCH_P_GAIN = 0.8  # 전체 가속 궤적 검증 후 대기 상태에서 바로 출발
+ENTRY_MERGE_LAUNCH_P_GAIN = 1.0  # 검증된 1차 합류 진행 중 가속 응답; 출력은 기존 0~1 범위
+ENTRY_MERGE_CROSSING_CONFIRM_TIME = 0.15  # [s] 정지 여유가 있는 먼 신규 미매칭 객체의 교차 예측 확인 시간; 근접 위험은 즉시 제동
 
 # 기존 첫 합류 우선권 판단(priority.py) — 호출 경로가 남아 있어 보존
 PREDICTIVE_MERGE_POINT = (64.35, 132.39)  # 합류 충돌 영역 중심의 전역 (x, y) [m]
@@ -71,19 +72,20 @@ PREDICTIVE_MERGE_DROPOUT_MAX_HOLD_TIME = 5.0  # 상대차 소실 시 예측 통�
 ASSUME_HIGHWAY_VEHICLES_KEEP_LANE = True  # 고속도로 차량이 끼어들지 않는 조건: 검출 방향 오차로 옆 차의 횡이동을 만들어 예측하지 않음. 실제 차체 겹침·자차 변경·도로 합류 검사는 유지
 HIGHWAY_CRUISE_SPEED_KPH = 80.0  # [km/h] 일반 고속도로 최고 목표속도. 예: 80으로 올리면 상한 80; 합류·곡률·앞차 제한은 별도 유지. 명시한 --speed-cap-kmh가 더 낮으면 그 값 우선
 LANE_CHANGE_BUMPER_MARGIN = 4.0  # [m, 범퍼 간] 일반 차선변경의 미래 앞뒤 최소 간격. 줄이면 더 좁은 틈 허용; 411→409는 전용 FRONT/REAR_GAP 사용
-TARGET_LANE_FRONT_CLEARANCE = 20.0  # 변경 전 목표 차선에서 확보할 최소 전방 거리 [m]
-TARGET_LANE_REAR_CLEARANCE = 12.0  # 전 구간 충돌 예측과 함께 적용하는 초기 후방 여유 [m]
+TARGET_LANE_FRONT_CLEARANCE = 3.0  # 변경 전 목표 차선에서 확보할 최소 전방 거리 [m]
+TARGET_LANE_REAR_CLEARANCE = 5.0  # 전 구간 충돌 예측과 함께 적용하는 초기 후방 여유 [m]
 TARGET_LANE_FRONT_TIME_GAP = 1.5  # 목표 차선 앞차가 느릴 때 상대속도에 곱할 추가 여유 [s]
 TARGET_LANE_REAR_TIME_GAP = 1.5  # 목표 차선 뒤차가 빠를 때 상대속도에 곱할 추가 여유 [s]
 ACC_TIME_GAP = 0.25  # 강제 ACC의 목표 시간 간격; 이전 설정 1.5 [s]
 ACC_STANDSTILL_DISTANCE = 3.0  # 정지 시 기본으로 유지할 앞차와의 범퍼 간격 [m]
+ACC_APPROACH_DECEL = 1.5  # [m/s²] 앞차와의 속도 차이를 줄일 때 확보할 감속 거리; 작을수록 일찍 감속
 
 # 세부 설정 — 아래 항목도 실행 코드에서 사용됨
 LANE_CHANGE_SEARCH_TIME_BUDGET = 0.08  # [s] 비동기 주행에서 새 차선변경 후보를 찾는 시간 예산. 늘리면 계산 여유와 지연이 함께 증가
 LANE_CHANGE_DISTANCE = 55.0  # 고속 차선변경을 완만하게 완료할 종방향 거리 [m]
 LANE_CHANGE_TRIGGER_DISTANCE = 85.0  # 느린 선행차를 따라 감속하기 전에 추월 검토할 범퍼 간격 [m]
 LANE_CHANGE_TRIGGER_TTC = 7.0  # 예상 충돌 시간이 이 값 이하이면 옆 차선 회피 검토 [s]
-LANE_CHANGE_COOLDOWN_DISTANCE = 30.0  # 변경 완료 후 반복 변경 억제 거리 [m]
+LANE_CHANGE_COOLDOWN_DISTANCE = 15.0  # 변경 완료 후 반복 변경 억제 거리 [m]
 LANE_CHANGE_SPEED_ADVANTAGE = 1.5  # 요청 속도보다 느린 앞차를 추월 검토할 속도 차 [m/s]
 LANE_CHANGE_CHECK_STEP = 0.1  # 변경 완료까지 별도로 검사하는 시간 간격 [s]
 LANE_CHANGE_SETTLE_TIME = 1.0  # 변경 완료 후에도 검사할 시간 여유 [s]
@@ -100,7 +102,7 @@ STATIC_LOOKAHEAD_MAX = 160.0  # 정적 장애물 탐색 거리 상한 [m]
 STATIC_CHANGE_DISTANCES = (40.0, 30.0, 22.0, 16.0, 12.0, 10.0)  # [m] 정지 장애물 회피 경로를 만들 때 시도할 종방향 차선변경 길이 목록
 STATIC_WAIT_DECEL = 1.5  # [m/s²] 정지 장애물 옆 탈출차선이 막혔을 때 접근 감속 계산에 사용하는 값
 STATIC_CHANGE_MAX_SPEED = 10.0  # 곡률 상한도 함께 적용하는 정적 회피 최고 속도 [m/s]
-STATIC_CHANGE_LATERAL_ACCEL = 2.5  # 짧은 경로의 곡률별 속도 상한 [m/s^2]
+STATIC_CHANGE_LATERAL_ACCEL = 3.5  # 짧은 경로의 곡률별 속도 상한 [m/s^2]
 STATIC_CHANGE_ACCEL_P_GAIN = 0.15  # 안전 검증된 정적 회피에서만 재가속 응답 강화
 STATIC_CHANGE_MAX_CURVATURE = 0.19  # 3m 휠베이스에서 약 30도 이하 [1/m]
 STATIC_CHANGE_STEERING_DEG = 35.0  # 저속 회피의 추종 오차 보정 여유 포함 [deg]
@@ -121,6 +123,16 @@ LANE_CHANGE_STEERING_LIMIT_DEG = 5.0  # 차선변경 중 허용할 최대 앞바
 # ==============================================================================
 # 3. 2차 합류 — 우선권·접근 속도·선호 차선
 # ==============================================================================
+SECOND_MERGE_PREP_ENABLED = True  # 두 번째 합류 전에 주행 가능한 가장 왼쪽 차선을 향해 한 차선씩 이동 준비
+SECOND_MERGE_PREP_SLOW_FOR_GAP = False  # False: 옆 차를 보내려고 감속하지 않고 현재 차로에서 빈틈 대기. True: 아래 간격 설정으로 능동 감속
+SECOND_MERGE_PREP_START = (70.89, 80.0)  # [지도 x,y m] 왼쪽 유도 시작선. 남쪽 주행이므로 y를 키우면 더 일찍 시작
+SECOND_MERGE_PREP_SPEED_KPH = 45.0  # SLOW_FOR_GAP=True의 능동 간격 확보 속도 상한 [km/h]; False이면 변경 대기만으로 감속하지 않음
+SECOND_MERGE_PREP_FRONT_GAP = 16.0  # SLOW_FOR_GAP=True일 때 만들 추종 범퍼 간격 [m]; 변경 허가는 별도 안전 검사
+SECOND_MERGE_PREP_DECEL = 2.0  # 틈 확보 목표속도의 초당 변화 한도 [m/s²]; 실제 긴급 제동은 별도
+SECOND_MERGE_PREP_GAP_GAIN = 0.35  # 간격 1m 부족마다 목표 차속을 줄이는 크기 [1/s]
+SECOND_MERGE_PREP_END_MARGIN = 10.0  # 55m 차선변경 완료 뒤 차선 수렴 시작 전 남길 거리 [m]
+SECOND_MERGE_PREP_REAR_RANGE = 35.0  # 틈 확보를 위해 먼저 보낼 옆·뒤 차량 검색 거리 [m]; 인지 범위를 늘리는 설정 아님
+SECOND_MERGE_PREP_FRONT_RANGE = 60.0  # 목표 차선 앞 추종 차량 검색 거리 [m]
 CONSERVATIVE_MERGE_CLOSE_GAP_YIELD_DISTANCE = 7.0  # 자차 통과 뒤 확보할 상대차와의 예상 간격; 이전 10.0 [m]
 CONSERVATIVE_MERGE_FOLLOW_TIME_GAP = 0.6  # 상대차 통과 후 자차 진입까지 확보할 시간; 이전 0.8 [s]
 CONSERVATIVE_MERGE_GO_CLEAR_TIME_MARGIN = 1.0  # 자차 완전 이탈 후 상대차 진입까지 확보할 시간; 이전 1.5 [s]
@@ -154,7 +166,7 @@ SECOND_MERGE_LAUNCH_ACCEL_MIN = 2.5  # [m/s²] 재출발 궤적 검사에서 가
 SECOND_MERGE_LAUNCH_ACCEL_MAX = 3.0  # [m/s²] 재출발 궤적 검사에서 가정하는 빠른 가속 반응(중간값도 검사)
 SECOND_MERGE_LAUNCH_P_GAIN = 0.8  # 재출발 목표속도 오차를 가속 명령으로 바꾸는 비례 이득. 클수록 가속 응답 강화
 SECOND_MERGE_LANE_PREFERENCE_SECTIONS = (2, 3, 4)  # 두 번째 합류 대비 선호차선 비용을 적용하는 고속도로 섹션 번호
-SECOND_MERGE_PREFERRED_LANE_NUMBERS = (2, 3)  # 주행 가능한 세 차선 중 왼쪽·가운데 차선 번호
+SECOND_MERGE_PREFERRED_LANE_NUMBERS = (2,)  # 주행 가능한 가장 왼쪽만 목표; 3=가운데는 중간 단계, 금지된 1차선은 사용 안 함
 SECOND_MERGE_RIGHT_LANE_COST_PENALTY = 1.0  # 오른쪽 차선 선택에 더할 비용; 차선 진입 금지는 아님
 SECOND_MERGE_LANE_PREFERENCE_RADIUS = 280.0  # 합류점 주변에서 선호 차선 정책을 적용할 반경 [m]
 
@@ -199,7 +211,7 @@ MERGE_SAFETY_HORIZON = 5.0  # 최종 합류 속도의 안전성을 확인할 미
 MERGE_SAFETY_STEP = 0.1  # 최종 합류 안전성 검사 시간 간격 [s]
 MERGE_CONTROL_DELAY = 0.25  # 자차 이동거리 예측에 반영할 속도 제어 반응 지연 [s]
 MERGE_PREDICT_ACCEL = 1.5  # 자차가 목표속도로 가속할 때 가정하는 가속도 [m/s^2]
-MERGE_PREDICT_DECEL = 3.0  # 자차가 목표속도로 감속할 때 가정하는 감속도 크기 [m/s^2]
+MERGE_PREDICT_DECEL = 1.5  # [m/s²] 합류 예측의 감속 가정. 실제보다 빠르게 감속한다고 가정하지 않도록 보수적으로 설정
 MERGE_SPEED_SEARCH_STEP = 0.5  # 안전한 목표속도를 찾을 때 후보 속도를 낮추는 간격 [m/s]
 MERGE_BUMPER_CLEARANCE = 3.0  # 미래 궤적 검사에서 확보할 최소 범퍼 간격 [m]
 MERGE_TRACK_HOLD_TIME = 0.5  # 관측에서 사라진 차량을 합류 안전성 검사에 유지할 시간 [s]

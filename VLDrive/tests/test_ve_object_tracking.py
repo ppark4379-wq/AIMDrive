@@ -213,6 +213,73 @@ class VeTrackingTests(unittest.TestCase):
                 self.assertAlmostEqual(3., row['planning_speed_mps'])
 
 
+class MovingFragmentTests(unittest.TestCase):
+    """A partial detection must not erase a measured moving vehicle's history."""
+
+    def moving_track(self):
+        tracker = VeObjectTracker(moving_carry_s=.75)
+        for i in range(9):
+            row = tracker.update(packet(i*.1, [box(i, speed=10., length=4.5, width=2.4)]))['boxes'][0]
+        return tracker, row['track_id']
+
+    def test_partial_body_and_full_body_keep_measured_speed_and_geometry(self):
+        tracker, identity = self.moving_track()
+        for t, raw in ((.9, box(9., speed=.5, length=1.4, width=1.2)),
+                       (1., box(10., speed=3., length=4.5, width=2.4))):
+            row = tracker.update(packet(t, [raw]))['boxes'][0]
+            self.assertEqual(identity, row['track_id'])
+            self.assertEqual('moving', row['motion_state'])
+            self.assertAlmostEqual(10., row['planning_speed_mps'])
+            self.assertEqual('position_history', row['planning_speed_source'])
+            for key in raw:
+                self.assertEqual(raw[key], row[key])
+
+    def test_full_body_return_is_not_stolen_by_a_young_duplicate(self):
+        tracker = VeObjectTracker(moving_carry_s=.75)
+        for i in range(8):
+            tracker.update(packet(i*.1, [box(i, speed=10., length=4.5, width=2.6)]))
+        rows = tracker.update(packet(.8, [box(8., speed=6., length=4.5, width=2.6),
+                                           box(12.15, speed=5.4, length=4.4, width=2.1)]))['boxes']
+        identity, duplicate = [b['track_id'] for b in rows]
+        partial = tracker.update(packet(.94, [box(9.066, speed=2.1, length=1.84, width=1.19)]))['boxes'][0]
+        full = tracker.update(packet(1.065, [box(10.812, speed=3.76, length=4.42, width=2.77)]))['boxes'][0]
+        self.assertEqual(identity, partial['track_id'])
+        self.assertEqual(identity, full['track_id'])
+        self.assertNotEqual(duplicate, full['track_id'])
+        self.assertGreater(full['planning_speed_mps'], 8.)
+
+    def test_relaxation_excludes_stale_sideways_and_noncontained_boxes(self):
+        cases = ((.9, box(9., 1.4, length=1.4, width=1.2)),
+                 (.9, box(9., heading=90., length=1.4, width=1.2)),
+                 (.9, box(9., length=.4, width=.4)),
+                 (1.1, box(11., length=1.4, width=1.2)))
+        for t, raw in cases:
+            with self.subTest(time=t, raw=raw):
+                tracker, identity = self.moving_track()
+                row = tracker.update(packet(t, [raw]))['boxes'][0]
+                self.assertNotEqual(identity, row['track_id'])
+                self.assertEqual('ve_provisional', row['planning_speed_source'])
+
+    def test_unconfirmed_or_stationary_history_cannot_support_fragment(self):
+        for count in (1, 9):
+            tracker = VeObjectTracker(moving_carry_s=.75)
+            for i in range(count):
+                row = tracker.update(packet(i*.1, [box(0., speed=10., length=4.5, width=2.4)]))['boxes'][0]
+            identity = row['track_id']
+            row = tracker.update(packet(count*.1, [box(0., speed=.2, length=1.4, width=1.2)]))['boxes'][0]
+            self.assertNotEqual(identity, row['track_id'])
+            self.assertEqual(.2, row['planning_speed_mps'])
+
+    def test_actual_stop_is_still_recognized_after_partial_detection(self):
+        tracker, identity = self.moving_track()
+        row = tracker.update(packet(.9, [box(9., speed=0., length=1.4, width=1.2)]))['boxes'][0]
+        self.assertEqual(identity, row['track_id'])
+        for i in range(10, 25):
+            row = tracker.update(packet(i*.1, [box(9., speed=0., length=1.4, width=1.2)]))['boxes'][0]
+        self.assertEqual('stationary', row['motion_state'])
+        self.assertEqual(0., row['planning_speed_mps'])
+
+
 class MovingCarryTests(unittest.TestCase):
     """A slow vehicle that briefly loses its motion evidence must not turn into a phantom stop."""
 
