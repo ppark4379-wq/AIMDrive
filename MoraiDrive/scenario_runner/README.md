@@ -48,6 +48,46 @@ python3 -m scenario_runner.main_runner \
   --scenario full_loop --once
 ```
 
+## 고주로 Expert 연속 검증
+
+UDP 제어를 사용하는 경우 아래 명령으로 고주로 진입점(원본 경로 1975번)에서
+출발하여 고주로 종료점(3638번)까지 반복합니다. 매 회차 객체와 Expert를 정리하고
+같은 구간 시작점에서 새 시나리오를 시작합니다. `--max-runs 3`으로 횟수를 제한할 수
+있고, `--repeat`을 빼면 1회만 실행합니다. Ctrl+C 또는 실행 오류 시 반복을 종료합니다.
+고주로 구간에는 신호등이 없어 신호 입력을 기다리지 않습니다.
+
+```bash
+cd /path/to/AIMDrive
+MORAI_GRPC_TARGET=127.0.0.1:7789 \
+bash MoraiDrive/scenario_runner/tools/run_gt_udp_full_route.sh \
+  --scenario full_loop_highway --repeat \
+  --sim-ip 127.0.0.1 --ego-port 9099 --object-port 7505 \
+  --control-port 9093 --control-source-port 9094
+```
+
+객체 정보 로컬 중계기를 사용하는 PC에서는 `--object-port`에 중계기의 WSL 수신
+포트를 지정합니다(현재 세션의 중계 포트는 `17505`). 시뮬레이터의 송신 포트는 유지합니다.
+`--stop-before-tunnel`은 전체 경로용 옵션이므로 고주로 전용 명령에는 넣지 않습니다.
+
+GT Expert 고주로 검증은 아래 명령 한 번으로 Ctrl+C를 누를 때까지 반복합니다.
+기존 MORAI/ROS 연결이 준비된 터미널에서 실행합니다.
+
+```bash
+cd ~/AIMDrive/MoraiDrive
+bash scenario_runner/tools/run_gt_scenario.sh highway
+# 1회만 실행
+bash scenario_runner/tools/run_gt_scenario.sh highway --once
+# 10회 실행 후 종료
+bash scenario_runner/tools/run_gt_scenario.sh highway --max-runs 10
+```
+
+매 회차 완주 후 기존 객체와 Expert를 정리하고 시작점으로 재배치하여 새 랜덤
+시나리오와 Expert 주행을 시작합니다. 랜덤 검증에서는 `--seed`를 지정하지 마세요.
+Ctrl+C는 현재 회차를 정리하고 종료하며, 복구되지 않은 실행 오류도 반복을 중단합니다.
+VE 장애물 입력으로 검증할 때는 `bash scenario_runner/tools/run_ve_scenario.sh highway --repeat`를 사용합니다.
+Python으로 직접 실행할 때는 `--scenario full_loop_highway --no-sync-runtime`을 지정하고
+`--once`를 빼면 같은 반복 기능을 사용합니다.
+
 ## 구간별 모드 선택
 
 전체 점검용 `full_loop_competition`은 기존 전체 경로·정적·동적·고속도로와
@@ -94,8 +134,40 @@ MORAI 설치에도 해당 차량 파일이 있어야 합니다. 설치 폴더에
 | `full_loop_dynamic` | 인덱스 753 → 1081 (160.0m) | 좁힌 NPC 배치 영역에서 승인된 동적 횡단을 1~2개 순차 실행 |
 | `full_loop_traffic_light` | 인덱스 1031 → 1348 (155.3m), 기존 동적 종료점 약 25m 전 직선 → 우회전 → 좌회전 완료 후 약 25m | 장애물·NPC 없음, 빨강·직진 초록 대기 후 좌회전 화살표 출발 |
 | `full_loop_roundabout` | 인덱스 1668 → 1975 (150.0m) | 차종·대수(3~5대) 랜덤, 초기 균등 배치, 공통 속도 10·15·20·25km/h 중 회차별 1회 선택. 진입 100m 전 생성, 출구 30m 후 제거 |
-| `full_loop_highway` | 인덱스 1975 → 3638 (825.0m) | 기존 SpawnPoint 3개(각 4대, 총 12대, 5초 주기) 활성화 시점에 합류 링크 시작 70m 지점에 실주행 확인된 승용차 13종 중 정지 차량 1대를 시드 기반 랜덤 생성 |
+| `full_loop_highway` | 인덱스 1975 → 3638 (825.0m) | 주행 NPC 25대·25종. 합류 바로 왼쪽 차선에 회차별 4·5·6대를 무작위 배정하고 나머지는 다른 본선 차선 경로에 배정. Ego가 진입 곡선의 지정 위치에 도달하면 출발. Ego 진입 차로는 비워 둠. `SE_CT797F_2009` 제외. 별도 정지 차량은 해당 실행 모드 설정에 따름 |
 | `full_loop_tunnel_normal` | 인덱스 3723 → 4107 (189.7m), 터널 진입 40.2m 전 → 이탈 30.5m 후 | 장애물·NPC·급제동 이벤트 없음, 도로 비움 검사, 단회 검증 |
+
+고주로 기본값은 `flowing_traffic.enabled: true`, `merge_sync.enabled: false`입니다.
+25대 모두 상류 배치를 완료한 뒤 대기합니다. Ego가 `departure_link: A2256W000846`의
+시작 후 `departure_distance_from_link_start_m: 60.0` 지점을 지나면 한 번만 출발합니다.
+이는 고주로 전용 시작점에서 약 75m 지점으로, 제공된 사진의 진입 곡선 위치를 근사한 값입니다.
+Ego ETA 계산이나 시나리오 시작 직후 출발은 사용하지 않습니다. 실제 출발 위치는
+`APPROACH_DEPARTURE` 로그와 `highway_merge_evaluation.json`의 `departure`에 기록합니다.
+인접 차선은 시드 기반으로 4·5·6대 중 하나를 균등 선택합니다. 같은 시드에서는 같은 대수이며,
+일반 반복 실행은 매 회차 새 시드를 사용하므로 대수가 달라질 수 있습니다.
+초기 배치는 본선 기준 `[-25, -5, 15, 35, 55, 75]`m 중 앞에서 선택한 대수만큼 사용합니다.
+초기 중심 간격은 20m입니다. 5대·6대 회차의 추가 슬롯은 55·75m입니다.
+`speed_range_kmh: [20, 100]`에 따라 회차별로 20~100km/h의 정수 속도를 섞어 NPC 25대에
+각각 다른 목표속도를 배정합니다. 동일 시드에서는 같은 배정이며, 배치·차종·대수 선택과는
+별도 난수로 결정합니다. 각 NPC는 회차 동안 배정된 목표속도를 사용하고 재공급 때도 유지합니다.
+실제 속도는 선행 차량과 MORAI AI의 가감속에 따라 달라질 수 있습니다. 속도 제한은 m/s,
+주행 속도 명령은 km/h로 전달하며, 로그 `target speeds km/h`와 `highway_traffic.json`에 기록합니다.
+직전 배치에서 모든 슬롯을 최소 30m 더 상류로 옮겼고, 인접 차선은 첫 슬롯 기준으로 20m 간격으로 압축했습니다.
+분기 초입에서 겹치는 다른 차선 슬롯은 추가로 10~50m 상류로 이동했습니다. 가장 상류 위치는 -460m입니다.
+인접 차선에 배정하지 않은 1~2대는 다른 차선 경로의 상류 슬롯(-190·-160m)에 배정하여 총 25대를 유지합니다.
+상류 구간은 연결 링크 A2256W000868 → A2256W000168까지 확장하며 Ego 진입 차로는 사용하지 않습니다.
+합류 기준점보다 120m 이상 지나간 인접 차선 차량은 상류에 같은 차종으로 재공급합니다.
+제거 위치와 생성 위치 모두 Ego에서 80m 이상 떨어져 있고, 생성 위치 주변 35m에
+차량이 없을 때만 한 대씩 교체합니다. 상태 조회가 불완전하면 교체하지 않습니다.
+교체 실패는 오류로 처리하여 부족한 대수로 조용히 계속 진행하지 않습니다.
+
+`highway_merge_evaluation.json`에는 합류 순간 기준점 전후 120m 이내에서 실제로
+1m/s 이상 주행하며 인접 차선 중심에서 1.75m 이내에 있는 차종을 기록합니다.
+4종 미만이면 `invalid_test_insufficient_moving_traffic`이며 성능 통과로 인정하지 않습니다.
+앞뒤 차량 중심 간격, 충돌 관측, 실제 차선 진입 및 35m 이후 차선 유지도 확인합니다.
+충돌 정보 누락이나 합류 구간의 관측 공백은 미검증으로 남깁니다.
+`passed_observed_merge`는 해당 회차의 관측 범위에서 조건을 충족했다는 뜻이며,
+Expert 전반의 성능 보증을 의미하지 않습니다. 실제 AI 속도와 간격은 교통 상황에 따라 달라집니다.
 | `full_loop_tunnel_static` | 같은 터널 전후 시험 경로 | 승인된 활성 배치 121개 중 랜덤 선택, 실측·Expert 재검사 후 주행 |
 
 기본 `full_loop_roundabout`은 `common_speed_choices_kph`에서 공통 속도를 시드 기반으로 한 번 선택하고 모든 NPC에 적용합니다. 생성·속도 명령은 km/h, MORAI AI 속도 제한은 m/s로 전달합니다. 초기 경로상 배치는 균등하지만, 실제 속도와 주행 중 간격은 MORAI 차량 모델·AI 동작에 따라 달라질 수 있습니다. 기본 실행에서 Ego의 최고속도와 곡률 계산 `window_size`는 외부 Expert 원본 설정을 그대로 사용합니다.
