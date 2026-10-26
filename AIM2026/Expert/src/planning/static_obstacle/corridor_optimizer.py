@@ -24,6 +24,7 @@ from scipy.interpolate import CubicSpline
 from scipy.optimize import lsq_linear
 
 from ...interfaces.geometry import Point
+from ...vehicle_state import VehicleState
 from ...config.parameters import lattice as p
 from ...config.parameters.static_obstacle import (
     MAX_CURVATURE,
@@ -53,13 +54,20 @@ CURVATURE_SPEED_SKIP = 1.5  # the heading join right at the pose does not limit 
 SCREEN_SLACK = .22          # the map's cheap bound is short by at most 1.5 cell diagonals (0.21 m at 0.1 m cells) [m]
 HOLD_TRACKING_ERROR = .4   # the committed path is kept only while the car is this close to it [m]
 HOLD_HEADING_ERROR = math.radians(15.)  # ... and heads along it within this angle
+RESOLVE_EVERY = 6         # a still-valid committed path is kept for up to this many ticks between full solves
+RESOLVE_SHORTFALL = 20.   # ... while it reaches within this distance of the horizon end [m]
+SKIP_TRACKING_ERROR = .1  # ... and the car follows it this closely [m]; otherwise the path restarts from the pose
+SKIP_HEADING_ERROR = math.radians(3.)
 MAX_REPAIRS = 5
 REPAIR_MARGIN = .03       # a violated margin is linearized and asked to come out this far on the safe side [m]
 CONSTRAINT_WEIGHT = 1e4   # weight of a linearized margin against the smoothing terms (unit-gradient rows)
-GRADIENT_STEP = .02       # finite-difference step for margin gradients in x [m] and slope [m/m]
+CURVATURE_HOLD = .8       # with a curvature violation, points above this fraction of the limit are held too
+GRADIENT_STEP = .02      # finite-difference step for margin gradients in x [m] and slope [m/m]
 
 
 class StaticCorridorPlanner:
+    REASON = 'static_corridor_'    # result reason prefix; + phase
+
     def __init__(self, base, occupancy, map_data_dir=None):
         self.base = base              # RecordedStaticPlanner: geometry, global curve, recorded corridor
         self.occupancy = occupancy    # StaticObstacleMap: distance(x, y)
@@ -70,7 +78,9 @@ class StaticCorridorPlanner:
         self.circle_r = math.hypot(half_width, .5*length/count)
         self.ready = False
         self.previous = None          # (ys, xs) of the last station solution
-        self.committed = None         # (yy, xx) dense samples of the last valid path
+        self.committed = None         # (yy, xx, yaw, curvature) dense samples of the last valid path
+        self._since_solve = RESOLVE_EVERY   # ticks since the last full solve
+        self._held_error = (math.inf, math.inf)   # (distance, heading) of the car from the committed path
         self._global_xy = None
 
     # ------------------------------------------------------------------ geometry
@@ -144,16 +154,17 @@ class StaticCorridorPlanner:
         X, Y = np.meshgrid(xs, ys)
         inside = (X >= low[:, None]) & (X <= high[:, None])
         need = required[:, None]
-        reach = self.circle_t[-1]*2.*math.sin(.5*math.atan(CORRIDOR_MAX_SLOPE))+.5*CORRIDOR_LATERAL_STEP
         feasible = np.zeros((2*steps+1,)+X.shape, dtype=bool)
         clear = np.empty((2*steps+1,)+X.shape)
         straight = self.clearance(X, Y, np.full(X.shape, .5*math.pi), screen=True)
-        # A turned body moves its circles at most `reach` from the straight one: far cells stay clear at any heading.
-        near = inside & (straight < need+reach)
         for k, d in enumerate(range(-steps, steps+1)):
             yaw = math.atan2(1., d*CORRIDOR_LATERAL_STEP/CORRIDOR_STATION_STEP)
+            # Turned by `turn` from straight, a body circle moves at most 2 t sin(turn/2): cells that far clear of
+            # the straight body stay clear at this heading.
+            reach = self.circle_t[-1]*2.*math.sin(.5*abs(yaw-.5*math.pi))
+            near = inside & (straight < need+reach)
             c = straight.copy()
-            if near.any():
+            if d != 0 and near.any():
                 c[near] = self.clearance(X[near], Y[near], np.full(int(near.sum()), yaw), screen=True)
             # Measure exactly only where the cheap bound alone would reject a cell that may in fact keep the
             # required clearance (bound short by at most SCREEN_SLACK).
@@ -307,28 +318,50 @@ class StaticCorridorPlanner:
                            error='planning_error: '+str(exc)[:160])
             return self._result([ego.position, ahead], 0., False, details, begin, [], np.zeros(0))
 
+    def prepare(self, global_path, start_y=None):
+        """One-time setup on the global route (about 0.2 s: route curve, corridor, envelope, road table).
+
+        Called at start-up so the first planning tick in the section does not carry it. ``start_y`` is the earliest
+        pose y the corridor must cover (default: the section's route start)."""
+        if self.ready:
+            return True
+        y = self.base.geometry.route_y[0] if start_y is None else min(float(start_y), self.base.geometry.route_y[0])
+        anchor = VehicleState(0., y, .5*math.pi, 0.)
+        try:
+            self.base._setup(global_path, anchor)
+        except ValueError:
+            return False
+        self._add_lane_bounds(anchor)
+        self.ready = True
+        self._global_xy = np.array([(q.x, q.y) for q in global_path])
+        return True
+
     def _plan(self, ego, reference_path, global_path, begin):
-        if not self.ready:
-            try:
-                self.base._setup(global_path, ego)
-            except ValueError:
-                return None
-            self._add_lane_bounds(ego)
-            self.ready = True
-            self._global_xy = np.array([(q.x, q.y) for q in global_path])
+        if not self.prepare(global_path, ego.position.y):
+            return None
         ds = CORRIDOR_STATION_STEP
         y0, x0 = float(ego.position.y), float(ego.position.x)
         end = min(y0+CORRIDOR_HORIZON, self.base.goal_y)
         if end-y0 < 3*ds:
             return None
+        pose_clear = float(self.clearance(x0, y0, ego.yaw))
+        held = self._held_path(ego, pose_clear)
+        # The committed path is re-checked on the current map every tick. While it holds and still reaches far
+        # enough, the full solve runs only every RESOLVE_EVERY ticks; its cost would otherwise add to the
+        # sensor-to-command latency on every frame (traffic-signal freshness, control delay).
+        self._since_solve += 1
+        if (held is not None and self._since_solve < RESOLVE_EVERY and held[0][-1] >= end-RESOLVE_SHORTFALL
+                and self._held_error[0] <= SKIP_TRACKING_ERROR and self._held_error[1] <= SKIP_HEADING_ERROR):
+            details = dict(planner='static_corridor', stations=0, feasible_stations=None, min_clearance_m=None,
+                           stop_distance_m=None, repairs=0, solve='held')
+            return self._finish(ego, held, False, pose_clear, details, begin, source='previous')
+        self._since_solve = 0
         ys = y0+ds*np.arange(int((end-y0)/ds)+1)
         x_ref = self.base.global_curve(ys)
         slope0 = float(np.clip(math.cos(ego.yaw)/max(.5, math.sin(ego.yaw)), -CORRIDOR_MAX_SLOPE, CORRIDOR_MAX_SLOPE))
         low, high = self._corridor(ys, y0, x0)
         xs = np.arange(low.min(), high.max()+1e-9, CORRIDOR_LATERAL_STEP)
-        pose_clear = float(self.clearance(x0, y0, ego.yaw))
         required = self._required(ys, y0, pose_clear)
-        held = self._held_path(ego, pose_clear)
         feasible, clear = self._feasibility(ys, xs, required, x0)
         previous = None
         if self.previous is not None:
@@ -378,25 +411,27 @@ class StaticCorridorPlanner:
             # together, and a body turned slightly differently can clip an obstacle or the corridor edge. Linearize
             # each violated margin in the station variables (through the dense point's position and heading) and
             # add it to the next solve; earlier linearizations stay, so the solve does not undo a fixed violation.
-            slope = S0+SB@solution
-            for k in np.flatnonzero(~clear_ok | ~corridor_ok):
-                if not clear_ok[k]:
-                    value = clear_margin[k]
-                    def margin(x, s):
-                        return float(self.clearance(x, yy[k], math.atan2(1., s)))-required_dense[k]
-                else:
-                    value = corridor_margin[k]
-                    def margin(x, s):
-                        return float(self._corridor_margin(x, yy[k], math.atan2(1., s), y0,
-                                                           (centre[0][k], centre[1][k])))
-                h = GRADIENT_STEP
-                gradient = ((margin(xx[k]+h, slope[k])-margin(xx[k]-h, slope[k]))/(2*h)*XB[k]
-                            + (margin(xx[k], slope[k]+h)-margin(xx[k], slope[k]-h))/(2*h)*SB[k])
-                constraints.append((gradient, gradient@solution+REPAIR_MARGIN-value))
-            for k in np.flatnonzero(~curvature_ok):
-                second = K0[k]+KB[k]@solution
-                limit = .95*MAX_CURVATURE*(1+slope[k]**2)**1.5
-                constraints.append((KB[k], math.copysign(limit, second)-K0[k]))
+            slope, h = S0+SB@solution, GRADIENT_STEP
+            def clear_at(k, x, s):
+                return self.clearance(x, yy[k], np.arctan2(1., s))-required_dense[k]
+            def corridor_at(k, x, s):
+                return self._corridor_margin(x, yy[k], np.arctan2(1., s), y0, (centre[0][k], centre[1][k]))
+            for bad, value, margin in ((~clear_ok, clear_margin, clear_at),
+                                       (clear_ok & ~corridor_ok, corridor_margin, corridor_at)):
+                k = np.flatnonzero(bad)
+                if not len(k):
+                    continue
+                x, s = xx[k], slope[k]
+                gradients = ((margin(k, x+h, s)-margin(k, x-h, s))[:, None]/(2*h)*XB[k]
+                             + (margin(k, x, s+h)-margin(k, x, s-h))[:, None]/(2*h)*SB[k])
+                constraints += [(g, g@solution+REPAIR_MARGIN-v) for g, v in zip(gradients, value[k])]
+            if not curvature_ok.all():
+                # Pinning only the violating points pushes the bend onto their neighbours; hold every point near
+                # the limit too, at its current value or the cap, whichever is lower.
+                second = K0+KB@solution
+                cap = .9*MAX_CURVATURE*(1+slope**2)**1.5
+                for k in np.flatnonzero(curvature > CURVATURE_HOLD*MAX_CURVATURE):
+                    constraints.append((KB[k], math.copysign(min(abs(second[k]), cap[k]), second[k])-K0[k]))
         if not ok.all():
             if held is not None:
                 # The new solve failed but the committed path is still clear on the current map: keep it.
@@ -411,26 +446,26 @@ class StaticCorridorPlanner:
             return self._finish(ego, held, False, pose_clear, details, begin, source='previous')
         self.previous = (station_y, station_x)
         if not blocked:
-            self.committed = (yy, xx)
+            self.committed = (yy, xx, yaw, curvature)
         return self._finish(ego, (yy, xx, yaw, curvature, dense_clear), blocked, pose_clear, details, begin)
 
     def _held_path(self, ego, pose_clear):
         """The committed path ahead of the car, if the car is on it and it is still valid on the current map."""
         if self.committed is None:
             return None
-        yy, xx = self.committed
+        yy, xx, yaw, curvature = self.committed
         y0 = float(ego.position.y)
         d = np.hypot(xx-ego.position.x, yy-y0)
         k = int(np.argmin(d))
         if d[k] > HOLD_TRACKING_ERROR or len(yy)-k < 8:
             return None
-        yy, xx = yy[k:], xx[k:]
-        slope = np.gradient(xx, yy)
-        yaw = np.arctan2(1., slope)
+        # The spline's own heading and curvature, as validated when the path was planned: recomputing them by
+        # finite differences moves the clearance by millimetres and drops a path accepted at the threshold.
+        yy, xx, yaw, curvature = yy[k:], xx[k:], yaw[k:], curvature[k:]
         heading_error = abs(math.atan2(math.sin(ego.yaw-yaw[0]), math.cos(ego.yaw-yaw[0])))
+        self._held_error = (float(d[k]), heading_error)
         if heading_error > HOLD_HEADING_ERROR:
             return None
-        curvature = np.abs(np.gradient(slope, yy))/(1+slope*slope)**1.5
         clear = self.clearance(xx, yy, yaw)
         station = np.r_[0., np.cumsum(np.hypot(np.diff(xx), np.diff(yy)))]
         # A path the car is already on may continue while it never gets closer than the car is now: beside an
@@ -539,5 +574,5 @@ class StaticCorridorPlanner:
         candidate.points, candidate.valid = list(points), valid
         return LatticePlanningResult(path, active=True, mode='static_obstacle', obstacle_detected=True,
                                      acc_override=True, acc_target_velocity=speed, candidates=[candidate],
-                                     reason='static_corridor_'+details['phase'],
+                                     reason=self.REASON+details['phase'],
                                      debug_details={'static_avoidance': details})

@@ -6,7 +6,8 @@
 | 파일 | 역할 |
 |---|---|
 | `section.py` | 시작/종료 영역과 구간 진행축 변환, 기록 유효성 검사 |
-| `recorded_planner.py` | 기록 경로 기반 계획과 정적 회피 구현 연결 |
+| `recorded_planner.py` | 기록 경로 기반 계획과 정적 회피 구현 연결; 이동체가 없으면 `corridor.py`로 넘김 |
+| `corridor.py` | 누적 점유 지도(`Expert/tunnel_map.py`) 위 매 주기 재최적화 경로, 통로는 지도 도로 경계 |
 | `dynamic_planner.py` | 이동 객체에 대한 추월·복귀 판단 |
 | `dynamic_recovery.py` | 기존 계획 경로 재연결 및 복구 |
 | `motion.py` | 정지/이동 객체 판별과 객체 식별 |
@@ -14,6 +15,9 @@
 | `pedestrian_speed.py` | 기존 상위 계획기의 보행자 속도 처리 |
 | `road_boundary.py` | 지도 차로와 차체 형상 기반 도로 경계 검사 |
 | `prepare_routes.py` | 공통 종료선 가공 함수와 기존 주행용 경로 검사 |
+
+정지 물체만 있을 때는 누적 점유 지도와 `corridor.py`가 경로를 맡는다. VE 트랙이 2 m 이상 이동했거나
+5프레임 연속 moving이면 이동체로 보고, 그동안(이후 10틱까지)은 기존 기록 경로 계획과 이동체 처리가 그대로 맡는다.
 
 기록 데이터는 Expert 루트의 `data/recorded_paths/jamming/`에 있다.
 

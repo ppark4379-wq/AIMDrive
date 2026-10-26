@@ -22,6 +22,7 @@ from AIM2026.UDP.Cmd import CmdSender, Command
 from AIM2026.Expert.adapter import prepare, planner_inputs
 from AIM2026.Expert.static_memory import StaticMemory
 from AIM2026.Expert.static_map import StaticObstacleMap
+from AIM2026.Expert.tunnel_map import TunnelObstacleMap
 from AIM2026.Inference.timer_resolution import high_resolution_timer
 
 # VE not-ready reasons that must stop using the last detection at once.
@@ -79,10 +80,11 @@ def wire_command(command, max_steering, hold_steer=0.):
 
 class Inputs:
     """Pin one publisher and reject stale/reordered frames before updating state."""
-    def __init__(self, generation, digest, tracker, memory=None, static_map=None):
+    def __init__(self, generation, digest, tracker, memory=None, static_map=None, tunnel_map=None):
         self.generation, self.digest, self.tracker = generation, digest, tracker
         self.memory = memory
         self.static_map = static_map
+        self.tunnel_map = tunnel_map
         self.packet = self.pose = None
         self.sequences = {False: 0, True: 0}
         self.frames = self.pose_frames = self.held_frames = 0
@@ -132,6 +134,8 @@ class Inputs:
             self.packet = self.memory.apply(self.packet)
         if self.static_map is not None:
             self.packet = self.static_map.apply(self.packet)
+        if self.tunnel_map is not None:
+            self.tunnel_map.observe_packet(self.packet)
         self.frames += 1
         return 'detection'
 
@@ -192,7 +196,7 @@ def main(argv=None, control_tick=None):
     parser.add_argument('--slow-window-s', type=float, default=0.,
                         help='Tracker: slow-mover confirmation window in seconds (0 = off)')
     parser.add_argument('--no-static-map', action='store_true',
-                        help='Plan the static-obstacle section on instantaneous VE boxes instead of the accumulated map')
+                        help='Plan the static-obstacle and Jamming sections on instantaneous VE boxes instead of the accumulated maps')
     parser.add_argument('--no-static-memory', action='store_true',
                         help='Do not remember small obstacles the detector reports on only some frames')
     parser.add_argument('--stationary-hold-s', type=float, default=0.,
@@ -241,7 +245,8 @@ def main(argv=None, control_tick=None):
         static_geometry_fusion=args.static_geometry_fusion, moving_carry_s=args.moving_carry_s,
         slow_window_s=args.slow_window_s, stationary_hold_s=args.stationary_hold_s),
         memory=None if args.no_static_memory else StaticMemory(),
-        static_map=None if args.no_static_map else StaticObstacleMap())
+        static_map=None if args.no_static_map else StaticObstacleMap(),
+        tunnel_map=None if args.no_static_map else TunnelObstacleMap())
     stop = []
     old_handlers = {sig: signal.signal(sig, lambda *_: stop.append(True))
                     for sig in (signal.SIGINT, signal.SIGTERM)}
@@ -253,7 +258,8 @@ def main(argv=None, control_tick=None):
         with contextlib.redirect_stdout(expert_log):
             driving = AutonomousDriving()
         if inputs.static_map is not None and hasattr(driving.lattice_planning_process, 'attach_static_map'):
-            driving.lattice_planning_process.attach_static_map(inputs.static_map)
+            driving.lattice_planning_process.attach_static_map(inputs.static_map, inputs.tunnel_map,
+                                                               getattr(driving, 'path', None))
         if os.environ.get('VE_CORRIDOR_TIMEOUT_S'):
             # Development experiment only: corridor search time budget of the recorded static planner.
             jam = getattr(driving.lattice_planning_process, 'recorded_jamming', None)
