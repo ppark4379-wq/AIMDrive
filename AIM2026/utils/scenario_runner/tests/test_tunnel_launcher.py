@@ -1,4 +1,5 @@
 """Tunnel-segment launcher: same integrated Expert flow as the highway/roundabout launchers, virtual GPS on."""
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
@@ -21,6 +22,7 @@ class TunnelLauncherTest(unittest.TestCase):
             anchor_window_s=1., test_blackout=dict(enabled=False, start_xy=[1., 2.], end_xy=[3., 4.],
                                                     half_width_m=15., margin_m=0.))), encoding='utf-8')
         self.runtime = self.root / 'utils/scenario_runner/.runtime/tunnel_aim2026'
+        self.limits = []
         self.base = self.root / 'config_local.yaml'
         self.base.write_text(yaml.safe_dump(dict(
             Ego=dict(cmd_port=9093), Localization=dict(enabled=True, config='Localization/config.yaml',
@@ -51,8 +53,12 @@ class TunnelLauncherTest(unittest.TestCase):
     def run_main(self, argv, results=None):
         calls = []
 
-        def fake(arguments, variant, options=None):
+        def fake(arguments, variant, options=None, record=None, limits=None):
             calls.append((arguments, variant, options))
+            self.limits.append(limits)
+            if record is not None:
+                record.update(run_seed=1000 + len(calls), run_instance_id='id{}'.format(len(calls)),
+                              output=str(self.root / 'run{}'.format(len(calls))))
             outcome = results[len(calls) - 1] if results else 0
             if isinstance(outcome, BaseException):
                 raise outcome
@@ -149,6 +155,123 @@ class TunnelLauncherTest(unittest.TestCase):
         self.assertEqual((code, [call[1] for call in calls]), (run_tunnel.INTERRUPTED, ['brake', 'static']))
         code, calls = self.run_main(['--variant', 'brake'], results=[run_tunnel.INTERRUPTED])
         self.assertEqual((code, len(calls)), (run_tunnel.INTERRUPTED, 1))
+
+    def result_rows(self, argv, results):
+        code, calls = self.run_main(argv, results=results)
+        files = sorted((self.runtime / 'results').glob('tunnel-*.jsonl'))
+        rows = [json.loads(line) for line in files[-1].read_text(encoding='utf-8').splitlines()] if files else []
+        return code, calls, rows
+
+    def test_every_repeated_run_is_written_to_the_results_file_with_seed_and_reason(self):
+        code, calls, rows = self.result_rows(
+            ['--variant', 'all', '--runs', '4', '--seed', '50'],
+            [0, RuntimeError('AIMDrive expert collision during scenario verification: [x]'),
+             RuntimeError('AIMDrive expert left the official route: cte=11.00m'), 0])
+        self.assertEqual(code, 1)
+        self.assertEqual([r['run'] for r in rows], [1, 2, 3, 4])
+        self.assertEqual([r['scene'] for r in rows], ['brake', 'static', 'pedestrian', 'vehicle'])
+        self.assertEqual([r['result'] for r in rows], ['completed', 'collision', 'off_route', 'completed'])
+        self.assertIn('collision', rows[1]['reason'])
+        self.assertEqual([r['requested_seed'] for r in rows], [50, 51, 52, 53])
+        self.assertEqual([r['seed'] for r in rows], [1001, 1002, 1003, 1004])
+        self.assertEqual(rows[1]['output'], str(self.root / 'run2'))
+        self.assertIsNone(rows[0]['reason'])
+
+    def test_results_file_path_can_be_chosen(self):
+        target = self.root / 'mine.jsonl'
+        self.run_main(['--runs', '2', '--results', str(target)])
+        self.assertEqual(len(target.read_text(encoding='utf-8').splitlines()), 2)
+
+    def test_a_run_over_its_time_limit_is_a_failed_run_and_the_campaign_goes_on(self):
+        code, calls, rows = self.result_rows(['--runs', '3'], [0, run_tunnel.RoundTimeout(300.), 0])
+        self.assertEqual((code, len(calls)), (1, 3))
+        self.assertEqual([r['result'] for r in rows], ['completed', 'round_timeout', 'completed'])
+
+    def test_an_interrupt_is_recorded_and_ends_the_campaign(self):
+        code, calls, rows = self.result_rows(['--runs', '5'], [0, KeyboardInterrupt()])
+        self.assertEqual((code, len(calls)), (run_tunnel.INTERRUPTED, 2))
+        self.assertEqual([r['result'] for r in rows], ['completed', 'interrupted'])
+
+    def test_failures_are_classified_from_the_scene_messages(self):
+        for text, reason in (('AIMDrive expert collision during scenario verification: x', 'collision'),
+                             ('AIMDrive expert left the official route: cte=3m', 'off_route'),
+                             ('EGO progress watchdog abort: no progress', 'stalled'),
+                             ('EGO stall abort: less than 2 m', 'stalled'),
+                             ('K-City full-loop timeout: dist=3m', 'timeout'),
+                             ('something else', 'error')):
+            self.assertEqual(run_tunnel.classify_failure(RuntimeError(text)), reason)
+        self.assertEqual(run_tunnel.classify_failure(run_tunnel.RoundTimeout(1.)), 'round_timeout')
+
+    def test_limits_reach_every_run_and_can_be_turned_off(self):
+        self.run_main(['--runs', '2'])
+        self.assertEqual(self.limits, [dict(round_timeout_s=300., stall_s=60.)] * 2)
+        self.limits.clear()
+        self.run_main(['--runs', '1', '--round-timeout-s', '0', '--stall-s', '0'])
+        self.assertEqual(self.limits, [dict(round_timeout_s=0., stall_s=0.)])
+        with self.assertRaises(SystemExit):
+            self.run_main(['--round-timeout-s', '-1'])
+
+    def test_a_single_run_over_its_time_limit_exits_nonzero(self):
+        code, _ = self.run_main(['--variant', 'brake'], results=[run_tunnel.RoundTimeout(1.)])
+        self.assertEqual(code, 1)
+
+    def test_the_stall_watch_fails_a_run_without_progress_but_not_a_slow_one(self):
+        from unittest.mock import Mock
+        scene = self.scene('pedestrian', 'full_loop_tunnel_dynamic')
+        scene.stop_drive_control = Mock()
+        for elapsed in range(0, 60, 5):
+            scene.watch_stall(float(elapsed), 10.0 + (0.5 if elapsed > 30 else 0.))   # 0.5 m is not progress
+        with self.assertRaisesRegex(RuntimeError, 'EGO stall abort'):
+            scene.watch_stall(60., 10.5)
+        scene.stop_drive_control.assert_called_once_with()
+        moving = self.scene('pedestrian', 'full_loop_tunnel_dynamic')
+        moving.stop_drive_control = Mock()
+        for elapsed in range(0, 600, 5):
+            moving.watch_stall(float(elapsed), elapsed * 0.5)    # 2.5 m per 5 s, never stalled
+        moving.stop_drive_control.assert_not_called()
+        off = self.scene('pedestrian', 'full_loop_tunnel_dynamic', stall_s=0.)
+        off.watch_stall(0., 1.)
+        off.watch_stall(1000., 1.)
+
+    def test_the_wall_clock_limit_stops_a_hung_run_and_still_cleans_up(self):
+        from unittest.mock import Mock
+        import time as real_time
+        config = self.root / 'ports.yaml'
+        config.write_text('Ego: {cmd_port: 9093}', encoding='utf-8')
+        scene = Mock()
+        scene.run.side_effect = lambda: real_time.sleep(5)
+        record = {}
+        with patch.object(run_tunnel, 'ROOT', self.root), patch.object(run_tunnel, 'RUNTIME', self.runtime), \
+                patch.object(run_tunnel, 'load_configuration',
+                             return_value=({'paths': {'mgeo_root': 'm'}, 'grpc': {'host': 'h'}}, {}, {})), \
+                patch.object(run_tunnel, 'TunnelScenario', return_value=scene), \
+                patch.object(run_tunnel, 'MGeoMapLoader'), patch.object(run_tunnel.harness, '_finish_validation') as finish, \
+                patch('scenario_runner.adapters.morai_grpc.MoraiGrpcClient'):
+            started = real_time.monotonic()
+            with self.assertRaises(run_tunnel.RoundTimeout):
+                run_tunnel.run_one(['--config', str(config)], 'normal', record=record,
+                                   limits=dict(round_timeout_s=0.2, stall_s=0.))
+        self.assertLess(real_time.monotonic() - started, 3)
+        scene.stop_expert_controller.assert_called_once_with()
+        self.assertEqual(finish.call_args[0][2], 'exception')
+        self.assertIsInstance(finish.call_args[0][3], run_tunnel.RoundTimeout)
+        self.assertIn('output', record)
+        import signal as real_signal
+        self.assertEqual(real_signal.getitimer(real_signal.ITIMER_REAL)[0], 0.)
+
+    def test_skip_leaves_scenes_out_of_the_rotation_and_the_default_cycle(self):
+        code, calls = self.run_main(['--variant', 'all', '--runs', '6', '--skip', 'brake'])
+        self.assertEqual([call[1] for call in calls], ['static', 'pedestrian', 'vehicle'] * 2)
+        code, calls = self.run_main(['--variant', 'all', '--skip', 'brake'])
+        self.assertEqual([call[1] for call in calls], ['static', 'pedestrian', 'vehicle'])
+        code, calls = self.run_main(['--variant', 'all', '--runs', '4', '--skip', 'static', 'vehicle'])
+        self.assertEqual([call[1] for call in calls], ['brake', 'pedestrian', 'brake', 'pedestrian'])
+
+    def test_skip_is_only_for_all_and_cannot_remove_every_scene(self):
+        with self.assertRaises(SystemExit):
+            self.run_main(['--variant', 'brake', '--skip', 'static'])
+        with self.assertRaises(SystemExit):
+            self.run_main(['--variant', 'all', '--skip', 'brake', 'static', 'pedestrian', 'vehicle'])
 
     def test_check_validates_a_single_run(self):
         with patch.object(run_tunnel, 'AIM_ROOT', self.root), self.assertRaises(SystemExit):
