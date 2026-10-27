@@ -1,0 +1,2027 @@
+{
+  "registry_sha256": "949837baa52e4894f0bbab811d53019aadafad06a092622b4d8bad0b9cfed55d",
+  "source_report_sha256": "c700fd0d2847bf472117a1982320ccf595b8ec64786ab46d8dcd740ed1d6d4d1",
+  "models": 36,
+  "views": 288,
+  "minimum_containment_10cm": 1.0,
+  "max_center_difference_m": 0.01591140256782797,
+  "notes": "Normalized timeline retains existing true-ENU yaw convention; measured difference from projected-grid camera geometry bounded here, not asserted zero.",
+  "results": [
+    {
+      "model": "BabyStroller1",
+      "directory": "000_static_BabyStroller1_cd35c292/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.010647328490996179,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "BabyStroller1",
+      "directory": "000_static_BabyStroller1_cd35c292/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.010647328490984959,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "BabyStroller1",
+      "directory": "000_static_BabyStroller1_cd35c292/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.010647328490996179,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "BabyStroller1",
+      "directory": "000_static_BabyStroller1_cd35c292/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.010647328490993391,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "BabyStroller1",
+      "directory": "000_static_BabyStroller1_cd35c292/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.010647305489662539,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "BabyStroller1",
+      "directory": "000_static_BabyStroller1_cd35c292/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.010647305489663998,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "BabyStroller1",
+      "directory": "000_static_BabyStroller1_cd35c292/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.010647305489662539,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "BabyStroller1",
+      "directory": "000_static_BabyStroller1_cd35c292/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.010647305489644153,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "BabyStroller2",
+      "directory": "001_static_BabyStroller2_611fcedb/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.010305444071585434,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "BabyStroller2",
+      "directory": "001_static_BabyStroller2_611fcedb/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.010305444071583026,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "BabyStroller2",
+      "directory": "001_static_BabyStroller2_611fcedb/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.010305444071585434,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "BabyStroller2",
+      "directory": "001_static_BabyStroller2_611fcedb/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.010305444071583264,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "BabyStroller2",
+      "directory": "001_static_BabyStroller2_611fcedb/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.01030542180882833,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "BabyStroller2",
+      "directory": "001_static_BabyStroller2_611fcedb/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.010305421808812965,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "BabyStroller2",
+      "directory": "001_static_BabyStroller2_611fcedb/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.01030542180882833,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "BabyStroller2",
+      "directory": "001_static_BabyStroller2_611fcedb/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.010305421808811992,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "BabyStroller3",
+      "directory": "002_static_BabyStroller3_f57e8886/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.014195876208499525,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "BabyStroller3",
+      "directory": "002_static_BabyStroller3_f57e8886/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.014195876208469738,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "BabyStroller3",
+      "directory": "002_static_BabyStroller3_f57e8886/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.014195876208499525,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "BabyStroller3",
+      "directory": "002_static_BabyStroller3_f57e8886/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.014195876208505777,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "BabyStroller3",
+      "directory": "002_static_BabyStroller3_f57e8886/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.014195845541252543,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "BabyStroller3",
+      "directory": "002_static_BabyStroller3_f57e8886/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.014195845541254071,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "BabyStroller3",
+      "directory": "002_static_BabyStroller3_f57e8886/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.014195845541252543,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "BabyStroller3",
+      "directory": "002_static_BabyStroller3_f57e8886/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.014195845541261845,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Barbed_Wirefence",
+      "directory": "003_static_Barbed_Wirefence_e767b96c/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 7.316426405300012e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Barbed_Wirefence",
+      "directory": "003_static_Barbed_Wirefence_e767b96c/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 7.316426404078352e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Barbed_Wirefence",
+      "directory": "003_static_Barbed_Wirefence_e767b96c/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 7.316426405300012e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Barbed_Wirefence",
+      "directory": "003_static_Barbed_Wirefence_e767b96c/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 7.316426406568611e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Barbed_Wirefence",
+      "directory": "003_static_Barbed_Wirefence_e767b96c/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 7.316410599511157e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Barbed_Wirefence",
+      "directory": "003_static_Barbed_Wirefence_e767b96c/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 7.316410599015466e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Barbed_Wirefence",
+      "directory": "003_static_Barbed_Wirefence_e767b96c/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 7.316410599511157e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Barbed_Wirefence",
+      "directory": "003_static_Barbed_Wirefence_e767b96c/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 7.316410599062401e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bicycle_city",
+      "directory": "004_static_Bicycle_city_f58df5bd/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.011637290807137263,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bicycle_city",
+      "directory": "004_static_Bicycle_city_f58df5bd/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.011637290807148239,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bicycle_city",
+      "directory": "004_static_Bicycle_city_f58df5bd/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.011637290807137263,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bicycle_city",
+      "directory": "004_static_Bicycle_city_f58df5bd/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.011637290807146074,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bicycle_city",
+      "directory": "004_static_Bicycle_city_f58df5bd/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0116372656672,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bicycle_city",
+      "directory": "004_static_Bicycle_city_f58df5bd/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.011637265667184302,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bicycle_city",
+      "directory": "004_static_Bicycle_city_f58df5bd/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0116372656672,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bicycle_city",
+      "directory": "004_static_Bicycle_city_f58df5bd/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.011637265667210375,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bicycle_mountain",
+      "directory": "005_static_Bicycle_mountain_6107f67b/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.012331863374708107,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bicycle_mountain",
+      "directory": "005_static_Bicycle_mountain_6107f67b/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.012331863374692493,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bicycle_mountain",
+      "directory": "005_static_Bicycle_mountain_6107f67b/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.012331863374708107,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bicycle_mountain",
+      "directory": "005_static_Bicycle_mountain_6107f67b/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.012331863374705663,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bicycle_mountain",
+      "directory": "005_static_Bicycle_mountain_6107f67b/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.012331836734274803,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bicycle_mountain",
+      "directory": "005_static_Bicycle_mountain_6107f67b/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.012331836734259187,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bicycle_mountain",
+      "directory": "005_static_Bicycle_mountain_6107f67b/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.012331836734274803,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bicycle_mountain",
+      "directory": "005_static_Bicycle_mountain_6107f67b/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.01233183673427235,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bike1",
+      "directory": "006_static_Bike1_c31c2c4d/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0003798085662311957,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bike1",
+      "directory": "006_static_Bike1_c31c2c4d/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00037980856622875256,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bike1",
+      "directory": "006_static_Bike1_c31c2c4d/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0003798085662311957,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bike1",
+      "directory": "006_static_Bike1_c31c2c4d/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0003798085662099685,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bike1",
+      "directory": "006_static_Bike1_c31c2c4d/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00037980774573133884,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bike1",
+      "directory": "006_static_Bike1_c31c2c4d/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0003798077457453381,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bike1",
+      "directory": "006_static_Bike1_c31c2c4d/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00037980774573133884,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bike1",
+      "directory": "006_static_Bike1_c31c2c4d/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0003798077457265538,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bike2",
+      "directory": "007_static_Bike2_ae04e46c/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0009045105953807705,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bike2",
+      "directory": "007_static_Bike2_ae04e46c/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0009045105953692853,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bike2",
+      "directory": "007_static_Bike2_ae04e46c/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0009045105953807705,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bike2",
+      "directory": "007_static_Bike2_ae04e46c/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0009045105953983339,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bike2",
+      "directory": "007_static_Bike2_ae04e46c/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0009045086413575297,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bike2",
+      "directory": "007_static_Bike2_ae04e46c/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0009045086413575297,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bike2",
+      "directory": "007_static_Bike2_ae04e46c/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0009045086413575297,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bike2",
+      "directory": "007_static_Bike2_ae04e46c/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0009045086413586005,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bike3",
+      "directory": "008_static_Bike3_2504baf2/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0005934273281668615,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bike3",
+      "directory": "008_static_Bike3_2504baf2/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0005934273281468899,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bike3",
+      "directory": "008_static_Bike3_2504baf2/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0005934273281668615,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bike3",
+      "directory": "008_static_Bike3_2504baf2/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0005934273281640197,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bike3",
+      "directory": "008_static_Bike3_2504baf2/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0005934260461870306,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bike3",
+      "directory": "008_static_Bike3_2504baf2/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0005934260461759236,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bike3",
+      "directory": "008_static_Bike3_2504baf2/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0005934260461870306,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bike3",
+      "directory": "008_static_Bike3_2504baf2/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0005934260461930532,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bollard01",
+      "directory": "009_static_Bollard01_53da9e6d/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.8714920845746024e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bollard01",
+      "directory": "009_static_Bollard01_53da9e6d/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.871492083782338e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bollard01",
+      "directory": "009_static_Bollard01_53da9e6d/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.8714920845746024e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bollard01",
+      "directory": "009_static_Bollard01_53da9e6d/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.871492083767481e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bollard01",
+      "directory": "009_static_Bollard01_53da9e6d/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.8714880407555305e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bollard01",
+      "directory": "009_static_Bollard01_53da9e6d/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.871488039435915e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bollard01",
+      "directory": "009_static_Bollard01_53da9e6d/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.8714880407555305e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bollard01",
+      "directory": "009_static_Bollard01_53da9e6d/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.8714880394210568e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bollard04",
+      "directory": "010_static_Bollard04_7f5be219/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.908623982731798e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bollard04",
+      "directory": "010_static_Bollard04_7f5be219/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.9086239832483707e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bollard04",
+      "directory": "010_static_Bollard04_7f5be219/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.908623982731798e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bollard04",
+      "directory": "010_static_Bollard04_7f5be219/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.9086239828590862e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bollard04",
+      "directory": "010_static_Bollard04_7f5be219/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.9086198600021163e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bollard04",
+      "directory": "010_static_Bollard04_7f5be219/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.9086198597113896e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bollard04",
+      "directory": "010_static_Bollard04_7f5be219/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.9086198600021163e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Bollard04",
+      "directory": "010_static_Bollard04_7f5be219/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.9086198582889587e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "CargoBox",
+      "directory": "011_static_CargoBox_657aa089/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 6.893596227549853e-10,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "CargoBox",
+      "directory": "011_static_CargoBox_657aa089/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 6.893525437111778e-10,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "CargoBox",
+      "directory": "011_static_CargoBox_657aa089/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 6.893596227549853e-10,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "CargoBox",
+      "directory": "011_static_CargoBox_657aa089/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 6.893525437111778e-10,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "CargoBox",
+      "directory": "011_static_CargoBox_657aa089/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 6.893596227549853e-10,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "CargoBox",
+      "directory": "011_static_CargoBox_657aa089/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 6.893525437111778e-10,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "CargoBox",
+      "directory": "011_static_CargoBox_657aa089/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 6.893596227549853e-10,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "CargoBox",
+      "directory": "011_static_CargoBox_657aa089/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 6.893525437111778e-10,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Color_Cone",
+      "directory": "012_static_Color_Cone_dce1160d/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 7.914580748749134e-11,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Color_Cone",
+      "directory": "012_static_Color_Cone_dce1160d/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 7.915985024457334e-11,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Color_Cone",
+      "directory": "012_static_Color_Cone_dce1160d/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 7.914580748749134e-11,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Color_Cone",
+      "directory": "012_static_Color_Cone_dce1160d/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 7.915985024457334e-11,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Color_Cone",
+      "directory": "012_static_Color_Cone_dce1160d/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 7.914580748749134e-11,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Color_Cone",
+      "directory": "012_static_Color_Cone_dce1160d/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 7.913143047088782e-11,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Color_Cone",
+      "directory": "012_static_Color_Cone_dce1160d/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 7.914580748749134e-11,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Color_Cone",
+      "directory": "012_static_Color_Cone_dce1160d/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 7.915985024457334e-11,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Concrete_Barricade01",
+      "directory": "013_static_Concrete_Barricade01_bf9ace82/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 2.2407368078429265e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Concrete_Barricade01",
+      "directory": "013_static_Concrete_Barricade01_bf9ace82/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 2.240736807700822e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Concrete_Barricade01",
+      "directory": "013_static_Concrete_Barricade01_bf9ace82/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 2.2407368078429265e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Concrete_Barricade01",
+      "directory": "013_static_Concrete_Barricade01_bf9ace82/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 2.2407368077291537e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Concrete_Barricade01",
+      "directory": "013_static_Concrete_Barricade01_bf9ace82/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 2.2407319661658587e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Concrete_Barricade01",
+      "directory": "013_static_Concrete_Barricade01_bf9ace82/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 2.240731967437717e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Concrete_Barricade01",
+      "directory": "013_static_Concrete_Barricade01_bf9ace82/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 2.2407319661658587e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Concrete_Barricade01",
+      "directory": "013_static_Concrete_Barricade01_bf9ace82/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 2.2407319671818385e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Concrete_Barricade02",
+      "directory": "014_static_Concrete_Barricade02_731cdd4b/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.941593272435957e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Concrete_Barricade02",
+      "directory": "014_static_Concrete_Barricade02_731cdd4b/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.9415932729395506e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Concrete_Barricade02",
+      "directory": "014_static_Concrete_Barricade02_731cdd4b/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.941593272435957e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Concrete_Barricade02",
+      "directory": "014_static_Concrete_Barricade02_731cdd4b/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.9415932716240085e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Concrete_Barricade02",
+      "directory": "014_static_Concrete_Barricade02_731cdd4b/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.9415890778098354e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Concrete_Barricade02",
+      "directory": "014_static_Concrete_Barricade02_731cdd4b/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.9415890802590295e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Concrete_Barricade02",
+      "directory": "014_static_Concrete_Barricade02_731cdd4b/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.9415890778098354e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Concrete_Barricade02",
+      "directory": "014_static_Concrete_Barricade02_731cdd4b/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.9415890789434864e-05,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "ElectricScooter1",
+      "directory": "015_static_ElectricScooter1_9ccd4c73/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0004062721927523202,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "ElectricScooter1",
+      "directory": "015_static_ElectricScooter1_9ccd4c73/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0004062721927470721,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "ElectricScooter1",
+      "directory": "015_static_ElectricScooter1_9ccd4c73/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0004062721927523202,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "ElectricScooter1",
+      "directory": "015_static_ElectricScooter1_9ccd4c73/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0004062721927511905,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "ElectricScooter1",
+      "directory": "015_static_ElectricScooter1_9ccd4c73/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0004062713150919001,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "ElectricScooter1",
+      "directory": "015_static_ElectricScooter1_9ccd4c73/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00040627131508665207,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "ElectricScooter1",
+      "directory": "015_static_ElectricScooter1_9ccd4c73/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0004062713150919001,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "ElectricScooter1",
+      "directory": "015_static_ElectricScooter1_9ccd4c73/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0004062713150907702,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "ElectricScooter2",
+      "directory": "016_static_ElectricScooter2_0242b93a/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0004077503506588332,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "ElectricScooter2",
+      "directory": "016_static_ElectricScooter2_0242b93a/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00040775035064769194,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "ElectricScooter2",
+      "directory": "016_static_ElectricScooter2_0242b93a/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0004077503506588332,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "ElectricScooter2",
+      "directory": "016_static_ElectricScooter2_0242b93a/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0004077503506631492,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "ElectricScooter2",
+      "directory": "016_static_ElectricScooter2_0242b93a/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0004077494697995073,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "ElectricScooter2",
+      "directory": "016_static_ElectricScooter2_0242b93a/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.000407749469782781,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "ElectricScooter2",
+      "directory": "016_static_ElectricScooter2_0242b93a/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0004077494697995073,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "ElectricScooter2",
+      "directory": "016_static_ElectricScooter2_0242b93a/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.000407749469798238,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Lane_Separation_Bar",
+      "directory": "017_static_Lane_Separation_Bar_7794d309/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 2.730474379380381e-11,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Lane_Separation_Bar",
+      "directory": "017_static_Lane_Separation_Bar_7794d309/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 2.7311669355478627e-11,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Lane_Separation_Bar",
+      "directory": "017_static_Lane_Separation_Bar_7794d309/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 2.730474379380381e-11,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Lane_Separation_Bar",
+      "directory": "017_static_Lane_Separation_Bar_7794d309/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 2.7311669355478627e-11,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Lane_Separation_Bar",
+      "directory": "017_static_Lane_Separation_Bar_7794d309/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 2.730474379380381e-11,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Lane_Separation_Bar",
+      "directory": "017_static_Lane_Separation_Bar_7794d309/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 2.7311669355478627e-11,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Lane_Separation_Bar",
+      "directory": "017_static_Lane_Separation_Bar_7794d309/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 2.730474379380381e-11,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Lane_Separation_Bar",
+      "directory": "017_static_Lane_Separation_Bar_7794d309/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 2.7311669355478627e-11,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "NCAP_GVT",
+      "directory": "018_static_NCAP_GVT_7f98eb9b/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0007385582613875966,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "NCAP_GVT",
+      "directory": "018_static_NCAP_GVT_7f98eb9b/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0007385582613718311,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "NCAP_GVT",
+      "directory": "018_static_NCAP_GVT_7f98eb9b/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0007385582613875966,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "NCAP_GVT",
+      "directory": "018_static_NCAP_GVT_7f98eb9b/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0007385582613826317,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "NCAP_GVT",
+      "directory": "018_static_NCAP_GVT_7f98eb9b/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0007385566658848403,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "NCAP_GVT",
+      "directory": "018_static_NCAP_GVT_7f98eb9b/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0007385566658674239,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "NCAP_GVT",
+      "directory": "018_static_NCAP_GVT_7f98eb9b/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0007385566658848403,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "NCAP_GVT",
+      "directory": "018_static_NCAP_GVT_7f98eb9b/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0007385566659064534,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "PE_Drum",
+      "directory": "019_static_PE_Drum_0666ac86/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 2.6098648509943456e-10,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "PE_Drum",
+      "directory": "019_static_PE_Drum_0666ac86/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 2.609591313962912e-10,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "PE_Drum",
+      "directory": "019_static_PE_Drum_0666ac86/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 2.6098648509943456e-10,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "PE_Drum",
+      "directory": "019_static_PE_Drum_0666ac86/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 2.609591313962912e-10,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "PE_Drum",
+      "directory": "019_static_PE_Drum_0666ac86/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 2.6098648509943456e-10,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "PE_Drum",
+      "directory": "019_static_PE_Drum_0666ac86/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 2.609591313962912e-10,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "PE_Drum",
+      "directory": "019_static_PE_Drum_0666ac86/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 2.6098648509943456e-10,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "PE_Drum",
+      "directory": "019_static_PE_Drum_0666ac86/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 2.609591313962912e-10,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "PE_Firewall_Orange",
+      "directory": "020_static_PE_Firewall_Orange_e330fe7b/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0003154483915623294,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "PE_Firewall_Orange",
+      "directory": "020_static_PE_Firewall_Orange_e330fe7b/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0003154483915617841,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "PE_Firewall_Orange",
+      "directory": "020_static_PE_Firewall_Orange_e330fe7b/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0003154483915623294,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "PE_Firewall_Orange",
+      "directory": "020_static_PE_Firewall_Orange_e330fe7b/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00031544839156678504,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "PE_Firewall_Orange",
+      "directory": "020_static_PE_Firewall_Orange_e330fe7b/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00031544771010958794,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "PE_Firewall_Orange",
+      "directory": "020_static_PE_Firewall_Orange_e330fe7b/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0003154477100948422,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "PE_Firewall_Orange",
+      "directory": "020_static_PE_Firewall_Orange_e330fe7b/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00031544771010958794,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "PE_Firewall_Orange",
+      "directory": "020_static_PE_Firewall_Orange_e330fe7b/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0003154477100998429,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "PE_Firewall_White",
+      "directory": "021_static_PE_Firewall_White_e7bbba53/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00031562416129973564,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "PE_Firewall_White",
+      "directory": "021_static_PE_Firewall_White_e7bbba53/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00031562416129973564,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "PE_Firewall_White",
+      "directory": "021_static_PE_Firewall_White_e7bbba53/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00031562416129973564,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "PE_Firewall_White",
+      "directory": "021_static_PE_Firewall_White_e7bbba53/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00031562416130222817,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "PE_Firewall_White",
+      "directory": "021_static_PE_Firewall_White_e7bbba53/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00031562347945517674,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "PE_Firewall_White",
+      "directory": "021_static_PE_Firewall_White_e7bbba53/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00031562347945517674,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "PE_Firewall_White",
+      "directory": "021_static_PE_Firewall_White_e7bbba53/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00031562347945517674,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "PE_Firewall_White",
+      "directory": "021_static_PE_Firewall_White_e7bbba53/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00031562347947186955,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "RedBarrel",
+      "directory": "022_static_RedBarrel_5712fc03/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.7449568127609278e-07,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "RedBarrel",
+      "directory": "022_static_RedBarrel_5712fc03/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.7449568127609278e-07,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "RedBarrel",
+      "directory": "022_static_RedBarrel_5712fc03/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.7449568127609278e-07,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "RedBarrel",
+      "directory": "022_static_RedBarrel_5712fc03/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.7449568127609278e-07,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "RedBarrel",
+      "directory": "022_static_RedBarrel_5712fc03/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.7449530934557114e-07,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "RedBarrel",
+      "directory": "022_static_RedBarrel_5712fc03/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.74495307658674e-07,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "RedBarrel",
+      "directory": "022_static_RedBarrel_5712fc03/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.7449530934557114e-07,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "RedBarrel",
+      "directory": "022_static_RedBarrel_5712fc03/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.74495307658674e-07,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Rockslide",
+      "directory": "023_static_Rockslide_4ca572d5/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0026793083657556745,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Rockslide",
+      "directory": "023_static_Rockslide_4ca572d5/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0026793083657556745,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Rockslide",
+      "directory": "023_static_Rockslide_4ca572d5/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0026793083657556745,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Rockslide",
+      "directory": "023_static_Rockslide_4ca572d5/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0026793083657706764,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Rockslide",
+      "directory": "023_static_Rockslide_4ca572d5/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00267930257774394,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Rockslide",
+      "directory": "023_static_Rockslide_4ca572d5/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.002679302577742542,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Rockslide",
+      "directory": "023_static_Rockslide_4ca572d5/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00267930257774394,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Rockslide",
+      "directory": "023_static_Rockslide_4ca572d5/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0026793025777603384,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Rubber_Cone",
+      "directory": "024_static_Rubber_Cone_23b91471/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.1493930808276929e-10,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Rubber_Cone",
+      "directory": "024_static_Rubber_Cone_23b91471/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.1493930808276929e-10,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Rubber_Cone",
+      "directory": "024_static_Rubber_Cone_23b91471/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.1493930808276929e-10,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Rubber_Cone",
+      "directory": "024_static_Rubber_Cone_23b91471/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.1493930808276929e-10,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Rubber_Cone",
+      "directory": "024_static_Rubber_Cone_23b91471/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.1493930808276929e-10,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Rubber_Cone",
+      "directory": "024_static_Rubber_Cone_23b91471/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.1493930808276929e-10,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Rubber_Cone",
+      "directory": "024_static_Rubber_Cone_23b91471/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.1493930808276929e-10,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Rubber_Cone",
+      "directory": "024_static_Rubber_Cone_23b91471/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.1493930808276929e-10,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Scooter1",
+      "directory": "025_static_Scooter1_4e595992/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00015658580607077373,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Scooter1",
+      "directory": "025_static_Scooter1_4e595992/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00015658580607304123,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Scooter1",
+      "directory": "025_static_Scooter1_4e595992/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00015658580607077373,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Scooter1",
+      "directory": "025_static_Scooter1_4e595992/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0001565858060725335,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Scooter1",
+      "directory": "025_static_Scooter1_4e595992/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00015658546780183413,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Scooter1",
+      "directory": "025_static_Scooter1_4e595992/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00015658546779956663,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Scooter1",
+      "directory": "025_static_Scooter1_4e595992/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00015658546780183413,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Scooter1",
+      "directory": "025_static_Scooter1_4e595992/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0001565854677990588,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Scooter2",
+      "directory": "026_static_Scooter2_91aad0e3/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.001245120733956747,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Scooter2",
+      "directory": "026_static_Scooter2_91aad0e3/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0012451207339694425,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Scooter2",
+      "directory": "026_static_Scooter2_91aad0e3/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.001245120733956747,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Scooter2",
+      "directory": "026_static_Scooter2_91aad0e3/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.001245120733941785,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Scooter2",
+      "directory": "026_static_Scooter2_91aad0e3/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0012451180441298041,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Scooter2",
+      "directory": "026_static_Scooter2_91aad0e3/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0012451180441283623,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Scooter2",
+      "directory": "026_static_Scooter2_91aad0e3/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0012451180441298041,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Scooter2",
+      "directory": "026_static_Scooter2_91aad0e3/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0012451180441275368,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Scooter_02",
+      "directory": "027_static_Scooter_02_523b8588/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.012730038670411106,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Scooter_02",
+      "directory": "027_static_Scooter_02_523b8588/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.012730038670396947,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Scooter_02",
+      "directory": "027_static_Scooter_02_523b8588/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.012730038670411106,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Scooter_02",
+      "directory": "027_static_Scooter_02_523b8588/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.012730038670408889,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Scooter_02",
+      "directory": "027_static_Scooter_02_523b8588/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.012730011169814908,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Scooter_02",
+      "directory": "027_static_Scooter_02_523b8588/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.012730011169814908,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Scooter_02",
+      "directory": "027_static_Scooter_02_523b8588/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.012730011169814908,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Scooter_02",
+      "directory": "027_static_Scooter_02_523b8588/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.012730011169826841,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "SportBike",
+      "directory": "028_static_SportBike_5f7f925a/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0001556864827285751,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "SportBike",
+      "directory": "028_static_SportBike_5f7f925a/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.000155686482737282,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "SportBike",
+      "directory": "028_static_SportBike_5f7f925a/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0001556864827285751,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "SportBike",
+      "directory": "028_static_SportBike_5f7f925a/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00015568648273701568,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "SportBike",
+      "directory": "028_static_SportBike_5f7f925a/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00015568614639862091,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "SportBike",
+      "directory": "028_static_SportBike_5f7f925a/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00015568614640821572,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "SportBike",
+      "directory": "028_static_SportBike_5f7f925a/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00015568614639862091,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "SportBike",
+      "directory": "028_static_SportBike_5f7f925a/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00015568614640794934,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Sportbike_01",
+      "directory": "029_static_Sportbike_01_c9e23727/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.01591140256782797,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Sportbike_01",
+      "directory": "029_static_Sportbike_01_c9e23727/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.01591140256781381,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Sportbike_01",
+      "directory": "029_static_Sportbike_01_c9e23727/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.01591140256782797,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Sportbike_01",
+      "directory": "029_static_Sportbike_01_c9e23727/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.015911402567815126,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Sportbike_01",
+      "directory": "029_static_Sportbike_01_c9e23727/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.015911368194554878,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Sportbike_01",
+      "directory": "029_static_Sportbike_01_c9e23727/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.01591136819455365,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Sportbike_01",
+      "directory": "029_static_Sportbike_01_c9e23727/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.015911368194554878,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Sportbike_01",
+      "directory": "029_static_Sportbike_01_c9e23727/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.015911368194554954,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Steel_Barricade",
+      "directory": "030_static_Steel_Barricade_afee6e47/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0011780778791410237,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Steel_Barricade",
+      "directory": "030_static_Steel_Barricade_afee6e47/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0011780778791302881,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Steel_Barricade",
+      "directory": "030_static_Steel_Barricade_afee6e47/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0011780778791410237,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Steel_Barricade",
+      "directory": "030_static_Steel_Barricade_afee6e47/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0011780778791189868,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Steel_Barricade",
+      "directory": "030_static_Steel_Barricade_afee6e47/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0011780753341407994,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Steel_Barricade",
+      "directory": "030_static_Steel_Barricade_afee6e47/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0011780753341300637,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Steel_Barricade",
+      "directory": "030_static_Steel_Barricade_afee6e47/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0011780753341407994,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "Steel_Barricade",
+      "directory": "030_static_Steel_Barricade_afee6e47/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0011780753341187617,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "TrafficBarrel",
+      "directory": "031_static_TrafficBarrel_5bef85ef/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 7.420064123567729e-11,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "TrafficBarrel",
+      "directory": "031_static_TrafficBarrel_5bef85ef/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 7.420255317221964e-11,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "TrafficBarrel",
+      "directory": "031_static_TrafficBarrel_5bef85ef/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 7.420064123567729e-11,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "TrafficBarrel",
+      "directory": "031_static_TrafficBarrel_5bef85ef/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 7.420255317221964e-11,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "TrafficBarrel",
+      "directory": "031_static_TrafficBarrel_5bef85ef/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 7.420064123567729e-11,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "TrafficBarrel",
+      "directory": "031_static_TrafficBarrel_5bef85ef/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 7.420255317221964e-11,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "TrafficBarrel",
+      "directory": "031_static_TrafficBarrel_5bef85ef/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 7.420064123567729e-11,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "TrafficBarrel",
+      "directory": "031_static_TrafficBarrel_5bef85ef/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 7.420255317221964e-11,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "WoodBox",
+      "directory": "032_static_WoodBox_4d9bada7/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 8.620338703526117e-08,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "WoodBox",
+      "directory": "032_static_WoodBox_4d9bada7/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 8.620338910887103e-08,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "WoodBox",
+      "directory": "032_static_WoodBox_4d9bada7/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 8.620338703526117e-08,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "WoodBox",
+      "directory": "032_static_WoodBox_4d9bada7/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 8.620337286227871e-08,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "WoodBox",
+      "directory": "032_static_WoodBox_4d9bada7/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 8.620318757670398e-08,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "WoodBox",
+      "directory": "032_static_WoodBox_4d9bada7/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 8.620320278649012e-08,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "WoodBox",
+      "directory": "032_static_WoodBox_4d9bada7/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 8.620318757670398e-08,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "WoodBox",
+      "directory": "032_static_WoodBox_4d9bada7/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 8.62031865399025e-08,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "YellowBarrel",
+      "directory": "033_static_YellowBarrel_680357fa/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.7696311778706404e-07,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "YellowBarrel",
+      "directory": "033_static_YellowBarrel_680357fa/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.7696311913153948e-07,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "YellowBarrel",
+      "directory": "033_static_YellowBarrel_680357fa/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.7696311778706404e-07,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "YellowBarrel",
+      "directory": "033_static_YellowBarrel_680357fa/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.7696311913153948e-07,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "YellowBarrel",
+      "directory": "033_static_YellowBarrel_680357fa/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.7696271897897744e-07,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "YellowBarrel",
+      "directory": "033_static_YellowBarrel_680357fa/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.7696273178161445e-07,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "YellowBarrel",
+      "directory": "033_static_YellowBarrel_680357fa/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.7696271897897744e-07,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "YellowBarrel",
+      "directory": "033_static_YellowBarrel_680357fa/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 1.769627344705655e-07,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "concrete-barrier",
+      "directory": "034_static_concrete-barrier_6b730866/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00019417034533474403,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "concrete-barrier",
+      "directory": "034_static_concrete-barrier_6b730866/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00019417034533640587,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "concrete-barrier",
+      "directory": "034_static_concrete-barrier_6b730866/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00019417034533474403,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "concrete-barrier",
+      "directory": "034_static_concrete-barrier_6b730866/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.000194170345333565,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "concrete-barrier",
+      "directory": "034_static_concrete-barrier_6b730866/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0001941699258705062,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "concrete-barrier",
+      "directory": "034_static_concrete-barrier_6b730866/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00019416992587382984,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "concrete-barrier",
+      "directory": "034_static_concrete-barrier_6b730866/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0001941699258705062,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "concrete-barrier",
+      "directory": "034_static_concrete-barrier_6b730866/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.00019416992586766523,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "obj_obstacle_dog",
+      "directory": "035_static_obj_obstacle_dog_4485692a/d0500_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0037493099208029093,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "obj_obstacle_dog",
+      "directory": "035_static_obj_obstacle_dog_4485692a/d0500_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.003749309920806708,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "obj_obstacle_dog",
+      "directory": "035_static_obj_obstacle_dog_4485692a/d0500_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0037493099208029093,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "obj_obstacle_dog",
+      "directory": "035_static_obj_obstacle_dog_4485692a/d0500_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.003749309920809361,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "obj_obstacle_dog",
+      "directory": "035_static_obj_obstacle_dog_4485692a/d0600_l+0000_v0",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0037493018211896116,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "obj_obstacle_dog",
+      "directory": "035_static_obj_obstacle_dog_4485692a/d0600_l+0000_v1",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.003749301821203695,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "obj_obstacle_dog",
+      "directory": "035_static_obj_obstacle_dog_4485692a/d0600_l+0000_v2",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.0037493018211896116,
+      "manifest_geometry_valid": true
+    },
+    {
+      "model": "obj_obstacle_dog",
+      "directory": "035_static_obj_obstacle_dog_4485692a/d0600_l+0000_v3",
+      "containment_10cm": 1.0,
+      "center_difference_from_grid_projection_m": 0.003749301821208245,
+      "manifest_geometry_valid": true
+    }
+  ]
+}

@@ -1,0 +1,5173 @@
+{
+  "schema": "morai_static_collection_plan_v1",
+  "name": "static_rot90_20261005_100",
+  "scenario": "full_loop_static",
+  "ready": true,
+  "seed": 26100531,
+  "created_at_unix": 1791192450.965843,
+  "target_runs": 100,
+  "sources": [
+    {
+      "manifest": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/suite_manifest.json",
+      "sha256": "9110bc09ffe057608d5e2162479b81e6ce502378255031e0414f19d261cedc43",
+      "accepted_presets": 150,
+      "eligible_fixed_scale_presets": 150,
+      "excluded_scale_presets": []
+    }
+  ],
+  "scale_policy": {
+    "name": "morai_native_model_scale_v1",
+    "model_baselines": {
+      "WoodBox": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "RedBarrel": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "YellowBarrel": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "TrafficBarrel": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "PE_Firewall_Orange": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "PE_Firewall_White": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "Steel_Barricade": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "Concrete_Barricade01": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "Bollard01": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "Bollard04": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "Bicycle_city": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "Bicycle_mountain": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "Scooter_02": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "Sportbike_01": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "BabyStroller1": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "BabyStroller2": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "Bike1": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "Bike2": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "ElectricScooter1": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "ElectricScooter2": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "NCAP_GVT": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "concrete-barrier": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "Scooter1": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "Scooter2": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "Rockslide": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    "absolute_rounding_tolerance": 1e-06,
+    "sources": [
+      {
+        "path": "scenario_runner/config/full_loop.yaml",
+        "sha256": "cac72b0ec620927247ee15574ab640ce74b88118228eeb5846765d9309bd8ec0"
+      },
+      {
+        "path": "scenario_runner/config/static_obstacle_footprints_v1.json",
+        "sha256": "83e6ae9bab5d7a89e0958952181cbaf62c798036fc9c5b4aa94db5588f20416f",
+        "registry_sha256": "21f7927b6ea57c9299f3bf87546aba003cc1734c82589d5617a65682ea221b9e"
+      }
+    ]
+  },
+  "balance_axis": "avoidance",
+  "lane_excluded_presets": [],
+  "selection_balance_groups": [
+    "models",
+    "longitudinal_bins",
+    "lateral_bins"
+  ],
+  "targets": {
+    "obstacle_count": {
+      "1": 30,
+      "2": 34,
+      "3": 36
+    },
+    "avoidance_class": {
+      "straight": 20,
+      "small": 20,
+      "medium": 40,
+      "late": 20
+    },
+    "difficulty": {
+      "easy": 30,
+      "medium": 40,
+      "hard": 30
+    },
+    "split": {
+      "train": 75,
+      "val": 10,
+      "test": 15
+    },
+    "weather": {
+      "SUNNY": 50,
+      "FOGGY": 50
+    },
+    "time_hour": {
+      "11": 34,
+      "13": 33,
+      "15": 33
+    },
+    "model_minimum_occurrences": 8,
+    "required_models": [
+      "BabyStroller1",
+      "BabyStroller2",
+      "Bicycle_city",
+      "Bicycle_mountain",
+      "Bike1",
+      "Bike2",
+      "Bollard01",
+      "Bollard04",
+      "Concrete_Barricade01",
+      "ElectricScooter1",
+      "ElectricScooter2",
+      "NCAP_GVT",
+      "PE_Firewall_Orange",
+      "PE_Firewall_White",
+      "RedBarrel",
+      "Rockslide",
+      "Scooter1",
+      "Scooter2",
+      "Scooter_02",
+      "Sportbike_01",
+      "Steel_Barricade",
+      "TrafficBarrel",
+      "WoodBox",
+      "YellowBarrel",
+      "concrete-barrier"
+    ]
+  },
+  "difficulty_policy": "relative rank of obstacle_count + avoidance_class weight + min(max_cross_track_error_m,6)/3; fixed 30/40/30 quantiles",
+  "available": {
+    "total_unique_verified": 150,
+    "excluded_scale_presets": 0,
+    "excluded_lane_presets": 0,
+    "obstacle_count": {
+      "1": 43,
+      "2": 54,
+      "3": 53
+    },
+    "avoidance_class": {
+      "late": 22,
+      "medium": 63,
+      "small": 32,
+      "straight": 33
+    },
+    "model_occurrences": {
+      "BabyStroller1": 11,
+      "BabyStroller2": 10,
+      "Bicycle_city": 11,
+      "Bicycle_mountain": 13,
+      "Bike1": 11,
+      "Bike2": 10,
+      "Bollard01": 19,
+      "Bollard04": 19,
+      "Concrete_Barricade01": 13,
+      "ElectricScooter1": 11,
+      "ElectricScooter2": 13,
+      "NCAP_GVT": 12,
+      "PE_Firewall_Orange": 12,
+      "PE_Firewall_White": 13,
+      "RedBarrel": 14,
+      "Rockslide": 10,
+      "Scooter1": 10,
+      "Scooter2": 11,
+      "Scooter_02": 13,
+      "Sportbike_01": 10,
+      "Steel_Barricade": 12,
+      "TrafficBarrel": 18,
+      "WoodBox": 12,
+      "YellowBarrel": 11,
+      "concrete-barrier": 11
+    },
+    "cell_capacity": {
+      "1:straight": 11,
+      "1:small": 11,
+      "1:medium": 21,
+      "1:late": 0,
+      "2:straight": 11,
+      "2:small": 11,
+      "2:medium": 21,
+      "2:late": 11,
+      "3:straight": 11,
+      "3:small": 10,
+      "3:medium": 21,
+      "3:late": 11
+    }
+  },
+  "shortages": {
+    "total": 0,
+    "obstacle_count": {
+      "1": 0,
+      "2": 0,
+      "3": 0
+    },
+    "avoidance_class": {
+      "straight": 0,
+      "small": 0,
+      "medium": 0,
+      "late": 0
+    },
+    "joint_quota_feasible": true,
+    "model_minimum_occurrences": 8,
+    "model_occurrence_shortages": {}
+  },
+  "selected_cell_counts": {
+    "1:straight": 8,
+    "1:small": 8,
+    "1:medium": 14,
+    "1:late": 0,
+    "2:straight": 6,
+    "2:small": 6,
+    "2:medium": 12,
+    "2:late": 10,
+    "3:straight": 6,
+    "3:small": 6,
+    "3:medium": 14,
+    "3:late": 10
+  },
+  "achieved": {
+    "obstacle_count": {
+      "1": 30,
+      "2": 34,
+      "3": 36
+    },
+    "route_class": {
+      "compact": 100
+    },
+    "difficulty": {
+      "easy": 30,
+      "hard": 30,
+      "medium": 40
+    },
+    "split": {
+      "test": 15,
+      "train": 75,
+      "val": 10
+    },
+    "weather": {
+      "FOGGY": 50,
+      "SUNNY": 50
+    },
+    "time_hour": {
+      "11": 34,
+      "13": 33,
+      "15": 33
+    },
+    "environment_by_split": {
+      "test": {
+        "weather": {
+          "FOGGY": 8,
+          "SUNNY": 7
+        },
+        "time_hour": {
+          "11": 5,
+          "13": 6,
+          "15": 4
+        },
+        "weather_time_pairs": {
+          "FOGGY@11": 3,
+          "FOGGY@13": 3,
+          "FOGGY@15": 2,
+          "SUNNY@11": 2,
+          "SUNNY@13": 3,
+          "SUNNY@15": 2
+        }
+      },
+      "train": {
+        "weather": {
+          "FOGGY": 37,
+          "SUNNY": 38
+        },
+        "time_hour": {
+          "11": 25,
+          "13": 24,
+          "15": 26
+        },
+        "weather_time_pairs": {
+          "FOGGY@11": 11,
+          "FOGGY@13": 13,
+          "FOGGY@15": 13,
+          "SUNNY@11": 14,
+          "SUNNY@13": 11,
+          "SUNNY@15": 13
+        }
+      },
+      "val": {
+        "weather": {
+          "FOGGY": 5,
+          "SUNNY": 5
+        },
+        "time_hour": {
+          "11": 4,
+          "13": 3,
+          "15": 3
+        },
+        "weather_time_pairs": {
+          "FOGGY@11": 2,
+          "FOGGY@13": 2,
+          "FOGGY@15": 1,
+          "SUNNY@11": 2,
+          "SUNNY@13": 1,
+          "SUNNY@15": 2
+        }
+      }
+    },
+    "obstacle_balance": {
+      "models": {
+        "BabyStroller1": 8,
+        "BabyStroller2": 8,
+        "Bicycle_city": 9,
+        "Bicycle_mountain": 8,
+        "Bike1": 8,
+        "Bike2": 8,
+        "Bollard01": 8,
+        "Bollard04": 8,
+        "Concrete_Barricade01": 8,
+        "ElectricScooter1": 9,
+        "ElectricScooter2": 9,
+        "NCAP_GVT": 8,
+        "PE_Firewall_Orange": 8,
+        "PE_Firewall_White": 8,
+        "RedBarrel": 8,
+        "Rockslide": 8,
+        "Scooter1": 8,
+        "Scooter2": 8,
+        "Scooter_02": 8,
+        "Sportbike_01": 8,
+        "Steel_Barricade": 8,
+        "TrafficBarrel": 11,
+        "WoodBox": 8,
+        "YellowBarrel": 8,
+        "concrete-barrier": 8
+      },
+      "longitudinal_bins": {
+        "high": 74,
+        "low": 78,
+        "middle": 54
+      },
+      "lateral_bins": {
+        "centre": 42,
+        "left": 49,
+        "right": 29,
+        "right_block": 16,
+        "right_far": 28,
+        "right_near": 34,
+        "right_wall": 8
+      },
+      "scale_bins": {
+        "middle": 206
+      }
+    },
+    "avoidance_class": {
+      "late": 20,
+      "medium": 40,
+      "small": 20,
+      "straight": 20
+    }
+  },
+  "runs": [
+    {
+      "run": 1,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_044.yaml",
+      "sha256": "321583eb27fcb42ff2f8a3302d9007e636de9b34ed8d1ade483c17858e51ce61",
+      "suite": "static_rot90_20261005",
+      "attempt": 44,
+      "obstacle_count": 3,
+      "models": [
+        "Bollard01",
+        "TrafficBarrel",
+        "concrete-barrier"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.3,
+      "balance_features": {
+        "models": {
+          "Bollard01": 1,
+          "TrafficBarrel": 1,
+          "concrete-barrier": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "left": 2,
+          "right": 1
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.145,
+        "max_right_deviation_m": 3.431,
+        "swing_onset_route_index": 647.3,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 5.1,
+      "difficulty": "hard",
+      "split": "test",
+      "weather": "SUNNY",
+      "time_hour": 11
+    },
+    {
+      "run": 2,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_065.yaml",
+      "sha256": "df047636cd747cb52133c5bf99d6b5a30ba9a20e065dd398b9a446bce82b3f5b",
+      "suite": "static_rot90_20261005",
+      "attempt": 65,
+      "obstacle_count": 3,
+      "models": [
+        "Bicycle_mountain",
+        "RedBarrel",
+        "Sportbike_01"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.34,
+      "balance_features": {
+        "models": {
+          "Bicycle_mountain": 1,
+          "RedBarrel": 1,
+          "Sportbike_01": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "centre": 2,
+          "left": 1
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.164,
+        "max_right_deviation_m": 3.421,
+        "swing_onset_route_index": 647.4,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 5.113333,
+      "difficulty": "hard",
+      "split": "val",
+      "weather": "FOGGY",
+      "time_hour": 15
+    },
+    {
+      "run": 3,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_081.yaml",
+      "sha256": "68f10f516911dbac482605cdd9a7e5a05f73061ea33a3eeed23505268fded74d",
+      "suite": "static_rot90_20261005",
+      "attempt": 81,
+      "obstacle_count": 2,
+      "models": [
+        "YellowBarrel",
+        "ElectricScooter2"
+      ],
+      "selected_routes": [
+        "right_01.csv",
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 2.86,
+      "balance_features": {
+        "models": {
+          "YellowBarrel": 1,
+          "ElectricScooter2": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_block": 1,
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "late",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.168,
+        "max_right_deviation_m": 3.108,
+        "swing_onset_route_index": 668.8,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 4.453333,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 11
+    },
+    {
+      "run": 4,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_131.yaml",
+      "sha256": "0e96d20db850c163df774905236e63b20e29f7b1a0f35d51c05025ae7bfa4e0b",
+      "suite": "static_rot90_20261005",
+      "attempt": 131,
+      "obstacle_count": 1,
+      "models": [
+        "TrafficBarrel"
+      ],
+      "selected_routes": [
+        "right_02.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 1.27,
+      "balance_features": {
+        "models": {
+          "TrafficBarrel": 1
+        },
+        "longitudinal_bins": {
+          "high": 1
+        },
+        "lateral_bins": {
+          "left": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "small",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.101,
+        "max_right_deviation_m": 1.254,
+        "swing_onset_route_index": 653.9,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 1.423333,
+      "difficulty": "easy",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 13
+    },
+    {
+      "run": 5,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_006.yaml",
+      "sha256": "aa34acee1ef1347ae7ba8d6d007bb78620e712e06eb4216a18165a7b34c3814b",
+      "suite": "static_rot90_20261005",
+      "attempt": 6,
+      "obstacle_count": 1,
+      "models": [
+        "WoodBox"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.24,
+      "balance_features": {
+        "models": {
+          "WoodBox": 1
+        },
+        "longitudinal_bins": {
+          "high": 1
+        },
+        "lateral_bins": {
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.171,
+        "max_right_deviation_m": 3.414,
+        "swing_onset_route_index": 647.5,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 3.08,
+      "difficulty": "easy",
+      "split": "val",
+      "weather": "SUNNY",
+      "time_hour": 15
+    },
+    {
+      "run": 6,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_127.yaml",
+      "sha256": "7390e71e95dca7cfdb2dac9f5ef393574f528380bdaa1c82329dac6f845d9f8e",
+      "suite": "static_rot90_20261005",
+      "attempt": 127,
+      "obstacle_count": 1,
+      "models": [
+        "Scooter1"
+      ],
+      "selected_routes": [
+        "right_01.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 0.27,
+      "balance_features": {
+        "models": {
+          "Scooter1": 1
+        },
+        "longitudinal_bins": {
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_near": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "straight",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.171,
+        "max_right_deviation_m": 0.244,
+        "swing_onset_route_index": null,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 1.09,
+      "difficulty": "easy",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 13
+    },
+    {
+      "run": 7,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_080.yaml",
+      "sha256": "503d085f1afcc73bd8d4ed132eb200e22e7272c0e9c1a86a3935b3463000dabd",
+      "suite": "static_rot90_20261005",
+      "attempt": 80,
+      "obstacle_count": 2,
+      "models": [
+        "Scooter_02",
+        "Rockslide"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.39,
+      "balance_features": {
+        "models": {
+          "Scooter_02": 1,
+          "Rockslide": 1
+        },
+        "longitudinal_bins": {
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right": 2
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.159,
+        "max_right_deviation_m": 3.422,
+        "swing_onset_route_index": 647.6,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 4.13,
+      "difficulty": "medium",
+      "split": "val",
+      "weather": "SUNNY",
+      "time_hour": 11
+    },
+    {
+      "run": 8,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_092.yaml",
+      "sha256": "e262ed890bbe0a9622ad142f85258d456f950ec22983c56b4ab5374389d2d790",
+      "suite": "static_rot90_20261005",
+      "attempt": 92,
+      "obstacle_count": 3,
+      "models": [
+        "BabyStroller2",
+        "WoodBox",
+        "concrete-barrier"
+      ],
+      "selected_routes": [
+        "right_02.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 1.24,
+      "balance_features": {
+        "models": {
+          "BabyStroller2": 1,
+          "WoodBox": 1,
+          "concrete-barrier": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "left": 2,
+          "right_far": 1
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "small",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.099,
+        "max_right_deviation_m": 1.257,
+        "swing_onset_route_index": 654.0,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 3.413333,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 15
+    },
+    {
+      "run": 9,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_113.yaml",
+      "sha256": "57e42f468983257e03763a6126fc411cc73edf687d0f2b04360d1d417fd1a8b5",
+      "suite": "static_rot90_20261005",
+      "attempt": 113,
+      "obstacle_count": 1,
+      "models": [
+        "ElectricScooter1"
+      ],
+      "selected_routes": [
+        "right_01.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 0.24,
+      "balance_features": {
+        "models": {
+          "ElectricScooter1": 1
+        },
+        "longitudinal_bins": {
+          "low": 1
+        },
+        "lateral_bins": {
+          "right_near": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "straight",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.189,
+        "max_right_deviation_m": 0.221,
+        "swing_onset_route_index": null,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 1.08,
+      "difficulty": "easy",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 11
+    },
+    {
+      "run": 10,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_053.yaml",
+      "sha256": "a6ef9b1e84bd3e0e585b397074403183ca0631e615a27653f3be11e1f6b75421",
+      "suite": "static_rot90_20261005",
+      "attempt": 53,
+      "obstacle_count": 2,
+      "models": [
+        "Scooter2",
+        "BabyStroller2"
+      ],
+      "selected_routes": [
+        "right_01.csv",
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 2.95,
+      "balance_features": {
+        "models": {
+          "Scooter2": 1,
+          "BabyStroller2": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_block": 1,
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "late",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.168,
+        "max_right_deviation_m": 3.106,
+        "swing_onset_route_index": 668.7,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 4.483333,
+      "difficulty": "hard",
+      "split": "val",
+      "weather": "FOGGY",
+      "time_hour": 13
+    },
+    {
+      "run": 11,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_098.yaml",
+      "sha256": "496f118a2328d2f5022d825184844805e0acc8e8d963cb2165823b8c3bec1b68",
+      "suite": "static_rot90_20261005",
+      "attempt": 98,
+      "obstacle_count": 1,
+      "models": [
+        "Scooter1"
+      ],
+      "selected_routes": [
+        "right_01.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 0.27,
+      "balance_features": {
+        "models": {
+          "Scooter1": 1
+        },
+        "longitudinal_bins": {
+          "middle": 1
+        },
+        "lateral_bins": {
+          "right_far": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "straight",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.169,
+        "max_right_deviation_m": 0.244,
+        "swing_onset_route_index": null,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 1.09,
+      "difficulty": "easy",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 15
+    },
+    {
+      "run": 12,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_110.yaml",
+      "sha256": "4eae5dc79d71d7168a07582909d277fdc714f79d425aa0b9ad34f686e004f61e",
+      "suite": "static_rot90_20261005",
+      "attempt": 110,
+      "obstacle_count": 2,
+      "models": [
+        "YellowBarrel",
+        "BabyStroller2"
+      ],
+      "selected_routes": [
+        "right_01.csv",
+        "right_02.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 0.99,
+      "balance_features": {
+        "models": {
+          "YellowBarrel": 1,
+          "BabyStroller2": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_block": 1,
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "late",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.11,
+        "max_right_deviation_m": 1.188,
+        "swing_onset_route_index": 671.7,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 3.83,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 11
+    },
+    {
+      "run": 13,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_104.yaml",
+      "sha256": "c3272b157965f095f60db061f768ae4e09b525cb6a5d020993f88568eb9594d0",
+      "suite": "static_rot90_20261005",
+      "attempt": 104,
+      "obstacle_count": 2,
+      "models": [
+        "Bicycle_city",
+        "RedBarrel"
+      ],
+      "selected_routes": [
+        "right_02.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 1.31,
+      "balance_features": {
+        "models": {
+          "Bicycle_city": 1,
+          "RedBarrel": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_near": 1,
+          "left": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "small",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.091,
+        "max_right_deviation_m": 1.307,
+        "swing_onset_route_index": 653.6,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 2.436667,
+      "difficulty": "easy",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 13
+    },
+    {
+      "run": 14,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_155.yaml",
+      "sha256": "6feb9ae569217e72dc7e43ae62019fd2165c02eac448dab88d304aa57d78a2f3",
+      "suite": "static_rot90_20261005",
+      "attempt": 155,
+      "obstacle_count": 3,
+      "models": [
+        "Bollard01",
+        "NCAP_GVT",
+        "Scooter_02"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.26,
+      "balance_features": {
+        "models": {
+          "Bollard01": 1,
+          "NCAP_GVT": 1,
+          "Scooter_02": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "left": 1,
+          "right": 2
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.169,
+        "max_right_deviation_m": 3.417,
+        "swing_onset_route_index": 647.6,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 5.086667,
+      "difficulty": "hard",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 11
+    },
+    {
+      "run": 15,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_009.yaml",
+      "sha256": "8413c8113c419d68e5649101513ea1cb43d57a3427d1f4cc557dc4d83ed6b593",
+      "suite": "static_rot90_20261005",
+      "attempt": 9,
+      "obstacle_count": 2,
+      "models": [
+        "ElectricScooter2",
+        "TrafficBarrel"
+      ],
+      "selected_routes": [
+        "right_01.csv",
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 2.87,
+      "balance_features": {
+        "models": {
+          "ElectricScooter2": 1,
+          "TrafficBarrel": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_block": 1,
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "late",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.121,
+        "max_right_deviation_m": 3.105,
+        "swing_onset_route_index": 668.6,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 4.456667,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 13
+    },
+    {
+      "run": 16,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_150.yaml",
+      "sha256": "fd88799ce6049682fb539119f4de17daa2c1ae5870975e3e417a6d797acaa63d",
+      "suite": "static_rot90_20261005",
+      "attempt": 150,
+      "obstacle_count": 3,
+      "models": [
+        "Bollard04",
+        "WoodBox",
+        "NCAP_GVT"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.22,
+      "balance_features": {
+        "models": {
+          "Bollard04": 1,
+          "WoodBox": 1,
+          "NCAP_GVT": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "left": 1,
+          "right": 2
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.17,
+        "max_right_deviation_m": 3.414,
+        "swing_onset_route_index": 647.6,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 5.073333,
+      "difficulty": "hard",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 15
+    },
+    {
+      "run": 17,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_109.yaml",
+      "sha256": "4ef11974e5574eb5a41c96a481f8edebaa262f50fdc8b491d322ccf3a7f03472",
+      "suite": "static_rot90_20261005",
+      "attempt": 109,
+      "obstacle_count": 3,
+      "models": [
+        "PE_Firewall_Orange",
+        "WoodBox",
+        "ElectricScooter2"
+      ],
+      "selected_routes": [
+        "right_01.csv",
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 2.91,
+      "balance_features": {
+        "models": {
+          "PE_Firewall_Orange": 1,
+          "WoodBox": 1,
+          "ElectricScooter2": 1
+        },
+        "longitudinal_bins": {
+          "low": 2,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_wall": 1,
+          "right_block": 1,
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "late",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.167,
+        "max_right_deviation_m": 3.106,
+        "swing_onset_route_index": 668.8,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 5.47,
+      "difficulty": "hard",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 11
+    },
+    {
+      "run": 18,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_090.yaml",
+      "sha256": "6a07c98db022e17f0553ebe6b55f1dd22e81316dde752708b84edd179365f253",
+      "suite": "static_rot90_20261005",
+      "attempt": 90,
+      "obstacle_count": 2,
+      "models": [
+        "ElectricScooter2",
+        "PE_Firewall_Orange"
+      ],
+      "selected_routes": [
+        "right_02.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 1.32,
+      "balance_features": {
+        "models": {
+          "ElectricScooter2": 1,
+          "PE_Firewall_Orange": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1
+        },
+        "lateral_bins": {
+          "right_far": 1,
+          "left": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "small",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.171,
+        "max_right_deviation_m": 1.341,
+        "swing_onset_route_index": 653.1,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 2.44,
+      "difficulty": "easy",
+      "split": "test",
+      "weather": "FOGGY",
+      "time_hour": 13
+    },
+    {
+      "run": 19,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_002.yaml",
+      "sha256": "ec120382acb14c592dc7210db30c0ad01e8deb6a929fb7befe625e34d3de0107",
+      "suite": "static_rot90_20261005",
+      "attempt": 2,
+      "obstacle_count": 2,
+      "models": [
+        "Bike1",
+        "Bollard01"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.27,
+      "balance_features": {
+        "models": {
+          "Bike1": 1,
+          "Bollard01": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1
+        },
+        "lateral_bins": {
+          "right": 1,
+          "left": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.147,
+        "max_right_deviation_m": 3.422,
+        "swing_onset_route_index": 647.4,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 4.09,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 15
+    },
+    {
+      "run": 20,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_141.yaml",
+      "sha256": "d18a7ccf7acc6062347df68ab807c872ef5e9c6e8bd3dfffeb5610ab2434ef75",
+      "suite": "static_rot90_20261005",
+      "attempt": 141,
+      "obstacle_count": 3,
+      "models": [
+        "RedBarrel",
+        "Bollard04",
+        "YellowBarrel"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.26,
+      "balance_features": {
+        "models": {
+          "RedBarrel": 1,
+          "Bollard04": 1,
+          "YellowBarrel": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "left": 2,
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.17,
+        "max_right_deviation_m": 3.417,
+        "swing_onset_route_index": 647.4,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 5.086667,
+      "difficulty": "hard",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 13
+    },
+    {
+      "run": 21,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_034.yaml",
+      "sha256": "94d7f34d5fb2e23a3f7346a38b90a7da9498e47b43049f632a8f357f8ddf9e61",
+      "suite": "static_rot90_20261005",
+      "attempt": 34,
+      "obstacle_count": 1,
+      "models": [
+        "PE_Firewall_Orange"
+      ],
+      "selected_routes": [
+        "right_01.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 0.29,
+      "balance_features": {
+        "models": {
+          "PE_Firewall_Orange": 1
+        },
+        "longitudinal_bins": {
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_near": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "straight",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.123,
+        "max_right_deviation_m": 0.279,
+        "swing_onset_route_index": null,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 1.096667,
+      "difficulty": "easy",
+      "split": "val",
+      "weather": "SUNNY",
+      "time_hour": 11
+    },
+    {
+      "run": 22,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_161.yaml",
+      "sha256": "1a136accc28978ceb7e04402e5c2100d2c0a446c308ec07245e0999b4e3a8285",
+      "suite": "static_rot90_20261005",
+      "attempt": 161,
+      "obstacle_count": 2,
+      "models": [
+        "Concrete_Barricade01",
+        "Steel_Barricade"
+      ],
+      "selected_routes": [
+        "right_01.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 0.27,
+      "balance_features": {
+        "models": {
+          "Concrete_Barricade01": 1,
+          "Steel_Barricade": 1
+        },
+        "longitudinal_bins": {
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_far": 1,
+          "right_near": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "straight",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.169,
+        "max_right_deviation_m": 0.245,
+        "swing_onset_route_index": null,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 2.09,
+      "difficulty": "easy",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 15
+    },
+    {
+      "run": 23,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_022.yaml",
+      "sha256": "85578b6e9567c697e96cdb0acc687dfe4628870055928f21d5994b380ce01c3b",
+      "suite": "static_rot90_20261005",
+      "attempt": 22,
+      "obstacle_count": 1,
+      "models": [
+        "Bike2"
+      ],
+      "selected_routes": [
+        "right_02.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 1.35,
+      "balance_features": {
+        "models": {
+          "Bike2": 1
+        },
+        "longitudinal_bins": {
+          "high": 1
+        },
+        "lateral_bins": {
+          "left": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "small",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.168,
+        "max_right_deviation_m": 1.348,
+        "swing_onset_route_index": 653.2,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 1.45,
+      "difficulty": "easy",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 11
+    },
+    {
+      "run": 24,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_106.yaml",
+      "sha256": "5bf274e22c0728078d251b4517310eb439cbe1e6de65a37a04bd4af8f8752863",
+      "suite": "static_rot90_20261005",
+      "attempt": 106,
+      "obstacle_count": 3,
+      "models": [
+        "concrete-barrier",
+        "TrafficBarrel",
+        "Bicycle_mountain"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.35,
+      "balance_features": {
+        "models": {
+          "concrete-barrier": 1,
+          "TrafficBarrel": 1,
+          "Bicycle_mountain": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right": 1,
+          "left": 1,
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.149,
+        "max_right_deviation_m": 3.423,
+        "swing_onset_route_index": 647.3,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 5.116667,
+      "difficulty": "hard",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 15
+    },
+    {
+      "run": 25,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_031.yaml",
+      "sha256": "a391e9f64a128bf72dd64e231cb43a29838ba730c2f182b940e8bee56d86602f",
+      "suite": "static_rot90_20261005",
+      "attempt": 31,
+      "obstacle_count": 3,
+      "models": [
+        "PE_Firewall_Orange",
+        "BabyStroller1",
+        "Bollard01"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.34,
+      "balance_features": {
+        "models": {
+          "PE_Firewall_Orange": 1,
+          "BabyStroller1": 1,
+          "Bollard01": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right": 1,
+          "left": 1,
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.168,
+        "max_right_deviation_m": 3.42,
+        "swing_onset_route_index": 647.5,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 5.113333,
+      "difficulty": "hard",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 13
+    },
+    {
+      "run": 26,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_112.yaml",
+      "sha256": "994f4df89aed3e2f4a15337422303b0677b7f35a28b66a9e6f97a41a6aacb221",
+      "suite": "static_rot90_20261005",
+      "attempt": 112,
+      "obstacle_count": 1,
+      "models": [
+        "Bicycle_mountain"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.37,
+      "balance_features": {
+        "models": {
+          "Bicycle_mountain": 1
+        },
+        "longitudinal_bins": {
+          "low": 1
+        },
+        "lateral_bins": {
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.169,
+        "max_right_deviation_m": 3.421,
+        "swing_onset_route_index": 647.4,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 3.123333,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 11
+    },
+    {
+      "run": 27,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_149.yaml",
+      "sha256": "22ba9edf1f881df61a93929b5dd0e844de96e47a6f133ff763f463cb76d94e3b",
+      "suite": "static_rot90_20261005",
+      "attempt": 149,
+      "obstacle_count": 3,
+      "models": [
+        "Bollard04",
+        "TrafficBarrel",
+        "Bike2"
+      ],
+      "selected_routes": [
+        "right_02.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 1.26,
+      "balance_features": {
+        "models": {
+          "Bollard04": 1,
+          "TrafficBarrel": 1,
+          "Bike2": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "left": 2,
+          "right_near": 1
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "small",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.099,
+        "max_right_deviation_m": 1.253,
+        "swing_onset_route_index": 653.6,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 3.42,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 15
+    },
+    {
+      "run": 28,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_164.yaml",
+      "sha256": "5baf3e0cc2e1f344cf3e3115beb31b611201f765d220394ffa52c68878956e21",
+      "suite": "static_rot90_20261005",
+      "attempt": 164,
+      "obstacle_count": 3,
+      "models": [
+        "Scooter2",
+        "Bicycle_mountain",
+        "Sportbike_01"
+      ],
+      "selected_routes": [
+        "right_01.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 0.27,
+      "balance_features": {
+        "models": {
+          "Scooter2": 1,
+          "Bicycle_mountain": 1,
+          "Sportbike_01": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_far": 1,
+          "right_near": 2
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "straight",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.17,
+        "max_right_deviation_m": 0.244,
+        "swing_onset_route_index": null,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 3.09,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 13
+    },
+    {
+      "run": 29,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_145.yaml",
+      "sha256": "5e6ecb8ac89b3fc16138b4843a9c1b8d402b2e3e0d16b8d15ca3e566eb2157f3",
+      "suite": "static_rot90_20261005",
+      "attempt": 145,
+      "obstacle_count": 1,
+      "models": [
+        "BabyStroller1"
+      ],
+      "selected_routes": [
+        "right_02.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 1.35,
+      "balance_features": {
+        "models": {
+          "BabyStroller1": 1
+        },
+        "longitudinal_bins": {
+          "middle": 1
+        },
+        "lateral_bins": {
+          "left": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "small",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.142,
+        "max_right_deviation_m": 1.344,
+        "swing_onset_route_index": 653.3,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 1.45,
+      "difficulty": "easy",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 15
+    },
+    {
+      "run": 30,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_129.yaml",
+      "sha256": "5e48e687424aea196f651be2ef634e42d6ec4c2a2ce47f9ea01085adde00d6d2",
+      "suite": "static_rot90_20261005",
+      "attempt": 129,
+      "obstacle_count": 2,
+      "models": [
+        "PE_Firewall_White",
+        "Bike1"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.28,
+      "balance_features": {
+        "models": {
+          "PE_Firewall_White": 1,
+          "Bike1": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right": 1,
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.168,
+        "max_right_deviation_m": 3.417,
+        "swing_onset_route_index": 647.4,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 4.093333,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 11
+    },
+    {
+      "run": 31,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_077.yaml",
+      "sha256": "311ddff5de334e640fc19c380a48e89d8edbad1e64efe062142278710fa31f51",
+      "suite": "static_rot90_20261005",
+      "attempt": 77,
+      "obstacle_count": 3,
+      "models": [
+        "ElectricScooter2",
+        "Bike2",
+        "Steel_Barricade"
+      ],
+      "selected_routes": [
+        "right_02.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 1.3,
+      "balance_features": {
+        "models": {
+          "ElectricScooter2": 1,
+          "Bike2": 1,
+          "Steel_Barricade": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "left": 1,
+          "right_far": 1,
+          "right_near": 1
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "small",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.168,
+        "max_right_deviation_m": 1.344,
+        "swing_onset_route_index": 652.9,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 3.433333,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 13
+    },
+    {
+      "run": 32,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_084.yaml",
+      "sha256": "f0cb85d53014a61c6966cde77019c46d1ed24af207da8c5def9aebd5dbcd046b",
+      "suite": "static_rot90_20261005",
+      "attempt": 84,
+      "obstacle_count": 1,
+      "models": [
+        "NCAP_GVT"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.29,
+      "balance_features": {
+        "models": {
+          "NCAP_GVT": 1
+        },
+        "longitudinal_bins": {
+          "high": 1
+        },
+        "lateral_bins": {
+          "right": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.169,
+        "max_right_deviation_m": 3.419,
+        "swing_onset_route_index": 647.4,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 3.096667,
+      "difficulty": "medium",
+      "split": "val",
+      "weather": "FOGGY",
+      "time_hour": 11
+    },
+    {
+      "run": 33,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_067.yaml",
+      "sha256": "2c6cd4c2701113a05f233ef269aa82393745e71c189ed51d927039a6d23787a6",
+      "suite": "static_rot90_20261005",
+      "attempt": 67,
+      "obstacle_count": 1,
+      "models": [
+        "Bicycle_mountain"
+      ],
+      "selected_routes": [
+        "right_02.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 1.27,
+      "balance_features": {
+        "models": {
+          "Bicycle_mountain": 1
+        },
+        "longitudinal_bins": {
+          "middle": 1
+        },
+        "lateral_bins": {
+          "left": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "small",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.1,
+        "max_right_deviation_m": 1.253,
+        "swing_onset_route_index": 653.9,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 1.423333,
+      "difficulty": "easy",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 15
+    },
+    {
+      "run": 34,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_096.yaml",
+      "sha256": "d589c42fcf15688b33682df43b9c9acaf026b9e371e6df8e93f594693ee2470f",
+      "suite": "static_rot90_20261005",
+      "attempt": 96,
+      "obstacle_count": 2,
+      "models": [
+        "Scooter2",
+        "PE_Firewall_White"
+      ],
+      "selected_routes": [
+        "right_01.csv",
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 2.95,
+      "balance_features": {
+        "models": {
+          "Scooter2": 1,
+          "PE_Firewall_White": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_block": 1,
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "late",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.169,
+        "max_right_deviation_m": 3.104,
+        "swing_onset_route_index": 668.7,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 4.483333,
+      "difficulty": "hard",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 13
+    },
+    {
+      "run": 35,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_135.yaml",
+      "sha256": "d2a8c113563f3533ee38465ee63ecf0959c295d49b9a605102ab3000cb0d95fa",
+      "suite": "static_rot90_20261005",
+      "attempt": 135,
+      "obstacle_count": 3,
+      "models": [
+        "NCAP_GVT",
+        "Bicycle_city",
+        "Bollard01"
+      ],
+      "selected_routes": [
+        "right_02.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 1.33,
+      "balance_features": {
+        "models": {
+          "NCAP_GVT": 1,
+          "Bicycle_city": 1,
+          "Bollard01": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_near": 1,
+          "right_far": 1,
+          "left": 1
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "small",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.17,
+        "max_right_deviation_m": 1.339,
+        "swing_onset_route_index": 653.2,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 3.443333,
+      "difficulty": "medium",
+      "split": "val",
+      "weather": "SUNNY",
+      "time_hour": 15
+    },
+    {
+      "run": 36,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_071.yaml",
+      "sha256": "d91246ee5108935aadce9df96fbfddcf54d4a217a897ba500e4da1ced7a205f2",
+      "suite": "static_rot90_20261005",
+      "attempt": 71,
+      "obstacle_count": 3,
+      "models": [
+        "Concrete_Barricade01",
+        "Bicycle_city",
+        "Bike2"
+      ],
+      "selected_routes": [
+        "right_01.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 0.27,
+      "balance_features": {
+        "models": {
+          "Concrete_Barricade01": 1,
+          "Bicycle_city": 1,
+          "Bike2": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_near": 1,
+          "right_far": 2
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "straight",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.17,
+        "max_right_deviation_m": 0.246,
+        "swing_onset_route_index": null,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 3.09,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 13
+    },
+    {
+      "run": 37,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_042.yaml",
+      "sha256": "9b2454788d81ab70cc5e78f08499cc95550811b72d9091c7de1e3a988c89014a",
+      "suite": "static_rot90_20261005",
+      "attempt": 42,
+      "obstacle_count": 3,
+      "models": [
+        "WoodBox",
+        "Scooter2",
+        "Sportbike_01"
+      ],
+      "selected_routes": [
+        "corridor_astar"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 1.98,
+      "balance_features": {
+        "models": {
+          "WoodBox": 1,
+          "Scooter2": 1,
+          "Sportbike_01": 1
+        },
+        "longitudinal_bins": {
+          "low": 2,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_wall": 1,
+          "right_block": 1,
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "late",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.137,
+        "max_right_deviation_m": 2.021,
+        "swing_onset_route_index": 666.7,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 5.16,
+      "difficulty": "hard",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 11
+    },
+    {
+      "run": 38,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_027.yaml",
+      "sha256": "0b051ec97a59fbab6c74eb8ab8785490b4c476a7dd544bf24d7c231272912ccf",
+      "suite": "static_rot90_20261005",
+      "attempt": 27,
+      "obstacle_count": 3,
+      "models": [
+        "ElectricScooter2",
+        "PE_Firewall_White",
+        "ElectricScooter1"
+      ],
+      "selected_routes": [
+        "right_02.csv",
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 2.27,
+      "balance_features": {
+        "models": {
+          "ElectricScooter2": 1,
+          "PE_Firewall_White": 1,
+          "ElectricScooter1": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_near": 1,
+          "right_far": 1,
+          "left": 1
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.168,
+        "max_right_deviation_m": 2.46,
+        "swing_onset_route_index": 653.3,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 4.756667,
+      "difficulty": "hard",
+      "split": "test",
+      "weather": "FOGGY",
+      "time_hour": 15
+    },
+    {
+      "run": 39,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_086.yaml",
+      "sha256": "9075af649813cdb9222fe0c5ab3199ca79e624202df43b287370061513ecb14b",
+      "suite": "static_rot90_20261005",
+      "attempt": 86,
+      "obstacle_count": 2,
+      "models": [
+        "PE_Firewall_Orange",
+        "ElectricScooter1"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.31,
+      "balance_features": {
+        "models": {
+          "PE_Firewall_Orange": 1,
+          "ElectricScooter1": 1
+        },
+        "longitudinal_bins": {
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "centre": 1,
+          "left": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.169,
+        "max_right_deviation_m": 3.42,
+        "swing_onset_route_index": 647.6,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 4.103333,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 13
+    },
+    {
+      "run": 40,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_142.yaml",
+      "sha256": "1f0613f928a2e448468021b315de0b38f0377d34cacce186e00024d4e1ee5f1a",
+      "suite": "static_rot90_20261005",
+      "attempt": 142,
+      "obstacle_count": 1,
+      "models": [
+        "concrete-barrier"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.27,
+      "balance_features": {
+        "models": {
+          "concrete-barrier": 1
+        },
+        "longitudinal_bins": {
+          "middle": 1
+        },
+        "lateral_bins": {
+          "right": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.148,
+        "max_right_deviation_m": 3.417,
+        "swing_onset_route_index": 647.3,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 3.09,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 11
+    },
+    {
+      "run": 41,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_089.yaml",
+      "sha256": "24cf5fabdcb33357b1799821b14d582966acc5932d8b3e2e600b9974639d5f2f",
+      "suite": "static_rot90_20261005",
+      "attempt": 89,
+      "obstacle_count": 1,
+      "models": [
+        "Bicycle_city"
+      ],
+      "selected_routes": [
+        "right_02.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 1.23,
+      "balance_features": {
+        "models": {
+          "Bicycle_city": 1
+        },
+        "longitudinal_bins": {
+          "high": 1
+        },
+        "lateral_bins": {
+          "left": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "small",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.099,
+        "max_right_deviation_m": 1.249,
+        "swing_onset_route_index": 653.8,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 1.41,
+      "difficulty": "easy",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 15
+    },
+    {
+      "run": 42,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_018.yaml",
+      "sha256": "9f2a903e29838355388b7e40fa09f9a2492678e4cd256728409bd9b556e246ef",
+      "suite": "static_rot90_20261005",
+      "attempt": 18,
+      "obstacle_count": 3,
+      "models": [
+        "concrete-barrier",
+        "RedBarrel",
+        "Bicycle_city"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.36,
+      "balance_features": {
+        "models": {
+          "concrete-barrier": 1,
+          "RedBarrel": 1,
+          "Bicycle_city": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "centre": 1,
+          "left": 2
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.167,
+        "max_right_deviation_m": 3.422,
+        "swing_onset_route_index": 647.4,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 5.12,
+      "difficulty": "hard",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 13
+    },
+    {
+      "run": 43,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_019.yaml",
+      "sha256": "461b3134dfa7e39baf80a86460491411845106457442f69dd515b5e492898d03",
+      "suite": "static_rot90_20261005",
+      "attempt": 19,
+      "obstacle_count": 3,
+      "models": [
+        "PE_Firewall_Orange",
+        "Concrete_Barricade01",
+        "Scooter1"
+      ],
+      "selected_routes": [
+        "right_01.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 0.31,
+      "balance_features": {
+        "models": {
+          "PE_Firewall_Orange": 1,
+          "Concrete_Barricade01": 1,
+          "Scooter1": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_near": 2,
+          "right_far": 1
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "straight",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.118,
+        "max_right_deviation_m": 0.284,
+        "swing_onset_route_index": null,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 3.103333,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 11
+    },
+    {
+      "run": 44,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_073.yaml",
+      "sha256": "92a1dc7eb15c17731a3f886e0049dcd4f1b5958936b23ed8f05c6f2c7d39c0f9",
+      "suite": "static_rot90_20261005",
+      "attempt": 73,
+      "obstacle_count": 2,
+      "models": [
+        "Bollard01",
+        "RedBarrel"
+      ],
+      "selected_routes": [
+        "right_02.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 1.31,
+      "balance_features": {
+        "models": {
+          "Bollard01": 1,
+          "RedBarrel": 1
+        },
+        "longitudinal_bins": {
+          "middle": 2
+        },
+        "lateral_bins": {
+          "left": 1,
+          "right_near": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "small",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.17,
+        "max_right_deviation_m": 1.339,
+        "swing_onset_route_index": 652.9,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 2.436667,
+      "difficulty": "easy",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 13
+    },
+    {
+      "run": 45,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_062.yaml",
+      "sha256": "5fc6f5e165d91d5e392e7be95a6edc6bcab783de872fd95b4470ecccc14ca093",
+      "suite": "static_rot90_20261005",
+      "attempt": 62,
+      "obstacle_count": 3,
+      "models": [
+        "Concrete_Barricade01",
+        "TrafficBarrel",
+        "ElectricScooter1"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.38,
+      "balance_features": {
+        "models": {
+          "Concrete_Barricade01": 1,
+          "TrafficBarrel": 1,
+          "ElectricScooter1": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "centre": 1,
+          "left": 2
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.171,
+        "max_right_deviation_m": 3.419,
+        "swing_onset_route_index": 647.6,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 5.126667,
+      "difficulty": "hard",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 15
+    },
+    {
+      "run": 46,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_048.yaml",
+      "sha256": "8b3ca406463bda37b70671cd2f5ce0029696476b34e1d78b7c0a232177ae4394",
+      "suite": "static_rot90_20261005",
+      "attempt": 48,
+      "obstacle_count": 3,
+      "models": [
+        "Concrete_Barricade01",
+        "Bike1",
+        "NCAP_GVT"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.35,
+      "balance_features": {
+        "models": {
+          "Concrete_Barricade01": 1,
+          "Bike1": 1,
+          "NCAP_GVT": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right": 2,
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.163,
+        "max_right_deviation_m": 3.418,
+        "swing_onset_route_index": 647.3,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 5.116667,
+      "difficulty": "hard",
+      "split": "test",
+      "weather": "FOGGY",
+      "time_hour": 11
+    },
+    {
+      "run": 47,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_038.yaml",
+      "sha256": "35493fedd572e38cb0733c4191d3542fe3efcb75347ae33e4bf580a67999a07f",
+      "suite": "static_rot90_20261005",
+      "attempt": 38,
+      "obstacle_count": 1,
+      "models": [
+        "BabyStroller2"
+      ],
+      "selected_routes": [
+        "right_02.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 1.22,
+      "balance_features": {
+        "models": {
+          "BabyStroller2": 1
+        },
+        "longitudinal_bins": {
+          "high": 1
+        },
+        "lateral_bins": {
+          "left": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "small",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.099,
+        "max_right_deviation_m": 1.246,
+        "swing_onset_route_index": 654.2,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 1.406667,
+      "difficulty": "easy",
+      "split": "test",
+      "weather": "SUNNY",
+      "time_hour": 15
+    },
+    {
+      "run": 48,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_139.yaml",
+      "sha256": "5ff68f1ff3d3660e6e1beefc63f0aa8f54c737352c8268893c93d90b1335ddbe",
+      "suite": "static_rot90_20261005",
+      "attempt": 139,
+      "obstacle_count": 2,
+      "models": [
+        "BabyStroller2",
+        "Concrete_Barricade01"
+      ],
+      "selected_routes": [
+        "right_01.csv",
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 2.88,
+      "balance_features": {
+        "models": {
+          "BabyStroller2": 1,
+          "Concrete_Barricade01": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_block": 1,
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "late",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.159,
+        "max_right_deviation_m": 3.106,
+        "swing_onset_route_index": 668.8,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 4.46,
+      "difficulty": "hard",
+      "split": "test",
+      "weather": "FOGGY",
+      "time_hour": 13
+    },
+    {
+      "run": 49,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_036.yaml",
+      "sha256": "c6383d4531fe041cee92774f79b8bac7c8502da047fbc38c8e2417e7435e26bb",
+      "suite": "static_rot90_20261005",
+      "attempt": 36,
+      "obstacle_count": 2,
+      "models": [
+        "Scooter_02",
+        "Bollard04"
+      ],
+      "selected_routes": [
+        "right_01.csv",
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 2.96,
+      "balance_features": {
+        "models": {
+          "Scooter_02": 1,
+          "Bollard04": 1
+        },
+        "longitudinal_bins": {
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_near": 1,
+          "left": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "late",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.119,
+        "max_right_deviation_m": 3.108,
+        "swing_onset_route_index": 668.7,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 4.486667,
+      "difficulty": "hard",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 11
+    },
+    {
+      "run": 50,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_138.yaml",
+      "sha256": "e94737f66624740ef2539bfd6883302fef8ef418d1a3f8eae605b93dc7775b2b",
+      "suite": "static_rot90_20261005",
+      "attempt": 138,
+      "obstacle_count": 2,
+      "models": [
+        "Rockslide",
+        "Scooter_02"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.31,
+      "balance_features": {
+        "models": {
+          "Rockslide": 1,
+          "Scooter_02": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right": 1,
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.148,
+        "max_right_deviation_m": 3.421,
+        "swing_onset_route_index": 647.5,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 4.103333,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 15
+    },
+    {
+      "run": 51,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_128.yaml",
+      "sha256": "a1829d0398f63e90a2282413b6a9a23ecc32d963b6dcf156898401b095e53671",
+      "suite": "static_rot90_20261005",
+      "attempt": 128,
+      "obstacle_count": 1,
+      "models": [
+        "Sportbike_01"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.28,
+      "balance_features": {
+        "models": {
+          "Sportbike_01": 1
+        },
+        "longitudinal_bins": {
+          "middle": 1
+        },
+        "lateral_bins": {
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.169,
+        "max_right_deviation_m": 3.415,
+        "swing_onset_route_index": 647.5,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 3.093333,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 11
+    },
+    {
+      "run": 52,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_035.yaml",
+      "sha256": "b70fb7a7c51bd91772add09fbae71e567cf56691b8c608bc87c5466d3e52ffd8",
+      "suite": "static_rot90_20261005",
+      "attempt": 35,
+      "obstacle_count": 3,
+      "models": [
+        "Sportbike_01",
+        "PE_Firewall_White",
+        "Bike2"
+      ],
+      "selected_routes": [
+        "right_01.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 0.27,
+      "balance_features": {
+        "models": {
+          "Sportbike_01": 1,
+          "PE_Firewall_White": 1,
+          "Bike2": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_far": 2,
+          "right_near": 1
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "straight",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.167,
+        "max_right_deviation_m": 0.247,
+        "swing_onset_route_index": null,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 3.09,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 13
+    },
+    {
+      "run": 53,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_010.yaml",
+      "sha256": "891f1960cc54b158c8fcaf5e7a88de390b14db7ae37ab4a1a24a2739530e9f1d",
+      "suite": "static_rot90_20261005",
+      "attempt": 10,
+      "obstacle_count": 3,
+      "models": [
+        "ElectricScooter1",
+        "ElectricScooter2",
+        "Scooter_02"
+      ],
+      "selected_routes": [
+        "corridor_astar"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 1.68,
+      "balance_features": {
+        "models": {
+          "ElectricScooter1": 1,
+          "ElectricScooter2": 1,
+          "Scooter_02": 1
+        },
+        "longitudinal_bins": {
+          "low": 2,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_wall": 1,
+          "right_block": 1,
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "late",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.114,
+        "max_right_deviation_m": 1.765,
+        "swing_onset_route_index": 663.7,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 5.06,
+      "difficulty": "hard",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 15
+    },
+    {
+      "run": 54,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_021.yaml",
+      "sha256": "60370bee236df17b8afec4f5cb14234638fd2936162ae371372c002fc4e27ffd",
+      "suite": "static_rot90_20261005",
+      "attempt": 21,
+      "obstacle_count": 3,
+      "models": [
+        "Concrete_Barricade01",
+        "Scooter_02",
+        "YellowBarrel"
+      ],
+      "selected_routes": [
+        "right_01.csv",
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 2.85,
+      "balance_features": {
+        "models": {
+          "Concrete_Barricade01": 1,
+          "Scooter_02": 1,
+          "YellowBarrel": 1
+        },
+        "longitudinal_bins": {
+          "low": 2,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_wall": 1,
+          "right_block": 1,
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "late",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.118,
+        "max_right_deviation_m": 3.107,
+        "swing_onset_route_index": 668.7,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 5.45,
+      "difficulty": "hard",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 13
+    },
+    {
+      "run": 55,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_028.yaml",
+      "sha256": "2eaa4699856e9ca945bde2c402ed839e0fecccd38b17281d8b301a8b2c69e635",
+      "suite": "static_rot90_20261005",
+      "attempt": 28,
+      "obstacle_count": 3,
+      "models": [
+        "Bicycle_mountain",
+        "YellowBarrel",
+        "Bike1"
+      ],
+      "selected_routes": [
+        "right_02.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 1.26,
+      "balance_features": {
+        "models": {
+          "Bicycle_mountain": 1,
+          "YellowBarrel": 1,
+          "Bike1": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_near": 1,
+          "left": 1,
+          "right_far": 1
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "small",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.1,
+        "max_right_deviation_m": 1.252,
+        "swing_onset_route_index": 653.8,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 3.42,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 11
+    },
+    {
+      "run": 56,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_016.yaml",
+      "sha256": "139d40327bf73d80fbdffa2fe3fb5fb0e3f78c057dfd24546394dee0847bdcbf",
+      "suite": "static_rot90_20261005",
+      "attempt": 16,
+      "obstacle_count": 2,
+      "models": [
+        "BabyStroller1",
+        "Steel_Barricade"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.28,
+      "balance_features": {
+        "models": {
+          "BabyStroller1": 1,
+          "Steel_Barricade": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "left": 1,
+          "right": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.17,
+        "max_right_deviation_m": 3.422,
+        "swing_onset_route_index": 647.2,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 4.093333,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 13
+    },
+    {
+      "run": 57,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_059.yaml",
+      "sha256": "8e3f2a42f485a10b5ed35be6d2d1c3bc77161c501cd7c924c831f8b936e80c07",
+      "suite": "static_rot90_20261005",
+      "attempt": 59,
+      "obstacle_count": 3,
+      "models": [
+        "Bike1",
+        "Scooter_02",
+        "ElectricScooter1"
+      ],
+      "selected_routes": [
+        "right_01.csv",
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 2.95,
+      "balance_features": {
+        "models": {
+          "Bike1": 1,
+          "Scooter_02": 1,
+          "ElectricScooter1": 1
+        },
+        "longitudinal_bins": {
+          "low": 2,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_wall": 1,
+          "right_block": 1,
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "late",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.166,
+        "max_right_deviation_m": 3.108,
+        "swing_onset_route_index": 668.8,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 5.483333,
+      "difficulty": "hard",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 11
+    },
+    {
+      "run": 58,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_144.yaml",
+      "sha256": "e7409cf6f04b4ebbafed633e32be3448ec6a3508ba5930eee2abe2e542d2ffc2",
+      "suite": "static_rot90_20261005",
+      "attempt": 144,
+      "obstacle_count": 2,
+      "models": [
+        "BabyStroller2",
+        "TrafficBarrel"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.32,
+      "balance_features": {
+        "models": {
+          "BabyStroller2": 1,
+          "TrafficBarrel": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "centre": 1,
+          "left": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.149,
+        "max_right_deviation_m": 3.421,
+        "swing_onset_route_index": 647.5,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 4.106667,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 15
+    },
+    {
+      "run": 59,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_020.yaml",
+      "sha256": "9ee269eff924ad111c83b63a065d19f864b623e9a667ca7704962117d75a71b5",
+      "suite": "static_rot90_20261005",
+      "attempt": 20,
+      "obstacle_count": 2,
+      "models": [
+        "Sportbike_01",
+        "BabyStroller2"
+      ],
+      "selected_routes": [
+        "right_01.csv",
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 2.84,
+      "balance_features": {
+        "models": {
+          "Sportbike_01": 1,
+          "BabyStroller2": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_block": 1,
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "late",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.17,
+        "max_right_deviation_m": 3.107,
+        "swing_onset_route_index": 668.7,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 4.446667,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 13
+    },
+    {
+      "run": 60,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_123.yaml",
+      "sha256": "0c2281a7929443dcac01150e119acb4c695f740bbe2fffc5c162fbd9d13ecd6a",
+      "suite": "static_rot90_20261005",
+      "attempt": 123,
+      "obstacle_count": 2,
+      "models": [
+        "Sportbike_01",
+        "RedBarrel"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.39,
+      "balance_features": {
+        "models": {
+          "Sportbike_01": 1,
+          "RedBarrel": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1
+        },
+        "lateral_bins": {
+          "centre": 1,
+          "left": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.147,
+        "max_right_deviation_m": 3.421,
+        "swing_onset_route_index": 647.3,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 4.13,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 15
+    },
+    {
+      "run": 61,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_063.yaml",
+      "sha256": "d45724035d2914a9bb9dabf96ecdb14af623f88be2433f42997516041bc123c5",
+      "suite": "static_rot90_20261005",
+      "attempt": 63,
+      "obstacle_count": 1,
+      "models": [
+        "WoodBox"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.25,
+      "balance_features": {
+        "models": {
+          "WoodBox": 1
+        },
+        "longitudinal_bins": {
+          "low": 1
+        },
+        "lateral_bins": {
+          "right": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.166,
+        "max_right_deviation_m": 3.419,
+        "swing_onset_route_index": 647.5,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 3.083333,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 11
+    },
+    {
+      "run": 62,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_101.yaml",
+      "sha256": "83201931b375798ef77898eb6dd493b5872caacb9bf70ad924579f5c691a38a2",
+      "suite": "static_rot90_20261005",
+      "attempt": 101,
+      "obstacle_count": 2,
+      "models": [
+        "NCAP_GVT",
+        "Bike2"
+      ],
+      "selected_routes": [
+        "right_01.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 0.3,
+      "balance_features": {
+        "models": {
+          "NCAP_GVT": 1,
+          "Bike2": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_far": 1,
+          "right_near": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "straight",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.123,
+        "max_right_deviation_m": 0.279,
+        "swing_onset_route_index": null,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 2.1,
+      "difficulty": "easy",
+      "split": "val",
+      "weather": "FOGGY",
+      "time_hour": 13
+    },
+    {
+      "run": 63,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_151.yaml",
+      "sha256": "3bef3ece4294f5bfc40e7339c8671932762cb4e301ca7b09b2284c7954e4a7a0",
+      "suite": "static_rot90_20261005",
+      "attempt": 151,
+      "obstacle_count": 1,
+      "models": [
+        "ElectricScooter1"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.39,
+      "balance_features": {
+        "models": {
+          "ElectricScooter1": 1
+        },
+        "longitudinal_bins": {
+          "high": 1
+        },
+        "lateral_bins": {
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.147,
+        "max_right_deviation_m": 3.431,
+        "swing_onset_route_index": 647.2,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 3.13,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 11
+    },
+    {
+      "run": 64,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_116.yaml",
+      "sha256": "64468e3e8a2c7bccd529944a0fbcf554605dd9e17aa45af5942163b7ea3efb13",
+      "suite": "static_rot90_20261005",
+      "attempt": 116,
+      "obstacle_count": 2,
+      "models": [
+        "Bike2",
+        "Scooter1"
+      ],
+      "selected_routes": [
+        "right_01.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 0.27,
+      "balance_features": {
+        "models": {
+          "Bike2": 1,
+          "Scooter1": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1
+        },
+        "lateral_bins": {
+          "right_near": 1,
+          "right_far": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "straight",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.168,
+        "max_right_deviation_m": 0.244,
+        "swing_onset_route_index": null,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 2.09,
+      "difficulty": "easy",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 15
+    },
+    {
+      "run": 65,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_024.yaml",
+      "sha256": "3fe2a8b5eb94763a0004d6ac1b6586d433b637c605b2c9f1eccda912da6aef30",
+      "suite": "static_rot90_20261005",
+      "attempt": 24,
+      "obstacle_count": 2,
+      "models": [
+        "Bollard01",
+        "Bicycle_city"
+      ],
+      "selected_routes": [
+        "right_02.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 1.35,
+      "balance_features": {
+        "models": {
+          "Bollard01": 1,
+          "Bicycle_city": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "left": 1,
+          "right_near": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "small",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.168,
+        "max_right_deviation_m": 1.342,
+        "swing_onset_route_index": 653.2,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 2.45,
+      "difficulty": "easy",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 13
+    },
+    {
+      "run": 66,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_158.yaml",
+      "sha256": "463760886183089b734db2db52c7a3d695f824e6550623e4c99b4ff4d9994ea1",
+      "suite": "static_rot90_20261005",
+      "attempt": 158,
+      "obstacle_count": 1,
+      "models": [
+        "TrafficBarrel"
+      ],
+      "selected_routes": [
+        "right_01.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 0.3,
+      "balance_features": {
+        "models": {
+          "TrafficBarrel": 1
+        },
+        "longitudinal_bins": {
+          "middle": 1
+        },
+        "lateral_bins": {
+          "right_far": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "straight",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.124,
+        "max_right_deviation_m": 0.279,
+        "swing_onset_route_index": null,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 1.1,
+      "difficulty": "easy",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 15
+    },
+    {
+      "run": 67,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_045.yaml",
+      "sha256": "cdeacab923e9d237fca7211c82c1340864c21fbccc38544854c057704497706c",
+      "suite": "static_rot90_20261005",
+      "attempt": 45,
+      "obstacle_count": 1,
+      "models": [
+        "Steel_Barricade"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.35,
+      "balance_features": {
+        "models": {
+          "Steel_Barricade": 1
+        },
+        "longitudinal_bins": {
+          "middle": 1
+        },
+        "lateral_bins": {
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.167,
+        "max_right_deviation_m": 3.416,
+        "swing_onset_route_index": 647.5,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 3.116667,
+      "difficulty": "medium",
+      "split": "test",
+      "weather": "SUNNY",
+      "time_hour": 11
+    },
+    {
+      "run": 68,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_125.yaml",
+      "sha256": "55df6bb3a6bb06bc784a403fa285aa36c5f62bcbce2f5faa039a4f91c969fec8",
+      "suite": "static_rot90_20261005",
+      "attempt": 125,
+      "obstacle_count": 3,
+      "models": [
+        "Steel_Barricade",
+        "Scooter2",
+        "WoodBox"
+      ],
+      "selected_routes": [
+        "right_01.csv",
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 2.84,
+      "balance_features": {
+        "models": {
+          "Steel_Barricade": 1,
+          "Scooter2": 1,
+          "WoodBox": 1
+        },
+        "longitudinal_bins": {
+          "low": 2,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_wall": 1,
+          "right_block": 1,
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "late",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.187,
+        "max_right_deviation_m": 3.104,
+        "swing_onset_route_index": 668.8,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 5.446667,
+      "difficulty": "hard",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 15
+    },
+    {
+      "run": 69,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_159.yaml",
+      "sha256": "e1448cc5327cfe8cf47afd34cf8d38f0fe5da463eded76f53a01db99d1f30a76",
+      "suite": "static_rot90_20261005",
+      "attempt": 159,
+      "obstacle_count": 2,
+      "models": [
+        "PE_Firewall_White",
+        "Bike1"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.25,
+      "balance_features": {
+        "models": {
+          "PE_Firewall_White": 1,
+          "Bike1": 1
+        },
+        "longitudinal_bins": {
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "left": 1,
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.157,
+        "max_right_deviation_m": 3.419,
+        "swing_onset_route_index": 647.6,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 4.083333,
+      "difficulty": "medium",
+      "split": "test",
+      "weather": "SUNNY",
+      "time_hour": 13
+    },
+    {
+      "run": 70,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_066.yaml",
+      "sha256": "72d68f7702cb56267a522173f60c54c5a4c5745cf618dd613624dafcd2ccdbf7",
+      "suite": "static_rot90_20261005",
+      "attempt": 66,
+      "obstacle_count": 1,
+      "models": [
+        "BabyStroller1"
+      ],
+      "selected_routes": [
+        "right_01.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 0.27,
+      "balance_features": {
+        "models": {
+          "BabyStroller1": 1
+        },
+        "longitudinal_bins": {
+          "low": 1
+        },
+        "lateral_bins": {
+          "right_near": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "straight",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.169,
+        "max_right_deviation_m": 0.245,
+        "swing_onset_route_index": null,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 1.09,
+      "difficulty": "easy",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 11
+    },
+    {
+      "run": 71,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_003.yaml",
+      "sha256": "e3a13cd6d4553caba6b2eec72e345a5575706d9f323cfdb6daa07026109a5e4e",
+      "suite": "static_rot90_20261005",
+      "attempt": 3,
+      "obstacle_count": 1,
+      "models": [
+        "Bicycle_city"
+      ],
+      "selected_routes": [
+        "right_02.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 1.33,
+      "balance_features": {
+        "models": {
+          "Bicycle_city": 1
+        },
+        "longitudinal_bins": {
+          "middle": 1
+        },
+        "lateral_bins": {
+          "left": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "small",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.171,
+        "max_right_deviation_m": 1.34,
+        "swing_onset_route_index": 653.1,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 1.443333,
+      "difficulty": "easy",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 15
+    },
+    {
+      "run": 72,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_122.yaml",
+      "sha256": "1d082aa03cabc6fc725e077952bed1b0617f4a5c308c66195271b46d52d0f34d",
+      "suite": "static_rot90_20261005",
+      "attempt": 122,
+      "obstacle_count": 1,
+      "models": [
+        "Rockslide"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.36,
+      "balance_features": {
+        "models": {
+          "Rockslide": 1
+        },
+        "longitudinal_bins": {
+          "low": 1
+        },
+        "lateral_bins": {
+          "right": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.168,
+        "max_right_deviation_m": 3.419,
+        "swing_onset_route_index": 647.5,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 3.12,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 11
+    },
+    {
+      "run": 73,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_057.yaml",
+      "sha256": "ffe6c3a96d1f4d61e028501ffd6871d2cebb448c6495e1cfae4f750a58ea3ee9",
+      "suite": "static_rot90_20261005",
+      "attempt": 57,
+      "obstacle_count": 2,
+      "models": [
+        "Bicycle_city",
+        "RedBarrel"
+      ],
+      "selected_routes": [
+        "right_01.csv",
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 2.96,
+      "balance_features": {
+        "models": {
+          "Bicycle_city": 1,
+          "RedBarrel": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_near": 1,
+          "left": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "late",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.153,
+        "max_right_deviation_m": 3.106,
+        "swing_onset_route_index": 668.8,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 4.486667,
+      "difficulty": "hard",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 13
+    },
+    {
+      "run": 74,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_147.yaml",
+      "sha256": "40c3337eae20c219411f037b4425ac932638ed1c123c8bdcaca56abcd365fd95",
+      "suite": "static_rot90_20261005",
+      "attempt": 147,
+      "obstacle_count": 2,
+      "models": [
+        "Scooter2",
+        "ElectricScooter2"
+      ],
+      "selected_routes": [
+        "right_01.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 0.3,
+      "balance_features": {
+        "models": {
+          "Scooter2": 1,
+          "ElectricScooter2": 1
+        },
+        "longitudinal_bins": {
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_far": 1,
+          "right_near": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "straight",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.124,
+        "max_right_deviation_m": 0.277,
+        "swing_onset_route_index": null,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 2.1,
+      "difficulty": "easy",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 11
+    },
+    {
+      "run": 75,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_130.yaml",
+      "sha256": "d294d4e730b009003761be20cad6812be67ea424839faa43d2d9991c8536d078",
+      "suite": "static_rot90_20261005",
+      "attempt": 130,
+      "obstacle_count": 3,
+      "models": [
+        "Bike1",
+        "Steel_Barricade",
+        "Scooter1"
+      ],
+      "selected_routes": [
+        "right_01.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 0.27,
+      "balance_features": {
+        "models": {
+          "Bike1": 1,
+          "Steel_Barricade": 1,
+          "Scooter1": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_far": 1,
+          "right_near": 2
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "straight",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.17,
+        "max_right_deviation_m": 0.244,
+        "swing_onset_route_index": null,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 3.09,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 15
+    },
+    {
+      "run": 76,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_052.yaml",
+      "sha256": "20f7d616a95a1d5035dd790a13ae29dee0e9599321023d6da8dd206f8d11a71a",
+      "suite": "static_rot90_20261005",
+      "attempt": 52,
+      "obstacle_count": 1,
+      "models": [
+        "Steel_Barricade"
+      ],
+      "selected_routes": [
+        "right_01.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 0.26,
+      "balance_features": {
+        "models": {
+          "Steel_Barricade": 1
+        },
+        "longitudinal_bins": {
+          "middle": 1
+        },
+        "lateral_bins": {
+          "right_far": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "straight",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.173,
+        "max_right_deviation_m": 0.238,
+        "swing_onset_route_index": null,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 1.086667,
+      "difficulty": "easy",
+      "split": "test",
+      "weather": "FOGGY",
+      "time_hour": 13
+    },
+    {
+      "run": 77,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_060.yaml",
+      "sha256": "604382f593d736d4ef56646c2d3e6ce98e9b5c07bfc028f07d8c68512a7fb9a1",
+      "suite": "static_rot90_20261005",
+      "attempt": 60,
+      "obstacle_count": 2,
+      "models": [
+        "Bollard04",
+        "Bike1"
+      ],
+      "selected_routes": [
+        "right_02.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 1.27,
+      "balance_features": {
+        "models": {
+          "Bollard04": 1,
+          "Bike1": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "left": 1,
+          "right_near": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "small",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.099,
+        "max_right_deviation_m": 1.264,
+        "swing_onset_route_index": 653.7,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 2.423333,
+      "difficulty": "easy",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 11
+    },
+    {
+      "run": 78,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_120.yaml",
+      "sha256": "f24a655c395cacc3296b7ad02707e5d0ee4db772e0ed258fd569d89c361eeec6",
+      "suite": "static_rot90_20261005",
+      "attempt": 120,
+      "obstacle_count": 3,
+      "models": [
+        "Bicycle_city",
+        "RedBarrel",
+        "Scooter2"
+      ],
+      "selected_routes": [
+        "right_02.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 1.31,
+      "balance_features": {
+        "models": {
+          "Bicycle_city": 1,
+          "RedBarrel": 1,
+          "Scooter2": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_near": 1,
+          "left": 1,
+          "right_far": 1
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "small",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.17,
+        "max_right_deviation_m": 1.33,
+        "swing_onset_route_index": 653.6,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 3.436667,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 15
+    },
+    {
+      "run": 79,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_032.yaml",
+      "sha256": "bd7cd1c07313d9c29fc77af39383533015ae249a9cfa1d25d8d2054b6f4b4be3",
+      "suite": "static_rot90_20261005",
+      "attempt": 32,
+      "obstacle_count": 1,
+      "models": [
+        "Rockslide"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.31,
+      "balance_features": {
+        "models": {
+          "Rockslide": 1
+        },
+        "longitudinal_bins": {
+          "middle": 1
+        },
+        "lateral_bins": {
+          "right": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.169,
+        "max_right_deviation_m": 3.419,
+        "swing_onset_route_index": 647.3,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 3.103333,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 13
+    },
+    {
+      "run": 80,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_124.yaml",
+      "sha256": "0c579cc84c8d78f5d0666a21904529518a2b054ab06b86b69862e372a54a4791",
+      "suite": "static_rot90_20261005",
+      "attempt": 124,
+      "obstacle_count": 2,
+      "models": [
+        "PE_Firewall_White",
+        "Bicycle_mountain"
+      ],
+      "selected_routes": [
+        "right_01.csv",
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 2.94,
+      "balance_features": {
+        "models": {
+          "PE_Firewall_White": 1,
+          "Bicycle_mountain": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_block": 1,
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "late",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.169,
+        "max_right_deviation_m": 3.103,
+        "swing_onset_route_index": 668.7,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 4.48,
+      "difficulty": "hard",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 15
+    },
+    {
+      "run": 81,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_014.yaml",
+      "sha256": "eed82a1542c8720738232689b15dcc9af59490f39c9f719b06a1b4c605bde934",
+      "suite": "static_rot90_20261005",
+      "attempt": 14,
+      "obstacle_count": 3,
+      "models": [
+        "Bollard04",
+        "ElectricScooter1",
+        "concrete-barrier"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.4,
+      "balance_features": {
+        "models": {
+          "Bollard04": 1,
+          "ElectricScooter1": 1,
+          "concrete-barrier": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "left": 1,
+          "centre": 1,
+          "right": 1
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.148,
+        "max_right_deviation_m": 3.438,
+        "swing_onset_route_index": 647.2,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 5.133333,
+      "difficulty": "hard",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 11
+    },
+    {
+      "run": 82,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_165.yaml",
+      "sha256": "fb744af95634137d9e7e3d902b4658b470721aef5e4ee549092e946e74baf2a0",
+      "suite": "static_rot90_20261005",
+      "attempt": 165,
+      "obstacle_count": 2,
+      "models": [
+        "ElectricScooter2",
+        "Bollard04"
+      ],
+      "selected_routes": [
+        "right_02.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 1.26,
+      "balance_features": {
+        "models": {
+          "ElectricScooter2": 1,
+          "Bollard04": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_far": 1,
+          "left": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "small",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.1,
+        "max_right_deviation_m": 1.249,
+        "swing_onset_route_index": 653.8,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 2.42,
+      "difficulty": "easy",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 13
+    },
+    {
+      "run": 83,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_099.yaml",
+      "sha256": "1dc137ffc1d34ade91dc6a82fa7a571f3fc10b676dd35d684d64fef4faa1e0f1",
+      "suite": "static_rot90_20261005",
+      "attempt": 99,
+      "obstacle_count": 1,
+      "models": [
+        "Rockslide"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.29,
+      "balance_features": {
+        "models": {
+          "Rockslide": 1
+        },
+        "longitudinal_bins": {
+          "low": 1
+        },
+        "lateral_bins": {
+          "right": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.147,
+        "max_right_deviation_m": 3.43,
+        "swing_onset_route_index": 647.2,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 3.096667,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 15
+    },
+    {
+      "run": 84,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_011.yaml",
+      "sha256": "8b530afdd9885f71b546a1841745f101fdfb9df40f66bf16c0efa27b298cd63b",
+      "suite": "static_rot90_20261005",
+      "attempt": 11,
+      "obstacle_count": 3,
+      "models": [
+        "PE_Firewall_Orange",
+        "Steel_Barricade",
+        "Rockslide"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.31,
+      "balance_features": {
+        "models": {
+          "PE_Firewall_Orange": 1,
+          "Steel_Barricade": 1,
+          "Rockslide": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "centre": 1,
+          "right": 2
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.163,
+        "max_right_deviation_m": 3.417,
+        "swing_onset_route_index": 647.4,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 5.103333,
+      "difficulty": "hard",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 11
+    },
+    {
+      "run": 85,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_055.yaml",
+      "sha256": "6a74a87acf72b27fafd8538aee23b9dfd42a79059b7328e3b321bd1bd14a0f00",
+      "suite": "static_rot90_20261005",
+      "attempt": 55,
+      "obstacle_count": 2,
+      "models": [
+        "Scooter2",
+        "Rockslide"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.38,
+      "balance_features": {
+        "models": {
+          "Scooter2": 1,
+          "Rockslide": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "centre": 1,
+          "right": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.157,
+        "max_right_deviation_m": 3.423,
+        "swing_onset_route_index": 647.5,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 4.126667,
+      "difficulty": "medium",
+      "split": "test",
+      "weather": "SUNNY",
+      "time_hour": 13
+    },
+    {
+      "run": 86,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_079.yaml",
+      "sha256": "503418c5ef2d489e598b33011e9594d828050e15bffed602080b388aad6ce6f5",
+      "suite": "static_rot90_20261005",
+      "attempt": 79,
+      "obstacle_count": 1,
+      "models": [
+        "concrete-barrier"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.38,
+      "balance_features": {
+        "models": {
+          "concrete-barrier": 1
+        },
+        "longitudinal_bins": {
+          "middle": 1
+        },
+        "lateral_bins": {
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.167,
+        "max_right_deviation_m": 3.419,
+        "swing_onset_route_index": 647.3,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 3.126667,
+      "difficulty": "medium",
+      "split": "test",
+      "weather": "FOGGY",
+      "time_hour": 15
+    },
+    {
+      "run": 87,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_140.yaml",
+      "sha256": "3c8f121f483800a15f394b79f6adab775952a9ae5aefb0f56a89ada35951e818",
+      "suite": "static_rot90_20261005",
+      "attempt": 140,
+      "obstacle_count": 3,
+      "models": [
+        "ElectricScooter1",
+        "PE_Firewall_Orange",
+        "BabyStroller1"
+      ],
+      "selected_routes": [
+        "right_01.csv",
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.29,
+      "balance_features": {
+        "models": {
+          "ElectricScooter1": 1,
+          "PE_Firewall_Orange": 1,
+          "BabyStroller1": 1
+        },
+        "longitudinal_bins": {
+          "low": 2,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_wall": 1,
+          "right_block": 1,
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "late",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.134,
+        "max_right_deviation_m": 3.455,
+        "swing_onset_route_index": 662.8,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 5.596667,
+      "difficulty": "hard",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 13
+    },
+    {
+      "run": 88,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_107.yaml",
+      "sha256": "e82fff19d35ba353cbd0eadb00740de458516f6c50863516c284a7a8e590a532",
+      "suite": "static_rot90_20261005",
+      "attempt": 107,
+      "obstacle_count": 1,
+      "models": [
+        "TrafficBarrel"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.23,
+      "balance_features": {
+        "models": {
+          "TrafficBarrel": 1
+        },
+        "longitudinal_bins": {
+          "high": 1
+        },
+        "lateral_bins": {
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.17,
+        "max_right_deviation_m": 3.416,
+        "swing_onset_route_index": 647.4,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 3.076667,
+      "difficulty": "easy",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 11
+    },
+    {
+      "run": 89,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_068.yaml",
+      "sha256": "184ec578b52678c607c09a0e309e7382f08169f59469967e6cf21c36501819ff",
+      "suite": "static_rot90_20261005",
+      "attempt": 68,
+      "obstacle_count": 1,
+      "models": [
+        "Scooter1"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.32,
+      "balance_features": {
+        "models": {
+          "Scooter1": 1
+        },
+        "longitudinal_bins": {
+          "low": 1
+        },
+        "lateral_bins": {
+          "right": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.167,
+        "max_right_deviation_m": 3.421,
+        "swing_onset_route_index": 647.6,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 3.106667,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 15
+    },
+    {
+      "run": 90,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_076.yaml",
+      "sha256": "4365384d8756025014fda55226de96f5d0db1e4d1bb6ee7d5f0adce9d2f50184",
+      "suite": "static_rot90_20261005",
+      "attempt": 76,
+      "obstacle_count": 3,
+      "models": [
+        "Scooter_02",
+        "BabyStroller1",
+        "Bollard01"
+      ],
+      "selected_routes": [
+        "right_01.csv",
+        "right_02.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 1.01,
+      "balance_features": {
+        "models": {
+          "Scooter_02": 1,
+          "BabyStroller1": 1,
+          "Bollard01": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_far": 1,
+          "right_near": 1,
+          "left": 1
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "late",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.108,
+        "max_right_deviation_m": 1.192,
+        "swing_onset_route_index": 671.8,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 4.836667,
+      "difficulty": "hard",
+      "split": "val",
+      "weather": "FOGGY",
+      "time_hour": 11
+    },
+    {
+      "run": 91,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_100.yaml",
+      "sha256": "c1066a15d859145ca8ad5c6388a88637619ec7a41f9e18b8a632035651258392",
+      "suite": "static_rot90_20261005",
+      "attempt": 100,
+      "obstacle_count": 2,
+      "models": [
+        "PE_Firewall_White",
+        "NCAP_GVT"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.3,
+      "balance_features": {
+        "models": {
+          "PE_Firewall_White": 1,
+          "NCAP_GVT": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "centre": 1,
+          "right": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.17,
+        "max_right_deviation_m": 3.42,
+        "swing_onset_route_index": 647.3,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 4.1,
+      "difficulty": "medium",
+      "split": "val",
+      "weather": "SUNNY",
+      "time_hour": 13
+    },
+    {
+      "run": 92,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_039.yaml",
+      "sha256": "762af2bd17003455cb3b6c1c5a4abde4d946e7bd77f6a0668c3a92015a0743b0",
+      "suite": "static_rot90_20261005",
+      "attempt": 39,
+      "obstacle_count": 2,
+      "models": [
+        "Scooter1",
+        "Bike2"
+      ],
+      "selected_routes": [
+        "right_01.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 0.26,
+      "balance_features": {
+        "models": {
+          "Scooter1": 1,
+          "Bike2": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_near": 1,
+          "right_far": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "straight",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.168,
+        "max_right_deviation_m": 0.245,
+        "swing_onset_route_index": null,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 2.086667,
+      "difficulty": "easy",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 15
+    },
+    {
+      "run": 93,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_087.yaml",
+      "sha256": "42cae24191856123514482b77d795c1a06fcbb2b5abe3c7dd1e4a078f812bb18",
+      "suite": "static_rot90_20261005",
+      "attempt": 87,
+      "obstacle_count": 3,
+      "models": [
+        "BabyStroller2",
+        "BabyStroller1",
+        "TrafficBarrel"
+      ],
+      "selected_routes": [
+        "right_01.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 0.3,
+      "balance_features": {
+        "models": {
+          "BabyStroller2": 1,
+          "BabyStroller1": 1,
+          "TrafficBarrel": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_near": 2,
+          "right_far": 1
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "straight",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.115,
+        "max_right_deviation_m": 0.279,
+        "swing_onset_route_index": null,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 3.1,
+      "difficulty": "medium",
+      "split": "test",
+      "weather": "SUNNY",
+      "time_hour": 13
+    },
+    {
+      "run": 94,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_078.yaml",
+      "sha256": "0a24ba8f30dc0d8a4b73d453c04d2dea15bd090993de7b42b834e2042a94d3df",
+      "suite": "static_rot90_20261005",
+      "attempt": 78,
+      "obstacle_count": 3,
+      "models": [
+        "Bollard04",
+        "YellowBarrel",
+        "concrete-barrier"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.26,
+      "balance_features": {
+        "models": {
+          "Bollard04": 1,
+          "YellowBarrel": 1,
+          "concrete-barrier": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "left": 1,
+          "right": 1,
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.148,
+        "max_right_deviation_m": 3.425,
+        "swing_onset_route_index": 647.5,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 5.086667,
+      "difficulty": "hard",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 11
+    },
+    {
+      "run": 95,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_083.yaml",
+      "sha256": "ce0750e229ef3dd7f05d4876926ad35197c49676579c36f42b4bde8777b382b9",
+      "suite": "static_rot90_20261005",
+      "attempt": 83,
+      "obstacle_count": 1,
+      "models": [
+        "Concrete_Barricade01"
+      ],
+      "selected_routes": [
+        "right_01.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 0.27,
+      "balance_features": {
+        "models": {
+          "Concrete_Barricade01": 1
+        },
+        "longitudinal_bins": {
+          "middle": 1
+        },
+        "lateral_bins": {
+          "right_near": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "straight",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.167,
+        "max_right_deviation_m": 0.246,
+        "swing_onset_route_index": null,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 1.09,
+      "difficulty": "easy",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 13
+    },
+    {
+      "run": 96,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_058.yaml",
+      "sha256": "2804b4782c7b44dac137bcb9a459134ebd8df65becb14b7abc8e30b340eb7931",
+      "suite": "static_rot90_20261005",
+      "attempt": 58,
+      "obstacle_count": 2,
+      "models": [
+        "NCAP_GVT",
+        "Scooter1"
+      ],
+      "selected_routes": [
+        "right_01.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 0.3,
+      "balance_features": {
+        "models": {
+          "NCAP_GVT": 1,
+          "Scooter1": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1
+        },
+        "lateral_bins": {
+          "right_near": 1,
+          "right_far": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "straight",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.125,
+        "max_right_deviation_m": 0.277,
+        "swing_onset_route_index": null,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 2.1,
+      "difficulty": "easy",
+      "split": "test",
+      "weather": "FOGGY",
+      "time_hour": 11
+    },
+    {
+      "run": 97,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_072.yaml",
+      "sha256": "66c8349fadc1a5197b7232fd360064c5e61c362a680c04b34dd8d2d6c7b16aa0",
+      "suite": "static_rot90_20261005",
+      "attempt": 72,
+      "obstacle_count": 3,
+      "models": [
+        "TrafficBarrel",
+        "WoodBox",
+        "YellowBarrel"
+      ],
+      "selected_routes": [
+        "right_01.csv",
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 2.93,
+      "balance_features": {
+        "models": {
+          "TrafficBarrel": 1,
+          "WoodBox": 1,
+          "YellowBarrel": 1
+        },
+        "longitudinal_bins": {
+          "low": 2,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_wall": 1,
+          "right_block": 1,
+          "centre": 1
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "late",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.12,
+        "max_right_deviation_m": 3.108,
+        "swing_onset_route_index": 668.6,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 5.476667,
+      "difficulty": "hard",
+      "split": "test",
+      "weather": "SUNNY",
+      "time_hour": 15
+    },
+    {
+      "run": 98,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_074.yaml",
+      "sha256": "3aae56c3b7d276363cab11c13d6469af833b1eccaac287ef6f8311cecb3d4732",
+      "suite": "static_rot90_20261005",
+      "attempt": 74,
+      "obstacle_count": 3,
+      "models": [
+        "Bicycle_mountain",
+        "PE_Firewall_White",
+        "YellowBarrel"
+      ],
+      "selected_routes": [
+        "right_01.csv",
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 2.95,
+      "balance_features": {
+        "models": {
+          "Bicycle_mountain": 1,
+          "PE_Firewall_White": 1,
+          "YellowBarrel": 1
+        },
+        "longitudinal_bins": {
+          "low": 1,
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right_far": 2,
+          "left": 1
+        },
+        "scale_bins": {
+          "middle": 3
+        }
+      },
+      "avoidance_class": "late",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.12,
+        "max_right_deviation_m": 3.107,
+        "swing_onset_route_index": 668.7,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 5.483333,
+      "difficulty": "hard",
+      "split": "train",
+      "weather": "FOGGY",
+      "time_hour": 13
+    },
+    {
+      "run": 99,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_095.yaml",
+      "sha256": "0171c019435be5d60e7603ecf5fddaaa7c03cd9d4982097c52869e94248d7f90",
+      "suite": "static_rot90_20261005",
+      "attempt": 95,
+      "obstacle_count": 2,
+      "models": [
+        "Rockslide",
+        "Sportbike_01"
+      ],
+      "selected_routes": [
+        "right_03.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 3.31,
+      "balance_features": {
+        "models": {
+          "Rockslide": 1,
+          "Sportbike_01": 1
+        },
+        "longitudinal_bins": {
+          "middle": 1,
+          "high": 1
+        },
+        "lateral_bins": {
+          "right": 1,
+          "left": 1
+        },
+        "scale_bins": {
+          "middle": 2
+        }
+      },
+      "avoidance_class": "medium",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.168,
+        "max_right_deviation_m": 3.42,
+        "swing_onset_route_index": 647.4,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 4.103333,
+      "difficulty": "medium",
+      "split": "train",
+      "weather": "SUNNY",
+      "time_hour": 15
+    },
+    {
+      "run": 100,
+      "preset": "scenario_runner/config/static_scenario_presets/generated/static_rot90_20261005/static_rot90_20261005_attempt_103.yaml",
+      "sha256": "4e4f6dcfd3f1c577179d42d78e8c1dd6f6ca9bed5ae38f99f3984329e8125c5b",
+      "suite": "static_rot90_20261005",
+      "attempt": 103,
+      "obstacle_count": 1,
+      "models": [
+        "BabyStroller1"
+      ],
+      "selected_routes": [
+        "right_02.csv"
+      ],
+      "route_class": "compact",
+      "max_cross_track_error_m": 1.26,
+      "balance_features": {
+        "models": {
+          "BabyStroller1": 1
+        },
+        "longitudinal_bins": {
+          "low": 1
+        },
+        "lateral_bins": {
+          "left": 1
+        },
+        "scale_bins": {
+          "middle": 1
+        }
+      },
+      "avoidance_class": "small",
+      "lane_compliance": {
+        "passed": true,
+        "min_marking_clearance_m": 0.1,
+        "max_right_deviation_m": 1.257,
+        "swing_onset_route_index": 653.9,
+        "markings_source_sha256": "f1866622ce53e6e0accc5859ee168d648b667024c0fb5174293f55884ae91abb"
+      },
+      "challenge_score": 1.42,
+      "difficulty": "easy",
+      "split": "test",
+      "weather": "FOGGY",
+      "time_hour": 11
+    }
+  ]
+}

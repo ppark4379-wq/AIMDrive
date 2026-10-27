@@ -1,0 +1,783 @@
+﻿zone: full_loop
+
+scenarios:
+  full_loop:
+    # Keep the legacy full_loop scenario feature-complete. Use
+    # full_loop_normal when a clean route without runner-owned events is needed.
+    clean_road_mode: false
+    sync_runtime:
+      startup_timeout_sec: 30.0
+      ego_max_age_sec: 1.0
+      ready_param: /morai_drive/scenario_ready
+      runtime_active_param: /morai_drive/sync_runtime_active
+      ego_topic: /Ego_topic
+    reset_ego_motion_on_start: true
+    reset_ego_motion_wait_sec: 0.5
+    global_path: data/R_KR_PR_K-city_2025/2026_molit_comp_global_path.txt
+    route_definition_path: config/full_loop_links.yaml
+    route_definition_key: full_loop
+    profile_state_path: .runtime/full_loop_profile.json
+    # Test mode starts just after the static obstacle while keeping the same
+    # actors, environment, and original START/END destination.
+    after_static_start_path_index: 703
+
+    # Focused verification starts at checkpoint 10 and drives the complete
+    # native-SpawnPoint highway section, tunnel event, and original destination.
+    highway_tunnel_test_start_path_index: 2275
+
+    # Optional read-only audit for a repeated highway-only run. It starts at
+    # checkpoint 10 and ends at checkpoint 13, before tunnel checkpoint 14.
+    # ROS /Object_topic reports are spatially compared with live gRPC actors.
+    highway_object_audit:
+      enabled: false
+      end_path_index: 3529
+      sample_period_sec: 0.5
+      match_distance_m: 5.0
+      ros_max_age_sec: 1.0
+      candidate_samples: 3
+      output_subdir: object_audit
+
+    profiles:
+      - name: scenario_sunny
+        weather: SUNNY
+      - name: scenario_foggy
+        weather: FOGGY
+
+    # Pick once at scenario setup. A new automatic run picks again.
+    scenario_times:
+      - 11
+      - 13
+      - 15
+    scenario_time_verify_period_sec: 30.0
+
+    # Native-scale geometry audit set: all 36 non-vehicle static obstacle
+    # candidates are eligible. Closed-loop suite generation rejects only
+    # layouts that the Expert cannot complete safely.
+    static_obstacle_models:
+      - CargoBox
+      - WoodBox
+      - RedBarrel
+      - YellowBarrel
+      - TrafficBarrel
+      - Lane_Separation_Bar
+      - PE_Drum
+      - PE_Firewall_Orange
+      - PE_Firewall_White
+      - Steel_Barricade
+      - Concrete_Barricade01
+      - Concrete_Barricade02
+      - Bollard01
+      - Bollard04
+      - Bicycle_city
+      - Bicycle_mountain
+      - Scooter_02
+      - Sportbike_01
+      - BabyStroller1
+      - BabyStroller2
+      - BabyStroller3
+      - Bike1
+      - Bike2
+      - SportBike
+      - ElectricScooter1
+      - ElectricScooter2
+      - obj_obstacle_dog
+      - NCAP_GVT
+      - Color_Cone
+      - Rubber_Cone
+      - concrete-barrier
+      - Bike3
+      - Scooter1
+      - Scooter2
+      - Rockslide
+      - Barbed_Wirefence
+
+    # New static obstacles use the MORAI asset's native size [1, 1, 1].
+    # Old explicit presets retain their recorded scale when replayed.
+    static_obstacle_default_scale: [1.0, 1.0, 1.0]
+    static_obstacle_model_scales: {}
+
+    # Applied only when the scenario-only CLI requests two static obstacles.
+    # Move the pair together so the legal escape corridor stays on one side.
+    static_obstacle_multi_randomization:
+      enabled: true
+      longitudinal_margin_m: 2.0
+      lateral_margin_m: 0.35
+      spacing_jitter_m: 1.0
+      yaw_margin_deg: 0.0
+
+    # 26.R1 live-verified movable dynamic models. police1 and NCAP_EPTc are
+    # intentionally excluded because they failed spawn/movement verification.
+    dynamic_obstacle_models:
+      - Man1
+      - Man2
+      - Man3
+      - Woman1
+      - Woman2
+      - Woman3
+      - Man4
+      - Man5
+      - Man6
+      - Man7
+      - Man8
+      - Woman4
+      - Woman5
+      - Woman6
+      - Woman7
+      - Woman8
+      - NCAP_EBT
+      - NCAP_EPTa
+      - police_m_2
+      - worker_f_1
+      - worker_m_1
+      - Boy1
+      - Girl1
+      - Girl2
+      - Deer1
+      - Dog1
+      - Dog2
+      - Dog10
+      - Ped_Pet1
+    # npc_vehicle_models: [VEHICLE_1, VEHICLE_2]
+
+    # Dynamic crossings are selected only from the approved catalogue in
+    # full_loop_links.yaml.  Count is chosen from the valid route-ordered
+    # schedules; production scenes contain at most two sequential pedestrians.
+    dynamic_obstacle:
+      max_count: 2
+      # Prefer broad crossing-site coverage while retaining the two proven
+      # sequential-event schedules. This is a per-run probability, not a
+      # fixed quota across a batch.
+      single_event_probability: 0.8
+      # Independently sample each NPC from the active, available YAML models.
+      # Keep route approval and reviewed speed limits; this does not certify
+      # untested model/path pairs. Use approved_pairs for pair-only selection.
+      model_selection_policy: yaml_pool
+      # MORAI closed-loop failures observed in the 2026-09-22 100-attempt
+      # campaign. Exclude only these exact path/model pairs from ordinary
+      # random sampling; both the path and model remain available elsewhere.
+      excluded_model_path_pairs:
+        - path_id: general_south_east_to_west_diagonal__0_0_reverse
+          model: police_m_2
+        - path_id: general_south_east_to_west_diagonal__2_0_reverse
+          model: worker_f_1
+        - path_id: general_north_west_to_east_diagonal__0_0_forward
+          model: worker_f_1
+        - path_id: rear_crosswalk_diagonal_right_to_left_north
+          model: Man4
+      # Inset mission-box crossings need recovery room after the first stop.
+      # Tight pairs (including a 47m long-diagonal pair) missed the next ETA.
+      minimum_event_spacing_m: 50.0
+      minimum_crossing_path_m: 6.0
+      minimum_side_clearance_m: 2.5
+      minimum_crossing_sine: 0.35
+      maximum_conflict_route_error_m: 1.0
+      maximum_path_deviation_m: 1.0
+      movement_check_sec: 2.0
+      minimum_movement_m: 0.4
+
+      # Trigger distance is recomputed for every crossing from pedestrian ETA,
+      # Ego speed and stopping distance.  A left-side start naturally arms
+      # earlier because start_to_conflict_m is longer.
+      interaction_lead_sec: 1.5
+      minimum_trigger_distance_m: 12.0
+      maximum_trigger_distance_m: 60.0
+      minimum_eta_delta_sec: 0.0
+      # A short crossing must not finish while Ego is still recovering from
+      # the preceding stop. Keep the stop-distance gate; wait for closer ETA.
+      maximum_eta_delta_sec: 3.0
+      reaction_time_sec: 1.0
+      comfortable_deceleration_mps2: 3.5
+      stopping_safety_margin_m: 3.0
+      minimum_ego_speed_mps: 2.0
+      missed_trigger_tolerance_m: 1.0
+
+      # Crossings immediately before the route stop-line would otherwise be
+      # confounded by a red light.  Guard only those crossings: verify and
+      # refresh straight green before spawning and until Ego crosses that
+      # exact stop line. Crossings after the signal are untouched.
+      pre_signal_guard:
+        enabled: true
+        maximum_conflict_to_stopline_m: 10.0
+        # Only catalogue entries explicitly marked through_conflict may use a
+        # stop line just behind their conflict point (the front crosswalk).
+        # Explicit central candidates may cross between the two marked
+        # crosswalks, about 13.5m after this stop line. This limit is consulted
+        # only by entries opting into signal_guard_mode: through_conflict.
+        maximum_stopline_to_conflict_m: 15.0
+        activation_distance_m: 60.0
+        query_period_wall_sec: 0.25
+        retry_period_wall_sec: 0.5
+        hold_refresh_wall_sec: 1.0
+        settle_wall_sec: 0.3
+        unknown_grace_wall_sec: 1.0
+        red_grace_wall_sec: 1.0
+        maximum_command_attempts: 40
+        target_color: 16
+        impulse: true
+        set_sibling: true
+
+      # A valid event must cause a non-signal slowdown/stop, clear the lane,
+      # and allow Ego to move again before the next event is armed.
+      require_ego_response: true
+      # Ordinary standalone runs report conservative assessment failures;
+      # --dynamic-review and collection retain strict acceptance. Warnings
+      # never count as safety approval. Collision/motion/ETA rules unchanged.
+      assessment_policy: report
+      response_observation_distance_m: 30.0
+      meaningful_slowdown_mps: 1.0
+      stopped_speed_mps: 0.5
+      resume_speed_mps: 1.0
+      resume_timeout_sec: 20.0
+      resume_failure_timeout_sec: 40.0
+      resume_signal_wait_limit_sec: 60.0
+      retire_after_conflict_m: 3.0
+      # Conservative lane-centred body envelope, not a substitute for surveyed
+      # curb/paint geometry when approving a new crossing site.
+      ego_lane_half_width_m: 1.75
+      # MORAI Ego GT bounding box: 2*extent.x=2.160835m, 2*extent.y=4.635008m.
+      ego_body_width_m: 2.17
+      ego_body_length_m: 4.64
+      ego_lane_margin_m: 0.15
+
+    # Sensor Record can make Simulation Time advance much slower than wall
+    # time. If Ego remains stopped by an exact red route light for 10 host
+    # seconds, release straight movement and preserve the intervention in the
+    # collection event log. This is separate from natural signal samples.
+    traffic_light_wait_override:
+      enabled: true
+      wait_wall_sec: 10.0
+      stopped_speed_mps: 0.5
+      minimum_stopline_distance_m: 0.0
+      maximum_stopline_distance_m: 25.0
+      query_period_wall_sec: 0.25
+      retry_period_wall_sec: 1.0
+      verification_timeout_wall_sec: 2.0
+      # MORAI can reject several consecutive impulse commands transiently.
+      # Keep this bounded, but do not abort a valid dynamic run after only
+      # three attempts while the Ego is still stopped at the guarded light.
+      dynamic_maximum_attempts: 40
+      target_color: 16
+      impulse: true
+      set_sibling: true
+
+    roundabout_npc:
+      min_count: 3
+      max_count: 5
+      # Basic full_loop_roundabout: choose once per run, shared by every NPC.
+      common_speed_choices_kph: [10.0, 15.0, 20.0, 25.0]
+      # Legacy fixed-speed setting for the other roundabout modes.
+      speed_mps: 4.0
+      route_laps: 100
+      # Commented models lacked vehicle assets in the tested v.R1.260701.H3 installation.
+      # Active model names are filtered against the simulator catalog via
+      # get_available_surround_vehicle_models(); Bundle filenames often
+      # differ from the registered model name).
+      models:
+        - DEFAULT_SEDAN
+        - 2016_Hyundai_Sonata
+        - 2020_hyundai_sonata
+        - 2015_Kia_K5
+        - 2020_Kia_K5
+        - 2017_Hyundai_Grandeur
+        - 2014_Kia_K7
+        - 2016_Hyundai_Genesis_DH
+        - 2019_Toyota_Prius
+        - 2021_Volkswagen_Golf_GTI
+        - 2020_Kia_Stinger
+        - 2016_Hyundai_Ioniq
+        - 2023_Hyundai_Ioniq5
+        - 2023_Kia_EV6
+        - "2019_Hyundai_Kona(EV)"
+        - "2017_Kia_Niro(HEV)"
+        - "2020_Kia_Niro(EV)"
+        - "2016_Kia_Soul(EV)"
+        - "2020_Kia_Soul(EV)"
+        - 2021_Hyundai_G80
+        - 2019_hyundai_genesis_g90
+        - 2019_hyundai_genesis_g90_4WS
+        - DEFAULT_SUV
+        - 2016_Hyundai_Santafe
+        - 2017_Kia_Sorento
+        - 2020_volvo_xc90
+        - 2021_Hyundai_Genesis_GV80
+        - 2021_Hyundai_GV70
+        - 2019_Hyundai_Nexo
+        - DEFAULT_MPV
+        - DEFAULT_WAGON
+        - 2019_kia_sedona
+        - 2021_Kia_Carnival
+        - 2020_chrysler_pacifica_hybrid
+        - 2017_hyundai_solati_h350
+        - DR_KGTorres_EVX_2024
+      nonuniform_position:
+        min_spawn_gap_m: 10.0
+        tight_gap_max_m: 12.0
+        gap_weight_exponent: 2.5
+      speed_randomization:
+        min_speed_mps: 2.5
+        max_speed_mps: 7.0
+        slow_band_max_mps: 3.2
+        fast_band_min_mps: 6.3
+        interaction_gap_min_m: 35.0
+        interaction_gap_max_m: 45.0
+        emergency_gap_m: 6.0
+        follow_gap_m: 9.0
+        resume_gap_m: 12.0
+        control_period_s: 0.2
+        live_log_period_s: 0.5
+        ego_gap_radius_m: 6.0
+      brake_event:
+        base_speed_mps: 5.5
+        trough_speed_mps: 0.5
+        hold_duration_s: 6.0
+        emergency_gap_m: 6.0
+        follow_gap_m: 9.0
+        resume_gap_m: 12.0
+        control_period_s: 0.2
+        live_log_period_s: 0.5
+        ego_gap_radius_m: 6.0
+        entry_settle_s: 1.0
+
+    # Scenario-owned actor creation/removal policy. The data collector records
+    # lifecycle events but does not override these scenario decisions.
+    actor_lifecycle:
+      version: nearby_actors_v3
+      roundabout_lead_m: 100.0
+      roundabout_retire_after_m: 30.0
+      roundabout_stall_window_s: 45.0
+      roundabout_stall_min_progress_m: 5.0
+      roundabout_min_active_scenario_s: 20.0
+      roundabout_mutation_quarantine_s: 1.0
+      highway_stop_after_entry_m: 220.0
+      highway_spawn_distance_m: 220.0
+
+    # One independent, scenario-owned stopped vehicle on the merge ramp.
+    # This is deliberately separate from highway_npc so the three native
+    # SpawnPoints and all of their population/lifecycle settings stay intact.
+    # It is spawned only when those SpawnPoints become active.
+    highway_merge_static_vehicle:
+      enabled: true
+      models:
+        - DEFAULT_SEDAN
+        - 2014_Kia_K7
+        - 2015_Kia_K5
+        - 2015_Toyota_Prius(HEV)
+        - 2016_Hyundai_Genesis_DH
+        - 2016_Hyundai_Ioniq
+        - 2016_Hyundai_Sonata
+        - 2017_Hyundai_Grandeur
+        - 2019_Toyota_Prius
+        - 2020_Kia_K5
+        - 2020_Kia_Stinger
+        - 2020_hyundai_sonata
+        - 2021_Hyundai_G80
+      route_link: A2256W000411
+      distance_from_link_start_m: 70.0
+      minimum_distance_from_link_start_m: 40.0
+      minimum_distance_to_link_end_m: 40.0
+
+    highway_npc:
+      # Fixed to a model already verified to spawn on this map via 26.R1 gRPC.
+      model: DEFAULT_SEDAN
+
+      # MORAI may allocate a runtime SpawnPoint ID before the object is ready
+      # for EnableSpawnPoint. Stabilize, retry, and recreate only that point.
+      spawn_point_lifecycle:
+        create_attempts: 3
+        create_settle_sec: 0.5
+        enable_attempts: 5
+        enable_retry_delay_sec: 0.5
+        disable_attempts: 3
+        disable_retry_delay_sec: 0.5
+        recreate_delay_sec: 1.0
+        max_runtime_replacements: 3
+        cleanup_settle_sec: 1.5
+
+      # Reference values stored in the official competition JSON. The 26.R1
+      # VehicleSpawnPointConfig protobuf does not expose these two fields, so
+      # native MORAI following/safety defaults provide the closest behavior.
+      reference_safety_distance_m: 5.0
+      reference_ttc_sec: 1.0
+
+      # Create SpawnPoints at setup but enable them only as Ego approaches.
+      # This avoids accumulating irrelevant traffic for several minutes before
+      # the full-loop Ego reaches the highway.
+      background_warmup_distance_m: 100.0
+      spawn_point_activation_retry_period_sec: 1.0
+      collection_maximum_total_vehicles: 25
+
+      # Explicit population, not a theoretical SpawnPoint cap. All vehicles
+      # are prepared paused before Ego drives, then released near the highway.
+      # No native random model selection: each run uses 25 distinct models.
+      managed_traffic:
+        randomize_adjacent_count: true
+        speed_range_kmh: [20, 100]
+        flowing_traffic:
+          enabled: true
+          departure_link: A2256W000846
+          departure_distance_from_link_start_m: 60.0
+          recycle_after_merge_m: 120.0
+          observation_radius_m: 120.0
+          respawn_clearance_m: 35.0
+          minimum_ego_distance_m: 80.0
+        merge_sync:
+          enabled: false
+          lane_entry_distance_m: 1.75
+          arm_distance_m: 180.0
+          minimum_ego_speed_mps: 2.0
+          lead_pass_before_ego_s: 6.0
+          npc_speed_ratio: 0.9
+          minimum_npc_speed_kmh: 18.0
+          maximum_npc_speed_kmh: 42.0
+        enabled: true
+        previous_total_vehicles: 13  # 12 moving + the independent stopped car
+        ego_merge_link: A2256W000411
+        forbidden_route_links: [A2256W000054, A2256W000846, A2256W000411]
+        excluded_models: [SE_CT797F_2009, RandomVehicle, AR_DJMini3pro_2022]
+        model_groups:
+          sedan:
+            - 2017_Hyundai_Grandeur
+            - 2016_Hyundai_Sonata
+            - 2015_Kia_K5
+            - 2014_Kia_K7
+            - 2016_Hyundai_Ioniq
+            - 2020_hyundai_sonata
+            - 2020_Kia_Stinger
+            - 2021_Hyundai_G80
+            - 2019_Toyota_Prius
+            - 2019_hyundai_genesis_g90
+            - 2016_Hyundai_Genesis_DH
+            - 2020_Kia_K5
+            - 2015_Toyota_Prius(HEV)
+          suv:
+            - 2016_Hyundai_Santafe
+            - 2017_Kia_Sorento
+            - 2017_Kia_Niro(HEV)
+            - 2019_Hyundai_Nexo
+            - 2020_volvo_xc90
+            - 2021_Hyundai_Genesis_GV80
+            - 2021_Volkswagen_Golf_GTI
+            - 2021_Hyundai_GV70
+            - 2023_Kia_EV6
+            - 2023_Hyundai_Ioniq5
+            - DR_KGTorres_EVX_2024
+            - 2019_Hyundai_Kona(EV)
+            - 2020_Kia_Niro(EV)
+            - 2016_Kia_Soul(EV)
+            - 2020_Kia_Soul(EV)
+          van:
+            - 2017_hyundai_solati_h350
+            - 2019_kia_sedona
+            - 2021_Kia_Carnival
+            - 2020_chrysler_pacifica_hybrid
+          truck:
+            - 2013_Hyundai_Porter2
+            - 2012_Hyundai_HD65
+            - 2013_Hyundai_Xcient(P520)
+            - 2013_Hyundai_Xcient(P540)
+            - 2014_Hyundai_Xcient(Mixer)
+          bus:
+            - 2016_Hyundai_Universe
+        lanes:
+          # The upstream mainline approach is shared until the three routes
+          # split. Stagger upstream slots by at least 30m.
+          # Choose 4/5/6 adjacent vehicles; transfer the unused slots to the
+          # other lanes upstream so the total stays 25 distinct vehicles.
+          # Offsets are relative to each original three-lane route's start.
+          # Negative offsets are upstream, away from Ego's separate on-ramp.
+          # After the fork, stagger neighbouring lanes: their map
+          # centre lines are still too close for side-by-side spawn slots.
+          # A2256W000409 is the legal left neighbour of Ego's merge link.
+          - name: merge_adjacent
+            merge_adjacent: true
+            route: [A2256W000157, A2256W000868, A2256W000168, A2256W000419, A2256W000415, A2256W000404, A2256W000406, A2256W000409, A2256W000420, A2256W000179, A2256W001105]
+            offset_origin_link: A2256W000406
+            offsets_m: [-25, -5, 15, 35, 55, 75]
+            speed_kmh: 34.0
+          - name: middle
+            # Continue beyond the mainline fork; never terminate in the barrel taper.
+            route: [A2256W000157, A2256W000868, A2256W000168, A2256W000419, A2256W000415, A2256W000404, A2256W000175, A2256W000410, A2256W000430, A2256W000434, A2256W000422, A2256W000153, A2256W000451, A2256W000446]
+            offset_origin_link: A2256W000175
+            offsets_m: [-460, -400, -340, -280, -250, -130, -55, 25, 65, 105]
+            additional_upstream_offset_m: -190
+            speed_kmh: 42.0
+          - name: left
+            route: [A2256W000157, A2256W000868, A2256W000168, A2256W000419, A2256W000415, A2256W000404, A2256W000029, A2256W000418, A2256W000431, A2256W000435, A2256W000423, A2256W000432, A2256W000427, A2256W000444]
+            offset_origin_link: A2256W000029
+            offsets_m: [-430, -370, -310, -220, -100, 5, 45, 85, 125]
+            additional_upstream_offset_m: -160
+            speed_kmh: 50.0
+
+      # Legacy fallback only (managed_traffic.enabled=false).
+      # Highway-only native SpawnPoints copied from the competition sample.
+      # competition_spawn_4 starts beside/through the roundabout, so it is
+      # intentionally excluded: roundabout traffic is owned exclusively by
+      # roundabout_npc, which owns its population and placement policy.
+      # Enum values follow scenario_enum.proto:
+      #   vehicle length 0=MINI, 1=COMPACT, 2=MIDDLE_SIZE, 3=LARGE,
+      #   parameter 2=VARIABLE,
+      #   velocity type 2=CUSTOM, lateral bias 1=FIX.
+      spawn_point_defaults: &highway_spawn_point_defaults
+        # Empty model_name on each point lets MORAI choose a model per spawn.
+        # Include every size class for mixed mainline traffic at the merge.
+        vehicle_length_types: [0, 1, 2, 3]
+        is_close_loop: false
+        is_lane_change: false
+        parameter_type: 2
+        maximum_spawn_vehicle: 4
+        pause: true
+        spawn_velocity_type: 2
+        min_spawn_velocity_custom_kmh: 0.0
+        max_spawn_velocity_custom_kmh: 0.0
+        min_spawn_velocity_link_percent: 0.0
+        max_spawn_velocity_link_percent: 10.0
+        desired_velocity_type: 2
+        min_desired_velocity_link_percent: 85.0
+        max_desired_velocity_link_percent: 100.0
+        lateral_bias_mode: 1
+        min_lateral_bias_m: 0.0
+        max_lateral_bias_m: 0.0
+
+      spawn_points:
+        - <<: *highway_spawn_point_defaults
+          name: competition_spawn_10
+          id: 10
+          destination_id: 11
+          position: {x: 73.00800323486328, y: 265.6050109863281, z: 28.34600067138672}
+          model_name: ''
+          reference_vehicle_type_id: -1
+          min_spawn_period_sec: 5.0
+          max_spawn_period_sec: 5.0
+          min_desired_velocity_custom_kmh: 60.0
+          max_desired_velocity_custom_kmh: 60.0
+          start_link: {id: A2256W000029, point_idx: 167}
+          end_link: {id: A2256W000432, point_idx: 246}
+
+        - <<: *highway_spawn_point_defaults
+          name: competition_spawn_6
+          id: 6
+          destination_id: 7
+          position: {x: 65.76899719238281, y: 309.2770080566406, z: 28.28800010681152}
+          model_name: ''
+          reference_vehicle_type_id: -1
+          min_spawn_period_sec: 5.0
+          max_spawn_period_sec: 5.0
+          min_desired_velocity_custom_kmh: 40.0
+          max_desired_velocity_custom_kmh: 40.0
+          start_link: {id: A2256W000406, point_idx: 78}
+          end_link: {id: A2256W001105, point_idx: 83}
+
+        - <<: *highway_spawn_point_defaults
+          name: competition_spawn_8
+          id: 8
+          destination_id: 9
+          position: {x: 69.322998046875, y: 309.6799926757812, z: 28.32099914550781}
+          model_name: ''
+          reference_vehicle_type_id: -1
+          min_spawn_period_sec: 5.0
+          max_spawn_period_sec: 5.0
+          min_desired_velocity_custom_kmh: 50.0
+          max_desired_velocity_custom_kmh: 50.0
+          start_link: {id: A2256W000175, point_idx: 78}
+          end_link: {id: A2256W000422, point_idx: 59}
+
+    # Tunnel pedestrian crossing scaffold. Enable after its placement and
+    # lifecycle handler have been validated in MORAI.
+    tunnel_dynamic:
+      enabled: false
+      model: Man1
+      path_id: pedestrian_walk_then_cross
+      speed_mps: 2.5
+      # Inherit speed/ETA/braking timing from dynamic_obstacle above.
+      # Add individual timing keys here to override them only for the tunnel.
+      interaction_trigger: {}
+      arrival_tolerance_m: 0.5
+      max_run_sec: 20.0
+      random_mix:
+        enabled: false
+        events_per_section: 1
+        allow_behavior_repeat: false
+        behaviors:
+          - straight_same_direction
+          - straight_opposite
+          - cross_left_to_right
+          - cross_right_to_left
+          - diagonal_cross
+        # Empty uses the same model pool as dynamic_obstacle_models above.
+        # Only models reported available by the live MORAI world are used.
+        models: []
+
+    tunnel_vehicle_dynamic:
+      enabled: false
+      behavior: vehicle_slow
+      random_behavior: false
+      # Cut-in is available only by explicit selection until its live trial is verified.
+      behaviors: [vehicle_slow, vehicle_sudden_brake, vehicle_oncoming]
+      random_model: true
+      # The surround-vehicle registry also includes drones/aerial models.
+      # Case-insensitive glob patterns apply before random or fixed model selection.
+      excluded_model_patterns:
+        # Registry placeholder rejected by live SpawnVehicle; choose concrete models.
+        - "RandomVehicle"
+        - "SE_CT797F_2009"
+        - "AR_DJ*"
+        - "*drone*"
+        - "*quadcopter*"
+        - "*quadrotor*"
+        - "*helicopter*"
+        - "*aircraft*"
+        - "*eVTOL*"
+        - "*UAM*"
+      # Uses available npc_vehicle_models; unavailable configured names fail.
+      # No actor at setup. Activate on actual Ego motion, or progress plus motion.
+      minimum_spawn_ego_speed_mps: 2.0
+      minimum_spawn_progress_m: 3.0
+      minimum_npc_speed_mps: 0.6
+      # Live NPC ActorState.velocity is km/h; command/limit values remain m/s.
+      npc_state_velocity_unit: kmh
+      slow_ego_speed_ratio: 0.6
+      encounter_gap_m: 20.0
+      encounter_exit_margin_m: 15.0
+      spawn_reaction_time_sec: 1.0
+      spawn_deceleration_mps2: 3.5
+      spawn_safety_margin_m: 3.0
+      oncoming_eta_tolerance_sec: 1.5
+      # Additional independent behaviors may coexist with the primary actor.
+      additional_behaviors: []
+      # Seeded shift along each NPC's travel direction; constrained by event space.
+      spawn_forward_offset_range_m: [0.0, 10.0]
+      initial_spawn_gap_m: 40.0
+      minimum_initial_gap_m: 30.0
+      slow_speed_mps: 4.0
+      cruise_speed_mps: 9.0
+      oncoming_speed_mps: 6.0
+      cut_in_speed_mps: 7.0
+      event_sections: [2, 3]
+      minimum_event_run_in_m: 20.0
+      pass_clearance_m: 15.0
+      spawn_position_tolerance_m: 3.0
+      lane_position_tolerance_m: 1.5
+      # Await native link metadata while still checking actual spawn/lane geometry.
+      spawn_link_timeout_sec: 2.0
+      minimum_observed_travel_m: 5.0
+      max_run_sec: 180.0
+      maximum_step_speed_mps: 40.0
+      step_slack_m: 2.0
+      cut_in_timeout_sec: 10.0
+      cut_in:
+        lookahead_m: 6.0
+        lane_change_length_m: 18.0
+        wheel_base_m: 2.7
+        max_steer_deg: 35.0
+        steer_sign: 1.0
+        minimum_trigger_gap_m: 20.0
+        maximum_trigger_gap_m: 35.0
+        emergency_gap_m: 12.0
+        target_lateral_tolerance_m: 0.6
+        target_heading_tolerance_deg: 8.0
+        target_settle_sec: 0.5
+        minimum_lateral_displacement_m: 1.5
+        minimum_handoff_travel_m: 0.5
+      cleanup_after_boundary_m: 40.0
+      cleanup_ego_clearance_m: 30.0
+      motion_startup_timeout_sec: 2.0
+      motion_startup_minimum_travel_m: 0.5
+      # Legacy gap overrides apply only to cut-in sanity checks.
+      brake_overrides: {}
+      sudden_brake:
+        # Spawn paused; release the same NPC after Ego actually approaches.
+        departure_wait_enabled: true
+        departure_trigger_gap_m: 35.0
+        departure_trigger_ttc_sec: 3.0
+        departure_minimum_approach_m: 5.0
+        departure_max_wait_sec: 45.0
+        departure_stationary_tolerance_m: 0.5
+        departure_stationary_speed_mps: 0.2
+        cruise_speed_mps: 4.0
+        follow_window_sec: 2.0
+        follow_settle_sec: 1.5
+        follow_filter_sec: 1.0
+        follow_filter_minimum_span_sec: 0.5
+        minimum_follow_filter_samples: 3
+        max_follow_gap_spread_m: 1.0
+        max_relative_speed_mps: 0.5
+        max_gap_rate_mps: 0.5
+        minimum_follow_speed_mps: 1.0
+        minimum_follow_gap_m: 8.0
+        emergency_gap_m: 8.0
+        minimum_catchup_relative_speed_mps: 0.5
+        minimum_ego_speed_drop_mps: 0.5
+        follow_gap_tolerance_m: 2.0
+        maximum_sample_interval_sec: 1.0
+        trough_speed_mps: 0.5
+        trough_speed_tolerance_mps: 0.2
+        hold_duration_sec: 8.0
+        deceleration_confirm_timeout_sec: 1.5
+        minimum_brake_speed_drop_mps: 2.0
+        minimum_deceleration_mps2: 2.0
+        # Live recovery takes about 3s to regain cruise; observe it for up to 5s.
+        resume_confirm_timeout_sec: 5.0
+        resume_minimum_travel_m: 0.5
+        resume_speed_tolerance_mps: 0.5
+        minimum_exit_clearance_m: 20.0
+        brake_space_deceleration_mps2: 2.0
+
+    tunnel_sudden_brake:
+      enabled: true
+      # The model is inherited from highway_npc.model.
+      spawn_trigger_before_entry_m: 40.0
+      spawn_offset_inside_m: 5.0
+      minimum_spawn_gap_m: 40.0
+      cruise_speed_mps: 9.0
+      approach_speed_mps: 7.0
+      brake_zone_start_fraction: 0.62
+      brake_zone_end_fraction: 0.82
+      brake_trigger_gap_m: 35.0
+      minimum_brake_gap_m: 20.0
+      reaction_max_gap_m: 40.0
+      emergency_destroy_gap_m: 8.0
+      stopped_speed_threshold_mps: 0.5
+      stop_confirm_timeout_sec: 1.0
+      stop_hold_sec: 2.0
+      ego_reaction_speed_drop: 5.0
+      resume_speed_mps: 10.0
+      despawn_after_exit_m: 100.0
+      despawn_goal_margin_m: 30.0
+      spawn_position_tolerance_m: 3.0
+      verification_report_path: .runtime/verification_reports/tunnel_sudden_brake_latest.json
+
+    npc_decision_range_m: 30.0
+
+    drive_control_mode: aimdrive_expert
+    expert_map_name: R_KR_PR_K-city_2025
+    expert_traffic_light_control: false
+    expert_is_closed_path: true
+    # Speed maximum and curvature window inherit the external Expert config.
+    expert_ros_remaps:
+      - /ctrl_cmd:=/ctrl_cmd
+    expert_arrival_stop_distance_m: 2.0
+    expert_max_cross_track_error_m: 10.0
+
+
+    route_setup_attempts: 1
+    route_debug_enabled: true
+    route_debug_dir: .runtime/debug_routes
+    max_loop_closure_error_m: 0.5
+    minimum_completion_progress_ratio: 0.95
+
+    goal_tolerance_m: 2.0
+    timeout_sec: 0.0
+    check_period_sec: 0.05
+    # Disabled for manual runs. Sensor collection enables its own simulation-
+    # time watchdog and off-route abort (run_proven_three_lap_scenario.py
+    # COLLECTION_PROGRESS_WATCHDOG) in addition to its wall-time bound.
+    progress_watchdog:
+      enabled: false
+      timeout_sec: 120.0
+      startup_grace_sec: 30.0
+      minimum_progress_m: 2.0
+    off_route_timeout_sec: 1000000000000.0
+    off_route_grace_sec: 3.0
+    max_laps: 1
+    auto_repeat: true
+    repeat_delay_sec: 2.0

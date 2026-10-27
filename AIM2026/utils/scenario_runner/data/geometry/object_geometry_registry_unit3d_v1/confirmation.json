@@ -1,0 +1,2719 @@
+{
+  "schema": "morai_static_unit_surface_evaluation_v1",
+  "profile_sha256": "12b0949b91a2d19020254c1846eb6db6a1d3e51b3b166dea714c2ba2cdd00ffc",
+  "source_report": "/home/dydwns/workspace/MoraiDrive/local_integration/morai_visual_pretraining/validation/static36_unit3d_confirmation_20260929/report.json",
+  "source_sha256": "c700fd0d2847bf472117a1982320ccf595b8ec64786ab46d8dcd740ed1d6d4d1",
+  "capture_complete": true,
+  "script_sha256": "e447063a006e67b32ef752576de891b832ea01c95cb1182f45d4a2c4fed20967",
+  "policy": {
+    "containment_margin_m": 0.1,
+    "min_points_per_view": 10,
+    "min_usable_views": 6,
+    "min_each_view_containment": 0.95,
+    "min_distances": 2,
+    "min_yaws": 4,
+    "camera_review_required": true
+  },
+  "results": [
+    {
+      "model": "BabyStroller1",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "000_static_BabyStroller1_cd35c292/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 298,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "000_static_BabyStroller1_cd35c292/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 301,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "000_static_BabyStroller1_cd35c292/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 313,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "000_static_BabyStroller1_cd35c292/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 319,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "000_static_BabyStroller1_cd35c292/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 237,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "000_static_BabyStroller1_cd35c292/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 273,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "000_static_BabyStroller1_cd35c292/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 267,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "000_static_BabyStroller1_cd35c292/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 273,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "BabyStroller2",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "001_static_BabyStroller2_611fcedb/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 296,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "001_static_BabyStroller2_611fcedb/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 295,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "001_static_BabyStroller2_611fcedb/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 322,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "001_static_BabyStroller2_611fcedb/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 301,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "001_static_BabyStroller2_611fcedb/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 234,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "001_static_BabyStroller2_611fcedb/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 254,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "001_static_BabyStroller2_611fcedb/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 250,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "001_static_BabyStroller2_611fcedb/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 258,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "BabyStroller3",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "002_static_BabyStroller3_f57e8886/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 285,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "002_static_BabyStroller3_f57e8886/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 244,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "002_static_BabyStroller3_f57e8886/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 269,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "002_static_BabyStroller3_f57e8886/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 255,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "002_static_BabyStroller3_f57e8886/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 197,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "002_static_BabyStroller3_f57e8886/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 238,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "002_static_BabyStroller3_f57e8886/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 226,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "002_static_BabyStroller3_f57e8886/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 218,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "Barbed_Wirefence",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "003_static_Barbed_Wirefence_e767b96c/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 196,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "003_static_Barbed_Wirefence_e767b96c/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 119,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "003_static_Barbed_Wirefence_e767b96c/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 127,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "003_static_Barbed_Wirefence_e767b96c/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 148,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "003_static_Barbed_Wirefence_e767b96c/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 223,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "003_static_Barbed_Wirefence_e767b96c/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 115,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "003_static_Barbed_Wirefence_e767b96c/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 177,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "003_static_Barbed_Wirefence_e767b96c/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 161,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "Bicycle_city",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "004_static_Bicycle_city_f58df5bd/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 93,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "004_static_Bicycle_city_f58df5bd/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 130,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "004_static_Bicycle_city_f58df5bd/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 88,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "004_static_Bicycle_city_f58df5bd/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 134,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "004_static_Bicycle_city_f58df5bd/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 82,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "004_static_Bicycle_city_f58df5bd/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 124,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "004_static_Bicycle_city_f58df5bd/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 95,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "004_static_Bicycle_city_f58df5bd/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 116,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "Bicycle_mountain",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "005_static_Bicycle_mountain_6107f67b/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 95,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "005_static_Bicycle_mountain_6107f67b/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 130,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "005_static_Bicycle_mountain_6107f67b/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 74,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "005_static_Bicycle_mountain_6107f67b/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 148,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "005_static_Bicycle_mountain_6107f67b/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 87,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "005_static_Bicycle_mountain_6107f67b/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 144,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "005_static_Bicycle_mountain_6107f67b/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 102,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "005_static_Bicycle_mountain_6107f67b/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 126,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "Bike1",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "006_static_Bike1_c31c2c4d/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 258,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "006_static_Bike1_c31c2c4d/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 336,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "006_static_Bike1_c31c2c4d/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 245,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "006_static_Bike1_c31c2c4d/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 316,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "006_static_Bike1_c31c2c4d/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 195,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "006_static_Bike1_c31c2c4d/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 255,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "006_static_Bike1_c31c2c4d/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 195,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "006_static_Bike1_c31c2c4d/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 242,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "Bike2",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "007_static_Bike2_ae04e46c/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 319,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "007_static_Bike2_ae04e46c/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 397,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "007_static_Bike2_ae04e46c/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 311,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "007_static_Bike2_ae04e46c/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 399,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "007_static_Bike2_ae04e46c/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 227,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "007_static_Bike2_ae04e46c/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 306,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "007_static_Bike2_ae04e46c/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 235,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "007_static_Bike2_ae04e46c/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 302,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "Bike3",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "008_static_Bike3_2504baf2/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 250,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "008_static_Bike3_2504baf2/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 387,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "008_static_Bike3_2504baf2/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 266,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "008_static_Bike3_2504baf2/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 367,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "008_static_Bike3_2504baf2/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 196,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "008_static_Bike3_2504baf2/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 290,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "008_static_Bike3_2504baf2/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 208,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "008_static_Bike3_2504baf2/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 274,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "Bollard01",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "009_static_Bollard01_53da9e6d/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 51,
+          "containment": 1.0,
+          "outside_p95_m": 0.08812947303438723
+        },
+        {
+          "directory": "009_static_Bollard01_53da9e6d/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 51,
+          "containment": 1.0,
+          "outside_p95_m": 0.08812959263774733
+        },
+        {
+          "directory": "009_static_Bollard01_53da9e6d/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 51,
+          "containment": 1.0,
+          "outside_p95_m": 0.08813024189514529
+        },
+        {
+          "directory": "009_static_Bollard01_53da9e6d/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 51,
+          "containment": 1.0,
+          "outside_p95_m": 0.08796458271489815
+        },
+        {
+          "directory": "009_static_Bollard01_53da9e6d/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 46,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "009_static_Bollard01_53da9e6d/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 46,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "009_static_Bollard01_53da9e6d/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 46,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "009_static_Bollard01_53da9e6d/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 46,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "Bollard04",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "010_static_Bollard04_7f5be219/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 51,
+          "containment": 1.0,
+          "outside_p95_m": 0.08742036338185044
+        },
+        {
+          "directory": "010_static_Bollard04_7f5be219/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 51,
+          "containment": 1.0,
+          "outside_p95_m": 0.08742232992410748
+        },
+        {
+          "directory": "010_static_Bollard04_7f5be219/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 51,
+          "containment": 1.0,
+          "outside_p95_m": 0.08741811695433166
+        },
+        {
+          "directory": "010_static_Bollard04_7f5be219/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 51,
+          "containment": 1.0,
+          "outside_p95_m": 0.08742255052121783
+        },
+        {
+          "directory": "010_static_Bollard04_7f5be219/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 46,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "010_static_Bollard04_7f5be219/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 46,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "010_static_Bollard04_7f5be219/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 46,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "010_static_Bollard04_7f5be219/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 46,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "CargoBox",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "011_static_CargoBox_657aa089/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 66,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "011_static_CargoBox_657aa089/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 66,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "011_static_CargoBox_657aa089/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 66,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "011_static_CargoBox_657aa089/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 66,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "011_static_CargoBox_657aa089/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 123,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "011_static_CargoBox_657aa089/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 123,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "011_static_CargoBox_657aa089/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 123,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "011_static_CargoBox_657aa089/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 123,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "Color_Cone",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "012_static_Color_Cone_dce1160d/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 15,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "012_static_Color_Cone_dce1160d/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 15,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "012_static_Color_Cone_dce1160d/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 15,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "012_static_Color_Cone_dce1160d/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 15,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "012_static_Color_Cone_dce1160d/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 27,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "012_static_Color_Cone_dce1160d/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 27,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "012_static_Color_Cone_dce1160d/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 27,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "012_static_Color_Cone_dce1160d/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 27,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "Concrete_Barricade01",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "013_static_Concrete_Barricade01_bf9ace82/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 421,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "013_static_Concrete_Barricade01_bf9ace82/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 197,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "013_static_Concrete_Barricade01_bf9ace82/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 421,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "013_static_Concrete_Barricade01_bf9ace82/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 198,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "013_static_Concrete_Barricade01_bf9ace82/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 426,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "013_static_Concrete_Barricade01_bf9ace82/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 213,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "013_static_Concrete_Barricade01_bf9ace82/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 425,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "013_static_Concrete_Barricade01_bf9ace82/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 212,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "Concrete_Barricade02",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "014_static_Concrete_Barricade02_731cdd4b/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 772,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "014_static_Concrete_Barricade02_731cdd4b/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 439,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "014_static_Concrete_Barricade02_731cdd4b/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 768,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "014_static_Concrete_Barricade02_731cdd4b/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 439,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "014_static_Concrete_Barricade02_731cdd4b/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 625,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "014_static_Concrete_Barricade02_731cdd4b/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 385,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "014_static_Concrete_Barricade02_731cdd4b/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 626,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "014_static_Concrete_Barricade02_731cdd4b/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 385,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "ElectricScooter1",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "015_static_ElectricScooter1_9ccd4c73/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 316,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "015_static_ElectricScooter1_9ccd4c73/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 254,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "015_static_ElectricScooter1_9ccd4c73/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 304,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "015_static_ElectricScooter1_9ccd4c73/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 257,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "015_static_ElectricScooter1_9ccd4c73/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 225,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "015_static_ElectricScooter1_9ccd4c73/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 237,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "015_static_ElectricScooter1_9ccd4c73/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 222,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "015_static_ElectricScooter1_9ccd4c73/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 234,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "ElectricScooter2",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "016_static_ElectricScooter2_0242b93a/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 316,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "016_static_ElectricScooter2_0242b93a/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 254,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "016_static_ElectricScooter2_0242b93a/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 304,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "016_static_ElectricScooter2_0242b93a/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 257,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "016_static_ElectricScooter2_0242b93a/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 225,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "016_static_ElectricScooter2_0242b93a/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 237,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "016_static_ElectricScooter2_0242b93a/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 222,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "016_static_ElectricScooter2_0242b93a/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 234,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "Lane_Separation_Bar",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "017_static_Lane_Separation_Bar_7794d309/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 14,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "017_static_Lane_Separation_Bar_7794d309/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 14,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "017_static_Lane_Separation_Bar_7794d309/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 14,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "017_static_Lane_Separation_Bar_7794d309/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 14,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "017_static_Lane_Separation_Bar_7794d309/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 12,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "017_static_Lane_Separation_Bar_7794d309/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 12,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "017_static_Lane_Separation_Bar_7794d309/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 12,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "017_static_Lane_Separation_Bar_7794d309/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 12,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "NCAP_GVT",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "018_static_NCAP_GVT_7f98eb9b/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 1538,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "018_static_NCAP_GVT_7f98eb9b/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 1789,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "018_static_NCAP_GVT_7f98eb9b/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 1273,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "018_static_NCAP_GVT_7f98eb9b/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 1835,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "018_static_NCAP_GVT_7f98eb9b/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 1250,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "018_static_NCAP_GVT_7f98eb9b/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 1508,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "018_static_NCAP_GVT_7f98eb9b/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 1091,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "018_static_NCAP_GVT_7f98eb9b/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 1514,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "PE_Drum",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "019_static_PE_Drum_0666ac86/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 97,
+          "containment": 1.0,
+          "outside_p95_m": 0.0012465285154607164
+        },
+        {
+          "directory": "019_static_PE_Drum_0666ac86/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 97,
+          "containment": 1.0,
+          "outside_p95_m": 0.0012485391457377438
+        },
+        {
+          "directory": "019_static_PE_Drum_0666ac86/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 97,
+          "containment": 1.0,
+          "outside_p95_m": 0.0012485978910001538
+        },
+        {
+          "directory": "019_static_PE_Drum_0666ac86/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 97,
+          "containment": 1.0,
+          "outside_p95_m": 0.001244775132888072
+        },
+        {
+          "directory": "019_static_PE_Drum_0666ac86/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 100,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "019_static_PE_Drum_0666ac86/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 100,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "019_static_PE_Drum_0666ac86/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 100,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "019_static_PE_Drum_0666ac86/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 100,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "PE_Firewall_Orange",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "020_static_PE_Firewall_Orange_e330fe7b/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 361,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "020_static_PE_Firewall_Orange_e330fe7b/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 206,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "020_static_PE_Firewall_Orange_e330fe7b/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 350,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "020_static_PE_Firewall_Orange_e330fe7b/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 200,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "020_static_PE_Firewall_Orange_e330fe7b/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 368,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "020_static_PE_Firewall_Orange_e330fe7b/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 214,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "020_static_PE_Firewall_Orange_e330fe7b/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 365,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "020_static_PE_Firewall_Orange_e330fe7b/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 215,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "PE_Firewall_White",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "021_static_PE_Firewall_White_e7bbba53/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 362,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "021_static_PE_Firewall_White_e7bbba53/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 206,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "021_static_PE_Firewall_White_e7bbba53/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 350,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "021_static_PE_Firewall_White_e7bbba53/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 200,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "021_static_PE_Firewall_White_e7bbba53/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 368,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "021_static_PE_Firewall_White_e7bbba53/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 214,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "021_static_PE_Firewall_White_e7bbba53/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 365,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "021_static_PE_Firewall_White_e7bbba53/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 215,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "RedBarrel",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "022_static_RedBarrel_5712fc03/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 154,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "022_static_RedBarrel_5712fc03/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 154,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "022_static_RedBarrel_5712fc03/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 154,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "022_static_RedBarrel_5712fc03/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 154,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "022_static_RedBarrel_5712fc03/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 155,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "022_static_RedBarrel_5712fc03/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 155,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "022_static_RedBarrel_5712fc03/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 155,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "022_static_RedBarrel_5712fc03/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 155,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "Rockslide",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "023_static_Rockslide_4ca572d5/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 762,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "023_static_Rockslide_4ca572d5/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 661,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "023_static_Rockslide_4ca572d5/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 729,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "023_static_Rockslide_4ca572d5/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 612,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "023_static_Rockslide_4ca572d5/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 888,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "023_static_Rockslide_4ca572d5/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 738,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "023_static_Rockslide_4ca572d5/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 872,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "023_static_Rockslide_4ca572d5/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 732,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "Rubber_Cone",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "024_static_Rubber_Cone_23b91471/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 29,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "024_static_Rubber_Cone_23b91471/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 29,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "024_static_Rubber_Cone_23b91471/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 29,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "024_static_Rubber_Cone_23b91471/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 29,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "024_static_Rubber_Cone_23b91471/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 43,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "024_static_Rubber_Cone_23b91471/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 43,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "024_static_Rubber_Cone_23b91471/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 43,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "024_static_Rubber_Cone_23b91471/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 43,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "Scooter1",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "025_static_Scooter1_4e595992/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 564,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "025_static_Scooter1_4e595992/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 814,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "025_static_Scooter1_4e595992/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 590,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "025_static_Scooter1_4e595992/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 800,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "025_static_Scooter1_4e595992/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 453,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "025_static_Scooter1_4e595992/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 664,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "025_static_Scooter1_4e595992/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 453,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "025_static_Scooter1_4e595992/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 679,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "Scooter2",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "026_static_Scooter2_91aad0e3/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 310,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "026_static_Scooter2_91aad0e3/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 427,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "026_static_Scooter2_91aad0e3/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 294,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "026_static_Scooter2_91aad0e3/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 433,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "026_static_Scooter2_91aad0e3/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 259,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "026_static_Scooter2_91aad0e3/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 384,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "026_static_Scooter2_91aad0e3/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 240,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "026_static_Scooter2_91aad0e3/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 412,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "Scooter_02",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "027_static_Scooter_02_523b8588/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 165,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "027_static_Scooter_02_523b8588/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 246,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "027_static_Scooter_02_523b8588/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 191,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "027_static_Scooter_02_523b8588/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 282,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "027_static_Scooter_02_523b8588/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 145,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "027_static_Scooter_02_523b8588/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 294,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "027_static_Scooter_02_523b8588/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 232,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "027_static_Scooter_02_523b8588/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 258,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "SportBike",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "028_static_SportBike_5f7f925a/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 435,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "028_static_SportBike_5f7f925a/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 633,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "028_static_SportBike_5f7f925a/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 441,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "028_static_SportBike_5f7f925a/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 643,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "028_static_SportBike_5f7f925a/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 333,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "028_static_SportBike_5f7f925a/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 543,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "028_static_SportBike_5f7f925a/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 348,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "028_static_SportBike_5f7f925a/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 518,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "Sportbike_01",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "029_static_Sportbike_01_c9e23727/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 279,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "029_static_Sportbike_01_c9e23727/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 501,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "029_static_Sportbike_01_c9e23727/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 365,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "029_static_Sportbike_01_c9e23727/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 491,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "029_static_Sportbike_01_c9e23727/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 197,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "029_static_Sportbike_01_c9e23727/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 484,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "029_static_Sportbike_01_c9e23727/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 311,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "029_static_Sportbike_01_c9e23727/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 356,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "Steel_Barricade",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "030_static_Steel_Barricade_afee6e47/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 219,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "030_static_Steel_Barricade_afee6e47/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 205,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "030_static_Steel_Barricade_afee6e47/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 227,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "030_static_Steel_Barricade_afee6e47/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 200,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "030_static_Steel_Barricade_afee6e47/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 212,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "030_static_Steel_Barricade_afee6e47/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 178,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "030_static_Steel_Barricade_afee6e47/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 240,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "030_static_Steel_Barricade_afee6e47/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 178,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "TrafficBarrel",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "031_static_TrafficBarrel_5bef85ef/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 120,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "031_static_TrafficBarrel_5bef85ef/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 121,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "031_static_TrafficBarrel_5bef85ef/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 120,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "031_static_TrafficBarrel_5bef85ef/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 121,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "031_static_TrafficBarrel_5bef85ef/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 114,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "031_static_TrafficBarrel_5bef85ef/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 122,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "031_static_TrafficBarrel_5bef85ef/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 114,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "031_static_TrafficBarrel_5bef85ef/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 122,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "WoodBox",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "032_static_WoodBox_4d9bada7/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 672,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "032_static_WoodBox_4d9bada7/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 672,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "032_static_WoodBox_4d9bada7/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 672,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "032_static_WoodBox_4d9bada7/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 672,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "032_static_WoodBox_4d9bada7/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 592,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "032_static_WoodBox_4d9bada7/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 592,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "032_static_WoodBox_4d9bada7/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 592,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "032_static_WoodBox_4d9bada7/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 592,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "YellowBarrel",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "033_static_YellowBarrel_680357fa/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 154,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "033_static_YellowBarrel_680357fa/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 154,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "033_static_YellowBarrel_680357fa/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 154,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "033_static_YellowBarrel_680357fa/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 154,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "033_static_YellowBarrel_680357fa/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 155,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "033_static_YellowBarrel_680357fa/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 155,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "033_static_YellowBarrel_680357fa/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 155,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "033_static_YellowBarrel_680357fa/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 155,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "concrete-barrier",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "034_static_concrete-barrier_6b730866/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 642,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "034_static_concrete-barrier_6b730866/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 285,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "034_static_concrete-barrier_6b730866/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 661,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "034_static_concrete-barrier_6b730866/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 269,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "034_static_concrete-barrier_6b730866/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 658,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "034_static_concrete-barrier_6b730866/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 322,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "034_static_concrete-barrier_6b730866/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 671,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "034_static_concrete-barrier_6b730866/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 311,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    },
+    {
+      "model": "obj_obstacle_dog",
+      "lidar_pass": true,
+      "usable_views": 8,
+      "total_views": 8,
+      "min_containment": 1.0,
+      "metrics": [
+        {
+          "directory": "035_static_obj_obstacle_dog_4485692a/d0500_l+0000_v0",
+          "distance_m": 5.0,
+          "view": 0,
+          "points": 33,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "035_static_obj_obstacle_dog_4485692a/d0500_l+0000_v1",
+          "distance_m": 5.0,
+          "view": 1,
+          "points": 31,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "035_static_obj_obstacle_dog_4485692a/d0500_l+0000_v2",
+          "distance_m": 5.0,
+          "view": 2,
+          "points": 27,
+          "containment": 1.0,
+          "outside_p95_m": 0.0045021249092909565
+        },
+        {
+          "directory": "035_static_obj_obstacle_dog_4485692a/d0500_l+0000_v3",
+          "distance_m": 5.0,
+          "view": 3,
+          "points": 35,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "035_static_obj_obstacle_dog_4485692a/d0600_l+0000_v0",
+          "distance_m": 6.0,
+          "view": 0,
+          "points": 41,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "035_static_obj_obstacle_dog_4485692a/d0600_l+0000_v1",
+          "distance_m": 6.0,
+          "view": 1,
+          "points": 45,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "035_static_obj_obstacle_dog_4485692a/d0600_l+0000_v2",
+          "distance_m": 6.0,
+          "view": 2,
+          "points": 36,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        },
+        {
+          "directory": "035_static_obj_obstacle_dog_4485692a/d0600_l+0000_v3",
+          "distance_m": 6.0,
+          "view": 3,
+          "points": 49,
+          "containment": 1.0,
+          "outside_p95_m": 0.0
+        }
+      ],
+      "camera_review": "pending",
+      "approved": false
+    }
+  ]
+}

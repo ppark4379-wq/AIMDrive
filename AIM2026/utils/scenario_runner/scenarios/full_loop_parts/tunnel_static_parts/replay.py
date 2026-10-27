@@ -1,0 +1,619 @@
+"""Seeded balanced selection from strictly verified tunnel trial evidence.
+
+The default action writes a selection manifest and never imports ROS or the
+simulator SDK.  Live replay regenerates the production Expert path from saved
+obstacle poses through the existing fresh-measurement, guarded trial workflow.
+Historical compatibility is useful for deduplication; it is not replay approval.
+Saved runtime and screening source hashes remain sealed. Only explicitly
+reviewed preparation changes may retain historical eligibility; every replay
+still repeats measurement, stationary checks and the production Expert guards.
+"""
+
+import argparse
+from collections import Counter
+import csv
+import hashlib
+import json
+import math
+from pathlib import Path
+import random
+
+from . import diversity, screening
+from .layout import normalize_footprint, tunnel_geometry
+from ....utils.map_loader import MGeoMapLoader
+from .runtime import atomic_json
+from scenario_runner.project_paths import GEOMETRY_ROOT, evidence_path
+from .source_compatibility import runtime_source_compatibility, reviewed_main_screening_transition
+from ....adapters.expert_controller import validate_max_velocity_kmh
+
+
+PACKAGE_ROOT = Path(__file__).resolve().parents[3]
+PROJECT_ROOT = PACKAGE_ROOT.parent
+SCHEMA = "aimdrive_tunnel_static_replay_selection_v1"
+LIBRARY_SCHEMA = "aimdrive_tunnel_static_measured_approvals_v1"
+COUNT_WEIGHTS = {1:0.30, 2:0.40, 3:0.30}
+LIVE_PREPARATION_SOURCE = "scenario_runner/scenarios/full_loop_parts/tunnel_static_parts/live.py"
+# Exact reviewed upgrade: initial registration polling with the same spawn
+# request, bounded RPC deadlines and transform-lock attempts 3 -> 8. Shape,
+# object stationarity, identity, road/body policy and planner guards are unchanged.
+# The common-start opt-in adds an Ego-only AUTO/D full-brake hold; the default
+# legacy P hold and object preparation/registration checks remain unchanged.
+# Initial pose/rotation readback differences now get bounded fresh queries;
+# frozen checks keep the exact limits, and later NPC reads reuse the pinned-ID
+# proof with the same narrowly recognised unsupported-getter fallback.
+# Unlisted hashes fail closed; historical evidence is never rewritten.
+REVIEWED_LIVE_PREPARATION_TRANSITIONS = {
+    ("c36eabf578c319e7a7a1d1cfbee045abffbacdf3e8a9a45d1e6bdcee6e9cc82a",
+     "2ea792572e19af69102684bb886b1eca55822b32728e8eebb6875dfd89253542"):
+        ("bounded_same_request_spawn_registration_readback",
+         "strict_owned_identity_resolution_before_motion",
+         "initial_static_transform_lock_attempts_3_to_8",
+         "opt_in_ego_common_auto_d_full_brake_hold_with_measured_pose_checks",
+         "verified_raw_id_delete_and_original_fixture_namespace_cleanup_with_bounded_absence_and_foreign_preservation",
+         "separate_global_lookup_address_from_creating_namespace_with_unique_initial_handler_lookup_fallback",
+         "bounded_initial_pose_rotation_body_readback_without_relaxing_frozen_identity_or_shape_limits",
+         "unified_pinned_global_npc_validation_with_same_recognised_getter_fallback_and_failure_snapshots"),
+}
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--library", required=True, type=Path)
+    parser.add_argument("--seed", required=True, type=int)
+    parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--history", type=Path, help="Read-only JSON list of prior selection manifests")
+    parser.add_argument("--model-acceptance", type=Path, help="Current hash-bound 64-model acceptance if absent from library metadata")
+    parser.add_argument("--runtime-catalog", type=Path, help="Current native footprint catalog if absent from library metadata")
+    parser.add_argument("--mgeo-root", type=Path, default=PACKAGE_ROOT/"data/R_KR_PR_K-city_2025")
+    parser.add_argument("--live", action="store_true", help="Run one fresh guarded replay with scene restoration")
+    parser.add_argument("--time-budget", type=float, default=15.)
+    parser.add_argument("--hold-seconds", type=float, default=5.)
+    parser.add_argument("--expert-max-velocity-kmh", type=float, default=None,
+                        help="Optional override; omitted inherits the current original Expert speed")
+    parser.add_argument("--trial-timeout", type=float, default=240.)
+    return parser
+
+
+def digest(path):
+    return hashlib.sha256(evidence_path(path).read_bytes()).hexdigest()
+
+
+def _read(path, expected=None):
+    path = evidence_path(path)
+    raw = path.read_bytes()
+    actual = hashlib.sha256(raw).hexdigest()
+    if expected is not None and actual != expected:
+        raise ValueError("Evidence SHA256 mismatch: " + str(path))
+    return json.loads(raw), actual
+
+
+def _resolve(path, base):
+    return evidence_path(path, base).resolve()
+
+
+def current_runtime_sources():
+    """The exact eight files recorded by production TrialContext, read only."""
+    files = [PACKAGE_ROOT/"scenarios/segment_modes/tunnel_static_trial.py",
+             PACKAGE_ROOT/"adapters/expert_process.py", PACKAGE_ROOT/"adapters/expert_controller.py",
+             PACKAGE_ROOT/"core/full_loop_drive_base.py", PACKAGE_ROOT/"scenarios/segment_modes/scenario.py",
+             PACKAGE_ROOT/"scenarios/segment_modes/expert.py", PACKAGE_ROOT/"scenarios/segment_modes/tunnel_static_startup.py",
+             PROJECT_ROOT/"scenario_runner/legacy_expert/ros/ros_manager.py"]
+    return {str(path.resolve()):digest(path) for path in files}
+
+
+def _lane(row):
+    points = []
+    width = min(float(row["width_start"]),float(row["width_end"]))
+    if not math.isfinite(width) or width <= 0:
+        raise ValueError("Invalid current mapped road width")
+    for point in row["points"]:
+        if len(point) < 2 or any(not math.isfinite(float(value)) for value in point):
+            raise ValueError("Invalid current mapped road points")
+        xy = [float(point[0]),float(point[1])]
+        if not points or math.dist(xy,points[-1][:2]) > 1e-7:
+            points.append(xy+[width])
+    if len(points) < 2:
+        raise ValueError("Current mapped link has no length")
+    return points
+
+
+def _connected_ids(links, identity, before, after):
+    """Mirror immutable RoadBoundary's connected-link choice without imports."""
+    used = {identity}
+    for backwards, required in ((True,before),(False,after)):
+        current = links[identity]
+        remaining = required
+        while remaining > 1e-7:
+            points = _lane(current)
+            node = current.get("from_node_idx" if backwards else "to_node_idx")
+            if node is None:
+                raise ValueError("Current mapped road extension lacks a connected node")
+            a,b = (points[:2] if backwards else points[-2:])
+            dx,dy = b[0]-a[0],b[1]-a[1]
+            span = math.hypot(dx,dy)
+            tangent = dx/span,dy/span
+            choices = []
+            anchor = points[0] if backwards else points[-1]
+            for name,row in links.items():
+                if name in used or row.get("to_node_idx" if backwards else "from_node_idx") != node:
+                    continue
+                candidate = _lane(row)
+                a,b = candidate[-2:] if backwards else candidate[:2]
+                dx,dy = b[0]-a[0],b[1]-a[1]
+                span = math.hypot(dx,dy)
+                alignment = tangent[0]*dx/span+tangent[1]*dy/span
+                endpoint = candidate[-1] if backwards else candidate[0]
+                if alignment > .5 and math.dist(endpoint[:2],anchor[:2]) < .1:
+                    choices.append((-alignment,name,row,candidate))
+            if not choices:
+                raise ValueError("Current mapped road has insufficient connected extension")
+            _,name,current,candidate = min(choices,key=lambda item:(item[0],item[1]))
+            used.add(name)
+            remaining -= sum(math.dist(a[:2],b[:2]) for a,b in zip(candidate,candidate[1:]))
+    return used
+
+
+def current_road_geometry_sha256(links, policy):
+    used = (_connected_ids(links,policy["ego_link"],float(policy["approach_m"]),float(policy["departure_m"])) |
+            _connected_ids(links,policy["opposing_link"],float(policy["departure_m"]),float(policy["approach_m"])))
+    geometry = [{"idx":name, "from_node_idx":links[name].get("from_node_idx"),
+                 "to_node_idx":links[name].get("to_node_idx"), "points":_lane(links[name])} for name in sorted(used)]
+    if sorted(used) != policy.get("connected_link_ids"):
+        raise ValueError("Current connected road links changed")
+    return diversity._hash(geometry)
+
+
+def _road_body_compatible(screen, drive, planner, links):
+    policy = screen["road_boundary_policy"]
+    saved_hash = screen["road_boundary_policy_sha256"]
+    if (diversity._hash(policy) != saved_hash or drive.get("road_boundary_policy") != policy
+            or drive.get("road_boundary_policy_sha256") != saved_hash
+            or planner.get("road_boundary_policy_sha256") != saved_hash):
+        raise ValueError("Road/body proof hashes disagree")
+    expected = screening.POLICY
+    fixed = {"schema":"aimdrive_tunnel_road_boundary_v1", "ego_link":"A2256W000126", "opposing_link":"A2256W000131",
+             "basis":"nominal_mgeo_connected_lane_outer_edges", "physical_walls_verified":False,
+             "nominal_tunnel_width_m":7., "approach_m":expected["road_boundary_approach_m"],
+             "departure_m":expected["road_boundary_departure_m"], "static_collision_margin_m":.5,
+             "static_tracking_margin_m":.1, "moving_collision_margin_m":.25,
+             "planning_road_margin_m":expected["planning_tunnel_body_road_margin_m"],
+             "runtime_road_margin_m":expected["full_body_road_margin_m"],
+             "planning_margin_domain":"mapped_tunnel_pose_stations",
+             "baseline_approach_return_road_margin_m":expected["full_body_road_margin_m"], "tracking_reserve_m":.15}
+    if any(policy.get(key) != value for key,value in fixed.items()):
+        raise ValueError("Current road/body policy differs")
+    intrinsic = screen["ego_body_input"]
+    if (screen.get("ego_body_projection_schema") != expected["ego_body_projection_schema"]
+            or not all(key in intrinsic for key in ("height_m","center_actor_flu_m","max_abs_roll_pitch_deg"))):
+        raise ValueError("Current 3D Ego body projection proof missing")
+    body = screening._body_input(intrinsic)
+    if any(abs(body[key]-float(policy["body"][key])) > 1e-6 for key in body):
+        raise ValueError("Stored Ego body projection disagrees with current policy")
+    if policy.get("planner_model") != {"rear_m":0.,"front_m":4.64,"width_m":max(2.17,body["width_m"])}:
+        raise ValueError("Current planner body policy differs")
+    if current_road_geometry_sha256(links,policy) != policy["source_sha256"]:
+        raise ValueError("Current mapped connected road geometry changed")
+
+
+def _trace(path):
+    points, first_time, previous_time = [], None, None
+    with evidence_path(path).open(encoding="utf-8",newline="") as stream:
+        for row in csv.DictReader(stream):
+            x,y = float(row["x"]),float(row["y"])
+            elapsed = float(row["elapsed_s"])
+            speed = float(row.get("speed",0.))
+            if any(not math.isfinite(v) for v in (x,y,elapsed,speed)) or elapsed < 0 or (previous_time is not None and elapsed < previous_time):
+                raise ValueError("Actual trace contains nonfinite or reversed samples")
+            previous_time = elapsed
+            first_time = elapsed if first_time is None else first_time
+            points.append([x,y])
+    if len(points) < 3 or max((math.dist(points[0],point) for point in points),default=0.) < .5:
+        raise ValueError("Actual physical drive evidence missing")
+    return points
+
+
+def _pre_main_screen_compatibility(screen, current, *, allow_layout_preparation_change=True):
+    historical = False
+    live_transition = None
+    preparation = "scenario_runner/scenarios/full_loop_parts/tunnel_static_parts/layout.py"
+    for key,value in current.items():
+        if key != "planner_source_sha256":
+            if screen.get(key) != value:
+                raise ValueError("Screening sources or policy changed; historical dedup evidence only")
+            continue
+        old = screen.get(key,{})
+        if set(old) != set(value):
+            raise ValueError("Screening source identities changed")
+        differences = {name for name in value if old[name] != value[name]}
+        allowed = {preparation} if allow_layout_preparation_change else set()
+        if LIVE_PREPARATION_SOURCE in differences:
+            transition = old[LIVE_PREPARATION_SOURCE],value[LIVE_PREPARATION_SOURCE]
+            reviewed = REVIEWED_LIVE_PREPARATION_TRANSITIONS.get(transition)
+            if reviewed is not None:
+                allowed.add(LIVE_PREPARATION_SOURCE)
+                live_transition = {"source":LIVE_PREPARATION_SOURCE,
+                                   "original_sha256":transition[0],"current_sha256":transition[1],
+                                   "reviewed_changes":list(reviewed),
+                                   "historical_evidence_rewritten":False,
+                                   "fresh_guarded_replay_required":True}
+        if differences-allowed:
+            raise ValueError("Expert/live/screening source changed; no replay eligibility")
+        historical = bool(differences)
+    return {"historical_screening_provenance":historical,
+            "preparation_layout_source_hashes":{"original":screen.get("planner_source_sha256",{}).get(preparation),
+                                                "current":current.get("planner_source_sha256",{}).get(preparation)},
+            "reviewed_live_preparation_transition":live_transition}
+
+
+
+def _screen_compatibility(screen, current, *, allow_layout_preparation_change=True):
+    if all(screen.get(key) == value for key, value in current.items()):
+        return _pre_main_screen_compatibility(screen, current,
+            allow_layout_preparation_change=allow_layout_preparation_change)
+    main_transition = reviewed_main_screening_transition(current)
+    if main_transition is None:
+        return _pre_main_screen_compatibility(screen, current,
+            allow_layout_preparation_change=allow_layout_preparation_change)
+    historical = _pre_main_screen_compatibility(screen,
+        main_transition["previous_screening_provenance"],
+        allow_layout_preparation_change=allow_layout_preparation_change)
+    return dict(historical, historical_screening_provenance=True,
+                reviewed_main_screening_transition={key:value for key,value in main_transition.items()
+                    if key != "previous_screening_provenance"})
+
+
+def verify_model_acceptance(acceptance_path, runtime_path, geometry, provenance, *, expected_count=64):
+    """Use current native footprint loaders and hash-bound parked preview proofs.
+
+    This is the read-only part of accepted_model_pools; keeping it here avoids
+    importing the simulator-facing verification CLI in manifest-only mode.
+    """
+    from . import catalog
+    acceptance_path,runtime_path = evidence_path(acceptance_path).resolve(),evidence_path(runtime_path).resolve()
+    acceptance,acceptance_hash = _read(acceptance_path)
+    runtime,runtime_hash = _read(runtime_path)
+    if (acceptance.get("schema") != "aimdrive_tunnel_model_acceptance_v1"
+            or acceptance.get("map") != "R_KR_PR_K-city_2025"
+            or acceptance.get("source_geometry_sha256") != geometry["source_sha256"]):
+        raise ValueError("Current model acceptance has incompatible map proof")
+    statics = catalog.load_static_models(runtime_catalog_path=runtime_path)
+    vehicles = catalog.load_vehicle_models(runtime_catalog_path=runtime_path)
+    pools = {"obstacle":statics,"vehicle":vehicles}
+    contracts,pins = {},{str(acceptance_path):acceptance_hash,str(runtime_path):runtime_hash,
+                         str(Path(__file__).resolve()):digest(__file__)}
+    compatibility_records = []
+    for entry in acceptance.get("models",[]):
+        identity = entry.get("actor_kind"),entry.get("model")
+        profile = pools.get(identity[0],{}).get(identity[1])
+        if (profile is None or identity in contracts or entry.get("accepted") is not True
+                or entry.get("scale") != [1.,1.,1.] or entry.get("geometry_source") != profile.get("geometry_source")):
+            raise ValueError("Current native model acceptance/profile mismatch: "+str(identity))
+        preview_path = _resolve(entry["preview_path"],acceptance_path.parent)
+        preview,sha = _read(preview_path,entry["preview_sha256"])
+        pins[str(preview_path)] = sha
+        screen = preview.get("measured_route_screen",{})
+        try:
+            compatibility = _screen_compatibility(screen,provenance,allow_layout_preparation_change=False)
+        except ValueError as error:
+            raise ValueError("Current parked native model proof incomplete: "+str(identity)) from error
+        planned,observed = preview.get("planned",{}).get("obstacles",[]),preview.get("observed",[])
+        if (preview.get("status") != "valid_preview" or preview.get("cleanup",{}).get("verified") is not True
+                or float(preview.get("hold_seconds",0)) < 5. or float(preview.get("stationary_observed_seconds",0)) < 5.
+                or preview.get("route_screened") is not True or screen.get("path_found") is not True
+                or screen.get("geometry_checks",{}).get("passed") is not True or len(planned) != 1 or len(observed) != 1
+                or (planned[0].get("actor_kind"),planned[0].get("model")) != identity
+                or (observed[0].get("actor_kind"),observed[0].get("model")) != identity
+                or planned[0].get("scale") != [1.,1.,1.]
+                or planned[0].get("geometry_source") != profile.get("geometry_source")
+                or preview.get("planned",{}).get("source_geometry",{}).get("sha256") != geometry["source_sha256"]
+                or preview.get("expert_verified") is not False or preview.get("live_avoidance_verified") is not False
+                or normalize_footprint(planned[0]["planned_bbox"]) != normalize_footprint(profile)):
+            raise ValueError("Current parked native model proof incomplete: "+str(identity))
+        contracts[identity] = profile
+        if compatibility["reviewed_live_preparation_transition"] is not None:
+            compatibility_records.append({"actor_kind":identity[0],"model":identity[1],
+                                          **compatibility["reviewed_live_preparation_transition"]})
+    if len(contracts) != expected_count:
+        raise ValueError("Current acceptance must verify all "+str(expected_count)+" native models")
+    for row in runtime.get("models",[]):
+        if (row.get("actor_kind"),row.get("model")) in contracts:
+            path = _resolve(row["measurement_path"],runtime_path.parent)
+            if digest(path) != row["measurement_sha256"]:
+                raise ValueError("Current native runtime measurement hash changed")
+            pins[str(path)] = row["measurement_sha256"]
+    for path in [catalog.DEFAULT_STATIC_CATALOG,*catalog.DEFAULT_VEHICLE_REGISTRY.parent.glob("*.json"),
+                 *(GEOMETRY_ROOT/"object_geometry_registry_unit3d_v1").glob("*.json")]:
+        pins[str(path.resolve())] = digest(path)
+    return {"contracts":contracts,"file_sha256":pins,"accepted_model_count":len(contracts),
+            "acceptance_path":str(acceptance_path),"acceptance_sha256":acceptance_hash,
+            "runtime_catalog_path":str(runtime_path),"runtime_catalog_sha256":runtime_hash,
+            "reviewed_live_preparation_transitions":compatibility_records}
+
+
+def verify_library(library_path, geometry, links, *, provenance=None, runtime_sources=None,
+                   road_body_check=None, model_acceptance_path=None, runtime_catalog_path=None,
+                   model_gate=None):
+    """Read and verify eligible rows. Incompatible evidence is excluded with reasons.
+
+    Exact runtime and screening sources must match, apart from the layout
+    preparation exception and an exact reviewed live-preparation hash pair.
+    These retain historical provenance and always need fresh guarded replay.
+    """
+    library_path = evidence_path(library_path).resolve()
+    library, library_hash = _read(library_path)
+    if not isinstance(library,dict) or library.get("schema") != LIBRARY_SCHEMA or not isinstance(library.get("candidates"),list):
+        raise ValueError("Unsupported approved trial library")
+    provenance = provenance if provenance is not None else screening.screening_provenance()
+    runtime_sources = runtime_sources if runtime_sources is not None else current_runtime_sources()
+    acceptance_meta,runtime_meta = library.get("model_acceptance",{}),library.get("runtime_catalog",{})
+    acceptance_path = model_acceptance_path or acceptance_meta.get("path")
+    runtime_path = runtime_catalog_path or runtime_meta.get("path")
+    if model_gate is None:
+        if not acceptance_path or not runtime_path:
+            raise ValueError("Current hash-bound 64-model acceptance and native runtime catalog are required")
+        acceptance_path,runtime_path = _resolve(acceptance_path,library_path.parent),_resolve(runtime_path,library_path.parent)
+        if acceptance_meta.get("sha256") and digest(acceptance_path) != acceptance_meta["sha256"]:
+            raise ValueError("Current model acceptance hash differs from library pin")
+        if runtime_meta.get("sha256") and digest(runtime_path) != runtime_meta["sha256"]:
+            raise ValueError("Current native runtime catalog hash differs from library pin")
+        model_gate = verify_model_acceptance(acceptance_path,runtime_path,geometry,provenance)
+    eligible, rejected, seen_layouts = [], [], set()
+    for index,row in enumerate(library["candidates"]):
+        identity = str(row.get("candidate_sha256",index))
+        try:
+            paths, hashes, documents = {}, {}, {}
+            for name in ("candidate","preview_report","drive_report","ego_trace"):
+                expected = row.get(name+"_sha256")
+                if not isinstance(expected,str) or len(expected) != 64:
+                    raise ValueError("Missing sealed "+name+" SHA256")
+                path = _resolve(row[name+"_path"],library_path.parent)
+                paths[name] = str(path)
+                hashes[name] = digest(path)
+                if hashes[name] != expected:
+                    raise ValueError("Evidence SHA256 mismatch: "+name)
+                if name != "ego_trace":
+                    documents[name],_ = _read(path,expected)
+            directory = Path(paths["drive_report"]).parent
+            for name,filename in (("trial_manifest","manifest.json"),("planner_diagnostics","planner_diagnostics.json")):
+                path = _resolve(row.get(name+"_path",directory/filename),library_path.parent)
+                documents[name],hashes[name] = _read(path,row.get(name+"_sha256"))
+                paths[name] = str(path)
+            candidate,preview,drive = (documents[key] for key in ("candidate","preview_report","drive_report"))
+            manifest,planner = documents["trial_manifest"],documents["planner_diagnostics"]
+            conditions = drive.get("completion_conditions",{})
+            if not (drive.get("status") == "passed" and all(drive.get(key) is True for key in diversity.STRICT_FLAGS)
+                    and all(conditions.get(key) is True for key in diversity.STRICT_CONDITIONS)
+                    and all(value is True for value in conditions.values())
+                    and not drive.get("failed_completion_conditions") and not drive.get("collision_objects")
+                    and manifest.get("status") == "passed" and manifest.get("expert_verified") is True
+                    and manifest.get("live_avoidance_verified") is True
+                    and manifest.get("fixture_result",{}).get("status") == "valid_driving_trial"
+                    and manifest.get("fixture_result",{}).get("cleanup",{}).get("verified") is True
+                    and preview.get("status") == "valid_driving_trial" and preview.get("cleanup",{}).get("verified") is True
+                    and row.get("fixture_cleanup_verified") is True and row.get("recovery_verified") is True
+                    and planner.get("validated_path_seen") is True and int(planner.get("calls",0)) > 0):
+                raise ValueError("Strict actual completed trial proof missing")
+            screen = preview.get("measured_route_screen",{})
+            if (screen.get("status") != "nominal_path_found" or screen.get("path_found") is not True
+                    or screen.get("geometry_checks",{}).get("passed") is not True):
+                raise ValueError("Successful measured production screening proof missing")
+            screening_compatibility = _screen_compatibility(screen,provenance)
+            saved_runtime = drive.get("runtime_source_sha256",{})
+            runtime_compatibility = runtime_source_compatibility(saved_runtime, runtime_sources)
+            if candidate.get("source_geometry",{}).get("sha256") != geometry.get("source_sha256"):
+                raise ValueError("Current mapped tunnel geometry changed")
+            (road_body_check or _road_body_compatible)(screen,drive,planner,links)
+            actual = diversity.path_features(_trace(paths["ego_trace"]),geometry,evidence_kind="completed_actual_trace")
+            sealed_actual = diversity.path_features([point["position_xyz"] for point in drive.get("trajectory",[])],geometry,
+                                                    evidence_kind="completed_actual_trace")
+            if diversity.compare_paths(actual,sealed_actual)["duplicate"] is not True:
+                raise ValueError("Actual trace differs from sealed completed drive trajectory")
+            layout = diversity.layout_fingerprint(candidate)
+            if layout in seen_layouts:
+                raise ValueError("Exact approved layout duplicated in library")
+            count = candidate.get("count")
+            if isinstance(count,bool) or count not in (1,2,3) or count != len(candidate.get("obstacles",[])):
+                raise ValueError("Approved obstacle count must be 1–3")
+            for obstacle in candidate["obstacles"]:
+                profile = model_gate["contracts"].get((obstacle.get("actor_kind"),obstacle.get("model")))
+                if (profile is None or obstacle.get("scale") != [1.,1.,1.]
+                        or obstacle.get("geometry_source") != profile.get("geometry_source")
+                        or normalize_footprint(obstacle["planned_bbox"]) != normalize_footprint(profile)):
+                    raise ValueError("Saved obstacle differs from current accepted native footprint/unit-yaw proof")
+            stations = [float(obstacle["station_m"]) for obstacle in candidate["obstacles"]]
+            if any(not math.isfinite(station) or not 0 <= station <= geometry["length_m"] for station in stations):
+                raise ValueError("Approved obstacle station lies outside mapped tunnel")
+            third = min(2,int(sum(stations)/len(stations)/geometry["length_m"]*3))
+            kinds = {obstacle["actor_kind"] for obstacle in candidate["obstacles"]}
+            kind = "mixed" if kinds == {"obstacle","vehicle"} else next(iter(kinds)) if len(kinds) == 1 else None
+            if kind not in ("mixed","obstacle","vehicle"):
+                raise ValueError("Unknown approved actor kind")
+            seen_layouts.add(layout)
+            eligible.append({"id":identity,"candidate":candidate,"paths":paths,"file_sha256":hashes,
+                "layout_fingerprint_sha256":layout,"actual_features":actual,
+                "strata":{"count":count,"longitudinal_third":third,"actor_kind":kind,"actual_behavior":actual["realized_pattern"]},
+                "evidence_status":"historical_strict_actual_pass_preparation_changed" if screening_compatibility["historical_screening_provenance"] else "strict_actual_pass_with_current_source_hashes",
+                "replay_requires_fresh_measurement":True,**screening_compatibility,**runtime_compatibility})
+        except (OSError,ValueError,TypeError,KeyError,OverflowError,IndexError) as error:
+            rejected.append({"id":identity,"reason":str(error)})
+    eligible.sort(key=lambda row:row["id"])
+    return {"schema":SCHEMA,"library_path":str(library_path),"library_sha256":library_hash,
+            "eligible":eligible,"rejected":rejected,"eligible_count":len(eligible),"rejected_count":len(rejected),
+            "current_provenance":provenance,"current_runtime_sources":runtime_sources,
+            "current_model_acceptance":{key:value for key,value in model_gate.items() if key != "contracts"}}
+
+
+def read_history(path):
+    if path is None:
+        return [],None
+    document,sha = _read(path)
+    rows = document if isinstance(document,list) else document.get("selections") if isinstance(document,dict) else None
+    if not isinstance(rows,list) or any(not isinstance(row,dict) or row.get("schema") != SCHEMA or "selected" not in row for row in rows):
+        raise ValueError("History must contain prior replay selection manifests")
+    for row in rows:
+        selected = row["selected"]
+        strata = selected.get("strata",{}) if isinstance(selected,dict) else {}
+        if (not isinstance(selected,dict) or not isinstance(selected.get("id"),str)
+                or strata.get("count") not in (1,2,3) or strata.get("longitudinal_third") not in (0,1,2)
+                or strata.get("actor_kind") not in ("obstacle","vehicle","mixed")
+                or not isinstance(strata.get("actual_behavior"),str)):
+            raise ValueError("History selection is missing validated strata")
+    return rows,sha
+
+
+def balanced_choice(eligible, seed, history=()):
+    """Seeded hierarchical strata sampling avoids large-group dominance.
+
+    Count targets are 30/40/30. Other available dimensions are uniform without
+    history; with history the least-used branches and records get priority.
+    Branches are chosen before records, so a pool's group sizes do not provide
+    extra tickets. Input ordering never changes a seeded choice.
+    """
+    if isinstance(seed,bool) or not isinstance(seed,int):
+        raise ValueError("seed must be an integer")
+    if not eligible:
+        raise ValueError("No strictly verified current-source library candidates are eligible")
+    rng = random.Random(seed)
+    pool = sorted(eligible,key=lambda row:row["id"])
+    decisions = []
+    for dimension in ("count","longitudinal_third","actor_kind","actual_behavior"):
+        choices = sorted({row["strata"][dimension] for row in pool})
+        frequencies = Counter(item["selected"]["strata"][dimension] for item in history)
+        if dimension == "count":
+            scores = {value:frequencies[value]/COUNT_WEIGHTS[value] for value in choices}
+        else:
+            scores = {value:frequencies[value] for value in choices}
+        least = min(scores.values())
+        choices = [value for value in choices if scores[value] == least]
+        if dimension == "count":
+            chosen = rng.choices(choices,weights=[COUNT_WEIGHTS[value] for value in choices],k=1)[0]
+        else:
+            chosen = rng.choice(choices)
+        decisions.append({"dimension":dimension,"available_least_used_values":choices,"selected_value":chosen,
+                          "historical_use_count":frequencies[chosen]})
+        pool = [row for row in pool if row["strata"][dimension] == chosen]
+    records = Counter(item["selected"]["id"] for item in history)
+    least = min(records[row["id"]] for row in pool)
+    pool = [row for row in pool if records[row["id"]] == least]
+    return rng.choice(pool),decisions
+
+
+def require_selection_sources(manifest):
+    """Recheck immutable selected evidence and saved sources; never refresh pins."""
+    if digest(manifest["library_path"]) != manifest["library_sha256"]:
+        raise RuntimeError("Approved library changed after selection")
+    selected = manifest["selected"]
+    for key,path in selected["paths"].items():
+        if digest(path) != selected["file_sha256"][key]:
+            raise RuntimeError("Selected trial evidence changed after selection: "+key)
+    if current_runtime_sources() != manifest["current_runtime_sources"]:
+        raise RuntimeError("Current runtime sources changed after selection")
+    if screening.screening_provenance() != manifest["current_provenance"]:
+        raise RuntimeError("Current screening sources changed after selection")
+    if digest(__file__) != manifest["replay_verifier_sha256"]:
+        raise RuntimeError("Replay verifier or preparation compatibility changed after selection")
+    if digest(Path(manifest["mgeo_root"])/"link_set.json") != manifest["map_link_set_sha256"]:
+        raise RuntimeError("Current mapped road changed after selection")
+    for path,sha in manifest["current_model_acceptance"]["file_sha256"].items():
+        if digest(path) != sha:
+            raise RuntimeError("Current native model acceptance/evidence changed after selection")
+
+
+def run(args, *, verify_fn=None, live_fn=None):
+    for name in ("library", "mgeo_root", "model_acceptance", "runtime_catalog", "history", "profile_state_path"):
+        value = getattr(args, name, None)
+        if value is not None:
+            setattr(args, name, evidence_path(value))
+    if (not math.isfinite(args.time_budget) or args.time_budget <= 0
+            or not math.isfinite(args.hold_seconds) or not 0 <= args.hold_seconds <= 60
+            or not math.isfinite(args.trial_timeout) or args.trial_timeout <= 0):
+        raise ValueError("Invalid replay screening, hold, speed or timeout settings")
+    if args.expert_max_velocity_kmh is not None:
+        validate_max_velocity_kmh(args.expert_max_velocity_kmh)
+    loader = MGeoMapLoader(str(args.mgeo_root))
+    geometry = tunnel_geometry(loader)
+    geometry["departure_points"] = loader.get_link("A2256W000128")["points"]
+    verified = (verify_fn or verify_library)(args.library,geometry,loader.link_set,
+        model_acceptance_path=args.model_acceptance,runtime_catalog_path=args.runtime_catalog)
+    history,history_hash = read_history(args.history)
+    candidate_ids = getattr(args, "candidate_ids", None)
+    pool = verified["eligible"]
+    if candidate_ids is not None:
+        pool = [row for row in pool if row["id"] in candidate_ids]
+        if not pool:
+            raise ValueError("No verified layouts remain for this execution policy or revalidation selection")
+    selected,decisions = balanced_choice(pool,args.seed,history)
+    manifest = {"schema":SCHEMA,"status":"selected", "seed":args.seed,"live_requested":bool(args.live),
+        "profile_state_path":str(args.profile_state_path) if getattr(args,"profile_state_path",None) is not None else None,
+        "incoming_environment_history":(_read(args.profile_state_path)[0] if getattr(args,"profile_state_path",None) is not None and Path(args.profile_state_path).exists() else None),
+        "library_path":verified["library_path"],"library_sha256":verified["library_sha256"],
+        "mgeo_root":str(args.mgeo_root.resolve()),"map_link_set_sha256":digest(args.mgeo_root/"link_set.json"),
+        "current_provenance":verified["current_provenance"],"current_runtime_sources":verified["current_runtime_sources"],
+        "replay_verifier_sha256":digest(__file__),
+        "current_model_acceptance":verified["current_model_acceptance"],
+        "eligible_count":len(pool),"historical_eligible_count":verified["eligible_count"],"rejected":verified["rejected"],
+        "execution_policy":getattr(args,"execution_policy",None),
+        "current_policy_approved_count":getattr(args,"current_policy_approved_count",None),
+        "validation_only":bool(getattr(args,"validation_only",False)),
+        "selection_pool":getattr(args,"selection_pool","historical_verified_library"),
+        "selected":{key:selected[key] for key in ("id","paths","file_sha256","layout_fingerprint_sha256","strata","evidence_status",
+                                                   "historical_screening_provenance","preparation_layout_source_hashes",
+                                                   "reviewed_live_preparation_transition","replay_requires_fresh_measurement")},
+        "balance_decisions":decisions,"count_target_weights":COUNT_WEIGHTS,
+        "history_path":str(args.history.resolve()) if args.history else None,"history_sha256":history_hash,
+        "selection_scope":"strict historical completed-trial evidence; fresh measurement and guarded Expert planning required for replay",
+        "saved_trajectory_reused_for_control":False,"replay_actual_pass":False}
+    protected = {Path(verified["library_path"]).resolve(),(args.mgeo_root/"link_set.json").resolve()}
+    protected.update(Path(path).resolve() for row in verified["eligible"] for path in row["paths"].values())
+    protected.update(Path(path).resolve() for path in verified["current_model_acceptance"]["file_sha256"])
+    if args.history:
+        protected.add(args.history.resolve())
+    if args.output.resolve() in protected:
+        raise ValueError("Selection output cannot overwrite library, history or immutable proof files")
+    atomic_json(args.output,manifest)
+    if getattr(args,"console_output",False):
+        models = [item["model"] for item in selected["candidate"]["obstacles"]]
+        print("[KCityRunner] tunnel static selected: pool=%s count=%s layout=%s models=%s" % (
+            len(pool), selected["strata"]["count"], selected["id"][:12], ", ".join(models)), flush=True)
+    if args.live:
+        if live_fn is None:
+            from .execution import replay_candidate
+            live_fn = replay_candidate
+        try:
+            report = live_fn(Path(selected["paths"]["candidate"]),args.output.with_suffix("").with_name(args.output.stem+"_live"),
+                time_budget_sec=args.time_budget,hold_seconds=args.hold_seconds,max_velocity_kmh=args.expert_max_velocity_kmh,
+                trial_timeout_sec=args.trial_timeout,require_sources_fn=lambda:require_selection_sources(manifest),
+                run_seed=args.seed, profile_state_path=getattr(args,"profile_state_path",None),
+                console_output=bool(getattr(args,"console_output",False)))
+            manifest["live_result"] = report
+            strict = report.get("strict_pass") is True or (report.get("outcome") or {}).get("strict_pass") is True
+            manifest["replay_actual_pass"] = (strict and report.get("scene_restored") is True
+                                               and report.get("cleanup_verified") is True)
+            manifest["status"] = "passed" if manifest["replay_actual_pass"] else "failed"
+            profile_path = getattr(args,"profile_state_path",None)
+            if profile_path is not None and Path(profile_path).exists():
+                environment,_ = _read(profile_path)
+                if environment.get("run_seed") != args.seed:
+                    raise RuntimeError("Environment run_seed differs from the selected layout run_seed")
+                manifest["environment_profile"] = environment
+        except BaseException as error:
+            manifest.update(status="failed",failure_reason=str(error) or type(error).__name__)
+            raise
+        finally:
+            atomic_json(args.output,manifest)
+    return manifest
+
+
+def main():
+    parser = build_parser()
+    args = parser.parse_args()
+    try:
+        result = run(args)
+    except (OSError,ValueError,RuntimeError) as error:
+        parser.exit(2,str(error)+"\n")
+    print("Tunnel library "+result["status"]+": "+result["selected"]["id"]+" | "+str(args.output))
+    return 0 if result["status"] in ("selected","passed") else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

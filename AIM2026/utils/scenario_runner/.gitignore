@@ -1,0 +1,12 @@
+.runtime/
+__pycache__/
+*.py[cod]
+config/local.yaml
+
+# Local validation reports and route-segment reference artifacts
+MODE_VALIDATION.md
+SEGMENT_PLAN.md
+STATIC_OBSTACLE_WATCH.md
+segment_boundaries.json
+segment_plan.html
+segment_reference_map.png

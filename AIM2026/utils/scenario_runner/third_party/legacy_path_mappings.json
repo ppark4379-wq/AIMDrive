@@ -1,0 +1,38 @@
+{
+  "schema": "aim2026_runner_native_dependency_paths_v1",
+  "recorded_morai_root": "/home/jun/AIMDrive/MoraiDrive",
+  "target_base": "RUNNER_ROOT",
+  "physical_mapping_order": "Apply these specific dependency prefixes before generic RUNNER_ROOT/project mappings; logical_source_path(new target) must return logical_prefix + suffix",
+  "mappings": [
+    {
+      "kind": "directory_prefix",
+      "logical_prefix": "data_collection/third_party/grpc_inha_univ",
+      "target_runner_relative": "third_party/grpc_inha_univ",
+      "legacy_absolute_prefixes": [
+        "/home/jun/AIMDrive/MoraiDrive/data_collection/third_party/grpc_inha_univ",
+        "/home/jun/AIMDrive/AIM2026/_support/MoraiDrive/data_collection/third_party/grpc_inha_univ"
+      ],
+      "why": "SDK source and exact-pinned schema"
+    },
+    {
+      "kind": "directory_prefix",
+      "logical_prefix": "data_collection/internal_sensor_record/evidence/object_geometry_registry_default3d_v2",
+      "target_runner_relative": "data/geometry/object_geometry_registry_default3d_v2",
+      "legacy_absolute_prefixes": [
+        "/home/jun/AIMDrive/MoraiDrive/data_collection/internal_sensor_record/evidence/object_geometry_registry_default3d_v2",
+        "/home/jun/AIMDrive/AIM2026/_support/MoraiDrive/data_collection/internal_sensor_record/evidence/object_geometry_registry_default3d_v2"
+      ],
+      "why": "Sealed vehicle native geometry and companion sidecars"
+    },
+    {
+      "kind": "directory_prefix",
+      "logical_prefix": "data_collection/internal_sensor_record/evidence/object_geometry_registry_unit3d_v1",
+      "target_runner_relative": "data/geometry/object_geometry_registry_unit3d_v1",
+      "legacy_absolute_prefixes": [
+        "/home/jun/AIMDrive/MoraiDrive/data_collection/internal_sensor_record/evidence/object_geometry_registry_unit3d_v1",
+        "/home/jun/AIMDrive/AIM2026/_support/MoraiDrive/data_collection/internal_sensor_record/evidence/object_geometry_registry_unit3d_v1"
+      ],
+      "why": "Sealed static-unit native geometry and companion sidecars"
+    }
+  ]
+}
