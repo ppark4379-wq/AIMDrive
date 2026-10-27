@@ -4,6 +4,7 @@ Map geometry binds the target ID; it does not determine its lamp state. Code 0
 is unavailable evidence, never synthetic red/green. The full-route trial adds
 0 to stop statuses in its private runtime config; LCS stays unsupported.
 """
+from collections import deque
 import json
 import math
 import threading
@@ -55,7 +56,11 @@ class SignalPolicy:
         row = self.select_signal(packet)
         code, confidence = row.get('code'), row.get('confidence')
         self.confidence = confidence
-        self.received = packet['sensor_received_ns'] / 1e9
+        # Freshness counts from the VE output (sent_ns), not from the oldest sensor of the packet: that sensor (IMU or
+        # vehicle status, already limited to 0.5 s by the Inference) put the phase age at 350-490 ms in normal running,
+        # so one late frame crossed FRESH_MAX_S, reset a granted green and braked the car short of the line (7 of the
+        # GO->STOP drops in 223 recorded runs; 3 left, all from VE gaps > 0.5 s or VE reading red).
+        self.received = packet.get('sent_ns', packet['sensor_received_ns']) / 1e9
         valid = (type(code) is int and code in self.accepted_codes
                  and type(confidence) in (float, int) and math.isfinite(confidence)
                  and self.MIN_CONFIDENCE <= confidence <= 1 and self.bound
@@ -144,10 +149,41 @@ class SignalPolicy:
 
 
 class FullRouteSignalPolicy(SignalPolicy):
-    """Bind phase to the next mapped stop. No simulator light state is read."""
+    """Bind phase to the next mapped stop. No simulator light state is read.
+
+    Yellow on straight signals: the red/green head reads a yellow lamp as green (it never saw yellow in training), so a
+    car reaching the line during the 4 s yellow crossed it. When the packet carries the five-phase head
+    (``phase_signal``), a green from the red/green head is turned into a stop while at least PHASE_STOP_VOTES of the
+    last PHASE_WINDOW phase frames say yellow or red, the stop line is within PHASE_RANGE_M (where that head is
+    reliable) and the car can still stop comfortably before it; closer or faster it keeps going (dilemma zone). Once
+    taken, the stop holds for PHASE_HOLD_S on that signal, so neither a phase frame flickering back to green nor the
+    red/green head reading green again after a red frame (it does so for a lamp seen from closer than ~11 m) sends
+    the car off during the yellow; it is taken once per signal and only by a car moving at PHASE_MIN_SPEED_MPS or
+    more, so a false yellow costs at most that long (a real one is red by then and the red/green head reads red from
+    12 m and beyond). A head that kept reading a green lamp as yellow held a waiting car for 90 s before. Right after a red -> green start the check
+    waits PHASE_ARM_S (only after a red of RED_CONFIRM_S or longer): a fresh green is never followed by yellow
+    that soon.
+    A green from the red/green head less than RED_CONFIRM_S after it read red (RED_MIN_SAMPLES in a row) needs the
+    five-phase head to agree (its last PHASE_GO_FRAMES frames green): a real red lasts 60-90 s, so such a green is
+    either the end of a false red (the five-phase head agrees at once) or that head reading the yellow/red lamp as
+    green from closer than ~11 m, which sent a car stopped 6 m before the line through the red.
+    Without ``phase_signal`` the decisions are unchanged.
+    """
     permission_codes = (16, 33)
 
     OFF_ROUTE_M = 6.
+    PHASE_STOP_CODES = (1, 4, 33)
+    PHASE_MIN_CONFIDENCE = .6
+    PHASE_WINDOW, PHASE_STOP_VOTES = 3, 3   # 2 of 3: 3 false stops in 90 replayed approaches, 3 of 3: 1, same yellows
+    PHASE_RANGE_M = (12., 50.)
+    PHASE_ARM_S = 3.
+    PHASE_HOLD_S = 4.
+    PHASE_GO_CODES = (16, 48)
+    RED_CONFIRM_S, RED_MIN_SAMPLES = 8., 3
+    PHASE_MIN_SPEED_MPS = 2.
+    PHASE_GO_FRAMES = 5                    # 3 green blips released two cars stopped at 10.5-11 m into the red
+    COMFORT_DECEL_MPS2 = 3.
+    STOP_MARGIN_M = 2.
 
     def __init__(self, points, targets, wide_zone=None, wide_zones=()):
         """``wide_zone=(first_index, last_index, limit_m)`` widens the off-route limit where the Expert is
@@ -164,6 +200,72 @@ class FullRouteSignalPolicy(SignalPolicy):
         self.target_id = ''
         self.reason = 'waiting'
         self.head_source = 'unsupported'
+        self.distance = None
+        self.phase_stop = False
+        self._phase_calls = deque(maxlen=self.PHASE_WINDOW)
+        self._green_start = None
+        self._phase_hold = None            # (signal id, hold end)
+        self._phase_used = None            # signal id whose one phase stop is spent
+        self._phase_go = deque(maxlen=self.PHASE_GO_FRAMES)
+        self._red = None                   # [signal id, first red time, reds in a row, confirmed red start]
+
+    def accept(self, packet, points, now):
+        super().accept(packet, points, now)
+        self.phase_stop = False
+        native = self.code
+        if self._red is None or self._red[0] != self.target_id:
+            self._red = [self.target_id, None, 0, None]
+        if native == 16 and self._red[2] >= self.RED_MIN_SAMPLES and now - self._red[1] >= self.RED_CONFIRM_S:
+            self._green_start = now        # only a real red ends in a fresh green; red frames on a yellow lamp do not
+        if native == 1:
+            if not self._red[2]:
+                self._red[1] = now
+            self._red[2] += 1
+            if self._red[2] >= self.RED_MIN_SAMPLES and self._red[3] is None:
+                self._red[3] = self._red[1]
+        elif native == 16:
+            self._red[2] = 0
+        phase = packet.get('phase_signal')
+        if self.head_source != 'native_binary' or not isinstance(phase, dict):
+            self._phase_calls.clear()
+            self._phase_go.clear()
+            return
+        confidence = phase.get('confidence')
+        sure = type(confidence) in (float, int) and confidence >= self.PHASE_MIN_CONFIDENCE
+        self._phase_calls.append(phase.get('code') in self.PHASE_STOP_CODES and sure)
+        self._phase_go.append(phase.get('code') in self.PHASE_GO_CODES and sure)
+        if native == 16 and self._red[3] is not None:
+            if now - self._red[3] >= self.RED_CONFIRM_S or (len(self._phase_go) == self.PHASE_GO_FRAMES and all(self._phase_go)):
+                self._red[3] = None
+            else:
+                self.code = 1
+                self.latched_until = None
+                self._reset_allow('green_unconfirmed')
+                self.phase_stop = True
+                return
+        hold = self._phase_hold
+        if hold is not None and (hold[0] != self.target_id or now >= hold[1]):
+            hold = self._phase_hold = None
+        if native != 16:
+            return
+        if hold is None:
+            if sum(self._phase_calls) < self.PHASE_STOP_VOTES or self._phase_used == self.target_id:
+                return
+            if self._green_start is not None and now - self._green_start < self.PHASE_ARM_S:
+                return
+            if self.distance is None or not self.PHASE_RANGE_M[0] <= self.distance <= self.PHASE_RANGE_M[1]:
+                return
+            speed = abs(float(packet['ego_pose'].get('speed_mps') or 0.))
+            if speed < self.PHASE_MIN_SPEED_MPS:
+                return                     # waiting at the line: a green there cannot turn yellow before the car goes
+            if self.distance - self.STOP_MARGIN_M <= speed * speed / (2. * self.COMFORT_DECEL_MPS2):
+                return                     # too close to stop comfortably: keep going through the yellow
+            self._phase_hold = (self.target_id, now + self.PHASE_HOLD_S)
+            self._phase_used = self.target_id
+        self.code = 1
+        self.latched_until = None
+        self._reset_allow('phase_yellow')
+        self.phase_stop = True
 
     def select_signal(self, packet):
         key = {'native_binary': 'native_signal', 'three_class': 'signal'}.get(self.head_source)
@@ -194,8 +296,10 @@ class FullRouteSignalPolicy(SignalPolicy):
         self.target_id = identity
         if target is None:
             self.reason = 'no_upcoming_signal'
+            self.distance = None
             return False
         distance = self.route_s[target['path_index']]-self.route_s[nearest]
+        self.distance = distance
         if target['signal_movement'] == 'straight' and identity.startswith('C'):
             self.head_source = 'native_binary'
             self.accepted_codes, self.permission_codes = (1, 16), (16,)
