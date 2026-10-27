@@ -9,6 +9,8 @@ import math
 import os
 from pathlib import Path
 import random
+import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -104,6 +106,57 @@ def avoidance_preset(map_loader, models, map_name, seed=None, model=None, obstac
         'generation': {'lane_gap_m': gap, 'max_obstacle_width_m': limit, 'usable_models': usable,
                        'excluded_models': excluded},
     }
+
+
+SENSOR_UDP_PORTS = (9090, 2368)     # camera/GPS/IMU and LiDAR packets MORAI sends to the Expert
+_PORT_HOLDERS = ("$ports = @(%s); $rows = @(); foreach ($e in Get-NetUDPEndpoint | "
+                 "Where-Object { $ports -contains $_.LocalPort }) { "
+                 "$p = Get-CimInstance Win32_Process -Filter \"ProcessId=$($e.OwningProcess)\"; "
+                 "$alive = $false; if ($p.CommandLine -match 'parent_pid=(\\d+)') { "
+                 "$alive = [bool](Get-Process -Id ([int]$Matches[1]) -ErrorAction SilentlyContinue) }; "
+                 "$rows += [pscustomobject]@{pid=[int]$e.OwningProcess; port=[int]$e.LocalPort; "
+                 "cmd=[string]$p.CommandLine; parent_alive=$alive} }; "
+                 "ConvertTo-Json -InputObject @($rows) -Compress")
+
+
+def stale_sensor_receivers(holders):
+    """Split port holders into (orphans, others).
+
+    An orphan is a multiprocessing worker whose parent Expert is gone: it only keeps the port bound and
+    swallows the packets the next run waits for. Anything else (e.g. a live Expert in another terminal)
+    is never touched.
+    """
+    orphans, others = [], []
+    for holder in holders:
+        command = holder.get('cmd') or ''
+        spawned = 'multiprocessing.spawn' in command and re.search(r'parent_pid=\d+', command)
+        (orphans if spawned and not holder.get('parent_alive') else others).append(holder)
+    return orphans, others
+
+
+def clear_stale_sensor_receivers(ports=SENSOR_UDP_PORTS):
+    """Stop Windows Python workers a killed run left on the sensor UDP ports; refuse if something else holds them."""
+    shell = shutil.which('powershell.exe') or shutil.which('powershell')
+    if shell is None:
+        return
+    script = _PORT_HOLDERS % ','.join(str(port) for port in ports)
+    result = subprocess.run([shell, '-NoProfile', '-Command', script], capture_output=True, text=True, timeout=60)
+    try:
+        holders = json.loads(result.stdout.strip() or '[]')
+    except ValueError:
+        print('[Static] Could not read the sensor port owners; continuing', flush=True)
+        return
+    orphans, others = stale_sensor_receivers(holders)
+    if orphans:
+        pids = sorted({holder['pid'] for holder in orphans})
+        subprocess.run([shell, '-NoProfile', '-Command', 'Stop-Process -Force -Id ' + ','.join(map(str, pids))],
+                       capture_output=True, text=True, timeout=60)
+        print('[Static] Stopped leftover sensor receivers of an earlier run: PID {}'.format(
+            ', '.join(map(str, pids))), flush=True)
+    if others:
+        raise SystemExit('Sensor UDP ports are in use by another process (a run still active?): {}. '
+                         'Stop it first; this launcher only removes leftovers of a killed run.'.format(
+                             ', '.join('PID {} port {}'.format(h['pid'], h['port']) for h in others)))
 
 
 def latest_control_status(path):
@@ -294,6 +347,8 @@ def main(argv=None):
                          '--expert-python /path/to/vldrive-ve/bin/python3. {}'.format(
                              args.expert_python, probe.stderr.strip()[-500:]))
         print('[Static] Expert Python: {}'.format(args.expert_python), flush=True)
+        if args.avoid:
+            clear_stale_sensor_receivers()
 
     stamp = 'static-' + datetime.now().strftime('%Y%m%d-%H%M%S-%f')
     output = ROOT / 'AIM2026/outputs/scenarios' / stamp

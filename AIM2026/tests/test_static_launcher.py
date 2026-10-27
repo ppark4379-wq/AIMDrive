@@ -119,6 +119,15 @@ class StaticLauncherTests(unittest.TestCase):
         self.assertGreater(avoid.end.index, static.end.index)
         self.assertTrue(avoid.zones.static)
 
+    def test_only_orphaned_spawn_workers_are_removed_from_sensor_ports(self):
+        worker = 'python.exe -c "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=11080, pipe_handle=2252)"'
+        orphan = {'pid': 1, 'port': 9090, 'cmd': worker, 'parent_alive': False}
+        live_child = {'pid': 2, 'port': 9090, 'cmd': worker, 'parent_alive': True}
+        expert = {'pid': 3, 'port': 2368, 'cmd': 'python.exe -u AIM2026/main.py --drive', 'parent_alive': False}
+        orphans, others = run_static.stale_sensor_receivers([orphan, live_child, expert])
+        self.assertEqual([item['pid'] for item in orphans], [1])
+        self.assertEqual([item['pid'] for item in others], [2, 3])      # a live run is never touched
+
 
 if __name__ == '__main__':
     unittest.main()
