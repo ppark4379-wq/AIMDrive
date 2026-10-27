@@ -165,6 +165,13 @@ def start_validation(scenario):
 
 
 def main(argv=None):
+    from AIM2026.Expert.run_repeat import run_many, split_repeat_options
+    repeat, argv = split_repeat_options(argv)
+    if repeat.runs > 1:
+        if '--check' in argv:
+            print('[Batch] --check validates once; --runs is ignored', flush=True)
+        else:
+            return run_many(main, argv, repeat, label='static')
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--check', action='store_true', help='Validate without connecting to MORAI')
     parser.add_argument('--config', type=Path, default=ROOT / 'AIM2026/config_local.yaml')

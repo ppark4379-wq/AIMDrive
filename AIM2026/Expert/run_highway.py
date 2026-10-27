@@ -384,6 +384,14 @@ def main(argv=None, *, mission='full_loop_highway'):
                        'full_loop_roundabout_nonuniform', 'full_loop_roundabout_speed_random',
                        'full_loop_roundabout_brake'):
         raise ValueError('Unsupported verification mission: ' + mission)
+    from AIM2026.Expert.run_repeat import run_many, split_repeat_options
+    repeat, argv = split_repeat_options(argv)
+    if repeat.runs > 1:
+        if '--check' in argv:
+            print('[Batch] --check validates once; --runs is ignored', flush=True)
+        else:
+            return run_many(lambda one: main(one, mission=mission), argv, repeat,
+                            label=mission.replace('full_loop_', '', 1))
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--check', action='store_true', help='Validate without connecting to MORAI')
     parser.add_argument('--config', type=Path, default=ROOT / 'AIM2026/config_local.yaml')
