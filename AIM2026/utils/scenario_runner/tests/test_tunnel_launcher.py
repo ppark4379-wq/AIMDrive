@@ -67,7 +67,8 @@ class TunnelLauncherTest(unittest.TestCase):
         self.assertEqual(code, 0)
         (arguments, variant, options), = calls
         self.assertEqual(variant, 'pedestrian')
-        self.assertEqual(options, dict(fixed_pedestrian=False, vehicle_behavior=None))
+        self.assertEqual(options, dict(fixed_pedestrian=False, vehicle_behavior=None,
+                                       pedestrian_reaction_s=2.0, pedestrian_margin_m=None))
         self.assertEqual(arguments[:2], ['--speed-cap-kmh', '40'])
         config = Path(arguments[arguments.index('--config') + 1])
         self.assertEqual(config.name, 'runtime.yaml')
@@ -124,7 +125,8 @@ class TunnelLauncherTest(unittest.TestCase):
     def test_scene_options_are_accepted_with_all(self):
         code, calls = self.run_main(['--variant', 'all', '--runs', '4', '--fixed-pedestrian',
                                      '--vehicle-behavior', 'vehicle_slow'])
-        self.assertEqual(calls[0][2], dict(fixed_pedestrian=True, vehicle_behavior='vehicle_slow'))
+        self.assertEqual(calls[0][2], dict(fixed_pedestrian=True, vehicle_behavior='vehicle_slow',
+                                           pedestrian_reaction_s=2.0, pedestrian_margin_m=None))
 
     def test_interrupted_scene_returns_the_interrupt_code_not_success(self):
         from unittest.mock import Mock
@@ -187,6 +189,15 @@ class TunnelLauncherTest(unittest.TestCase):
         scene._configure_variant()
         return scene
 
+    def test_normal_keeps_the_empty_window_and_zones_but_not_the_ros_baseline_recorder(self):
+        from ..scenarios.segment_modes import tunnel_baseline
+        from ..scenarios.segment_modes.modes import get_mission_mode
+        scene = self.scene('normal')
+        normal = get_mission_mode('full_loop_tunnel_normal')
+        self.assertEqual((scene.mission_mode.start, scene.mission_mode.end, scene.mission_mode.zones),
+                         (normal.start, normal.end, normal.zones))
+        self.assertFalse(tunnel_baseline._enabled(scene))
+
     def test_brake_arms_only_the_sudden_brake_npc_in_the_normal_window(self):
         from ..scenarios.segment_modes.modes import get_mission_mode
         scene = self.scene('brake')
@@ -198,11 +209,41 @@ class TunnelLauncherTest(unittest.TestCase):
         self.assertEqual((scene.cfg['tunnel_sudden_brake']['enabled'], scene.cfg['tunnel_dynamic']['enabled'],
                           scene.cfg['tunnel_vehicle_dynamic']['enabled']), (True, False, False))
 
+    def test_brake_lowers_only_this_scene_spawn_gap_below_the_window_gap(self):
+        scene = self.scene('brake')
+        gap = scene.cfg['tunnel_sudden_brake']['minimum_spawn_gap_m']
+        self.assertEqual(gap, run_tunnel.BRAKE_TEST_MIN_GAP_M)
+        self.assertLess(gap, 27.1)           # the planned gap of the 22.1 m run-up window
+        other = self.scene('static')
+        self.assertNotIn('minimum_spawn_gap_m', other.cfg['tunnel_sudden_brake'])
+
+    def test_brake_provides_the_fixed_npc_model_the_vehicle_helper_reads(self):
+        scene = self.scene('brake')
+        self.assertEqual(scene.highway_fixed_model, 'DEFAULT_SEDAN')
+        scene = object.__new__(run_tunnel.TunnelScenario)
+        from ..scenarios.segment_modes.modes import get_mission_mode
+        scene.mission_mode, scene.variant = get_mission_mode('full_loop_tunnel_normal'), 'brake'
+        scene.cfg = {'tunnel_sudden_brake': {'model': 'Other'}, 'highway_npc': {'model': 'Highway'}}
+        scene._configure_variant()
+        self.assertEqual(scene.highway_fixed_model, 'Other')
+        scene.cfg = {'highway_npc': {'model': 'Highway'}}
+        scene._configure_variant()
+        self.assertEqual(scene.highway_fixed_model, 'Highway')
+
     def test_static_arms_no_npc_event_and_allows_avoidance_cross_track(self):
         scene = self.scene('static')
         self.assertFalse(scene.cfg['tunnel_sudden_brake']['enabled'])
         self.assertFalse(scene.cfg['tunnel_dynamic']['enabled'])
-        self.assertEqual(scene.cfg['expert_max_cross_track_error_m'], 5.0)
+        self.assertEqual(scene.cfg['expert_max_cross_track_error_m'], 10.0)
+
+    def test_every_tunnel_scene_uses_the_same_route_departure_limit(self):
+        for variant, mission in (('normal', 'full_loop_tunnel_normal'), ('brake', 'full_loop_tunnel_normal'),
+                                 ('static', 'full_loop_tunnel_normal'), ('pedestrian', 'full_loop_tunnel_dynamic'),
+                                 ('vehicle', 'full_loop_tunnel_vehicle')):
+            scene = self.scene(variant, mission)
+            scene.cfg['expert_max_cross_track_error_m'] = 1.5
+            scene._configure_variant()
+            self.assertEqual(scene.cfg['expert_max_cross_track_error_m'], 10.0, variant)
 
     def test_pedestrian_uses_the_random_pedestrian_animal_mix_unless_fixed(self):
         mixed = self.scene('pedestrian', 'full_loop_tunnel_dynamic').cfg['tunnel_dynamic']
@@ -212,6 +253,42 @@ class TunnelLauncherTest(unittest.TestCase):
         fixed = self.scene('pedestrian', 'full_loop_tunnel_dynamic', fixed_pedestrian=True).cfg['tunnel_dynamic']
         self.assertNotIn('random_mix', fixed)
         self.assertEqual(fixed['trial_candidate_id'], 'x')
+
+    def test_pedestrian_spawn_distance_options_only_touch_the_tunnel_trigger(self):
+        default = self.scene('pedestrian', 'full_loop_tunnel_dynamic').cfg['tunnel_dynamic']
+        # Launcher default: 2.0 s reaction time for tunnel pedestrians only; margin keeps the scenario value.
+        self.assertEqual(default['interaction_trigger'], {'reaction_time_sec': 2.0})
+        restored = self.scene('pedestrian', 'full_loop_tunnel_dynamic', pedestrian_reaction_s=1.0)
+        self.assertEqual(restored.cfg['tunnel_dynamic']['interaction_trigger'], {'reaction_time_sec': 1.0})
+        tuned = self.scene('pedestrian', 'full_loop_tunnel_dynamic', pedestrian_reaction_s=2.5,
+                           pedestrian_margin_m=5.).cfg['tunnel_dynamic']['interaction_trigger']
+        self.assertEqual(tuned, {'reaction_time_sec': 2.5, 'stopping_safety_margin_m': 5.})
+
+    def test_stopping_distance_grows_with_the_pedestrian_options(self):
+        from ..scenarios.full_loop_parts.pedestrian_timing import interaction_timing
+        state = {'speed_mps': 3.6}
+        base = interaction_timing({}, 40., 5., 2.5, state, 0.)['safe_stop_distance_m']
+        more = interaction_timing({'reaction_time_sec': 2.5, 'stopping_safety_margin_m': 5.},
+                                  40., 5., 2.5, state, 0.)['safe_stop_distance_m']
+        self.assertGreater(more, base * 1.8)
+
+    def test_pedestrian_options_are_rejected_for_other_scenes_and_bad_values(self):
+        with patch.object(run_tunnel, 'AIM_ROOT', self.root), patch.object(run_tunnel, 'RUNTIME', self.runtime):
+            for argv in (['--variant', 'vehicle', '--pedestrian-reaction-s', '2'],
+                         ['--variant', 'pedestrian', '--pedestrian-margin-m', '-1'],
+                         ['--variant', 'pedestrian', '--pedestrian-reaction-s', '99']):
+                with self.assertRaises(SystemExit):
+                    run_tunnel.main(['--config', str(self.base), *argv])
+
+    def test_the_default_reaction_time_reaches_every_pedestrian_run_of_the_rotation(self):
+        code, calls = self.run_main(['--variant', 'all', '--runs', '8'])
+        self.assertEqual([c[1] for c in calls].count('pedestrian'), 2)
+        self.assertTrue(all(c[2]['pedestrian_reaction_s'] == 2.0 for c in calls))
+
+    def test_the_other_scenes_do_not_get_the_pedestrian_timing(self):
+        for variant in ('brake', 'static', 'vehicle', 'normal'):
+            scene = self.scene(variant)
+            self.assertNotIn('reaction_time_sec', scene.cfg['tunnel_dynamic'].get('interaction_trigger', {}))
 
     def test_vehicle_behaviour_is_random_unless_chosen(self):
         random = self.scene('vehicle', 'full_loop_tunnel_vehicle').cfg['tunnel_vehicle_dynamic']
@@ -228,7 +305,9 @@ class TunnelLauncherTest(unittest.TestCase):
 
     def test_validation_label_names_the_tunnel_controller(self):
         scene = object.__new__(run_tunnel.TunnelScenario)
+        from ..scenarios.segment_modes.modes import get_mission_mode
         scene.cfg, scene.variant = {}, 'normal'
+        scene.mission_mode = get_mission_mode('full_loop_tunnel_normal')
         scene._validation_controller = 'aim2026_roundabout'
         with patch.object(run_tunnel.harness.HighwayScenario, 'prepare_full_loop_route', return_value='route'):
             self.assertEqual(run_tunnel.TunnelScenario.prepare_full_loop_route(scene), 'route')

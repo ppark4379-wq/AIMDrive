@@ -54,6 +54,15 @@ MISSIONS = {
 }
 # --variant all: one scene per run, in the order brake, static, pedestrian, vehicle, then again.
 ROTATION = ('brake', 'static', 'pedestrian', 'vehicle')
+# Reduced from 40 m for the tunnel-only brake scene (see TunnelScenario._configure_variant).
+BRAKE_TEST_MIN_GAP_M = 20.
+# Route-departure limit for every tunnel scene: the same 10 m the pedestrian and vehicle scenes already use
+# (the normal mission's 1.5 m, and the static mission's 5 m, are too tight for scenes that steer around a stopped obstacle).
+CROSS_TRACK_LIMIT_M = 10.
+# Tunnel pedestrians: reaction time assumed when choosing how far ahead of the Ego a pedestrian appears. The scenario's
+# own value is 1.0 s (inherited from dynamic_obstacle); this launcher sets 2.0 s in tunnel_dynamic.interaction_trigger
+# only, so other zones keep 1.0 s. Override with --pedestrian-reaction-s (1 restores the scenario value).
+PEDESTRIAN_REACTION_S = 2.0
 VEHICLE_BEHAVIORS = ('vehicle_slow', 'vehicle_sudden_brake', 'vehicle_oncoming', 'vehicle_cut_in')
 RUN_GAP_S = 3.
 INTERRUPTED = 130  # Ctrl+C / SIGTERM: cleanup is done, but the whole campaign must stop
@@ -95,6 +104,8 @@ class TunnelScenario(harness.HighwayScenario):
     """The highway/roundabout harness scene with one tunnel scene selected by ``variant``."""
     variant = 'normal'
     fixed_pedestrian = False
+    pedestrian_reaction_s = PEDESTRIAN_REACTION_S
+    pedestrian_margin_m = None
     vehicle_behavior = None
     static_report_dir = None
 
@@ -111,7 +122,13 @@ class TunnelScenario(harness.HighwayScenario):
 
     def _configure_variant(self):
         cfg = self.cfg
-        if self.variant in ('brake', 'static'):
+        cfg['expert_max_cross_track_error_m'] = CROSS_TRACK_LIMIT_M
+        if self.variant == 'normal':
+            # Same empty tunnel window and settings, but not the ROS-based baseline recorder (it holds the
+            # brake through /ctrl_cmd at the end); this launcher drives and stops over UDP.
+            dynamic = get_mission_mode('full_loop_tunnel_dynamic')
+            self.mission_mode = dataclasses.replace(self.mission_mode, name=dynamic.name)
+        elif self.variant in ('brake', 'static'):
             # Normal window with the tunnel zone on. The dynamic mission's name keeps speed-zone filtering and
             # leaves the empty-road baseline recorder (normal mission only) off; only the chosen event is armed.
             dynamic = get_mission_mode('full_loop_tunnel_dynamic')
@@ -119,8 +136,14 @@ class TunnelScenario(harness.HighwayScenario):
             cfg.setdefault('tunnel_dynamic', {})['enabled'] = False
             cfg.setdefault('tunnel_vehicle_dynamic', {})['enabled'] = False
             cfg.setdefault('tunnel_sudden_brake', {})['enabled'] = self.variant == 'brake'
-            if self.variant == 'static':
-                cfg['expert_max_cross_track_error_m'] = 5.0  # as the static mission: avoidance leaves the line
+            if self.variant == 'brake':
+                # Test condition: this window starts 22.1 m before the entrance, so the NPC (placed 5 m inside)
+                # is only 27.1 m ahead of the Ego. The full course keeps the original 40 m minimum.
+                cfg['tunnel_sudden_brake']['minimum_spawn_gap_m'] = BRAKE_TEST_MIN_GAP_M
+                # The sudden-brake NPC is spawned through the highway vehicle helper, which reads the
+                # fixed model that the highway NPC preparation (off in this scene) normally sets.
+                self.highway_fixed_model = cfg.get('tunnel_sudden_brake', {}).get(
+                    'model', cfg.get('highway_npc', {}).get('model', 'DEFAULT_SEDAN'))
         elif self.variant == 'pedestrian':
             pedestrians = cfg.setdefault('tunnel_dynamic', {})
             if not self.fixed_pedestrian:
@@ -128,6 +151,13 @@ class TunnelScenario(harness.HighwayScenario):
                 pedestrians.pop('trial_candidate_id', None)
                 pedestrians['candidate_policy'] = 'trial'
                 pedestrians.setdefault('random_mix', {})['enabled'] = True
+            # Tunnel-only stopping-distance assumptions behind the spawn distance (tunnel_dynamic.interaction_trigger).
+            # The margin stays at the scenario's own value unless given.
+            trigger = pedestrians.setdefault('interaction_trigger', {})
+            if self.pedestrian_reaction_s is not None:
+                trigger['reaction_time_sec'] = self.pedestrian_reaction_s
+            if self.pedestrian_margin_m is not None:
+                trigger['stopping_safety_margin_m'] = self.pedestrian_margin_m
         elif self.variant == 'vehicle':
             vehicles = cfg.setdefault('tunnel_vehicle_dynamic', {})
             if self.vehicle_behavior:
@@ -201,6 +231,8 @@ def run_one(argv, variant, options=None):
     scenario.variant = variant
     scenario.fixed_pedestrian = bool(options.get('fixed_pedestrian'))
     scenario.vehicle_behavior = options.get('vehicle_behavior')
+    scenario.pedestrian_reaction_s = options.get('pedestrian_reaction_s')
+    scenario.pedestrian_margin_m = options.get('pedestrian_margin_m')
     scenario.static_report_dir = output
     scenario.args, scenario.output = args, output
     scenario.driver_output = RUNTIME / 'expert' / stamp
@@ -253,6 +285,12 @@ def main(argv=None):
                              'all: brake, static, pedestrian, vehicle in turn, one scene per run')
     parser.add_argument('--fixed-pedestrian', action='store_true',
                         help='pedestrian: the single default pedestrian instead of the random pedestrian/animal mix')
+    parser.add_argument('--pedestrian-reaction-s', type=float, default=None,
+                        help='pedestrian: reaction time assumed when choosing how far ahead of the Ego a pedestrian '
+                             'appears (default {:g}; the scenario\'s own value is 1.0). Larger = spawned farther '
+                             'away'.format(PEDESTRIAN_REACTION_S))
+    parser.add_argument('--pedestrian-margin-m', type=float, default=None,
+                        help='pedestrian: extra stopping margin in metres (scenario default 3.0), e.g. 5')
     parser.add_argument('--vehicle-behavior', choices=VEHICLE_BEHAVIORS,
                         help='vehicle: fix one behaviour (default: random)')
     parser.add_argument('--runs', type=int, default=None,
@@ -272,7 +310,17 @@ def main(argv=None):
     args.config = args.config.expanduser().resolve()
     if not args.config.is_file():
         parser.error('Config not found: ' + str(args.config))
-    options = dict(fixed_pedestrian=args.fixed_pedestrian, vehicle_behavior=args.vehicle_behavior)
+    for name, value in (('--pedestrian-reaction-s', args.pedestrian_reaction_s),
+                        ('--pedestrian-margin-m', args.pedestrian_margin_m)):
+        if value is None:
+            continue
+        if args.variant not in ('pedestrian', 'all'):
+            parser.error(name + ' is for --variant pedestrian or all')
+        if not 0. <= value <= 10.:
+            parser.error(name + ' must be within 0..10')
+    reaction = PEDESTRIAN_REACTION_S if args.pedestrian_reaction_s is None else args.pedestrian_reaction_s
+    options = dict(fixed_pedestrian=args.fixed_pedestrian, vehicle_behavior=args.vehicle_behavior,
+                   pedestrian_reaction_s=reaction, pedestrian_margin_m=args.pedestrian_margin_m)
     if args.fixed_pedestrian and args.variant not in ('pedestrian', 'all'):
         parser.error('--fixed-pedestrian is for --variant pedestrian or all')
     if args.vehicle_behavior and args.variant not in ('vehicle', 'all'):
