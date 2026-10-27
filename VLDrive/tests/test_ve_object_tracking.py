@@ -500,5 +500,55 @@ class FragmentGateTests(unittest.TestCase):
         self.assertEqual(2, len({b['track_id'] for b in rows}))
 
 
+class HeadingGateTests(unittest.TestCase):
+    def run_car(self, tracker, speed=17., dt=.25, frames=8, y=0., ve_speed=3.):
+        # VE reads 3 m/s for a car at 17 m/s; frames 0.25 s apart move it 4.25 m, beyond the normal gate
+        return [tracker.update(packet(i * dt, [box(20. + speed * dt * i, y, speed=ve_speed, length=4.6, width=2.)]))['boxes'][0]
+                for i in range(frames)]
+
+    def test_a_fast_car_keeps_its_id_and_is_confirmed_moving(self):
+        out = self.run_car(VeObjectTracker(heading_gate=True))
+        self.assertEqual(1, len({b['track_id'] for b in out}))
+        self.assertEqual('moving', out[-1]['motion_state'])
+        self.assertGreater(len({b['track_id'] for b in self.run_car(VeObjectTracker())}), 1)   # default unchanged
+
+    def test_a_car_in_the_next_lane_is_not_taken_over(self):
+        tracker = VeObjectTracker(heading_gate=True)
+        tracker.update(packet(0., [box(20., 0., speed=3., length=4.6, width=2.)]))
+        out = tracker.update(packet(.25, [box(24., 3.5, speed=3., length=4.6, width=2.)]))['boxes'][0]   # 3.5 m sideways
+        self.assertNotEqual(1, out['track_id'])
+
+    def test_a_pedestrian_box_is_not_extended(self):
+        tracker = VeObjectTracker(heading_gate=True)
+        tracker.update(packet(0., [box(20., 0., speed=1., length=.6, width=.6)]))
+        out = tracker.update(packet(.25, [box(23., 0., speed=1., length=.6, width=.6)]))['boxes'][0]
+        self.assertNotEqual(1, out['track_id'])
+
+
+class HistoryGapTests(unittest.TestCase):
+    def states(self, gap_s):
+        tracker = VeObjectTracker(history_gap_s=gap_s)
+        times = [0., .1, .2, .3, .4, .8, .9]                     # one missed frame at 4-7 Hz: a 0.4 s gap
+        return [tracker.update(packet(t, [box(20. + 5. * t, speed=5.)]))['boxes'][0]['motion_state'] for t in times]
+
+    def test_a_confirmed_mover_stays_moving_through_one_missed_frame(self):
+        self.assertEqual('moving', self.states(.45)[-2])
+        self.assertEqual('uncertain', self.states(.3)[-2])                  # default 0.3 s restarts the history
+
+
+class FittedSpeedTests(unittest.TestCase):
+    def speed(self, threshold, ve_speed, true_speed):
+        tracker = VeObjectTracker(fitted_speed_above_mps=threshold)
+        for i in range(8):
+            out = tracker.update(packet(i * .1, [box(20. + true_speed * .1 * i, speed=ve_speed)]))['boxes'][0]
+        return out['planning_speed_mps'], out['planning_speed_source']
+
+    def test_a_fast_car_reports_the_fitted_speed_and_a_slow_one_keeps_ve(self):
+        self.assertAlmostEqual(self.speed(3., 9., 10.)[0], 10., places=3)        # VE agrees within tolerance but reads low
+        self.assertEqual(self.speed(3., 9., 10.)[1], 've_supported_by_position')
+        self.assertEqual(self.speed(0., 9., 10.)[0], 9.)                         # default: VE
+        self.assertEqual(self.speed(3., 2.5, 2.4)[0], 2.5)                       # pedestrian speed: VE kept
+
+
 if __name__ == '__main__':
     unittest.main()

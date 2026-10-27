@@ -226,6 +226,14 @@ def main(argv=None, control_tick=None):
                         help='Keep separate ids for the piece and whole boxes VE alternates between on one parked object')
     parser.add_argument('--no-stationary-resolver', action='store_true',
                         help='Keep the tracker\'s uncertain label for parked objects (no 3 s position-history check)')
+    parser.add_argument('--no-heading-gate', action='store_true',
+                        help='Tracker: do not continue a vehicle track that moved along its own axis beyond the normal gate')
+    parser.add_argument('--stale-hold-s', type=float, default=.3,
+                        help='Coast (no throttle, last brake/steer) through input gaps up to this long before braking fully (0 = brake at once)')
+    parser.add_argument('--history-gap-s', type=float, default=.45,
+                        help='Tracker: detection gap that restarts the motion history (default 0.45 s)')
+    parser.add_argument('--fitted-speed-above-mps', type=float, default=3.,
+                        help='Tracker: report the position-fit speed instead of the agreeing VE speed from this speed on (0 = VE)')
     parser.add_argument('--no-fragment-gate', action='store_true',
                         help='Tracker: do not continue a track through a VE box that is only a piece of the same object')
     args = parser.parse_args(argv)
@@ -271,7 +279,8 @@ def main(argv=None, control_tick=None):
     inputs = Inputs(generation, sha, VeObjectTracker(
         static_geometry_fusion=args.static_geometry_fusion, moving_carry_s=args.moving_carry_s,
         slow_window_s=args.slow_window_s, stationary_hold_s=args.stationary_hold_s,
-        fragment_gate=not args.no_fragment_gate),
+        fragment_gate=not args.no_fragment_gate, heading_gate=not args.no_heading_gate, history_gap_s=args.history_gap_s,
+        fitted_speed_above_mps=args.fitted_speed_above_mps),
         memory=None if args.no_static_memory else StaticMemory(),
         resolver=None if args.no_stationary_resolver else StationaryResolver(), dedup=not args.no_box_dedup,
         alias=None if args.no_track_alias else TrackAliaser(),
@@ -331,6 +340,7 @@ def main(argv=None, control_tick=None):
         started = next_status = time.monotonic()
         next_snapshot = 0.
         last_steer = 0.
+        last_fresh = last_sent = None
         # Loop pacing and the PID's control_dt use perf_counter: on Windows/Python 3.10
         # time.monotonic() only advances in 15.6 ms steps, which made dt jump between
         # 0, 16, 31 and 47 ms. Packet ages keep the shared monotonic_ns contract.
@@ -401,11 +411,21 @@ def main(argv=None, control_tick=None):
                         next_snapshot = now+.1
             generated_ns = time.monotonic_ns()
             encoded = wire_command(command, driving.max_steering, hold_steer=last_steer)
+            # A short input gap (a late pose or VE frame, 97 % of them under 0.3 s and up to 160 per full loop) used to
+            # send full brake at once and the car lurched. Within --stale-hold-s of the last fresh tick it coasts
+            # instead: no throttle, the last brake and steering kept; a longer gap still brakes fully.
+            stale_hold = (command is None and args.stale_hold_s > 0 and last_fresh is not None
+                          and last_sent is not None and now - last_fresh <= args.stale_hold_s)
+            if stale_hold:
+                encoded = Command(brake=last_sent.brake, steer=last_sent.steer)
+            if fresh:
+                last_fresh = now
+            last_sent = encoded
             last_steer = encoded.steer
             if sender:
                 sender.send(encoded)
             sent_ns = time.monotonic_ns() if sender else None
-            row = dict(status='RUNNING' if fresh else 'WAITING', VE_frames=inputs.frames,
+            row = dict(status='RUNNING' if fresh else 'WAITING', stale_hold=stale_hold, VE_frames=inputs.frames,
                        position_source=(inputs.pose or {}).get('ego_position_source', 'unavailable'),
                        VE_held=inputs.held_frames,
                        control_pose_frames=inputs.pose_frames, reason=None if fresh else inputs.reason,
@@ -450,6 +470,7 @@ def main(argv=None, control_tick=None):
                 # Signal decision of this tick (VE phase after policy; 0 = unknown -> stop).
                 signal=dict(id=policy.target_id, code=code, head=getattr(policy, 'head_source', None),
                             reason=getattr(policy, 'reason', None), green_samples=policy.allow_samples,
+                            phase_stop=getattr(policy, 'phase_stop', False),
                             phase_age_ms=round((now - policy.received) * 1e3, 1) if policy.received else None),
                 control_pose=inputs.pose))+'\n')
             if pipeline is not None:
