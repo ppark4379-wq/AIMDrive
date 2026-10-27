@@ -60,6 +60,9 @@ def generate_tunnel_candidates(route_points, entry_s, exit_s, spec):
     exit_s = _finite(exit_s, "exit_s")
     margin = _finite(spec.get("endpoint_margin_m"), "endpoint_margin_m")
     offset = _finite(spec.get("side_offset_m"), "side_offset_m")
+    # The route is Ego's lane centre: its right road edge is only half a lane away, so right-side endpoints
+    # need their own, smaller offset (an endpoint past the edge walks the pedestrian into the tunnel wall).
+    right_offset = _finite(spec.get("right_side_offset_m", offset), "right_side_offset_m")
     opposite_lane_1 = _finite(spec.get("opposite_lane_1_offset_m"),
                               "opposite_lane_1_offset_m")
     opposite_lane_2 = _finite(spec.get("opposite_lane_2_offset_m"),
@@ -76,7 +79,8 @@ def generate_tunnel_candidates(route_points, entry_s, exit_s, spec):
     # Full-route subtraction and a sliced route can differ by a few ulps.
     entry_s = max(0.0, entry_s)
     exit_s = min(route_length, exit_s)
-    if margin < 0 or not 0 < offset <= 5 or min(straight, cross_delta, diagonal_delta) <= 0:
+    if (margin < 0 or not 0 < offset <= 5 or not 0 < right_offset <= 5
+            or min(straight, cross_delta, diagonal_delta) <= 0):
         raise ValueError("tunnel candidate dimensions must be positive and bounded")
     sections = tunnel_section_bounds(entry_s, exit_s, spec.get("division_count"), margin)
     section_length = sections[0][1] - sections[0][0]
@@ -98,11 +102,11 @@ def generate_tunnel_candidates(route_points, entry_s, exit_s, spec):
             "straight_opposite": ((s + straight / 2, opposite_d),
                                   (s - straight / 2, opposite_d)),
             "cross_left_to_right": ((s - cross_delta / 2, offset),
-                                    (s + cross_delta / 2, -offset)),
-            "cross_right_to_left": ((s - cross_delta / 2, -offset),
+                                    (s + cross_delta / 2, -right_offset)),
+            "cross_right_to_left": ((s - cross_delta / 2, -right_offset),
                                     (s + cross_delta / 2, offset)),
             "diagonal_cross": ((s - diagonal_delta / 2, offset),
-                               (s + diagonal_delta / 2, -offset)),
+                               (s + diagonal_delta / 2, -right_offset)),
         }
         for behavior, (start, end) in templates.items():
             candidate_id = f"{behavior}_{number:02d}"

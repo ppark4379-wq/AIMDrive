@@ -1137,6 +1137,10 @@ full_loop:
         division_count: 4
         endpoint_margin_m: 10.0
         side_offset_m: 2.5
+        # Right of the route only half a lane (1.75 m) is road: -2.5 put every cross/diagonal endpoint 0.75 m into
+        # the tunnel wall and MORAI removed the pedestrian there (run 1793105487974_000007d0). 1.25 m keeps the
+        # endpoint 0.5 m inside the right edge while the pedestrian still crosses Ego's lane centre.
+        right_side_offset_m: 1.25
         # Opposite pedestrians alternate lane 1 (sections 1/3) and lane 2
         # (sections 2/4). +2.5 was observed inside lane 1 in MORAI;
         # d=0 follows Ego's global path and needs a lane 2 placement check.
