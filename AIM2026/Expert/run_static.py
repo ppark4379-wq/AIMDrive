@@ -5,8 +5,10 @@ import copy
 from datetime import datetime
 import errno
 import json
+import math
 import os
 from pathlib import Path
+import random
 import signal
 import subprocess
 import sys
@@ -25,8 +27,83 @@ from scenario_runner.scenarios.segment_modes.scenario import MissionScenario
 from scenario_runner.utils.map_loader import MGeoMapLoader
 
 MISSION = 'full_loop_static'
+# --avoid: one obstacle on the lane split after the static section, so the Expert has to change lane.
+AVOID_MISSION = 'full_loop_static_avoid'
+AVOID_LINKS = ('A2256W000202', 'A2256W000009')      # ego lane, and the right lane that splits off it
+AVOID_OBSTACLE_Y = -83.
+FOOTPRINTS = ROOT / 'MoraiDrive/scenario_runner/config/static_obstacle_footprints_v1.json'
+GEOMETRY_REGISTRY = (ROOT / 'MoraiDrive/data_collection/internal_sensor_record/evidence/'
+                     'object_geometry_registry_default3d_v2/registry.json')
 # The only route signal on the static section (driver log: signal target).
 STATIC_ROUTE_SIGNALS = ('C1256W000091',)
+
+
+def obstacle_extents(models):
+    """{model: (width, length)} in metres at native scale; models without evidence are left out.
+
+    Width is across the model's yaw direction. LiDAR-verified footprints win over the geometry registry.
+    """
+    result, registry = {}, None
+    catalog = json.loads(FOOTPRINTS.read_text(encoding='utf-8')).get('models', {})
+    for name in models:
+        if name in catalog:
+            result[name] = (float(catalog[name]['width_m']), float(catalog[name]['length_m']))
+            continue
+        if registry is None:
+            try:
+                registry = json.loads(GEOMETRY_REGISTRY.read_text(encoding='utf-8')).get('models', {})
+            except (OSError, ValueError):
+                registry = {}
+        size = registry.get('obstacle|{}|1,1,1'.format(name), {}).get('geometry_3d', {}).get('size_lwh_m')
+        if size:
+            result[name] = (float(size[1]), float(size[0]))
+    return result
+
+
+def avoidance_preset(map_loader, models, map_name, seed=None, model=None, obstacle_y=AVOID_OBSTACLE_Y):
+    """One obstacle on the ego lane where the right lane has opened enough to pass it.
+
+    A model is usable when its narrowest side, turned across the road if that helps, leaves the Expert's
+    collision margin between the obstacle and a car centred in the right lane. Models are picked by
+    ``seed`` (consecutive seeds of a --runs batch cycle through all of them) or at random.
+    """
+    from AIM2026.Expert.src.config.parameters import lattice
+    lane, side = (map_loader.get_link_points(link) for link in AVOID_LINKS)
+    index = min(range(1, len(lane) - 1), key=lambda i: abs(lane[i][1] - obstacle_y))
+    x, y, z = (float(value) for value in lane[index][:3])
+    gap = min(math.hypot(point[0] - x, point[1] - y) for point in side)
+    heading = math.degrees(math.atan2(lane[index + 1][1] - lane[index - 1][1],
+                                      lane[index + 1][0] - lane[index - 1][0]))
+    limit = 2. * (gap - lattice.VEHICLE_WIDTH / 2. - lattice.COLLISION_MARGIN)
+    extents = obstacle_extents(models)
+    usable, excluded = [], {}
+    for name in models:
+        if name not in extents:
+            excluded[name] = 'no size evidence'
+        elif min(extents[name]) > limit:
+            excluded[name] = 'narrowest side {:.2f} m > {:.2f} m'.format(min(extents[name]), limit)
+        else:
+            usable.append(name)
+    if not usable:
+        raise ValueError('No static obstacle model fits the lane gap {:.2f} m'.format(gap))
+    if model is not None:
+        if model not in usable:
+            raise ValueError('{} cannot be passed here: {}'.format(model, excluded.get(model, 'unknown model')))
+    elif seed is not None:
+        model = usable[seed % len(usable)]
+    else:
+        model = random.choice(usable)
+    width, length = extents[model]
+    yaw = heading + 180. + (90. if width > length else 0.)       # long side along the road when it is wider than the lane gap allows
+    yaw = (yaw + 180.) % 360. - 180.
+    return {
+        'schema': 'morai_static_obstacle_preset_v1', 'name': 'static_avoid_' + model,
+        'map_name': map_name, 'scenario': AVOID_MISSION,
+        'obstacles': [{'model': model, 'position': {'x': x, 'y': y, 'z': z}, 'yaw_deg': yaw,
+                       'scale': [1., 1., 1.]}],
+        'generation': {'lane_gap_m': gap, 'max_obstacle_width_m': limit, 'usable_models': usable,
+                       'excluded_models': excluded},
+    }
 
 
 def latest_control_status(path):
@@ -153,9 +230,9 @@ def start_validation(scenario):
     from scenario_runner.validation.run_log import ValidationRunLog
 
     validation_root = ROOT / 'MoraiDrive/scenario_runner/.runtime'
-    log = ValidationRunLog(validation_root / 'validation_runs', MISSION)
+    log = ValidationRunLog(validation_root / 'validation_runs', getattr(scenario.args, 'mission', MISSION))
     scenario._runner_validation_log = log
-    scenario._runner_scenario_name = MISSION
+    scenario._runner_scenario_name = getattr(scenario.args, 'mission', MISSION)
     scenario._validation_controller = 'aim2026_static'
     options = ['--seed', str(scenario.run_seed), '--validation-events']
     if scenario.args.static_obstacle_count is not None:
@@ -180,6 +257,12 @@ def main(argv=None):
     parser.add_argument('--speed-cap-kmh', type=validate_max_velocity_kmh, default=None)
     parser.add_argument('--seed', type=int)
     parser.add_argument('--static-obstacle-count', type=int, choices=(1, 2))
+    parser.add_argument('--avoid', action='store_true',
+                        help='Lane-split avoidance test: the static section is extended and one obstacle '
+                             'is placed on the split (use run_static_avoid.sh)')
+    parser.add_argument('--model', help='With --avoid: obstacle model (default: by seed, else random)')
+    parser.add_argument('--obstacle-y', type=float, default=AVOID_OBSTACLE_Y,
+                        help='With --avoid: obstacle map y [m] on the ego lane (default %(default)s)')
     parser.add_argument('--validation-events', action='store_true', default=True,
                         help='Enabled by default: record observations and diagnose Incidents')
     parser.add_argument('--rviz', action='store_true',
@@ -190,7 +273,11 @@ def main(argv=None):
                         default=None, help='Comma-separated map signal IDs the Expert ignores')
     parser.add_argument('--strict-collisions', action='store_true')
     args = parser.parse_args(argv)
-    args.mission = MISSION
+    args.mission = AVOID_MISSION if args.avoid else MISSION
+    if not args.avoid and (args.model or args.obstacle_y != AVOID_OBSTACLE_Y):
+        parser.error('--model and --obstacle-y need --avoid')
+    if args.avoid and args.static_obstacle_count is not None:
+        parser.error('--avoid always places one obstacle; drop --static-obstacle-count')
     if args.no_signal:
         # Passing the option replaces the Expert's development default (LCS01).
         args.ignore_signals = sorted({'LCS01', *STATIC_ROUTE_SIGNALS, *(args.ignore_signals or [])})
@@ -230,7 +317,7 @@ def main(argv=None):
     for key in list(config):
         if key.startswith('ve_'):
             config.pop(key)
-    config.update(mission_mode=MISSION, drive_control_mode='aimdrive_expert',
+    config.update(mission_mode=args.mission, drive_control_mode='aimdrive_expert',
                   expert_speed_cap_kmh=60. if args.speed_cap_kmh is None else args.speed_cap_kmh,
                   expert_ros_remaps=[], expert_traffic_light_control=False,
                   route_debug_enabled=False, max_laps=1, auto_repeat=False,
@@ -240,6 +327,21 @@ def main(argv=None):
         config['random_seed'] = args.seed
     if args.static_obstacle_count is not None:
         config['static_obstacle_count'] = args.static_obstacle_count
+    map_loader = MGeoMapLoader(global_cfg['paths']['mgeo_root'])
+    if args.avoid:
+        try:
+            preset = avoidance_preset(map_loader, config['static_obstacle_models'],
+                                      global_cfg['morai']['map_name'], seed=args.seed,
+                                      model=args.model, obstacle_y=args.obstacle_y)
+        except ValueError as error:
+            parser.error(str(error))
+        config['static_obstacle_preset'] = str(output / 'static_avoid_preset.yaml')
+        (output / 'static_avoid_preset.yaml').write_text(yaml.safe_dump(preset, sort_keys=False), encoding='utf-8')
+        item, info = preset['obstacles'][0], preset['generation']
+        print('[Static] Avoid test: {} at ({:.2f}, {:.2f}) yaw={:.1f} lane gap={:.2f} m; {} of {} models usable, '
+              'excluded: {}'.format(item['model'], item['position']['x'], item['position']['y'], item['yaw_deg'],
+                                    info['lane_gap_m'], len(info['usable_models']), len(config['static_obstacle_models']),
+                                    info['excluded_models'] or 'none'), flush=True)
 
     global_cfg['paths']['runtime_root'] = str(output)
     global_cfg['paths']['expert_root'] = str(ROOT / 'AIM2026/Expert')
@@ -250,14 +352,19 @@ def main(argv=None):
             global_cfg['grpc']['host'] = '127.0.0.1'
         client = MoraiGrpcClient(global_cfg)
     scenario = StaticScenario(grpc_client=client,
-        map_loader=MGeoMapLoader(global_cfg['paths']['mgeo_root']),
-        global_cfg=global_cfg, scenario_cfg=config)
+        map_loader=map_loader, global_cfg=global_cfg, scenario_cfg=config)
     scenario.args, scenario.output = args, output
     scenario.driver_output = ROOT / 'AIM2026/outputs/expert' / stamp
     if args.check:
         events.prepare_mission(scenario)
         scenario.route_definition = scenario.load_route_definition()
         scenario.prepare_full_loop_route()
+        if args.avoid:      # the same binding the real run does when it spawns: obstacle lies on the mission route
+            from scenario_runner.scenarios.full_loop_parts.static_obstacle import load_static_obstacle_preset
+            bound = load_static_obstacle_preset(config['static_obstacle_preset'], global_cfg['morai']['map_name'],
+                                                scenario.route_points, scenario.mission_route.first_index)
+            print('[Static] Avoid test preset binds to route index {} ({:.3f} m off route)'.format(
+                bound['placements'][0]['route_path_index'], bound['placements'][0]['route_distance_m']), flush=True)
         scenario.setup_expert_controller()
         return subprocess.run(scenario.expert_controller.command(check=True), cwd=ROOT,
                               env=scenario.expert_controller.child_environment()).returncode
@@ -272,7 +379,7 @@ def main(argv=None):
         client.connect()
         if args.rviz:
             rviz = start_rviz(ROOT)
-        print('[Static] One run: {} -> AIM2026/main.py -> Expert'.format(MISSION), flush=True)
+        print('[Static] One run: {} -> AIM2026/main.py -> Expert'.format(args.mission), flush=True)
         scenario.run()
     except KeyboardInterrupt:
         status = 'interrupted'
