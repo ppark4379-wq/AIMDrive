@@ -355,7 +355,7 @@ def main(argv=None):
     parser.add_argument('--variant', choices=[*MISSIONS, 'all'], default='normal',
                         help='normal: empty tunnel; brake: sudden-brake NPC; static: approved obstacle layout; '
                              'pedestrian: pedestrians and animals; vehicle: NPC vehicle behaviours; '
-                             'all: brake, static, pedestrian, vehicle in turn, one scene per run')
+                             'all: brake, static, pedestrian, vehicle in turn, one scene per run (see --skip)')
     parser.add_argument('--fixed-pedestrian', action='store_true',
                         help='pedestrian: the single default pedestrian instead of the random pedestrian/animal mix')
     parser.add_argument('--pedestrian-reaction-s', type=float, default=None,
@@ -366,6 +366,9 @@ def main(argv=None):
                         help='pedestrian: extra stopping margin in metres (scenario default 3.0), e.g. 5')
     parser.add_argument('--vehicle-behavior', choices=VEHICLE_BEHAVIORS,
                         help='vehicle: fix one behaviour (default: random)')
+    parser.add_argument('--skip', nargs='+', choices=ROTATION, default=[], metavar='SCENE',
+                        help='with --variant all: leave these scenes out of the rotation ({}), e.g. --skip brake'.format(
+                            ', '.join(ROTATION)))
     parser.add_argument('--runs', type=int, default=None,
                         help='Repeat the tunnel segment this many times, each in a fresh scene '
                              '(default 1; 4 with --variant all)')
@@ -390,7 +393,12 @@ def main(argv=None):
     if '--check' in remaining and args.runs is not None:
         parser.error('--check validates one run per scene; omit --runs')
     rotating = args.variant == 'all'
-    runs = args.runs if args.runs is not None else (len(ROTATION) if rotating else 1)
+    if args.skip and not rotating:
+        parser.error('--skip is for --variant all')
+    rotation = tuple(name for name in ROTATION if name not in args.skip)
+    if not rotation:
+        parser.error('--skip leaves no scene to run')
+    runs = args.runs if args.runs is not None else (len(rotation) if rotating else 1)
     args.config = args.config.expanduser().resolve()
     if not args.config.is_file():
         parser.error('Config not found: ' + str(args.config))
@@ -425,11 +433,11 @@ def main(argv=None):
     limits = dict(round_timeout_s=args.round_timeout_s, stall_s=args.stall_s)
 
     def variant_of(index):
-        return ROTATION[index % len(ROTATION)] if rotating else args.variant
+        return rotation[index % len(rotation)] if rotating else args.variant
 
     if '--check' in remaining:
         # One validation per scene; with all that is every scene of the rotation.
-        checks = [run_one(arguments(0), variant, options) for variant in (ROTATION if rotating else (args.variant,))]
+        checks = [run_one(arguments(0), variant, options) for variant in (rotation if rotating else (args.variant,))]
         return 0 if not any(checks) else 1
     if runs == 1:
         try:

@@ -259,6 +259,20 @@ class TunnelLauncherTest(unittest.TestCase):
         import signal as real_signal
         self.assertEqual(real_signal.getitimer(real_signal.ITIMER_REAL)[0], 0.)
 
+    def test_skip_leaves_scenes_out_of_the_rotation_and_the_default_cycle(self):
+        code, calls = self.run_main(['--variant', 'all', '--runs', '6', '--skip', 'brake'])
+        self.assertEqual([call[1] for call in calls], ['static', 'pedestrian', 'vehicle'] * 2)
+        code, calls = self.run_main(['--variant', 'all', '--skip', 'brake'])
+        self.assertEqual([call[1] for call in calls], ['static', 'pedestrian', 'vehicle'])
+        code, calls = self.run_main(['--variant', 'all', '--runs', '4', '--skip', 'static', 'vehicle'])
+        self.assertEqual([call[1] for call in calls], ['brake', 'pedestrian', 'brake', 'pedestrian'])
+
+    def test_skip_is_only_for_all_and_cannot_remove_every_scene(self):
+        with self.assertRaises(SystemExit):
+            self.run_main(['--variant', 'brake', '--skip', 'static'])
+        with self.assertRaises(SystemExit):
+            self.run_main(['--variant', 'all', '--skip', 'brake', 'static', 'pedestrian', 'vehicle'])
+
     def test_check_validates_a_single_run(self):
         with patch.object(run_tunnel, 'AIM_ROOT', self.root), self.assertRaises(SystemExit):
             run_tunnel.main(['--config', str(self.base), '--check', '--runs', '2'])
