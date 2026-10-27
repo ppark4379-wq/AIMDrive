@@ -96,5 +96,32 @@ class CausalAnchorTests(unittest.TestCase):
             self.assertAlmostEqual(meta['simulated_comparison']['estimated_xy'][0],4.,places=5)
 
 
+    def test_quantized_gps_is_published_as_smooth_fused_motion(self):
+        # NMEA positions come in ~0.19 m steps at 10 Hz; status speed at 50 Hz. The published position must advance
+        # every status sample by speed * dt, stay on the true line, and carry the status sample's clocks.
+        gps, status = FakeGps(), FakeStatus()
+        hold = AlignedGpsBlackoutHold(gps, status, BASIS, anchor_window_s=1.)
+        hold.core.convergence_deg = lambda xy: 0.
+        now = [1_000_000_000]
+        xs, ys, stamps = [], [], []
+        with patch('time.monotonic_ns', side_effect=lambda: now[0]):
+            for k in range(150):                                  # 3 s at 10 m/s along +x
+                now[0] = 1_000_000_000+k*20_000_000
+                status.add(now[0], 10., 0., source_ns=10_000_000_000+k*20_000_000)
+                if k % 5 == 0:                                    # a 10 Hz fix, quantized to 0.19 m
+                    true_x = .2*k
+                    gps.set(hold._fix_from_grid((round(true_x/.19)*.19, round(.07/.19)*.19)), now[0])
+                value, _, meta = hold.latest_snapshot()
+                if k >= 60:
+                    x, y = hold._grid(value)
+                    xs.append(x-.2*k); ys.append(y); stamps.append(meta['received_ns'])
+                    self.assertEqual(meta['position_mode'], 'gps')
+                    self.assertEqual(meta['received_ns'], now[0])   # the status sample's receipt clock
+        steps = [b-a for a, b in zip(xs, xs[1:])]
+        self.assertLess(max(abs(v) for v in steps), .02)            # raw fix: 0 or 0.19 m jumps
+        self.assertLess(max(abs(b-a) for a, b in zip(ys, ys[1:])), .005)
+        self.assertLess(max(abs(v) for v in xs), .1)                # within half a quantization step of the truth
+
+
 if __name__=='__main__':
     unittest.main()

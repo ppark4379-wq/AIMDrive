@@ -2,12 +2,23 @@
 
 No ground-truth inputs or tunnel GPS corrections. GPS receipt alignment remains
 an explicit approximation when the receiver provides no precise acquisition time.
+
+While GPS is available the published position is the odometry plus the GPS offset (fused), not the raw fix: NMEA
+positions arrive at 10 Hz in 0.15-0.19 m steps, so the raw fix held still for several control ticks and then jumped,
+and steering followed those steps. The offset (mean of GPS minus odometry over the anchor window) is followed with a
+time constant instead of being applied at once; a large offset change (GPS back after a blackout) is followed faster.
+Dead reckoning (GPS lost) keeps the last window offset unchanged.
+Each fused position carries its status sample's clocks, like the dead-reckoning output.
 """
 from collections import deque
 import math
 import time
 
 from .gps_blackout_hold import GpsBlackoutHold, MAX_STATUS_GAP_S
+
+OFFSET_TAU_S = .7          # time constant for following a new GPS offset [s]
+OFFSET_FAST_GAP_M = .5     # an offset change larger than this ...
+OFFSET_FAST_TAU_S = .15    # ... is followed with this time constant [s]
 
 
 def forward_vector(value, dt=0.):
@@ -127,6 +138,8 @@ class AlignedGpsBlackoutHold(GpsBlackoutHold):
         self.offset = None
         self.anchor_distance = 0.
         self.anchor_metadata = {}
+        self.fuse_gps = True        # publish odometry + smoothed offset while GPS is available
+        self.smooth_offset = self.smooth_ns = None
 
     def _anchor_on_fix(self, fix, identity, speed, imu):
         now = time.monotonic_ns()
@@ -140,6 +153,7 @@ class AlignedGpsBlackoutHold(GpsBlackoutHold):
         if point is None or self.track.failure:
             self.offsets.clear()
             self.offset = None
+            self.smooth_offset = self.smooth_ns = None
             super()._anchor_on_fix(fix, identity, speed, imu)
             return
         while self.offsets and identity['received_ns']-self.offsets[0][0] > self.anchor_window_s*1e9:
@@ -181,3 +195,38 @@ class AlignedGpsBlackoutHold(GpsBlackoutHold):
     def _comparison_metadata(self):
         return dict(super()._comparison_metadata(), anchor_filter=self.anchor_metadata,
                     motion_method='continuous_source_clock_quaternion_forward')
+
+    def _smoothed(self, at_ns):
+        """The GPS offset followed with OFFSET_TAU_S (OFFSET_FAST_TAU_S for a large change) up to ``at_ns``."""
+        if self.smooth_offset is None:
+            self.smooth_offset, self.smooth_ns = self.offset, at_ns
+            return self.smooth_offset
+        dt = max(0., (at_ns-self.smooth_ns)/1e9)
+        gap = math.hypot(self.offset[0]-self.smooth_offset[0], self.offset[1]-self.smooth_offset[1])
+        weight = 1.-math.exp(-dt/(OFFSET_FAST_TAU_S if gap > OFFSET_FAST_GAP_M else OFFSET_TAU_S))
+        self.smooth_offset = tuple(a+weight*(b-a) for a, b in zip(self.smooth_offset, self.offset))
+        self.smooth_ns = max(self.smooth_ns, at_ns)
+        return self.smooth_offset
+
+    def latest_snapshot(self):
+        fix, age, identity = super().latest_snapshot()
+        if fix is None or identity.get('position_mode') != 'gps' or not self.fuse_gps:
+            return fix, age, identity
+        with self.lock:
+            if self.offset is None:
+                return fix, age, identity
+            now = time.monotonic_ns()
+            self.track.update(*self._histories(), now)
+            state = self.track.states[-1] if self.track.states and not self.track.failure else None
+            if state is None or not 0 <= now-state['received_ns'] <= MAX_STATUS_GAP_S*1e9:
+                return fix, age, identity           # no fresh odometry: the raw fix
+            offset = self._smoothed(state['received_ns'])
+            xy = tuple(a+b for a, b in zip(offset, state['xy']))
+            fused = self._fix_from_grid(xy)
+            raw = self._grid(fix)
+            meta = dict(identity, received_ns=state['received_ns'], source_stamp_ns=state['source_stamp_ns'],
+                        fused_gps=dict(raw_gps_received_ns=identity.get('received_ns'),
+                                       raw_minus_fused_xy=[round(a-b, 3) for a, b in zip(raw, xy)],
+                                       pending_offset_m=round(math.hypot(self.offset[0]-offset[0],
+                                                                         self.offset[1]-offset[1]), 3)))
+            return fused, (now-state['received_ns'])/1e9, meta

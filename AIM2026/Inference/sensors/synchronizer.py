@@ -8,6 +8,12 @@ from .position import position_identity, position_at_frame
 CAMERAS = ('rgb_front', 'rgb_left', 'rgb_right', 'rgb_rear')
 
 
+def status_allowed(status):
+    """Competition Vehicle Status (181 B), or a full local layout the config names explicitly
+    (Ego.local_status_bytes: 229/245, as UDP/Pose.py accepts). Only speed and sim time are read from it."""
+    return status.get('competition_variant') is True or status.get('local_status_allowed') is True
+
+
 @dataclass(frozen=True)
 class SensorFrame:
     source_time: float
@@ -54,7 +60,7 @@ class SensorSynchronizer:
         if max(stamps) - min(stamps) > self.max_skew:
             return None, 'pose_status_skew'
         status = snapshot['vehicle_status'][0]
-        if status.get('competition_variant') is not True:
+        if not status_allowed(status):
             return None, 'competition_status_required'
         pose = self.projector.project(snapshot['gps'][0], snapshot['imu'][0])
         return dict(pose=pose, speed_mps=status['speed'], source_time=status['sim_time']), None
@@ -86,7 +92,7 @@ class SensorSynchronizer:
             values[name] = record.value
             if name == 'gps':
                 pose_identity = position_identity(record)
-        if not values['vehicle_status'].get('competition_variant'):
+        if not status_allowed(values['vehicle_status']):
             self.reason = 'competition_status_required'
             return None
         speed = values['vehicle_status']['speed']
