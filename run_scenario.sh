@@ -8,7 +8,6 @@
 #   bash run_scenario.sh --random-combination --roads 1 4 5
 set -euo pipefail
 scenario_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-EXPERT_PYTHON="$scenario_repo/.runtime/situation-windows/Scripts/python.exe"
 if (($# == 0)); then
   echo 'Choose --random-locations 2|3|4, or --opposing-crosswalk 2|3 --roads 1 4 5'
   echo 'Or --random-combination (optionally fix --opposing-crosswalk or --roads)'
@@ -19,7 +18,7 @@ export PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1
 export GRPC_POLL_STRATEGY=epoll1
 export PYTHONPATH="$scenario_repo:$scenario_repo/MoraiDrive/data_collection/internal_sensor_record${PYTHONPATH:+:$PYTHONPATH}"
 exec /usr/bin/python3 -B - "$scenario_repo" \
-  --repeat --validation-events --pedestrian-trace --expert-python "$EXPERT_PYTHON" "$@" <<'PY'
+  --repeat --validation-events --pedestrian-trace "$@" <<'PY'
 import os
 import sys
 from python_environment import build_capture_environment

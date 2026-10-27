@@ -6,6 +6,7 @@ state survive every tick, including callers of the legacy execute() API.
 from .planning.common.object_selection import ForwardObjectDetector, _legacy_acc_entries
 from .planning.common.reference_path import PathManager
 from .planning.common.adaptive_cruise_control import AdaptiveCruiseControl
+from .planning.common.dynamic_crossing import DynamicCrossingGuard
 from .planning.traffic.stop_controller import TrafficLightStopController
 from .planning.section_planning import LatticePlanningProcess
 from .planning.ve_planning import VePerceptionPlanningProcess, perception_source
@@ -57,6 +58,10 @@ class AutonomousDriving(PathController):
             time_gap_zones=config['planning']['velocity_profile'].get('speed_limit_zones', []),
             **config['planning']['adaptive_cruise_control']
         )
+        self.dynamic_crossing_guard = DynamicCrossingGuard(
+            vehicle_length=config['common']['vehicle_length'],
+            vehicle_width=config['planning']['adaptive_cruise_control'].get('vehicle_width', 2.),
+            **config['planning'].get('dynamic_crossing', {}))
         # Uses the measured static-obstacle and highway section centerlines.
         if self.perception_source == "ve":
             self.lattice_planning_process = VePerceptionPlanningProcess(

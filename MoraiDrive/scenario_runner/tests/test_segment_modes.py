@@ -2373,6 +2373,29 @@ class MissionModesTest(unittest.TestCase):
         self.assertEqual(event["phase"], "failed")
         self.assertEqual(event["spawn_attempts"][0]["result"], "error")
 
+    def test_confirmed_missing_spawn_skips_without_retry_or_success_credit(self):
+        scenario, event, ego, _, _ = self.make_dynamic_spawn_retry_case()
+        scenario.cfg["dynamic_obstacle"].update(
+            location_mix=True, continue_on_confirmed_spawn_failure=True)
+        scenario.grpc.spawn_pedestrian.side_effect = dynamic_obstacle.PedestrianSpawnNotObserved("no native actor")
+        scenario._spawn_active_dynamic_obstacle()
+        self.assertEqual(event["phase"], "skipped")
+        self.assertTrue(event["retired"])
+        self.assertEqual(event["skip_reason"], "spawn_not_observed")
+        self.assertFalse(event["response_observed"])
+        self.assertFalse(scenario.dynamic_validation["safety_validation_passed"])
+        self.assertEqual(scenario.grpc.spawn_pedestrian.call_count, 1)
+
+    def test_uncertain_spawn_still_stops_with_skip_option_enabled(self):
+        scenario, event, ego, _, _ = self.make_dynamic_spawn_retry_case()
+        scenario.cfg["dynamic_obstacle"].update(
+            location_mix=True, continue_on_confirmed_spawn_failure=True)
+        scenario.grpc.spawn_pedestrian.side_effect = RuntimeError("ambiguous native IDs")
+        with self.assertRaisesRegex(RuntimeError, "ambiguous native IDs"):
+            scenario._spawn_active_dynamic_obstacle()
+        self.assertEqual(event["phase"], "failed")
+        self.assertEqual(scenario.grpc.spawn_pedestrian.call_count, 1)
+
     def test_dynamic_review_keeps_explicit_model_without_fallback(self):
         scenario, event, ego, actor, _ = self.make_dynamic_spawn_retry_case()
         scenario.cfg["dynamic_obstacle_review"] = [
@@ -3426,6 +3449,116 @@ class MissionModesTest(unittest.TestCase):
         self.assertTrue(event["response_observed"])
         self.assertEqual(event["response_kind"], "slowdown")
 
+    def make_continued_yield_case(self):
+        scenario = self.make_scenario("full_loop_dynamic")
+        self.setup_scenario(scenario)
+        scenario.cfg["dynamic_obstacle"]["early_following_spawn"] = True
+        scenario.traffic_light_stops = []
+        scenario._scenario_now = Mock(return_value=100.0)
+        first = scenario.dynamic_obstacle_events[0]
+        first.update(phase="crossing", trigger={"ego_speed_mps": 5.4852},
+                     observed_along_m=1., signal_guard={"required": False})
+        second = copy.deepcopy(first)
+        second.update(id="following_crossing", sequence=2, route_s=first["route_s"]+6.,
+                      trigger={"ego_speed_mps": .0223128}, actor=None,
+                      response_observed=False, response_kind=None)
+        scenario.dynamic_obstacle_events = [first, second]
+        current_s = first["route_s"]-14.09
+        dynamic_obstacle._observe_ego_response(scenario, first, {"speed_mps": .2562}, current_s)
+        self.assertEqual(first["response_kind"], "stop")
+        return scenario, first, second, current_s
+
+    def test_continuous_obstacle_stop_counts_for_following_crossing_in_strict_mode(self):
+        scenario, first, second, current_s = self.make_continued_yield_case()
+        first["lane_cleared"] = True
+        # Keep observing Ego even after the original NPC has cleared its lane.
+        for tick in range(1, 21):
+            scenario._scenario_now.return_value = 100.+tick*.2
+            dynamic_obstacle._maintain_response_stop(scenario, {"speed_mps": .0223}, current_s)
+        dynamic_obstacle._observe_ego_response(scenario, second, {"speed_mps": .0223}, current_s)
+        self.assertTrue(second["response_observed"])
+        self.assertEqual(second["response_kind"], "yield_hold")
+        self.assertEqual(second["response_origin_sequence"], first["sequence"])
+        scenario.dynamic_obstacle_event_index = 1
+        scenario._finish_dynamic_obstacle("reached_dest")
+        self.assertEqual(second["phase"], "cleared")
+        self.assertFalse(second.get("assessment_issues"))
+        report = dynamic_obstacle.dynamic_obstacle_reports(scenario)[1]
+        self.assertEqual(report["response_kind"], "yield_hold")
+        self.assertEqual(report["response_origin_sequence"], 1)
+
+    def test_continued_yield_requires_observed_uninterrupted_obstacle_stop(self):
+        for invalid in ("no_prior_stop", "moved", "gap", "position_jump", "signal_wait",
+                        "red", "unknown_signal", "source_failed", "source_confounded", "source_unverified",
+                        "missing_speed"):
+            with self.subTest(invalid=invalid):
+                scenario, first, second, current_s = self.make_continued_yield_case()
+                scenario._scenario_now.return_value = 100.6
+                ego = {"speed_mps": 0.}
+                observation_s = current_s
+                if invalid == "no_prior_stop":
+                    scenario._dynamic_response_stop = None
+                elif invalid == "moved":
+                    ego["speed_mps"] = 1.2
+                elif invalid == "gap":
+                    scenario._scenario_now.return_value = 102.
+                elif invalid == "position_jump":
+                    observation_s += 2.
+                elif invalid == "signal_wait":
+                    scenario.traffic_wait_state = {"stop_key": ("TL", 1.)}
+                elif invalid in ("red", "unknown_signal"):
+                    scenario.traffic_light_stops = [{"route_s": current_s+5., "light_id": "TL"}]
+                    scenario.grpc.get_traffic_light_state_by_id.return_value = (
+                        {"id": "TL", "color": 1} if invalid == "red" else None)
+                elif invalid == "source_failed":
+                    first["phase"] = "failed"
+                elif invalid == "source_confounded":
+                    first["signal_guard"]["confounded"] = True
+                elif invalid == "source_unverified":
+                    first["signal_guard"] = {"required": True, "verified": False}
+                elif invalid == "missing_speed":
+                    ego = {}
+                dynamic_obstacle._maintain_response_stop(scenario, ego, observation_s)
+                # A later stationary sample must not revive invalidated evidence.
+                dynamic_obstacle._observe_ego_response(scenario, second, {"speed_mps": 0.}, current_s)
+                self.assertFalse(second["response_observed"])
+
+    def test_missing_speed_cannot_seed_an_obstacle_stop(self):
+        scenario, first, second, current_s = self.make_continued_yield_case()
+        scenario._dynamic_response_stop = None
+        first.update(response_observed=False, response_kind=None)
+        for ego in ({}, {"speed_mps": float('nan')}):
+            dynamic_obstacle._observe_ego_response(scenario, first, ego, current_s)
+            self.assertFalse(first["response_observed"])
+            self.assertIsNone(scenario._dynamic_response_stop)
+
+    def test_continued_yield_covers_recorded_third_crossing_outside_old_thirty_meter_gate(self):
+        scenario, first, second, current_s = self.make_continued_yield_case()
+        second["route_s"] = current_s+30.0324900382
+        scenario._scenario_now.return_value = 100.6
+        dynamic_obstacle._maintain_response_stop(scenario, {"speed_mps": .0001247}, current_s)
+        dynamic_obstacle._observe_ego_response(scenario, second, {"speed_mps": .0001247}, current_s)
+        self.assertEqual(second["response_kind"], "yield_hold")
+
+    def test_continued_yield_does_not_credit_stuck_passed_or_signal_limited_npc(self):
+        for invalid in ("stuck", "passed", "too_far", "signal_unverified", "lane_cleared"):
+            with self.subTest(invalid=invalid):
+                scenario, first, second, current_s = self.make_continued_yield_case()
+                scenario._scenario_now.return_value = 100.6
+                dynamic_obstacle._maintain_response_stop(scenario, {"speed_mps": 0.}, current_s)
+                if invalid == "stuck":
+                    second["observed_along_m"] = .1
+                elif invalid == "passed":
+                    second["route_s"] = current_s-1.
+                elif invalid == "too_far":
+                    second["route_s"] = current_s+46.
+                elif invalid == "signal_unverified":
+                    second["signal_guard"] = {"required": True, "verified": False}
+                else:
+                    second["lane_cleared"] = True
+                dynamic_obstacle._observe_ego_response(scenario, second, {"speed_mps": 0.}, current_s)
+                self.assertFalse(second["response_observed"])
+
     def test_dynamic_stuck_npc_cannot_earn_response_and_old_peak_expires(self):
         scenario = self.make_scenario("full_loop_dynamic")
         self.setup_scenario(scenario)
@@ -3439,6 +3572,42 @@ class MissionModesTest(unittest.TestCase):
         scenario._scenario_now.return_value = 106.0
         dynamic_obstacle._observe_ego_response(scenario, event, {"speed_mps": 4.0}, event["route_s"])
         self.assertFalse(event["response_observed"])
+
+    def test_missing_response_can_be_recorded_without_aborting_strict_drive(self):
+        scenario = self.make_scenario("full_loop_dynamic")
+        self.setup_scenario(scenario)
+        scenario.cfg["dynamic_obstacle"].update(
+            assessment_policy="strict", abort_on_missing_ego_response=False)
+        event = scenario.dynamic_obstacle_events[0]
+        event.update(response_observed=False, response_signal_limited=False,
+                     signal_guard={"required": True, "verified": True})
+        scenario._finish_dynamic_obstacle("reached_dest")
+        self.assertEqual(event["phase"], "cleared")
+        self.assertFalse(event["response_observed"])
+        self.assertEqual(event["assessment_issues"][0]["code"], "response_not_observed")
+        self.assertFalse(scenario.dynamic_validation["safety_validation_passed"])
+        # The narrow exception cannot suppress collision rejection.
+        with self.assertRaisesRegex(RuntimeError, "Collision in dynamic"):
+            dynamic_obstacle._observe_dynamic_zone(
+                scenario, {"collision_objects": ["14"]}, event["route_s"])
+
+    def test_missing_response_override_keeps_default_review_and_signal_failures(self):
+        for case in ("default", "review", "collector", "unverified_signal"):
+            with self.subTest(case=case):
+                scenario = self.make_scenario("full_loop_dynamic")
+                self.setup_scenario(scenario)
+                scenario.cfg["dynamic_obstacle"].update(
+                    assessment_policy="strict", abort_on_missing_ego_response=case == "default")
+                event = scenario.dynamic_obstacle_events[0]
+                event.update(response_observed=False, signal_guard={"required": False})
+                if case == "review":
+                    scenario.cfg["dynamic_obstacle_review"] = [{"id": "review"}]
+                elif case == "collector":
+                    scenario.observe_collision = Mock()
+                elif case == "unverified_signal":
+                    event["signal_guard"] = {"required": True, "verified": False}
+                with self.assertRaisesRegex(RuntimeError, "without meaningful Ego response"):
+                    scenario._finish_dynamic_obstacle("reached_dest")
 
     def test_report_policy_does_not_abort_or_approve_unobserved_response(self):
         scenario = self.make_scenario("full_loop_dynamic")

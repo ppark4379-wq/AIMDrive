@@ -465,6 +465,9 @@ def main(argv=None, control_tick=None):
                               second_merge_preparation=plan_details.get('second_merge_preparation'),
                               merge_checks=plan_details.get('merge_checks'),
                               keep_lane_evidence=plan_details.get('keep_lane_evidence'),
+                              dynamic_crossing=plan_details.get('dynamic_crossing'),
+                              legacy_acc=plan_details.get('legacy_acc'),
+                              speed_limits=plan_details.get('speed_limits'),
                               highway_brake_release=plan_details.get('highway_brake_release'),
                               lane_change_cruise=plan_details.get('lane_change_cruise')),
                 # Signal decision of this tick (VE phase after policy; 0 = unknown -> stop).

@@ -156,6 +156,18 @@ class SnapshotTests(unittest.TestCase):
         for marker in overlay.static.markers:
             marker.serialize(__import__('io').BytesIO())
 
+    def test_crossing_overlay_uses_expanded_config_and_shows_yield_target(self):
+        overlay = self.world_overlay()
+        boundaries = [m for m in overlay.static.markers if m.ns == 'pedestrian_zone_boundary']
+        self.assertEqual(len(boundaries), 2)
+        for marker, expected_y in zip(boundaries, (-50.03, 20.01)):
+            self.assertAlmostEqual(sum(p.y for p in marker.points)/2., expected_y)
+        result = LatticePlanningResult([], debug_details={'dynamic_crossing': dict(
+            state='yield', object_id=9, target_velocity=0., front_gap_m=4., entry_time_s=2.)})
+        status = overlay.renderer._build_status_marker(result, VehicleState(0., 0., 0., 0.), None)
+        self.assertIn('DYNAMIC YIELD id=9', status.text)
+        self.assertIn('0.0km/h', status.text)
+
     def test_world_roi_rotates_with_ego_and_keeps_dimensions(self):
         import math
         overlay = self.world_overlay()

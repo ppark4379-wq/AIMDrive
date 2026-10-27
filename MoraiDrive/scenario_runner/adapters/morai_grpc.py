@@ -786,11 +786,12 @@ class MoraiGrpcClient:
             from .pedestrian_binding import bind_spawn
             before = self.get_global_pedestrian_states()
             started = time.monotonic()
-            self.world.spawn_pedestrian(
+            created = self.world.spawn_pedestrian(
                 transform=transform, model_name=model_name, label=label,
                 request_id=request_id, velocity=float(velocity), active_dist=float(active_dist),
                 move_dist=float(move_dist), start_action=bool(start_action))
-            actor = bind_spawn(self, before, request_id, model_name, transform, float(velocity)/3.6, started)
+            actor = bind_spawn(self, before, request_id, model_name, transform,
+                               float(velocity)/3.6, started, creation_rejected=created is None)
             print(f"[Spawn] pedestrian {label}: alias={request_id} native_id={actor.get_id()}")
             return actor
         request_id = str(request_id or "").strip()

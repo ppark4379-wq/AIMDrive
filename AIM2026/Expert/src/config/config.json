@@ -57,16 +57,27 @@
         },
         {
           "name": "north_crosswalk_pair",
-          "start_point": [-60.02, -35.85],
-          "end_point": [-60.27, -8.98],
+          "start_point": [-60.07, -50.03],
+          "end_point": [-60.44, 20.01],
           "entry_buffer_m": 4.635,
           "exit_buffer_m": 4.635,
-          "max_velocity": 20.0,
+          "max_velocity": 30.0,
           "acc_time_gap": 2.0,
           "acc_lateral_threshold": 10.0
         }
       ],
       "terminal_deceleration": 2.0
+    },
+    "dynamic_crossing": {
+      "horizon": 6.0,
+      "max_distance": 45.0,
+      "clearance": 0.5,
+      "stop_margin": 3.0,
+      "deceleration": 2.5,
+      "reaction_time": 0.6,
+      "release_delay": 0.3,
+      "approach_speed": 2.0,
+      "time_margin": 1.0
     },
     "adaptive_cruise_control": {
       "velocity_gain": 0.5,
@@ -94,7 +105,7 @@
   },
   "control": {
     "pid": {
-      "p_gain": 0.075,
+      "p_gain": 0.2,
       "i_gain": 0.0001,
       "d_gain": 0.025
     },

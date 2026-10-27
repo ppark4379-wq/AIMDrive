@@ -34,7 +34,8 @@ class PlanningProcess:
         target, planned_velocity = target_speed(
             driver, vehicle_state, local_path, path, section,
             planned_velocity, bypass, free_limit, front_objects,
-            planning_objects, current_traffic_light)
+            planning_objects, current_traffic_light,
+            crossing_path=prediction_path if path is local_path else path)
         return DrivingPlan(
             path, target, section,
             pedestrian_released=driver.adaptive_cruise_control.pedestrian_released,

@@ -4,6 +4,10 @@ import math
 import time
 
 
+class PedestrianSpawnNotObserved(RuntimeError):
+    """Creation was rejected and repeated inventories contain no new pedestrian."""
+
+
 def address(state):
     info = state.actor_info
     return str(info.id.value).strip(), int(info.object_type), str(info.client_key)
@@ -69,8 +73,10 @@ class BoundPedestrian:
         return result is not None and result.status == 1
 
 
-def bind_spawn(client, before, request_id, model, transform, speed_mps, started):
+def bind_spawn(client, before, request_id, model, transform, speed_mps, started,
+               *, creation_rejected=False):
     baseline = {address(s)[0] for s in before}
+    saw_new_pedestrian = False
     for attempt in range(10):
         if attempt:
             time.sleep(0.1)
@@ -78,6 +84,8 @@ def bind_spawn(client, before, request_id, model, transform, speed_mps, started)
         candidates = []
         for state in fresh:
             raw_id, kind, owner = address(state)
+            if raw_id not in baseline and kind == 2:
+                saw_new_pedestrian = True
             if raw_id in baseline or kind != 2 or (owner and owner != client.client_key):
                 continue
             point = state.transform.location
@@ -91,4 +99,7 @@ def bind_spawn(client, before, request_id, model, transform, speed_mps, started)
             raise RuntimeError('Ambiguous new native pedestrians; refusing nearest-actor binding')
         if len(candidates) == 1:
             return BoundPedestrian(client, request_id, candidates[0], model, speed_mps)
-    raise RuntimeError(f'Could not bind spawned pedestrian {request_id} to a new native ID')
+    message = f'Could not bind spawned pedestrian {request_id} to a new native ID'
+    if creation_rejected and not saw_new_pedestrian:
+        raise PedestrianSpawnNotObserved(message)
+    raise RuntimeError(message)

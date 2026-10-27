@@ -34,6 +34,7 @@ class WorldOverlay:
         self.renderer = renderer
         self.signals = []
         self.static = MarkerArray()
+        self._add_pedestrian_zones()
         links = json.loads((MAP/'link_set.json').read_text(encoding='utf-8-sig'))
         highway = HighwayLaneMap(str(MAP)).links
         for i, row in enumerate(links):
@@ -69,6 +70,37 @@ class WorldOverlay:
             label.scale.z = 1.1
             label.text = text
             self.static.markers.append(label)
+
+    def _add_pedestrian_zones(self):
+        """Display the configured object-position ACC zone, not a stop line."""
+        config = json.loads((ROOT/'AIM2026/Expert/src/config/config.json').read_text(encoding='utf-8'))
+        zones = config['planning']['velocity_profile']['speed_limit_zones']
+        color = (1., .3, .65, .95)
+        for i, zone in enumerate(zones):
+            if 'acc_time_gap' not in zone:
+                continue
+            start, end = zone['start_point'], zone['end_point']
+            half_width = zone.get('acc_lateral_threshold', 10.)
+            band = self.renderer._segment_box_points(start, end, half_width, z=.12)
+            self.static.markers.append(line('pedestrian_acc_zone', i,
+                [(p.x, p.y) for p in band], color, .25, .12))
+            dx, dy = end[0]-start[0], end[1]-start[1]
+            length = math.hypot(dx, dy)
+            nx, ny = -dy/length, dx/length
+            for j, (name, point) in enumerate((('START', start), ('END', end))):
+                self.static.markers.append(line('pedestrian_zone_boundary', i*2+j,
+                    [(point[0]-nx*half_width, point[1]-ny*half_width),
+                     (point[0]+nx*half_width, point[1]+ny*half_width)], color, .4, .15))
+                label = marker('pedestrian_zone_labels', i*2+j, Marker.TEXT_VIEW_FACING, color)
+                label.pose.position = Point(x=point[0]+12., y=point[1], z=2.)
+                label.scale.z = .85
+                label.text = ('DYNAMIC CROSSING {} ({:.2f}, {:.2f})\n'
+                              '{} | ACC gap {:g}s / half-width {:g}m\n'
+                              '{:g} km/h; route buffers +{:g}m / +{:g}m\n'
+                              'Object-position ACC zone; predictive yield also runs outside').format(
+                    name, point[0], point[1], zone['name'], zone['acc_time_gap'], half_width,
+                    zone['max_velocity'], zone.get('entry_buffer_m', 0.), zone.get('exit_buffer_m', 0.))
+                self.static.markers.append(label)
 
     def dynamic(self, state, stamp, stale):
         result = MarkerArray()

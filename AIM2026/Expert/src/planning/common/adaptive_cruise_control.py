@@ -47,6 +47,7 @@ class AdaptiveCruiseControl:
         self.object_time_gap = self.time_gap
 
         self.object_type = None
+        self.object_id = None
         self.object_is_ve_unknown = False
         self.object_distance = 0
         self.object_velocity = 0
@@ -82,6 +83,7 @@ class AdaptiveCruiseControl:
                      *, pedestrian_conflict_check=None):
         was_pedestrian = self.object_type == 0
         self.object_type = None
+        self.object_id = None
         self.object_is_ve_unknown = False
         self.object_time_gap = self.time_gap
         seen_pedestrians = set()
@@ -127,6 +129,7 @@ class AdaptiveCruiseControl:
                 if relative_distance < min_relative_distance:
                     min_relative_distance = relative_distance
                     self.object_type = object_type
+                    self.object_id = getattr(object_info, 'unique_id', None)
                     self.object_is_ve_unknown = is_ve_tracked_unknown(object_info)
                     self.object_distance = relative_distance - self.vehicle_length
                     self.object_velocity = object_info.velocity
