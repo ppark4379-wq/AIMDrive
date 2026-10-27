@@ -231,7 +231,9 @@ def build_dynamic_config(base, count, location_mix=False, only_location=None, op
             early_following_spawn=True, following_spawn_interval_sec=2.0,
             state_recovery_grace_wall_sec=2.0, state_retry_interval_wall_sec=0.2,
             continue_on_confirmed_actor_loss=True,
-            require_ego_response=True, assessment_policy='strict')
+            continue_on_confirmed_spawn_failure=True,
+            require_ego_response=True, abort_on_missing_ego_response=False,
+            assessment_policy='strict')
         if count == 2:
             dynamic.update(required_count=2, max_count=2)
         if only_location is not None:

@@ -2,12 +2,13 @@
 import numpy as np
 from ...config.parameters import lattice as lattice_parameters
 from ..jamming.pedestrian_speed import pedestrian_speed
+from .dynamic_crossing import DynamicCrossingGuard
 
 
 def target_speed(self, vehicle_state, local_path, planning_path, lattice_result,
                  planned_velocity, curvature_bypass, curvature_free_limit,
                  forward_object_info_dic_list, planning_object_info_dic_list,
-                 current_traffic_light):
+                 current_traffic_light, crossing_path=None):
     static_valid = (lattice_result.mode == 'static_obstacle' and lattice_result.active
                     and lattice_result.debug_details.get('static_avoidance', {}).get('path_validated', False))
     if len(local_path) >= 2:
@@ -52,6 +53,23 @@ def target_speed(self, vehicle_state, local_path, planning_path, lattice_result,
     legacy_acc_entries = self._legacy_acc_entries(
         vehicle_state, lattice_result, forward_object_info_dic_list
     )
+    # Highway following/merging/lane changes retain their existing authorities,
+    # including fallback and lane-match failure. Do not carry a previous road's
+    # crossing hold into the highway, even if legacy ACC still has entries.
+    if lattice_result.mode in ('highway', 'highway_lane'):
+        if hasattr(self, 'dynamic_crossing_guard'):
+            self.dynamic_crossing_guard.reset()
+        crossing_velocity = float('inf')
+        crossing_details = dict(state='disabled_highway')
+    else:
+        # The legacy entries also exclude objects owned by tunnel prediction.
+        if not hasattr(self, 'dynamic_crossing_guard'):
+            self.dynamic_crossing_guard = DynamicCrossingGuard()
+        crossing_velocity, crossing_details = self.dynamic_crossing_guard.evaluate(
+            planning_path if crossing_path is None else crossing_path,
+            vehicle_state, legacy_acc_entries, planned_velocity)
+        legacy_acc_entries = self.dynamic_crossing_guard.following_entries(legacy_acc_entries)
+    lattice_result.debug_details['dynamic_crossing'] = crossing_details
     person_check, pedestrian_target_velocity = pedestrian_speed(
         self, static_valid, lattice_result, planning_path, vehicle_state,
         planned_velocity, planning_object_info_dic_list)
@@ -75,15 +93,26 @@ def target_speed(self, vehicle_state, local_path, planning_path, lattice_result,
         else planned_velocity
     )
     legacy_target_velocity = target_velocity
+    acc = self.adaptive_cruise_control
+    lattice_result.debug_details['legacy_acc'] = dict(
+        object_id=getattr(acc, 'object_id', None), object_type=getattr(acc, 'object_type', None),
+        gap_m=getattr(acc, 'object_distance', None) if getattr(acc, 'object_type', None) is not None else None,
+        time_gap_s=getattr(acc, 'object_time_gap', None),
+        target_velocity=legacy_target_velocity)
     target_velocity = max(0., min(
         target_velocity,
         signal_target_velocity,
         lattice_target_velocity,
         getattr(lattice_result, "acc_target_velocity", float("inf")),
         pedestrian_target_velocity,
+        crossing_velocity,
     ))
     unconstrained_static_acceleration = target_velocity
     target_velocity = self._smooth_static_target_speed(target_velocity, vehicle_state, lattice_result)
+    lattice_result.debug_details['speed_limits'] = dict(
+        path=planned_velocity, legacy_acc=legacy_target_velocity, signal=signal_target_velocity,
+        section=getattr(lattice_result, 'acc_target_velocity', float('inf')),
+        dynamic_crossing=crossing_velocity, final=target_velocity)
     if lattice_result.mode in ("roundabout_entry", "static_obstacle"):
         limits = {
             "legacy_acc": legacy_target_velocity,
@@ -95,6 +124,8 @@ def target_speed(self, vehicle_state, local_path, planning_path, lattice_result,
             limits['static_acceleration'] = target_velocity
         if pedestrian_target_velocity != float('inf'):
             limits['pedestrian_obb'] = pedestrian_target_velocity
+        if crossing_velocity != float('inf'):
+            limits['dynamic_crossing'] = crossing_velocity
         key = "roundabout_entry" if lattice_result.mode == "roundabout_entry" else "static_avoidance"
         details = lattice_result.debug_details.setdefault(key, {})
         details.setdefault("phase", lattice_result.reason)

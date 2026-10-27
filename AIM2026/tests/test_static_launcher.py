@@ -95,6 +95,39 @@ class StaticLauncherTests(unittest.TestCase):
             generated = yaml.safe_load(scenario.args.config.read_text(encoding='utf-8'))
             self.assertNotIn('local_status_bytes', generated['Ego'])
 
+    def test_avoid_preset_keeps_every_model_that_can_be_passed(self):
+        lane = [(0., -105. + 0.5 * i, 28.) for i in range(125)]
+        side = [(min(3.7, 0.06 * i), -105. + 0.5 * i, 28.) for i in range(125)]
+        loader = Mock()
+        loader.get_link_points.side_effect = lambda link: lane if link == run_static.AVOID_LINKS[0] else side
+        models = ['TrafficBarrel', 'Steel_Barricade', 'Rockslide', 'Barbed_Wirefence', 'No_Such_Model']
+        preset = run_static.avoidance_preset(loader, models, 'map', seed=1)
+        info = preset['generation']
+        self.assertEqual(info['usable_models'], ['TrafficBarrel', 'Steel_Barricade', 'Barbed_Wirefence'])
+        self.assertEqual(set(info['excluded_models']), {'Rockslide', 'No_Such_Model'})
+        self.assertEqual(preset['obstacles'][0]['model'], 'Steel_Barricade')   # seed 1 -> second usable model
+        self.assertAlmostEqual(preset['obstacles'][0]['position']['y'], -83., delta=0.25)
+        # Wider than long (3.0 x 1.1 m): turned so its short side is across the road.
+        self.assertLess(abs((preset['obstacles'][0]['yaw_deg'] + 180.) % 360. - 180.), 1.)   # road heading 90 + 270
+        with self.assertRaises(ValueError):
+            run_static.avoidance_preset(loader, models, 'map', model='Rockslide')
+
+    def test_avoid_mission_extends_static_section_past_the_split(self):
+        from scenario_runner.scenarios.segment_modes.modes import MISSION_MODES
+        static, avoid = MISSION_MODES[run_static.MISSION], MISSION_MODES[run_static.AVOID_MISSION]
+        self.assertEqual(avoid.start, static.start)
+        self.assertGreater(avoid.end.index, static.end.index)
+        self.assertTrue(avoid.zones.static)
+
+    def test_only_orphaned_spawn_workers_are_removed_from_sensor_ports(self):
+        worker = 'python.exe -c "from multiprocessing.spawn import spawn_main; spawn_main(parent_pid=11080, pipe_handle=2252)"'
+        orphan = {'pid': 1, 'port': 9090, 'cmd': worker, 'parent_alive': False}
+        live_child = {'pid': 2, 'port': 9090, 'cmd': worker, 'parent_alive': True}
+        expert = {'pid': 3, 'port': 2368, 'cmd': 'python.exe -u AIM2026/main.py --drive', 'parent_alive': False}
+        orphans, others = run_static.stale_sensor_receivers([orphan, live_child, expert])
+        self.assertEqual([item['pid'] for item in orphans], [1])
+        self.assertEqual([item['pid'] for item in others], [2, 3])      # a live run is never touched
+
 
 if __name__ == '__main__':
     unittest.main()

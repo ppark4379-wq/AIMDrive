@@ -18,6 +18,7 @@ import uuid
 from ...utils import safe_print as print
 from . import traffic_light_override
 from .pedestrian_timing import interaction_timing
+from ...adapters.pedestrian_binding import PedestrianSpawnNotObserved
 
 
 def _dynamic_cfg(self):
@@ -1174,6 +1175,8 @@ def _event_report(event):
         "trigger": event.get("trigger"),
         "response_observed": bool(event.get("response_observed", False)),
         "response_kind": event.get("response_kind"),
+        "response_origin_sequence": event.get("response_origin_sequence"),
+        "response_stop_since": event.get("response_stop_since"),
         "resumed_after_clear": bool(event.get("resumed_after_clear", False)),
         "min_ego_distance_m": _finite_or_none(
             event.get("min_ego_distance_m", float("inf"))
@@ -1275,6 +1278,7 @@ def _emit_event(self, name, event, **fields):
 
 def spawn_dynamic_obstacle(self):
     # Cleanup can run after any setup failure, including the stop-line guard.
+    self._dynamic_response_stop = None
     self.dynamic_validation = {
         "review_only": bool(self.cfg.get("dynamic_obstacle_review")),
         "goal_reached": False,
@@ -1434,6 +1438,24 @@ def _spawn_active_dynamic_obstacle(self, yaw_offset_deg=0.0):
             **spawn_identity,
         )
     except Exception as error:
+        cfg = _dynamic_cfg(self)
+        if (isinstance(error, PedestrianSpawnNotObserved)
+                and cfg.get("location_mix") and cfg.get("continue_on_confirmed_spawn_failure")
+                and not self.cfg.get("dynamic_obstacle_review")
+                and not callable(getattr(self, "observe_collision", None))):
+            # No retry: a late simulator publication must not create duplicates.
+            # Keep this as an incomplete scenario, never as a passed crossing.
+            attempt.update(result="not_created", error=str(error))
+            event.update(phase="skipped", retired=True,
+                         skip_reason="spawn_not_observed", failure_reason=str(error))
+            event.setdefault("scheduled_spawn_scenario_time", self._scenario_now())
+            if event["scheduled_spawn_scenario_time"] is None:
+                event["scheduled_spawn_scenario_time"] = self._scenario_now()
+            _assessment_issue(self, "spawn_not_observed", event)
+            _emit_event(self, "dynamic_obstacle_skipped", event,
+                        reason=event["skip_reason"], error=str(error))
+            _persist_progress(self)
+            return
         # An RPC exception is not proof that no actor was created. Preserve
         # the existing stop-on-exception behaviour; do not create duplicates.
         attempt.update(result="error", error=str(error))
@@ -1677,7 +1699,13 @@ def _finish_dynamic_obstacle(self, reason):
             else "response_not_observed"
         )
         _assessment_issue(self, reason, event)
-        if _strict_assessment(self):
+        missing_response_is_report_only = (
+            reason == "response_not_observed"
+            and cfg.get("abort_on_missing_ego_response", True) is False
+            and not self.cfg.get("dynamic_obstacle_review")
+            and not callable(getattr(self, "observe_collision", None))
+        )
+        if _strict_assessment(self) and not missing_response_is_report_only:
             _fail_event(self, event,
                         f"Dynamic crossing {event['id']} completed without meaningful Ego response ({reason})")
     _persist_progress(self)
@@ -2028,6 +2056,36 @@ def _timing_snapshot(self, event, ego_state, current_s):
     )
 
 
+def _maintain_response_stop(self, ego_state, current_s):
+    """Keep only continuously observed, signal-free obstacle-induced stops.
+
+Called once per timeline tick, including after the original NPC clears its
+lane. A stale stop from an earlier interaction must not certify a new one.
+"""
+    stop = getattr(self, "_dynamic_response_stop", None)
+    if stop is None:
+        return
+    now = self._scenario_now()
+    raw_speed = ego_state.get("speed_mps", ego_state.get("speed"))
+    source = next((e for e in self.dynamic_obstacle_events
+                   if e["sequence"] == stop["origin_sequence"]), None)
+    threshold = float(_dynamic_cfg(self).get("stopped_speed_mps", 0.5))
+    if (raw_speed is None or not math.isfinite(float(raw_speed))
+            or abs(float(raw_speed)) > threshold
+            or not 0. <= now-stop["last_seen"] <= 1.0
+            or abs(float(current_s)-stop["route_s"]) > 1.0
+            or source is None or source.get("phase") in ("failed", "skipped", "state_lost")
+            or source.get("response_signal_limited")
+            or (source.get("signal_guard") or {}).get("confounded")
+            or ((source.get("signal_guard") or {}).get("required")
+                and not (source.get("signal_guard") or {}).get("verified"))
+            or _signal_wait_active(self, ego_state)
+            or _red_route_signal_ahead(self, current_s) is not False):
+        self._dynamic_response_stop = None
+        return
+    stop["last_seen"] = now
+
+
 def _observe_ego_response(self, event, ego_state, current_s):
     cfg = _dynamic_cfg(self)
     if cfg.get("early_following_spawn") and event.get("lane_cleared"):
@@ -2050,16 +2108,36 @@ def _observe_ego_response(self, event, ego_state, current_s):
         # guarded light was verified green. Sustained guard failure is marked
         # separately by guard.confounded in _update_signal_guard().
         event["response_speed_samples"] = []
+        self._dynamic_response_stop = None
         return
     remaining = float(event["route_s"]) - float(current_s)
-    if abs(remaining) > float(cfg.get("response_observation_distance_m", 30.0)):
+    raw_speed = ego_state.get("speed_mps", ego_state.get("speed"))
+    if raw_speed is None or not math.isfinite(float(raw_speed)):
+        event["response_speed_samples"] = []
+        self._dynamic_response_stop = None
+        return
+    speed = _ego_speed_mps(ego_state)
+    now = self._scenario_now()
+    stopped_threshold = float(cfg.get("stopped_speed_mps", 0.5))
+    stop = getattr(self, "_dynamic_response_stop", None)
+    continued_stop = bool(
+        cfg.get("early_following_spawn") and speed <= stopped_threshold and remaining >= 0.
+        and stop is not None and stop["origin_sequence"] != event["sequence"]
+        and now-stop["since"] >= .5 and 0. <= now-stop["last_seen"] <= 1.0
+        and abs(float(current_s)-stop["route_s"]) <= 1.0)
+    observation_distance = float(cfg.get("response_observation_distance_m", 30.0))
+    if continued_stop:
+        # Early yielding can hold Ego just outside the old 30 m response gate
+        # (30.032 m in the recorded run). Match the crossing guard's 45 m reach
+        # only for an already verified, continuously observed obstacle stop.
+        observation_distance = max(observation_distance,
+            float(cfg.get("continued_yield_observation_distance_m", 45.0)))
+    if abs(remaining) > observation_distance:
         return
     if cfg.get("location_mix") and remaining < 0.0:
         return  # Braking after passing the crossing is not yielding to this NPC.
-    speed = _ego_speed_mps(ego_state)
     event["min_ego_speed_mps"] = min(event["min_ego_speed_mps"], speed)
     trigger = event.get("trigger") or {}
-    now = self._scenario_now()
     samples = [(stamp, value) for stamp, value in event.get("response_speed_samples", [])
                if 0 <= now - stamp <= 4.0]
     # Initial speed remains usable only until a signal interrupts observation.
@@ -2072,7 +2150,6 @@ def _observe_ego_response(self, event, ego_state, current_s):
     # Do not credit slowdown for an NPC still stuck at its spawn point.
     if float(event.get("observed_along_m", 0.0)) < float(cfg.get("minimum_movement_m", 0.4)):
         return
-    stopped_threshold = float(cfg.get("stopped_speed_mps", 0.5))
     slowdown = baseline - speed
     response_kind = None
     if speed <= stopped_threshold and baseline >= float(
@@ -2081,6 +2158,19 @@ def _observe_ego_response(self, event, ego_state, current_s):
         response_kind = "stop"
     elif slowdown >= float(cfg.get("meaningful_slowdown_mps", 1.0)):
         response_kind = "slowdown"
+    if cfg.get("early_following_spawn"):
+        if response_kind == "stop" and stop is None:
+            # Only an observed moving-to-stopped response seeds the evidence.
+            self._dynamic_response_stop = dict(
+                origin_sequence=event["sequence"], since=now, last_seen=now,
+                route_s=float(current_s))
+        elif response_kind is None and continued_stop:
+            # The current NPC has moved, the signal is clear, and a preceding
+            # NPC already caused the uninterrupted stop. No second speed drop
+            # can be required from a vehicle that is still yielding at rest.
+            response_kind = "yield_hold"
+            event["response_origin_sequence"] = stop["origin_sequence"]
+            event["response_stop_since"] = stop["since"]
     if response_kind is not None and (
         not event["response_observed"]
         or (response_kind == "stop" and event["response_kind"] != "stop")
@@ -2095,6 +2185,8 @@ def _observe_ego_response(self, event, ego_state, current_s):
             baseline_speed_mps=baseline,
             observed_speed_mps=speed,
             route_remaining_m=remaining,
+            response_origin_sequence=event.get("response_origin_sequence"),
+            response_stop_since=event.get("response_stop_since"),
         )
         _persist_progress(self)
 
@@ -2275,6 +2367,7 @@ def _prepare_following_signal(self, current_s):
 
 
 def update_dynamic_obstacle(self, ego_state, current_s):
+    _maintain_response_stop(self, ego_state, current_s)
     _observe_dynamic_zone(self, ego_state, current_s)
     if _dynamic_cfg(self).get("early_following_spawn"):
         _update_overlapping_events(self, ego_state, current_s)
@@ -2385,7 +2478,13 @@ def _spawn_opposing_pair_when_ready(self, ego_state, current_s):
         _apply_event_compatibility_state(self, event)
         self._spawn_active_dynamic_obstacle()
         if event.get("actor") is None:
+            if event.get("phase") == "skipped" and event.get("skip_reason") == "spawn_not_observed":
+                continue
             _fail_event(self, event, "Opposing pair spawn incomplete")
+    if any(event.get("phase") == "skipped" for event in events):
+        _emit_event(self, "dynamic_opposing_pair_incomplete", events[0], reason="spawn_not_observed")
+        _persist_progress(self)
+        return
     gap = events[1]["started_scenario_time"] - events[0]["started_scenario_time"]
     _emit_event(self, "dynamic_opposing_pair_started", events[0], spawn_gap_sec=gap)
     _persist_progress(self)

@@ -29,10 +29,12 @@ import os
 from pathlib import Path
 import signal
 import subprocess
+import tarfile
 import time
 from types import SimpleNamespace
 
 import yaml
+import zipfile
 
 from AIM2026.Expert import run_highway as harness
 from scenario_runner.adapters.expert_controller import validate_max_velocity_kmh
@@ -349,6 +351,72 @@ def run_one(argv, variant, options=None, record=None, limits=None):
     return INTERRUPTED if status == 'interrupted' else 0
 
 
+STATIC_ARCHIVE_NAMES = ('tunnel_static_trials.tar.gz', 'tunnel_static_trials.zip')
+
+
+def static_archive(repo_root=None):
+    """A tunnel_static_trials archive next to the repository or in the user's folder, Desktop or Downloads."""
+    repo_root = Path(repo_root or ROOT)
+    folders = [repo_root.parent]
+    parts = repo_root.parts
+    if len(parts) >= 5 and parts[1] == 'mnt' and parts[3] == 'Users':  # WSL view of C:\Users\<name>
+        home = Path(*parts[:5])
+        folders += [home, home / 'Desktop', home / 'Downloads']
+    for folder in dict.fromkeys(folders):
+        for name in STATIC_ARCHIVE_NAMES:
+            if (folder / name).is_file():
+                return folder / name
+    return None
+
+
+def install_static_library(archive, runtime_dir):
+    """Unpack a tunnel_static_trials archive into the runner's .runtime folder (the folder is created if missing)."""
+    archive, runtime_dir = Path(archive), Path(runtime_dir)
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    root = runtime_dir.resolve()
+    if archive.name.endswith('.zip'):
+        opened, names = zipfile.ZipFile(archive), lambda a: a.namelist()
+    else:
+        opened, names = tarfile.open(archive), lambda a: a.getnames()
+    with opened as package:
+        members = names(package)
+        # An archive made from inside the folder has no top-level tunnel_static_trials entry.
+        target = root if any(name.replace('\\', '/').split('/')[0] == 'tunnel_static_trials' for name in members) \
+            else root / 'tunnel_static_trials'
+        target.mkdir(parents=True, exist_ok=True)
+        for name in members:
+            destination = (target / name).resolve()
+            if destination != target.resolve() and target.resolve() not in destination.parents:
+                raise ValueError('Unsafe path in the archive: ' + name)
+        package.extractall(target)
+
+
+def static_library():
+    """The approved static-layout library behind the static scene. It lives under .runtime, which git ignores."""
+    from scenario_runner.scenarios.segment_modes.tunnel_static_replay import DEFAULT_LIBRARY
+    return Path(DEFAULT_LIBRARY)
+
+
+def restore_lf_evidence(roots=(RUNNER_ROOT / 'data' / 'geometry', RUNNER_ROOT / 'config')):
+    """Put CRLF line ends back to LF in the static scene's evidence and configuration JSON files.
+
+    The static scene hashes its evidence files byte for byte. A Windows checkout (git autocrlf) turns their LF line
+    ends into CRLF, which fails the hash check ("Static 3D evidence hash mismatch"). Only the line ends change. The map
+    data (data/R_KR_PR_K-city_2025/*.json) is stored with CRLF in git and is left alone.
+    """
+    fixed = []
+    for root in roots:
+        for path in sorted(Path(root).rglob('*.json')):
+            try:
+                data = path.read_bytes()
+                if b'\r\n' in data:
+                    path.write_bytes(data.replace(b'\r\n', b'\n'))
+                    fixed.append(path)
+            except OSError as error:
+                print('[Tunnel] could not restore LF line ends in {}: {}'.format(path, error), flush=True)
+    return fixed
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, epilog='Other options go to the single-run flow '
                                      '(--check, --speed-cap-kmh, --validation-events, --strict-collisions, ...).')
@@ -398,6 +466,30 @@ def main(argv=None):
     rotation = tuple(name for name in ROTATION if name not in args.skip)
     if not rotation:
         parser.error('--skip leaves no scene to run')
+    if 'static' in (rotation if rotating else (args.variant,)):
+        library = static_library()
+        if not library.is_file():
+            archive = static_archive()
+            if archive is not None:
+                print('[Tunnel] unpacking the static layout library from {} (first run only)'.format(archive), flush=True)
+                try:
+                    install_static_library(archive, library.parents[3])
+                except (OSError, ValueError, tarfile.TarError, zipfile.BadZipFile) as error:
+                    print('[Tunnel] could not unpack {}: {}'.format(archive, error), flush=True)
+        if not library.is_file():
+            hint = ('the static layout library is not installed ({}); copy the tunnel_static_trials folder into '
+                    '{} to run the static scene'.format(library, library.parents[3]))
+            if not rotating:
+                parser.error(hint)
+            print('[Tunnel] ' + hint + '. The static scene is left out of this run.', flush=True)
+            rotation = tuple(name for name in rotation if name != 'static')
+            if not rotation:
+                parser.error('--skip leaves no scene to run')
+        else:
+            fixed = restore_lf_evidence()
+            if fixed:
+                print('[Tunnel] restored LF line ends in {} evidence JSON file(s) (Windows checkout)'.format(len(fixed)),
+                      flush=True)
     runs = args.runs if args.runs is not None else (len(rotation) if rotating else 1)
     args.config = args.config.expanduser().resolve()
     if not args.config.is_file():

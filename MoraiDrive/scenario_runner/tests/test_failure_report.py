@@ -5,6 +5,7 @@ import math
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from ..validation.failure_analysis import analyze, detect_stall, DEFAULTS
 from ..validation.failure_report import build_report
@@ -296,6 +297,21 @@ class FailureReportTests(unittest.TestCase):
         before = {p: p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
         build_report(self.root, self.root.parent / "out")
         self.assertEqual(before, {p: p.read_bytes() for p in self.root.rglob("*") if p.is_file()})
+
+    def test_nonfinite_nested_log_evidence_still_produces_strict_json_report(self):
+        make_run(self.root, seconds=2, hz=2)
+        evidence = {"planning": {"speed_limits": {"section": float('inf')},
+                                  "values": [float('-inf'), float('nan'), 2.5]}}
+        with patch('scenario_runner.validation.failure_report.collect_excerpts', return_value=evidence):
+            path, payload = build_report(self.root)
+        def reject_constant(value):
+            raise ValueError(value)
+        decoded = json.loads(path.with_name('report_data.json').read_text(encoding='utf-8'),
+                             parse_constant=reject_constant)
+        self.assertEqual(decoded['excerpts']['planning']['speed_limits']['section'], 'inf')
+        self.assertEqual(decoded['excerpts']['planning']['values'], ['-inf', 'nan', 2.5])
+        self.assertTrue(path.is_file())
+        self.assertEqual(payload, decoded)
 
     def test_incident_collision_layout(self):
         make_run(self.root, timeout=False)

@@ -23,6 +23,8 @@ class TunnelLauncherTest(unittest.TestCase):
                                                     half_width_m=15., margin_m=0.))), encoding='utf-8')
         self.runtime = self.root / 'utils/scenario_runner/.runtime/tunnel_aim2026'
         self.limits = []
+        self.library = self.root / 'approved_candidates.json'
+        self.library.write_text('{}', encoding='utf-8')
         self.base = self.root / 'config_local.yaml'
         self.base.write_text(yaml.safe_dump(dict(
             Ego=dict(cmd_port=9093), Localization=dict(enabled=True, config='Localization/config.yaml',
@@ -50,7 +52,7 @@ class TunnelLauncherTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.generated()
 
-    def run_main(self, argv, results=None):
+    def run_main(self, argv, results=None, library=None, archive=None):
         calls = []
 
         def fake(arguments, variant, options=None, record=None, limits=None):
@@ -63,8 +65,12 @@ class TunnelLauncherTest(unittest.TestCase):
             if isinstance(outcome, BaseException):
                 raise outcome
             return outcome
+        library = self.library if library is None else library
         with patch.object(run_tunnel, 'AIM_ROOT', self.root), patch.object(run_tunnel, 'RUNTIME', self.runtime), \
-                patch.object(run_tunnel, 'run_one', fake), patch.object(run_tunnel.time, 'sleep'):
+                patch.object(run_tunnel, 'run_one', fake), patch.object(run_tunnel.time, 'sleep'), \
+                patch.object(run_tunnel, 'static_library', return_value=library), \
+                patch.object(run_tunnel, 'static_archive', return_value=archive), \
+                patch.object(run_tunnel, 'restore_lf_evidence', return_value=[]):
             code = run_tunnel.main(['--config', str(self.base), *argv])
         return code, calls
 
@@ -266,6 +272,133 @@ class TunnelLauncherTest(unittest.TestCase):
         self.assertEqual([call[1] for call in calls], ['static', 'pedestrian', 'vehicle'])
         code, calls = self.run_main(['--variant', 'all', '--runs', '4', '--skip', 'static', 'vehicle'])
         self.assertEqual([call[1] for call in calls], ['brake', 'pedestrian', 'brake', 'pedestrian'])
+
+    def test_a_missing_static_library_leaves_static_out_of_the_rotation_instead_of_failing(self):
+        missing = self.root / 'no/approved_candidates.json'
+        code, calls = self.run_main(['--variant', 'all', '--runs', '6'], library=missing)
+        self.assertEqual(code, 0)
+        self.assertEqual([call[1] for call in calls], ['brake', 'pedestrian', 'vehicle', 'brake', 'pedestrian', 'vehicle'])
+        # The default cycle shrinks with the rotation, and an explicit --skip static changes nothing.
+        self.assertEqual([call[1] for call in self.run_main(['--variant', 'all'], library=missing)[1]],
+                         ['brake', 'pedestrian', 'vehicle'])
+        self.assertEqual([call[1] for call in self.run_main(['--variant', 'all', '--skip', 'static'], library=missing)[1]],
+                         ['brake', 'pedestrian', 'vehicle'])
+
+    def test_the_static_scene_alone_without_its_library_stops_with_an_explanation(self):
+        missing = self.root / 'no/runtime/a/b/approved_candidates.json'
+        with patch('sys.stderr') as stderr, self.assertRaises(SystemExit) as raised:
+            self.run_main(['--variant', 'static'], library=missing)
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn('static layout library is not installed', ''.join(str(c.args[0]) for c in stderr.write.call_args_list))
+
+    def test_scenes_other_than_static_never_need_the_library(self):
+        missing = self.root / 'no/approved_candidates.json'
+        for variant in ('brake', 'pedestrian', 'vehicle', 'normal'):
+            code, calls = self.run_main(['--variant', variant], library=missing)
+            self.assertEqual((code, [call[1] for call in calls]), (0, [variant]))
+
+    def test_a_present_library_keeps_static_and_restores_the_evidence_line_ends(self):
+        calls = []
+        with patch.object(run_tunnel, 'restore_lf_evidence', side_effect=lambda: calls.append(1) or [Path('a.json')]) as _:
+            # run_main patches restore_lf_evidence itself, so drive main() directly.
+            def fake(arguments, variant, options=None, record=None, limits=None):
+                return 0
+            with patch.object(run_tunnel, 'AIM_ROOT', self.root), patch.object(run_tunnel, 'RUNTIME', self.runtime), \
+                    patch.object(run_tunnel, 'run_one', fake), patch.object(run_tunnel.time, 'sleep'), \
+                    patch.object(run_tunnel, 'static_library', return_value=self.library):
+                run_tunnel.main(['--config', str(self.base), '--variant', 'all', '--runs', '4'])
+        self.assertEqual(calls, [1])
+
+    def make_archive(self, kind, top_level=True, extra=None):
+        import tarfile, zipfile
+        source = self.root / 'pack_src'
+        (source / 'mass_search_20261008/search').mkdir(parents=True, exist_ok=True)
+        (source / 'mass_search_20261008/search/approved_candidates.json').write_text('{}', encoding='utf-8')
+        prefix = 'tunnel_static_trials/' if top_level else ''
+        archive = self.root / ('tunnel_static_trials.zip' if kind == 'zip' else 'tunnel_static_trials.tar.gz')
+        entries = [(source / 'mass_search_20261008/search/approved_candidates.json',
+                    prefix + 'mass_search_20261008/search/approved_candidates.json')]
+        if extra:
+            entries.append((source / 'mass_search_20261008/search/approved_candidates.json', extra))
+        if kind == 'zip':
+            with zipfile.ZipFile(archive, 'w') as package:
+                for path, name in entries:
+                    package.write(path, name)
+        else:
+            with tarfile.open(archive, 'w:gz') as package:
+                for path, name in entries:
+                    package.add(path, name)
+        return archive
+
+    def test_the_static_library_is_unpacked_from_a_tar_or_zip_with_or_without_the_top_folder(self):
+        for kind in ('tar', 'zip'):
+            for top_level in (True, False):
+                runtime = self.root / 'unpack_{}_{}/.runtime'.format(kind, top_level)
+                run_tunnel.install_static_library(self.make_archive(kind, top_level), runtime)
+                self.assertTrue((runtime / 'tunnel_static_trials/mass_search_20261008/search/approved_candidates.json')
+                                .is_file(), (kind, top_level))
+
+    def test_an_archive_that_would_write_outside_the_runtime_folder_is_refused(self):
+        for kind in ('tar', 'zip'):
+            runtime = self.root / 'unsafe_{}/.runtime'.format(kind)
+            with self.assertRaises(ValueError):
+                run_tunnel.install_static_library(
+                    self.make_archive(kind, extra='tunnel_static_trials/../../escaped.json'), runtime)
+            self.assertFalse((runtime.parent / 'escaped.json').exists())
+
+    def test_the_archive_is_found_beside_the_repository_and_in_the_wsl_user_folder(self):
+        beside = self.root / 'beside'
+        (beside / 'AIMDrive').mkdir(parents=True)
+        self.assertIsNone(run_tunnel.static_archive(beside / 'AIMDrive'))
+        (beside / 'tunnel_static_trials.zip').write_bytes(b'')
+        self.assertEqual(run_tunnel.static_archive(beside / 'AIMDrive'), beside / 'tunnel_static_trials.zip')
+        # C:\Users\<name>\Desktop\AIMDrive seen from WSL: the user's folder and Desktop are searched too.
+        with patch.object(Path, 'is_file', lambda path: str(path) == '/mnt/c/Users/kim/tunnel_static_trials.tar.gz'):
+            self.assertEqual(str(run_tunnel.static_archive(Path('/mnt/c/Users/kim/Desktop/AIMDrive'))),
+                             '/mnt/c/Users/kim/tunnel_static_trials.tar.gz')
+
+    def test_a_missing_library_is_unpacked_from_the_archive_and_static_stays_in_the_rotation(self):
+        library = self.root / 'rt/a/b/c/approved_candidates.json'
+        installed = []
+
+        def install(archive, runtime):
+            installed.append((archive, runtime))
+            library.parent.mkdir(parents=True, exist_ok=True)
+            library.write_text('{}', encoding='utf-8')
+        with patch.object(run_tunnel, 'install_static_library', install):
+            code, calls = self.run_main(['--variant', 'all', '--runs', '4'], library=library,
+                                        archive=self.root / 'x.tar.gz')
+        self.assertEqual([call[1] for call in calls], ['brake', 'static', 'pedestrian', 'vehicle'])
+        self.assertEqual(installed, [(self.root / 'x.tar.gz', library.parents[3])])
+
+    def test_an_unreadable_archive_leaves_static_out_instead_of_stopping_the_run(self):
+        bad = self.root / 'broken.tar.gz'
+        bad.write_bytes(b'not an archive')
+        code, calls = self.run_main(['--variant', 'all', '--runs', '3'], library=self.root / 'none/a/b/c/x.json', archive=bad)
+        self.assertEqual((code, [call[1] for call in calls]), (0, ['brake', 'pedestrian', 'vehicle']))
+
+    def test_restore_lf_evidence_leaves_the_crlf_map_data_alone(self):
+        roots = [Path(root) for root in run_tunnel.restore_lf_evidence.__defaults__[0]]
+        self.assertEqual([root.relative_to(run_tunnel.RUNNER_ROOT).as_posix() for root in roots],
+                         ['data/geometry', 'config'])
+        # git stores these two map files with CRLF; rewriting them would show them as modified everywhere.
+        map_data = run_tunnel.RUNNER_ROOT / 'data/R_KR_PR_K-city_2025'
+        self.assertFalse(any(map_data in path.parents for root in roots for path in root.rglob('*.json')))
+
+    def test_restore_lf_evidence_rewrites_only_the_files_with_crlf(self):
+        crlf, lf = self.root / 'data/a/crlf.json', self.root / 'config/lf.json'
+        for path, content in ((crlf, b'{\r\n  "a": 1\r\n}\r\n'), (lf, b'{\n  "a": 1\n}\n')):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content)
+        other = self.root / 'data/keep.txt'
+        other.write_bytes(b'x\r\ny\r\n')
+        stamp = lf.stat().st_mtime_ns
+        fixed = run_tunnel.restore_lf_evidence((self.root / 'data', self.root / 'config'))
+        self.assertEqual(fixed, [crlf])
+        self.assertEqual(crlf.read_bytes(), b'{\n  "a": 1\n}\n')
+        self.assertEqual(other.read_bytes(), b'x\r\ny\r\n')
+        self.assertEqual(lf.stat().st_mtime_ns, stamp)
+        self.assertEqual(run_tunnel.restore_lf_evidence((self.root / 'data', self.root / 'config')), [])
 
     def test_skip_is_only_for_all_and_cannot_remove_every_scene(self):
         with self.assertRaises(SystemExit):

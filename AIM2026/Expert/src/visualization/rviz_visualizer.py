@@ -291,6 +291,12 @@ class LatticeRvizVisualizer:
         else:
             marker.text = "LATTICE: OFF ({})".format(result.reason)
             self._set_color(marker, 0.8, 0.8, 0.8, 0.8)
+        crossing = result.debug_details.get('dynamic_crossing', {})
+        if crossing.get('state') in ('yield', 'clearance_hold'):
+            marker.text += '\nDYNAMIC YIELD id={} {:.1f}km/h | gap={:.1f}m | entry={:.1f}s'.format(
+                crossing['object_id'], crossing['target_velocity']*3.6,
+                crossing['front_gap_m'], crossing['entry_time_s'])
+            self._set_color(marker, 1., .3, .65, 1.)
         return marker
 
     def _build_object_markers(self, result, vehicle_state, object_info_list, stamp):
