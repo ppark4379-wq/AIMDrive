@@ -5,6 +5,7 @@ import errno
 import json
 from datetime import datetime
 import os
+import random
 from pathlib import Path
 import signal
 import subprocess
@@ -128,6 +129,8 @@ def main(argv=None):
     parser.add_argument('--once', action='store_false', dest='repeat', help='Run one scenario')
     parser.add_argument('--random-locations', type=int, choices=(2, 3, 4),
                         help='Choose exactly this many distinct locations among 1,2,3,4,5')
+    parser.add_argument('--random-combination', action='store_true',
+                        help='Each run: choose crosswalk 2/3 and a road subset (including none); --opposing-crosswalk and --roads fix either part')
     parser.add_argument('--roads', type=int, nargs='+', choices=(1, 4, 5),
                         help='Ordinary-road locations to combine with --opposing-crosswalk')
     parser.add_argument('--dynamic-obstacle-count', type=int, choices=(1, 2), default=1,
@@ -142,11 +145,13 @@ def main(argv=None):
     parser.add_argument('--exclude-pedestrian-models', nargs='+', default=[], help='Exclude models in this diagnostic run only')
     parser.add_argument('--pedestrian-trace', action='store_true', help='Record full pedestrian inventory including Z at up to 10 Hz')
     args = parser.parse_args(argv)
+    if args.random_combination and (args.random_locations or args.only_location or args.dynamic_location_mix or args.dynamic_obstacle_count != 1):
+        parser.error('--random-combination cannot be combined with other location modes or --dynamic-obstacle-count 2')
     if args.random_locations and (args.opposing_crosswalk or args.only_location or args.dynamic_obstacle_count != 1):
         parser.error('--random-locations cannot be combined with other scenario selectors')
-    if args.roads and (not args.opposing_crosswalk or len(args.roads) != len(set(args.roads))):
+    if args.roads and (not (args.opposing_crosswalk or args.random_combination) or len(args.roads) != len(set(args.roads))):
         parser.error('--roads requires --opposing-crosswalk and distinct road numbers')
-    if (args.pedestrian_models or args.exclude_pedestrian_models) and not args.opposing_crosswalk:
+    if (args.pedestrian_models or args.exclude_pedestrian_models) and not (args.opposing_crosswalk or args.random_combination):
         parser.error('Pedestrian diagnostic options require --opposing-crosswalk')
     if args.pedestrian_models:
         args.pedestrian_models = [m for m in args.pedestrian_models if m not in args.exclude_pedestrian_models]
@@ -160,12 +165,20 @@ def main(argv=None):
     args.speed_cap_kmh = None
     args.mission = 'full_loop_dynamic'
     run_number = 1
+    combination_rng = random.Random(args.seed)
     try:
         while True:
             print('[Dynamic] Run {}'.format(run_number), flush=True)
-            args.pedestrian_model = (args.pedestrian_models[(run_number - 1) % len(args.pedestrian_models)]
+            run_args = copy.copy(args)
+            if args.random_combination:
+                run_args.opposing_crosswalk = args.opposing_crosswalk or combination_rng.choice((2, 3))
+                mask = combination_rng.randrange(8)
+                run_args.roads = (list(args.roads) if args.roads else
+                                  [road for bit, road in enumerate((1, 4, 5)) if mask & (1 << bit)])
+                print(f'[Dynamic] Selected crosswalk {run_args.opposing_crosswalk}, roads {run_args.roads}', flush=True)
+            run_args.pedestrian_model = (args.pedestrian_models[(run_number - 1) % len(args.pedestrian_models)]
                                      if args.pedestrian_models else None)
-            result = run_once(args)
+            result = run_once(run_args)
             if result != 0 or args.check or not args.repeat:
                 return result
             run_number += 1

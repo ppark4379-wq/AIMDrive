@@ -3,11 +3,15 @@
 # Examples:
 #   bash run_scenario.sh --random-locations 2
 #   bash run_scenario.sh --opposing-crosswalk 2 --roads 1 4 5
+#   bash run_scenario.sh --random-combination
+#   bash run_scenario.sh --random-combination --opposing-crosswalk 2
+#   bash run_scenario.sh --random-combination --roads 1 4 5
 set -euo pipefail
 scenario_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EXPERT_PYTHON="$scenario_repo/.runtime/situation-windows/Scripts/python.exe"
 if (($# == 0)); then
   echo 'Choose --random-locations 2|3|4, or --opposing-crosswalk 2|3 --roads 1 4 5'
+  echo 'Or --random-combination (optionally fix --opposing-crosswalk or --roads)'
   echo 'Optional: --once, --seed NUMBER, --expert-python PATH'
   exit 2
 fi
