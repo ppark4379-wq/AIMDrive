@@ -9,6 +9,7 @@ import numpy as np
 from shapely.geometry import LineString
 
 from ..static_obstacle.corridor_optimizer import StaticCorridorPlanner, ESCAPE_DISTANCE
+from ...config.parameters.jamming import TIGHT_GAP_MARGIN, TIGHT_GAP_SPEED
 
 ROAD_STEP = .25           # longitudinal spacing of the tabulated road edges [m]
 ROAD_PROBE = 15.          # lateral half-length of the probe line that cuts the road polygon [m]
@@ -16,6 +17,9 @@ ROAD_PROBE = 15.          # lateral half-length of the probe line that cuts the 
 
 class TunnelCorridorPlanner(StaticCorridorPlanner):
     REASON = 'jamming_corridor_'
+    # Objects are seen too small from afar and grow on the map as the car closes in: tight gaps are entered slowly.
+    TIGHT_MARGIN = TIGHT_GAP_MARGIN
+    TIGHT_SPEED = TIGHT_GAP_SPEED
 
     def __init__(self, base, occupancy, section, road_boundary):
         super().__init__(base, occupancy)

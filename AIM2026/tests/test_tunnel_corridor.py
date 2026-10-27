@@ -101,18 +101,29 @@ def test_standing_car_in_the_own_lane_is_passed_in_the_opposite_lane(road):
         jam.close()
 
 
-def test_moving_traffic_keeps_the_existing_planner(road):
+def test_moving_traffic_sets_the_speed_on_the_map_path(road):
+    # A mover used to hand the section to the recorded-route planner, whose path starts at the lane centre: in the
+    # middle of a detour the commanded path jumped by metres and the steering swung. Now the map path stays and the
+    # moving-object overlay only sets the speed.
+    def lateral_at_40(result):
+        local = np.array([SECTION.to_local((q.x, q.y)) for q in result.path])
+        return float(np.interp(40., local[:, 1], local[:, 0]))
     jam, m = planner_with(road, [(-.7, 40., 4.6, 2.)])
     try:
+        free = jam.run(ego(-1.25, 5.), ROUTE[:5], [], global_path=ROUTE)
         mover = ObjectInfo(*world(-4.6, 30.), 6., -1, name='ve_tracked_unknown:moving', is_static=False,
                            size_x=4.5, size_y=2., heading_deg=math.degrees(world_yaw(-math.pi/2)), unique_id=11)
         m.motion.tracks[11] = dict(first=(0., 0.), run=0, mover=True, seen=0.)
         result = jam.run(ego(-1.25, 5.), ROUTE[:5], [dict(object_info=mover)], global_path=ROUTE)
-        assert result is None or not result.reason.startswith('jamming_corridor')
+        assert result.reason.startswith('jamming_dynamic')
+        assert lateral_at_40(result) == pytest.approx(lateral_at_40(free), abs=.05)   # same detour, no jump
+        assert result.acc_target_velocity < free.acc_target_velocity                  # oncoming car: slower
+        assert result.debug_details['jamming_dynamic']['speed_authority']
         m.motion.tracks.clear()
-        for _ in range(QUIET_TICKS):     # the band has been quiet long enough: back to the map planner
+        for _ in range(QUIET_TICKS):     # the band has been quiet long enough: the map planner alone again
             result = jam.run(ego(-1.25, 5.), ROUTE[:5], [], global_path=ROUTE)
         assert result.reason.startswith('jamming_corridor')
+        assert result.debug_details['jamming_corridor']['standing_only']
     finally:
         jam.close()
 
@@ -150,3 +161,26 @@ def test_legacy_acc_leaves_ve_objects_to_the_map_planner():
                                             'jamming_corridor': {'standing_only': True}})
     kept = _legacy_acc_entries(SimpleNamespace(), None, result, [dict(object_info=ve), dict(object_info=person)])
     assert [entry['object_info'] for entry in kept] == [person]
+
+
+def test_fresh_solves_follow_the_curving_route_at_the_tunnel_exit(road):
+    # The route bends right toward the exit. Slope and curvature were penalised in absolute terms, so every fresh
+    # solve there pulled straight, 0.2-0.5 m off the route, and alternating solves flipped the steering.
+    route = np.array([SECTION.to_local((q.x, q.y)) for q in ROUTE])
+    route = route[(np.abs(route[:, 0]) < 8) & (route[:, 1] > 0) & (route[:, 1] < 150)]
+    route = route[np.argsort(route[:, 1])]
+    for forward in (115., 120., 125., 128.):
+        jam, _ = planner_with(road, [])
+        try:
+            x = float(np.interp(forward, route[:, 1], route[:, 0]))
+            slope = float(np.interp(forward+.5, route[:, 1], route[:, 0]))-float(np.interp(forward-.5, route[:, 1], route[:, 0]))
+            heading = math.atan2(1., slope)-SECTION.rotation
+            wx, wy = SECTION.to_world((x, forward))
+            result = jam.run(VehicleState(wx, wy, heading, 7.5), ROUTE[:5], [], global_path=ROUTE)
+            path = np.array([SECTION.to_local((q.x, q.y)) for q in result.path])
+            for ahead in (3., 6., 9.):
+                off = (np.interp(forward+ahead, path[:, 1], path[:, 0])
+                       - np.interp(forward+ahead, route[:, 1], route[:, 0]))
+                assert abs(off) < .1, (forward, ahead, off)
+        finally:
+            jam.close()

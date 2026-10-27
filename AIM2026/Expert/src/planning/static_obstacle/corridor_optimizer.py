@@ -47,7 +47,7 @@ from ..lattice.structures import CandidatePath, LatticePlanningResult
 
 DENSE_STEP = .25          # output/validation sample spacing along y [m]
 VALIDATION_TOLERANCE = .05  # discretization allowance when re-checking the smoothed path [m]
-CONTACT_CLEARANCE = .1    # the current pose is this close to an occupied cell: stop
+CONTACT_CLEARANCE = .1    # floor of the escape clearance asked of a path starting this close to an occupied cell
 ESCAPE_DISTANCE = 5.      # over this distance the required clearance ramps from the pose's own to MIN_CLEARANCE;
                           # the recorded-corridor check is also waived there (the car is already where it is) [m]
 CURVATURE_SPEED_SKIP = 1.5  # the heading join right at the pose does not limit speed [m]
@@ -59,6 +59,7 @@ RESOLVE_SHORTFALL = 20.   # ... while it reaches within this distance of the hor
 SKIP_TRACKING_ERROR = .1  # ... and the car follows it this closely [m]; otherwise the path restarts from the pose
 SKIP_HEADING_ERROR = math.radians(3.)
 MAX_REPAIRS = 5
+RETRY_WIDEN = .3          # widening of the retry's boxes beyond the grid's feasible cells [m]
 REPAIR_MARGIN = .03       # a violated margin is linearized and asked to come out this far on the safe side [m]
 CONSTRAINT_WEIGHT = 1e4   # weight of a linearized margin against the smoothing terms (unit-gradient rows)
 CURVATURE_HOLD = .8       # with a curvature violation, points above this fraction of the limit are held too
@@ -67,6 +68,8 @@ GRADIENT_STEP = .02      # finite-difference step for margin gradients in x [m] 
 
 class StaticCorridorPlanner:
     REASON = 'static_corridor_'    # result reason prefix; + phase
+    TIGHT_MARGIN = 0.            # path points within this of the minimum clearance are a tight gap [m]; 0: off
+    TIGHT_SPEED = math.inf       # speed cap in a tight gap [m/s]
 
     def __init__(self, base, occupancy, map_data_dir=None):
         self.base = base              # RecordedStaticPlanner: geometry, global curve, recorded corridor
@@ -175,7 +178,15 @@ class StaticCorridorPlanner:
             centre = (np.broadcast_to(low[:, None], X.shape)[ok], np.broadcast_to(high[:, None], X.shape)[ok])
             ok[ok] = self._corridor_margin(X[ok], Y[ok], yaw, ys[0], centre) >= 0.
             feasible[k], clear[k] = ok, c
-        return feasible, clear
+        # A path's heading at a station lies between its incoming and outgoing steps, not exactly at the step's
+        # quantized slope (0.1 m per station): accept a cell feasible at a neighbouring step heading too. Tight gaps
+        # entered at an angle are otherwise lost to the grid; the smoothed path is validated with its own heading.
+        masked = np.where(feasible, clear, -np.inf)
+        relaxed = masked.copy()
+        relaxed[1:] = np.maximum(relaxed[1:], masked[:-1])
+        relaxed[:-1] = np.maximum(relaxed[:-1], masked[1:])
+        ok = relaxed > -np.inf
+        return ok, np.where(ok, relaxed, clear)
 
     def _choose_side(self, xs, x_ref, feasible, clear, x0, previous):
         """Cheapest lateral cell per station; returns cells and DP steps for stations 1..last."""
@@ -189,13 +200,18 @@ class StaticCorridorPlanner:
         source = np.arange(len(xs))[None, :]-moves[:, None]               # (move, cell) -> previous cell
         valid = (source >= 0) & (source < len(xs))
         source = np.clip(source, 0, len(xs)-1)
-        slope_cost = w['slope']*(moves*CORRIDOR_LATERAL_STEP/CORRIDOR_STATION_STEP)[:, None]**2
+        # The slope is penalised relative to the reference's own slope: on a curving route an absolute penalty
+        # pulls every solve straight, off the road's bend (0.2-0.5 m at the tunnel exit), and alternating solves
+        # then flip the path left and right.
+        step_slope = (moves*CORRIDOR_LATERAL_STEP/CORRIDOR_STATION_STEP)[:, None]
         node = np.where(feasible, w['clearance']*np.maximum(0., CORRIDOR_DESIRED_CLEARANCE-clear)**2, np.inf)
         for i in range(1, len(x_ref)):
             base = w['reference']*(xs-x_ref[i])**2
             if previous is not None:
                 base = base + w['previous']*(xs-previous[i])**2
-            value = np.where(valid, cost[source], np.inf)+slope_cost+node[:, i]+base
+            reference_slope = (x_ref[i]-x_ref[i-1])/CORRIDOR_STATION_STEP
+            value = (np.where(valid, cost[source], np.inf)+w['slope']*(step_slope-reference_slope)**2
+                     + node[:, i]+base)
             k = np.argmin(value, axis=0)
             cost = value[k, np.arange(len(xs))]
             back[i] = source[k, np.arange(len(xs))]
@@ -223,9 +239,13 @@ class StaticCorridorPlanner:
             right += 1
         return left, right
 
-    def _smooth(self, targets, lower, upper, x0, slope0, constraints=()):
-        """Bounded least squares; `constraints` are linearized margins (gradient g, value b) wanted as g @ v = b."""
+    def _smooth(self, targets, lower, upper, x0, slope0, constraints=(), reference=None):
+        """Bounded least squares; `constraints` are linearized margins (gradient g, value b) wanted as g @ v = b.
+
+        Curvature and its change are penalised relative to ``reference`` (x of the route at y0-ds, y0, stations), so
+        the path follows a curving road without cost instead of being pulled straight."""
         w, ds, n = CORRIDOR_WEIGHTS, CORRIDOR_STATION_STEP, len(targets)
+        reference = np.zeros(n+2) if reference is None else np.asarray(reference, dtype=float)
         # Full sequence X = [x_-1, x_0, v_1..v_n] = S v + c
         S = np.zeros((n+2, n)); S[2:, :] = np.eye(n)
         c = np.zeros(n+2); c[0], c[1] = x0-ds*slope0, x0
@@ -237,12 +257,12 @@ class StaticCorridorPlanner:
         D2 = np.zeros((n, n+2))
         for k in range(n):
             D2[k, k:k+3] = second
-        rows.append(np.sqrt(w['curvature'])*D2@S); rhs.append(-np.sqrt(w['curvature'])*D2@c)
+        rows.append(np.sqrt(w['curvature'])*D2@S); rhs.append(np.sqrt(w['curvature'])*D2@(reference-c))
         if n > 1:
             D3 = np.zeros((n-1, n+2))
             for k in range(n-1):
                 D3[k, k:k+4] = np.array([-1., 3., -3., 1.])/ds**3
-            rows.append(np.sqrt(w['jerk'])*D3@S); rhs.append(-np.sqrt(w['jerk'])*D3@c)
+            rows.append(np.sqrt(w['jerk'])*D3@S); rhs.append(np.sqrt(w['jerk'])*D3@(reference-c))
         upper = np.maximum(upper, lower+1e-3)
         A, b = np.vstack(rows), np.concatenate(rhs)
         solution = self._box_qp(A.T@A, A.T@b, lower, upper, np.clip(targets, lower, upper))
@@ -377,6 +397,7 @@ class StaticCorridorPlanner:
                 return self._finish(ego, held, False, pose_clear, details, begin, source='previous')
             path, speed, valid = [ego.position, Point(x0, y0+.5)], 0., False
             details.update(phase='blocked', path_validated=False, error='no_feasible_station')
+            details['pose_clearance_m'] = round(pose_clear, 3)
             return self._result(path, speed, valid, details, begin, [], np.zeros(0))
         n = len(chosen)
         steps = self._steps()
@@ -391,47 +412,62 @@ class StaticCorridorPlanner:
         (X0, XB), (S0, SB), (K0, KB) = self._basis(station_y, x0, slope0, yy)
         centre = self._corridor(yy, y0, x0)
         required_dense = self._required(yy, y0, pose_clear)-VALIDATION_TOLERANCE
+        route = self.base.global_curve(np.r_[y0-ds, station_y])   # x of the route at x_-1, x_0 and the stations
         constraints = []
-        for repair in range(MAX_REPAIRS+1):
-            solution = self._smooth(targets, lower, upper, x0, slope0, constraints)
-            station_x = np.r_[x0, solution]
-            yy, xx, yaw, curvature = self._dense(station_y, station_x, slope0)
-            dense_clear = self.clearance(xx, yy, yaw)
-            clear_margin = dense_clear-required_dense
-            corridor_margin = self._corridor_margin(xx, yy, yaw, y0, centre)
-            clear_ok, corridor_ok = clear_margin >= 0., corridor_margin >= 0.
-            curvature_ok = curvature <= MAX_CURVATURE+1e-6
-            ok = clear_ok & curvature_ok & corridor_ok
-            details['violations'] = dict(clearance=int((~clear_ok).sum()), curvature=int((~curvature_ok).sum()),
-                                         corridor=int((~corridor_ok).sum()))
-            if ok.all() or repair == MAX_REPAIRS:
-                break
-            details['repairs'] = repair+1
-            # The DP judged each station at the heading of its own step; smoothing changes position and heading
-            # together, and a body turned slightly differently can clip an obstacle or the corridor edge. Linearize
-            # each violated margin in the station variables (through the dense point's position and heading) and
-            # add it to the next solve; earlier linearizations stay, so the solve does not undo a fixed violation.
-            slope, h = S0+SB@solution, GRADIENT_STEP
-            def clear_at(k, x, s):
-                return self.clearance(x, yy[k], np.arctan2(1., s))-required_dense[k]
-            def corridor_at(k, x, s):
-                return self._corridor_margin(x, yy[k], np.arctan2(1., s), y0, (centre[0][k], centre[1][k]))
-            for bad, value, margin in ((~clear_ok, clear_margin, clear_at),
-                                       (clear_ok & ~corridor_ok, corridor_margin, corridor_at)):
-                k = np.flatnonzero(bad)
-                if not len(k):
-                    continue
-                x, s = xx[k], slope[k]
-                gradients = ((margin(k, x+h, s)-margin(k, x-h, s))[:, None]/(2*h)*XB[k]
-                             + (margin(k, x, s+h)-margin(k, x, s-h))[:, None]/(2*h)*SB[k])
-                constraints += [(g, g@solution+REPAIR_MARGIN-v) for g, v in zip(gradients, value[k])]
-            if not curvature_ok.all():
-                # Pinning only the violating points pushes the bend onto their neighbours; hold every point near
-                # the limit too, at its current value or the cap, whichever is lower.
-                second = K0+KB@solution
-                cap = .9*MAX_CURVATURE*(1+slope**2)**1.5
-                for k in np.flatnonzero(curvature > CURVATURE_HOLD*MAX_CURVATURE):
-                    constraints.append((KB[k], math.copysign(min(abs(second[k]), cap[k]), second[k])-K0[k]))
+        any_heading = feasible.any(axis=0)
+        for attempt in range(2):
+            if attempt:
+                if ok.all():
+                    break
+                # The boxes hold each station inside the cells feasible at its DP step's heading. Entering a tight
+                # gap at an angle, the path may need a position feasible only at a heading between the grid's
+                # steps (the pose's own heading held for the first metre): retry once with the cells feasible at
+                # any heading, widened by RETRY_WIDEN, the linearized margins and the validation above judging every
+                # point at the path's own heading.
+                intervals = [self._interval(any_heading[i+1], j) for i, j in enumerate(chosen)]
+                lower = np.array([xs[a] for a, _ in intervals])-RETRY_WIDEN
+                upper = np.array([xs[b] for _, b in intervals])+RETRY_WIDEN
+                details['retry'] = 'any_heading_boxes'
+            for repair in range(MAX_REPAIRS+1):
+                solution = self._smooth(targets, lower, upper, x0, slope0, constraints, route)
+                station_x = np.r_[x0, solution]
+                yy, xx, yaw, curvature = self._dense(station_y, station_x, slope0)
+                dense_clear = self.clearance(xx, yy, yaw)
+                clear_margin = dense_clear-required_dense
+                corridor_margin = self._corridor_margin(xx, yy, yaw, y0, centre)
+                clear_ok, corridor_ok = clear_margin >= 0., corridor_margin >= 0.
+                curvature_ok = curvature <= MAX_CURVATURE+1e-6
+                ok = clear_ok & curvature_ok & corridor_ok
+                details['violations'] = dict(clearance=int((~clear_ok).sum()), curvature=int((~curvature_ok).sum()),
+                                             corridor=int((~corridor_ok).sum()))
+                if ok.all() or repair == MAX_REPAIRS:
+                    break
+                details['repairs'] = repair+1
+                # The DP judged each station at the heading of its own step; smoothing changes position and heading
+                # together, and a body turned slightly differently can clip an obstacle or the corridor edge. Linearize
+                # each violated margin in the station variables (through the dense point's position and heading) and
+                # add it to the next solve; earlier linearizations stay, so the solve does not undo a fixed violation.
+                slope, h = S0+SB@solution, GRADIENT_STEP
+                def clear_at(k, x, s):
+                    return self.clearance(x, yy[k], np.arctan2(1., s))-required_dense[k]
+                def corridor_at(k, x, s):
+                    return self._corridor_margin(x, yy[k], np.arctan2(1., s), y0, (centre[0][k], centre[1][k]))
+                for bad, value, margin in ((~clear_ok, clear_margin, clear_at),
+                                           (clear_ok & ~corridor_ok, corridor_margin, corridor_at)):
+                    k = np.flatnonzero(bad)
+                    if not len(k):
+                        continue
+                    x, s = xx[k], slope[k]
+                    gradients = ((margin(k, x+h, s)-margin(k, x-h, s))[:, None]/(2*h)*XB[k]
+                                 + (margin(k, x, s+h)-margin(k, x, s-h))[:, None]/(2*h)*SB[k])
+                    constraints += [(g, g@solution+REPAIR_MARGIN-v) for g, v in zip(gradients, value[k])]
+                if not curvature_ok.all():
+                    # Pinning only the violating points pushes the bend onto their neighbours; hold every point near
+                    # the limit too, at its current value or the cap, whichever is lower.
+                    second = K0+KB@solution
+                    cap = .9*MAX_CURVATURE*(1+slope**2)**1.5
+                    for k in np.flatnonzero(curvature > CURVATURE_HOLD*MAX_CURVATURE):
+                        constraints.append((KB[k], math.copysign(min(abs(second[k]), cap[k]), second[k])-K0[k]))
         if not ok.all():
             if held is not None:
                 # The new solve failed but the committed path is still clear on the current map: keep it.
@@ -494,13 +530,17 @@ class StaticCorridorPlanner:
             np.full(len(yy), p.STATIC_MAX_SPEED_KPH/3.6),
             np.sqrt(CORRIDOR_LATERAL_ACCEL/np.maximum(speed_curvature, 1e-6)),
             base_speed+gain*np.maximum(0., np.minimum(dense_clear, 10.)-CORRIDOR_MIN_CLEARANCE)])
+        # A tight gap is entered slowly: an object seen too small from afar grows on the map as the car closes in,
+        # and at this speed the car can still stop or take the re-solved path instead of driving into it.
+        tight = dense_clear < CORRIDOR_MIN_CLEARANCE+self.TIGHT_MARGIN
+        limit = np.where(tight, np.minimum(limit, self.TIGHT_SPEED), limit)
         if blocked:
             stop = station[-1]-CORRIDOR_STOP_BUFFER
             limit = np.where(station >= stop, 0., limit)
             details['stop_distance_m'] = float(max(0., stop))
         for i in range(len(limit)-2, -1, -1):
             limit[i] = min(limit[i], math.sqrt(limit[i+1]**2+2*p.STATIC_END_DECELERATION*(station[i+1]-station[i])))
-        speed = float(limit[0]) if pose_clear >= CONTACT_CLEARANCE else 0.
+        speed = float(limit[0])
         path = [Point(float(a), float(b)) for a, b in zip(xx, yy)]
         if not blocked:
             path += self._global_tail(path[-1])

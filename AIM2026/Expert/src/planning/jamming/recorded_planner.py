@@ -362,11 +362,7 @@ class JammingPlanner:
             return None
         planned = global_path if global_path is not None else (
             prediction_path if prediction_path is not None else reference_path)
-        result = self._world_result(self.corridor.run(local_ego, self._path(reference_path), self._path(planned)))
-        if result is not None:
-            # No mover in the band: the map planner owns every VE object here (object_selection reads this).
-            result.debug_details['jamming_corridor'] = dict(standing_only=True)
-        return result
+        return self.corridor.run(local_ego, self._path(reference_path), self._path(planned))
 
     def set_object_geometries(self, rows):
         """Install one immutable, observed geometry contract before planning."""
@@ -651,21 +647,30 @@ class JammingPlanner:
         if global_path is not None:
             self._global_path = list(global_path)
         if self.corridor is not None:
-            # Standing obstacles only: plan on the accumulated map. A mover hands the section to the planner
-            # below until the band has been quiet for QUIET_TICKS and no overtake is in progress.
+            # Standing obstacles are planned on the accumulated map. While a mover is in the band (and until it has
+            # been quiet for QUIET_TICKS) the moving-object overlay sets the speed, judged on the same map path:
+            # switching to the recorded-route path would jump the commanded path by metres in the middle of a
+            # detour and swing the steering. No overtake is started from here (the recorded planner is idle).
             self._quiet_ticks = 0 if self._traffic(objects) else self._quiet_ticks+1
             corridor = self._quiet_ticks >= QUIET_TICKS and not self.dynamic.active
             if corridor != self._corridor_mode:
                 self._corridor_mode = corridor
+                # Either way the recorded planner and its detour start over: the overlay below only sets speed
+                # (an idle recorded planner keeps it from starting an overtake).
+                self.dynamic.reset()
+                self.local.reset()
+            result = self._run_corridor(ego, local_ego, reference_path, prediction_path, global_path)
+            if result is not None:
                 if corridor:
-                    self.dynamic.reset()
-                    self.local.reset()
+                    # No mover in the band: the map planner owns every VE object here (object_selection reads this).
+                    result.debug_details['jamming_corridor'] = dict(standing_only=True)
                 else:
-                    self.corridor.previous = self.corridor.committed = None
-            if corridor:
-                result = self._run_corridor(ego, local_ego, reference_path, prediction_path, global_path)
-                if result is not None:
-                    return result
+                    movers = self._moving_objects(objects, ego)
+                    result = self.dynamic.run(self.local, local_ego, self._path(reference_path),
+                                              self._obstacles(objects), movers, result,
+                                              float(desired_velocity) if desired_velocity is not None else 30./3.6)
+                    result.debug_details['jamming_corridor'] = dict(standing_only=False, mover_speed=True)
+                return self._world_result(result)
         self._scene_error = None
         states={motion_key(item['object_info']): moving(item['object_info']) for item in objects
                 if item['object_info'].type in (1,2) or is_ve_tracked_unknown(item['object_info'])}
