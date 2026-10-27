@@ -193,7 +193,7 @@ class MissionModesTest(unittest.TestCase):
             scenario.verify_static_obstacle(1.0, 0.0)
 
     def test_primary_modes_plus_legacy_commands(self):
-        self.assertEqual(len(PRIMARY_SCENARIOS), 14)
+        self.assertEqual(len(PRIMARY_SCENARIOS), 15)
         for name in PRIMARY_SCENARIOS:
             self.assertEqual(build_parser().parse_args(["--scenario", name]).scenario, name)
             self.assertEqual(

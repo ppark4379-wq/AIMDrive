@@ -38,6 +38,12 @@ STATIC_END = RouteBoundary(
     753, (-59.777648542643476, -101.53081497592018, 28.364247184277144),
     90.33835303338373, "A2256W000202",
 )
+# Lane-split avoidance test: the static route continues past STATIC_END so the
+# Expert can pass an obstacle on the split and rejoin before the next junction.
+STATIC_AVOID_END = RouteBoundary(
+    851, (-60.064595497938214, -52.53179563259389, 28.38593649900395),
+    90.25334603689014, "A2256W000202",
+)
 DYNAMIC_END = RouteBoundary(
     1081, (-60.78981215174727, 58.50851457093197, 28.36528072840477),
     90.58330256087204, "A2256W000315",
@@ -87,6 +93,9 @@ MISSION_MODES = {
     "full_loop_normal": MissionMode("full_loop_normal", ZoneSelection()),
     "full_loop_static": MissionMode(
         "full_loop_static", ZoneSelection(static=True), STATIC_START, STATIC_END,
+    ),
+    "full_loop_static_avoid": MissionMode(
+        "full_loop_static_avoid", ZoneSelection(static=True), STATIC_START, STATIC_AVOID_END,
     ),
     "full_loop_dynamic": MissionMode(
         "full_loop_dynamic", ZoneSelection(dynamic=True), STATIC_END, DYNAMIC_END,
