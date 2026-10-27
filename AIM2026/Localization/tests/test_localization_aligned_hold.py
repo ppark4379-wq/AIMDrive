@@ -123,5 +123,28 @@ class CausalAnchorTests(unittest.TestCase):
         self.assertLess(max(abs(v) for v in xs), .1)                # within half a quantization step of the truth
 
 
+    def test_gps_return_after_a_blackout_is_followed_not_jumped(self):
+        # 3 s on GPS, 10 s of dead reckoning (GPS absent), then GPS back 0.3 m sideways of the reckoned track: the
+        # published position must not take that correction in one tick.
+        gps, status = FakeGps(), FakeStatus()
+        hold = AlignedGpsBlackoutHold(gps, status, BASIS, anchor_window_s=1.)
+        hold.core.convergence_deg = lambda xy: 0.
+        now = [1_000_000_000]
+        ys = []
+        with patch('time.monotonic_ns', side_effect=lambda: now[0]):
+            for k in range(800):                                   # 50 Hz status at 10 m/s along +x
+                now[0] = 1_000_000_000+k*20_000_000
+                status.add(now[0], 10., 0., source_ns=10_000_000_000+k*20_000_000)
+                if k % 5 == 0 and not 150 <= k < 650:
+                    gps.set(hold._fix_from_grid((.2*k, .3 if k >= 650 else 0.)), now[0])
+                elif 150 <= k < 650:
+                    gps.fix = None
+                value, _, meta = hold.latest_snapshot()
+                if k >= 640:
+                    ys.append(hold._grid(value)[1])
+        self.assertLess(max(abs(b-a) for a, b in zip(ys, ys[1:])), .02)   # was one 0.3 m step at the first fix
+        self.assertAlmostEqual(ys[-1], .3, delta=.05)                       # ... and the correction is complete
+
+
 if __name__=='__main__':
     unittest.main()

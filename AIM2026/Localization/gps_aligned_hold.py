@@ -179,6 +179,10 @@ class AlignedGpsBlackoutHold(GpsBlackoutHold):
                 continue
             self.core.xy = self.core.ref_xy = tuple(a+b for a, b in zip(self.offset, state['xy']))
             self.core.last_ns = state['received_ns']
+            # The followed offset is the one dead reckoning uses, up to now: when GPS returns, the new offset is
+            # followed from here. Otherwise the whole blackout counts as elapsed time and the correction lands in one
+            # tick (a 6-8 cm lateral and 0.3 m longitudinal step at the tunnel exit).
+            self.smooth_offset, self.smooth_ns = self.offset, state['received_ns']
             horizontal = math.hypot(*state['velocity']) * (-1 if state['speed_mps'] < 0 else 1)
             self.core.last_sample = (horizontal, state['yaw'])
             self.core.distance_m = max(0., state['distance_m']-self.anchor_distance)
