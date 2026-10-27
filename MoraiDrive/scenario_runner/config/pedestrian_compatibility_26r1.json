@@ -1,0 +1,184 @@
+{
+    "schema":  1,
+    "simulator":  "MORAI 26.R1",
+    "map":  "R_KR_PR_K-city_2025",
+    "observed_date":  "2026-10-27",
+    "evidence":  "artifacts/pedestrian_model_audit.json",
+    "method":  "Live native-ID audit; unique request IDs; physics enabled; automatic crossing at 2.5 m/s; 22m path; stop at endpoint; observe 13 seconds. No Ego control or world reset.",
+    "models":  [
+                   {
+                       "model":  "Man1",
+                       "passed":  true,
+                       "last_seen_sec":  13.078349130693823,
+                       "reason":  "crossed_and_retained"
+                   },
+                   {
+                       "model":  "Man2",
+                       "passed":  true,
+                       "last_seen_sec":  12.990892734844238,
+                       "reason":  "crossed_and_retained"
+                   },
+                   {
+                       "model":  "Man3",
+                       "passed":  true,
+                       "last_seen_sec":  12.943481957074255,
+                       "reason":  "crossed_and_retained"
+                   },
+                   {
+                       "model":  "Woman1",
+                       "passed":  true,
+                       "last_seen_sec":  12.884615720249712,
+                       "reason":  "crossed_and_retained"
+                   },
+                   {
+                       "model":  "Woman2",
+                       "passed":  true,
+                       "last_seen_sec":  13.013759673107415,
+                       "reason":  "crossed_and_retained"
+                   },
+                   {
+                       "model":  "Woman3",
+                       "passed":  true,
+                       "last_seen_sec":  12.968099527992308,
+                       "reason":  "crossed_and_retained"
+                   },
+                   {
+                       "model":  "Man4",
+                       "passed":  true,
+                       "last_seen_sec":  12.913640259765089,
+                       "reason":  "crossed_and_retained"
+                   },
+                   {
+                       "model":  "Man5",
+                       "passed":  true,
+                       "last_seen_sec":  12.849822463002056,
+                       "reason":  "crossed_and_retained"
+                   },
+                   {
+                       "model":  "Man6",
+                       "passed":  false,
+                       "last_seen_sec":  2.865591079927981,
+                       "reason":  "Pinned pedestrian model changed"
+                   },
+                   {
+                       "model":  "Man7",
+                       "passed":  false,
+                       "last_seen_sec":  3.0184984407387674,
+                       "reason":  "Expected one native pedestrian 2, found 0"
+                   },
+                   {
+                       "model":  "Man8",
+                       "passed":  false,
+                       "last_seen_sec":  2.9143164241686463,
+                       "reason":  "Expected one native pedestrian 3, found 0"
+                   },
+                   {
+                       "model":  "Woman4",
+                       "passed":  false,
+                       "last_seen_sec":  2.8719196557067335,
+                       "reason":  "Expected one native pedestrian 4, found 0"
+                   },
+                   {
+                       "model":  "Woman5",
+                       "passed":  false,
+                       "last_seen_sec":  2.815174771938473,
+                       "reason":  "Expected one native pedestrian 1, found 0"
+                   },
+                   {
+                       "model":  "Woman6",
+                       "passed":  false,
+                       "last_seen_sec":  2.98424651613459,
+                       "reason":  "Expected one native pedestrian 2, found 0"
+                   },
+                   {
+                       "model":  "Woman7",
+                       "passed":  false,
+                       "last_seen_sec":  2.9186348249204457,
+                       "reason":  "Expected one native pedestrian 3, found 0"
+                   },
+                   {
+                       "model":  "Woman8",
+                       "passed":  false,
+                       "last_seen_sec":  2.8763859919272363,
+                       "reason":  "Expected one native pedestrian 4, found 0"
+                   },
+                   {
+                       "model":  "NCAP_EBT",
+                       "passed":  true,
+                       "last_seen_sec":  13.226653321646154,
+                       "reason":  "crossed_and_retained"
+                   },
+                   {
+                       "model":  "NCAP_EPTa",
+                       "passed":  true,
+                       "last_seen_sec":  13.171075833961368,
+                       "reason":  "crossed_and_retained"
+                   },
+                   {
+                       "model":  "police_m_2",
+                       "passed":  true,
+                       "last_seen_sec":  13.110200400929898,
+                       "reason":  "crossed_and_retained"
+                   },
+                   {
+                       "model":  "worker_f_1",
+                       "passed":  true,
+                       "last_seen_sec":  13.021388242021203,
+                       "reason":  "crossed_and_retained"
+                   },
+                   {
+                       "model":  "worker_m_1",
+                       "passed":  true,
+                       "last_seen_sec":  13.118879402056336,
+                       "reason":  "crossed_and_retained"
+                   },
+                   {
+                       "model":  "Boy1",
+                       "passed":  true,
+                       "last_seen_sec":  13.065749023109674,
+                       "reason":  "crossed_and_retained"
+                   },
+                   {
+                       "model":  "Girl1",
+                       "passed":  true,
+                       "last_seen_sec":  12.995902378112078,
+                       "reason":  "crossed_and_retained"
+                   },
+                   {
+                       "model":  "Girl2",
+                       "passed":  true,
+                       "last_seen_sec":  12.935179591178894,
+                       "reason":  "crossed_and_retained"
+                   },
+                   {
+                       "model":  "Deer1",
+                       "passed":  false,
+                       "last_seen_sec":  2.960046660620719,
+                       "reason":  "Expected one native pedestrian 1, found 0"
+                   },
+                   {
+                       "model":  "Dog1",
+                       "passed":  false,
+                       "last_seen_sec":  2.8796574510633945,
+                       "reason":  "Expected one native pedestrian 2, found 0"
+                   },
+                   {
+                       "model":  "Dog2",
+                       "passed":  false,
+                       "last_seen_sec":  2.9812011290341616,
+                       "reason":  "Expected one native pedestrian 3, found 0"
+                   },
+                   {
+                       "model":  "Dog10",
+                       "passed":  false,
+                       "last_seen_sec":  null,
+                       "reason":  "Could not bind spawned pedestrian 1435951325 to a new native ID"
+                   },
+                   {
+                       "model":  "Ped_Pet1",
+                       "passed":  true,
+                       "last_seen_sec":  12.97463170485571,
+                       "reason":  "crossed_and_retained"
+                   }
+               ]
+}

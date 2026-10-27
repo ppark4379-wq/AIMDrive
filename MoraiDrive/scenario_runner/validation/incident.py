@@ -18,7 +18,7 @@ from .paths import repo_root
 from .pipeline_log import read_window, read_ve_audit_window
 
 # Scenario launchers that drive the integrated AIM2026 VE -> Gate -> Planning -> Control stack.
-AIM2026_CONTROLLERS = ("aim2026_highway", "aim2026_roundabout", "aim2026_static")
+AIM2026_CONTROLLERS = ("aim2026_highway", "aim2026_roundabout", "aim2026_static", "aim2026_dynamic")
 ROUNDABOUT_PREFIX = "full_loop_roundabout"
 
 
@@ -35,6 +35,8 @@ def snapshot_nearby_actors(grpc, ego_state, radius_m=120.0):
     actors, errors = [], []
     for kind, method_name in (("vehicle", "get_all_vehicle_states"),
                               ("pedestrian", "get_all_pedestrian_states")):
+        if kind == "pedestrian" and callable(getattr(grpc, "get_global_pedestrian_states", None)):
+            method_name = "get_global_pedestrian_states"
         method = getattr(grpc, method_name, None)
         if not callable(method):
             errors.append(f"{method_name}_unavailable")
@@ -251,10 +253,28 @@ class IncidentRecorder:
         self.timeout_recorded = True
         return self.bundles[-1]
 
+    def capture_dynamic_failure(self, run_id, reason):
+        """Preserve a dynamic abort without inventing a collision event."""
+        if (getattr(self.scenario, '_validation_controller', None) != 'aim2026_dynamic'
+                or getattr(self, 'dynamic_failure_recorded', False)
+                or self.latest_observation is None
+                or self.latest_observation.run_id != run_id):
+            return None
+        now = time.monotonic()
+        last = self.ego[-1]
+        self._trim(now)
+        if not self.ego:
+            self.ego.append(last)
+        self._save(self.latest_sequence, self.latest_observation, [], now,
+                   failure_type='scenario_dynamic_failure', reason=str(reason))
+        self.dynamic_failure_recorded = True
+        return self.bundles[-1]
+
     def _save(self, sequence, observation, collision, now, *,
               failure_type="collision_started", reason=None):
         suffix = ("_timeout" if failure_type == "scenario_timeout" else
-                  "_stall" if failure_type == "scenario_stall" else "")
+                  "_stall" if failure_type == "scenario_stall" else
+                  "_dynamic" if failure_type == "scenario_dynamic_failure" else "")
         incident_id = f"{observation.run_id}_{sequence:06d}{suffix}"
         folder = self.root / f"incident_{incident_id}"
         folder.mkdir(parents=True, exist_ok=False)
@@ -336,7 +356,7 @@ class IncidentRecorder:
                 "observation_sequence": sequence,
                 **({"reason": reason,
                     "observation_age_sec": max(0.0, now - self.ego[-1]["captured_monotonic_sec"])}
-                   if failure_type in ("scenario_timeout", "scenario_stall") else {}),
+                   if failure_type in ("scenario_timeout", "scenario_stall", "scenario_dynamic_failure") else {}),
             },
             "scenario_evidence": scenario_evidence(scenario),
             "scenario_result_sha256": (hashlib.sha256(scenario_result_bytes).hexdigest()
@@ -379,7 +399,12 @@ class IncidentRecorder:
                 stream.write(scenario_result_bytes)
                 stream.flush()
                 os.fsync(stream.fileno())
-        if manifest["controller"] == "aim2026_highway":
+        if manifest["controller"] == "aim2026_dynamic":
+            from ..scenarios.full_loop_parts.dynamic_obstacle import dynamic_obstacle_reports
+            _write_json(folder / 'dynamic_events.json', dynamic_obstacle_reports(scenario))
+            rerun_command = shlex.join(["bash", "run_scenario.sh", "--once",
+                                        *self.run_options])
+        elif manifest["controller"] == "aim2026_highway":
             rerun_command = shlex.join(["bash", "AIM2026/Expert/run_highway.sh",
                                         "--seed", str(manifest["seed"]), "--validation-events"])
         elif manifest["controller"] == "aim2026_static":
