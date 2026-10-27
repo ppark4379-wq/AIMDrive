@@ -180,7 +180,7 @@ def run_many(run_once, argv, options, *, label, scenarios_dir=None, batches_dir=
     for index in range(1, options.runs + 1):
         seed = None if options.seed is None else (options.seed if options.same_seed else options.seed + index - 1)
         arguments = list(argv) + ([] if seed is None else ['--seed', str(seed)])
-        if '--validation-events' not in arguments:
+        if '--validation-events' not in arguments and '--no-validation-events' not in arguments:
             arguments.append('--validation-events')                 # one diagnosis report per run
         before = set(path for path in scenarios_dir.glob('*') if path.is_dir()) if scenarios_dir.is_dir() else set()
         print('[Batch] run {}/{} seed={}'.format(index, options.runs, 'random' if seed is None else seed), flush=True)

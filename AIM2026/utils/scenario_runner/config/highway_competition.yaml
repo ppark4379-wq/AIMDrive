@@ -1,0 +1,139 @@
+# Competition highway traffic: `--highway-density competition` (see scenarios/full_loop_parts/highway_competition.py).
+# Overlay for highway_npc.managed_traffic. dense and sparse are not touched by this file.
+#
+# NPCs run independently of Ego: they are spawned paused, released before Ego is switched to AUTO, and Ego only starts
+# after real movement was measured. One target speed per lane group; no braking events, cut-ins or lane changes.
+highway_npc:
+  # Denser than dense: more simultaneous NPCs (dense uses 25). Models repeat once the 38-model pool is used up.
+  collection_maximum_total_vehicles: 48
+  managed_traffic:
+    policy: competition
+    # The dense speed policies are switched off: they would overwrite the lane speeds below.
+    speed_range_kmh: null
+    downstream_lead_speed_kmh: null
+    randomize_adjacent_count: false
+    flowing_traffic:
+      enabled: false
+    merge_sync:
+      enabled: false
+
+    competition:
+      # Simultaneously active managed NPCs; never above highway_npc.collection_maximum_total_vehicles (48).
+      cap: 48
+      minimum_spacing_m: 30.0               # initial slots on one link, also across lanes on the shared approach
+      minimum_physical_separation_m: 8.0
+
+      # One target speed per lane group. PLACEHOLDERS (the example 45/60/75): set the real per-lane speeds here after
+      # checking the MGeo lane structure of the competition course. Respawned NPCs keep their lane's speed.
+      lane_speeds_kmh:
+        merge_adjacent: 45.0                # right lane: A2256W000409 -> 420 -> 179 -> 001105 (Ego merges into it)
+        middle: 60.0                        # A2256W000430 -> 434 (ends before the taper into the neighbouring lane)
+        left: 75.0                          # A2256W000431 -> 435 -> 423 -> 432 -> 444
+
+      lanes:
+        # All three routes share the upstream approach until the fork at (63.8, 348.1) (end of A2256W000404), a single
+        # road where a fast NPC cannot pass a slower one: its actual speed can stay below the lane target there (target
+        # and actual speeds are recorded separately). Inside every group of three upstream slots and for the supply
+        # slots the fastest lane is in front (most downstream) and the slowest at the back. Far-upstream slots of the
+        # fast lanes and far-downstream slots of the slow lanes are what keeps traffic ahead of Ego late in the course.
+        # Offsets are metres from the start of offset_origin_link (negative = upstream). The 38 initial slots (14 / 10 / 14, irregular gaps) were found for the REAL start (Expert startup ~11 s, measured NPC speeds)
+        # by a search (analytic traffic model, Ego at 60 and 40 km/h along the mission route) that maximises the NPCs
+        # within 150 m AHEAD of Ego along its route during the whole mission: a large burst at the start, spread over
+        # the whole course, instead of an even spacing. The supply then tops the lanes up once Ego has moved on. supply_offset_m is the lane's only
+        # spawn slot for replacements: just after the fork on the lane's own link (no shared road, so the lanes do not
+        # block each other), outside every no-spawn zone, and never used while Ego is within 90 m of it.
+        - name: merge_adjacent
+          merge_adjacent: true
+          route: [A2256W000157, A2256W000868, A2256W000168, A2256W000419, A2256W000415, A2256W000404, A2256W000406, A2256W000409, A2256W000420, A2256W000179, A2256W001105]
+          offset_origin_link: A2256W000406
+          initial_offsets_m: [-192, -147, -107, -72, 33, 103, 188, 308, 413, 468, 573, 663, 698, 733]
+          supply_offset_m: 25
+          target_count: 16
+        - name: middle
+          # Lane-drop lane: A2256W000422 converges with A2256W000423 at (75.4, -217.9). The route ends with A2256W000434
+          # and NPCs are removed there, never entering the taper. (Confirm this is the lane of the competition image.)
+          route: [A2256W000157, A2256W000868, A2256W000168, A2256W000419, A2256W000415, A2256W000404, A2256W000175, A2256W000410, A2256W000430, A2256W000434]
+          retire_at_route_end: true
+          offset_origin_link: A2256W000175
+          initial_offsets_m: [-27, 8, 48, 138, 178, 238, 283, 323, 368, 428]
+          supply_offset_m: 40
+          target_count: 16
+        - name: left
+          route: [A2256W000157, A2256W000868, A2256W000168, A2256W000419, A2256W000415, A2256W000404, A2256W000029, A2256W000418, A2256W000431, A2256W000435, A2256W000423, A2256W000432, A2256W000427, A2256W000444]
+          offset_origin_link: A2256W000029
+          initial_offsets_m: [-462, -412, -367, -332, -297, -247, 153, 218, 293, 353, 503, 618, 673, 788]
+          supply_offset_m: 55
+          target_count: 16
+
+      # NPC spawn is forbidden inside these lane bands (initial placement, respawn and every new candidate). Passing
+      # through is not restricted. A band is the link centre line +- (half the link width + lateral_margin_m), so the
+      # neighbouring lanes (3.5 m away) are not excluded. Fill in after confirming the MGeo link and range:
+      #   - name: right_section
+      #     links: [A2256W000xxx]
+      #     start_s_m: 0.0            # optional, metres from the link start
+      #     end_s_m: 120.0            # optional
+      #     lateral_margin_m: 1.0     # optional (default 1.0)
+      #     longitudinal_margin_m: 5.0   # optional (default 5.0)
+      no_spawn_zones: []
+
+      prewarm:
+        minimum_s: 4.0                      # NPCs run at least this long before Ego starts
+        verify_timeout_s: 25.0              # Ego never starts if movement is not measured within this time
+        poll_s: 0.5
+        minimum_travel_m: 3.0               # an NPC counts as moving after this displacement from its spawn point
+        minimum_moving_fraction: 0.9
+      respawn:
+        clearance_m: 22.0                   # no same-lane NPC, Ego or other vehicle within this distance of the slot
+        body_clearance_m: 12.0              # NPCs of the other lane groups (own lane): only a body overlap blocks
+        minimum_ego_distance_m: 90.0        # never spawn closer than this to Ego
+        minimum_ego_progress_m: 150.0       # no supply before Ego has driven this far: the start is the initial burst
+        minimum_lane_interval_s: 1.5
+        max_model_attempts: 3
+      removal:
+        end_tolerance_m: 5.0                # far route ends: an NPC is at its end within this distance of it (or past it)
+        lane_end_margin_m: 30.0             # lane-drop lane: deleted this far BEFORE its end, so it never reaches the taper
+        terminal_minimum_ego_distance_m: 60.0   # far route ends: never remove in front of Ego
+        failures_before_abort: 3
+        stall_s: 4.0                        # an NPC that stands still this long on the road is removed (no stopped traffic here)
+        stall_speed_mps: 0.5
+        stall_grace_s: 6.0                  # after its spawn
+      lane_keeping:
+        max_lateral_error_m: 1.9            # beyond this from the lane's own route for violation_hold_s = lane change
+        violation_hold_s: 1.0
+      observation:
+        period_s: 1.0
+        radius_m: 150.0
+        corridor_half_width_m: 15.0
+      # Ego-synchronised feed (fixed placements cannot follow Ego's real progress). Before the merge entry it schedules NPCs
+      # upstream so that they pass the entry around Ego's predicted arrival time (merge_per_lane per lane within
+      # [-merge_before_s, +merge_after_s] of it, at least min_headway_s apart): dense traffic when Ego enters the lane.
+      # Afterwards it keeps target_ahead NPCs in the stretch min_distance_m..ahead_window_m ahead of Ego (overtaking).
+      # Never created closer than min_distance_m to Ego (merge_min_distance_m for the separate approach road);
+      # NPCs more than recycle_far_ahead_m ahead / recycle_far_behind_m behind Ego are recycled to stay inside cap.
+      feed:
+        enabled: true
+        merge_per_lane: {merge_adjacent: 9, middle: 12, left: 7}
+        lane_weights: {merge_adjacent: 0.8, middle: 1.4, left: 0.8}      # share of the ahead feed (random, not emptiest-first)
+        merge_before_s: 15.0
+        merge_after_s: 15.0
+        min_headway_s: 1.6
+        target_ahead: 20
+        min_distance_m: 140.0
+        merge_min_distance_m: 60.0
+        ahead_window_m: 300.0
+        speed_floor_mps: 8.0
+        recycle_far_ahead_m: 600.0         # only when the cap is full; traffic ahead is never removed before Ego meets it
+        recycle_far_behind_m: 300.0
+        reserve: 10
+      # Fewer rear NPCs (run_highway.sh --rear-npcs few): fewer vehicles pile up behind Ego once it is in the
+      # highway lane. Only from the lane entry on (the merge entry, not a time; before it nothing differs from the normal
+      # traffic): NPCs upstream of the entry and NPCs behind Ego beyond the keep_behind nearest are thinned out, never
+      # within min_distance_m (80 m) of Ego.
+      rear_reduction:
+        enabled: false
+        min_distance_m: 80.0
+        keep_behind: 2
+        keep_range_m: 300.0
+        max_per_step: 3
+      update_period_s: 0.1                  # the lane-end check must not skip its 5 m window (75 km/h = ~2 m per update)
+      persist_period_s: 5.0

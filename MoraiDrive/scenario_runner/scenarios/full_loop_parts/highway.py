@@ -6,7 +6,7 @@ import random
 import time
 
 from ...utils.transform_utils import interpolate_on_polyline, polyline_length
-from . import actor_lifecycle, highway_traffic
+from . import actor_lifecycle, highway_competition, highway_traffic
 
 
 _MERGE_STATIC_MODEL_SEED_XOR = 0x48574D45524745
@@ -567,6 +567,8 @@ def _set_highway_spawn_points_enabled(self, enabled):
     return changed
 
 def update_highway_actor_lifecycle(self, elapsed, ego_state, current_s):
+    if highway_competition.enabled(self):
+        return highway_competition.update(self, elapsed, ego_state, current_s)
     if highway_traffic.enabled(self):
         from . import highway_flow
         return highway_flow.update(self, elapsed, ego_state, current_s)
@@ -617,6 +619,7 @@ def update_highway_actor_lifecycle(self, elapsed, ego_state, current_s):
 
 
 def deactivate_highway_npcs(self, current_s):
+    highway_competition.finish(self)
     disabled = self._set_highway_spawn_points_enabled(False)
     # Native SpawnPoint-generated vehicles do not have Python actor
     # handles. Remove every object owned by this scenario client at the

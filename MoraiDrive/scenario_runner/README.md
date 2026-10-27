@@ -72,12 +72,13 @@ bash MoraiDrive/scenario_runner/tools/run_gt_udp_full_route.sh \
 GT Expert 고주로 검증은 아래 명령 한 번으로 Ctrl+C를 누를 때까지 반복합니다.
 기존 MORAI/ROS 연결이 준비된 터미널에서 실행합니다.
 
-고주로 NPC는 `--highway-density dense|sparse`로 선택합니다. 생략하면 현재의
+고주로 NPC는 `--highway-density dense|sparse|competition`로 선택합니다. 생략하면 현재의
 빽빽한 `dense` 설정을 유지합니다.
 
 | 옵션 | NPC 스폰 방식 |
 |---|---|
 | `dense` | 현재 25대 배치·순환 교통. 가장 하행 쪽 7대의 목표속도 80km/h 유지 |
+| `competition` | Ego와 독립적으로 달리는 차로별 목표속도 교통(아래 "대회 교통 모드"). `dense`/`sparse` 설정은 바꾸지 않음 |
 | `sparse` | `8dbf5e42f4d294ac6a35ee5a077966cd7512ce3b`의 부모 커밋에 있던 NPC 설정. 기존 3개 지점에서 5초 간격 생성, 지점당 최대 4대(총 최대 12대), 지점별 목표속도 60·40·50km/h |
 
 ```bash
@@ -93,6 +94,49 @@ bash scenario_runner/tools/run_gt_scenario.sh highway --highway-density sparse -
 정차 차량·Ego·주행 구간 등 다른 조건은 각 실행 명령의 기존 설정을 유지합니다.
 `sparse`는 현재의 25대 사전 배치·상류 재생성 대신 기존 MORAI SpawnPoint를 사용하므로,
 12대는 동시 생성 보장이 아닌 상한입니다. 이전 설정은 `config/highway_sparse.yaml`에 보관합니다.
+
+### 대회 교통 모드 (`--highway-density competition`)
+
+```bash
+bash scenario_runner/tools/run_gt_scenario.sh highway --highway-density competition --once
+```
+
+설정은 `config/highway_competition.yaml`(고주로 `managed_traffic`에 덧씌우는 오버레이), 구현은
+`scenarios/full_loop_parts/highway_competition.py`입니다. `dense`의 `speed_range_kmh`와
+`downstream_lead_speed_kmh`는 이 모드에서 반드시 `null`이어야 하며, 값이 있으면 실행 전에 오류로 중단합니다.
+
+- **Ego와 독립**: NPC는 일시정지 상태로 스폰되고, Ego가 AUTO로 전환되기 *전에* 모두 출발합니다.
+  실제 이동(스폰 지점에서 3m 이상, 90% 이상)이 측정된 뒤에만 Ego가 출발하며, 확인하지 못하면 실행을 중단합니다.
+  출발 시점은 Ego의 위치에 종속되지 않습니다.
+- **차로별 목표속도**: `lane_speeds_kmh`의 차로 하나에 속도 하나. 같은 차로의 NPC는 모두 같은 속도이고,
+  재생성된 NPC도 그 차로의 속도를 씁니다. 목표속도(`target_speed_kmh`)와 실제속도(`actual_speed_kmh`,
+  `mean_actual_speed_kmh`)는 따로 기록합니다. 기본값 45/60/75km/h는 예시이므로 MGeo 차로 구조를 확인한 뒤 YAML에서 바꿉니다.
+- **금지 동작 없음**: 급감속·끼어들기·추월 차로변경·강제 합류 이벤트가 없습니다. 각 NPC는 자기 차로 경로만 따르고,
+  차로 경로에서 1.9m 이상 1초 넘게 벗어나면 `lane_violations`에 기록합니다.
+- **차로 종료 삭제**: `retire_at_route_end: true`인 `middle` 차로는 `A2256W000434` 끝 30m *전*에서 삭제하며
+  `A2256W000422`(옆 차로와 합쳐지는 테이퍼)로 들어가지 않습니다. 삭제 판정은 차로 경로의 호 길이 기준이라, 갱신이
+  늦어 끝점 구간을 건너뛴 차량이나 이미 끝을 지난 차량도 삭제합니다. 다른 차로는 이 정책으로 삭제하지 않고,
+  경로 맨 끝(Ego에서 60m 이상 떨어졌을 때)에서만 정리합니다.
+- **교통 유지**: 초기 40대(오른쪽 12·가운데 14·왼쪽 14)를 고주로 전체(진입로 상류~하류)에 분산 배치하고(`dense`는 25대),
+  삭제된 NPC는 활성 수(`cap` 40)에서 빠진 뒤 포크 직후 차로별 전용 링크의 공급 지점에서 한 번에 한 대씩 보충합니다.
+  모델은 38종이 소진될 때까지 서로 다르고 그 뒤에는 반복합니다. 공급 지점이 Ego에서 120m 이내이거나, 같은 차로·Ego 등
+  30m 안(다른 차로 NPC는 몸체 12m 안)에 차량이 있거나 스폰 금지 구간이면 만들지 않으며, 부족한 대수와 이유(`ego_distance`, `clearance`, `no_spawn_zone:<이름>`,
+  `spawn_failed`)를 `[HighwayCompetition] SHORTAGE` 로그와 `highway_competition.json`의 `shortages`에 남깁니다.
+  관리는 합류 평가와 무관하게 고주로 종료 지점까지 계속됩니다.
+- **Ego 동기 공급(feed)**: 고정 배치는 Ego의 실제 진행(느리고 불규칙, 실제 실행에서 평균 약 38km/h)을 따라가지 못해,
+  NPC가 Ego보다 먼저 멀리 달아나고 Ego 주변은 비는 문제가 있었습니다. 그래서 Ego의 실측 위치·속도로 교통을 공급합니다.
+  합류 진입점 전에는 Ego의 도착 예상 시각(ETA) 앞뒤 12초 안에 각 차로 NPC(오른쪽 8·가운데 11·왼쪽 6대, 1.6초 이상 간격)가
+  진입점을 지나도록 상류에서 시간차로 내보내 Ego가 차로에 들어올 때 주변이 빽빽하게 하고, 진입점 이후에는 Ego 앞
+  140~300m 구간에 `target_ahead`(20)대가 있도록 각 차로에 채워 추월 상황을 만듭니다. Ego에서 가까운 곳(140m, 상류 진입로는
+  100m 이내)에는 만들지 않고, Ego보다 450m 넘게 앞서거나 300m 넘게 뒤처진 NPC는 회수해 상한 안에서 재사용합니다.
+  이 때문에 포크 공급은 경로가 있을 때 꺼집니다. 막힘 사유는 `highway_competition.json`의 `feed_blocked`에 남습니다.
+- **스폰 금지 구간**: `no_spawn_zones`에 링크와 구간(`start_s_m`, `end_s_m`)을 넣으면 초기 배치·재생성 후보에서
+  제외합니다. 차로 중심선이 아니라 차로 폭의 절반 + 차량 폭 여유(`lateral_margin_m`, 기본 1m)까지의 띠로 판정하므로
+  3.5m 옆의 정상 차로는 제외되지 않습니다. 통과는 막지 않습니다. 기본값은 비어 있으며 실제 링크·구간을 확인한 뒤 채웁니다.
+- **증거 파일**: 실행 폴더의 `highway_competition.json`에 초기 배치, 차량별 목표/실제 속도, 삭제 기록
+  (차로·사유·Ego와의 거리), 보충 횟수, 부족 기록, 차선 이탈, 1초 간격의 Ego 전방/후방 차량 수와 진행도 구간별
+  전방 차량 수(`summary.ahead_by_progress_decile`)가 저장됩니다.
+- **재현성**: 초기 배치와 모델 순서는 seed가 정하며 같은 seed에서 같습니다. 실행 중 보충 시점은 실제 교통 상황에 따라 달라질 수 있습니다.
 
 두 모드 모두 차선 종료 합류부의 NPC는 옆 차선으로 이어지는 `A2256W000422`에
 진입하지 않도록 기존 차선의 마지막 링크 `A2256W000434`에서 경로를 끝냅니다.
@@ -1555,3 +1599,16 @@ cd MoraiDrive
 77건 등의 원본 시험 집계와 실제 배치·미리보기·주행·CSV 파일은 변경하지 않았다.
 현재 목록의 검증 결과는 `active_library_status.json`이며, 재실행 증거 검사에서
 121개 전부 통과했고 seed 1,000개를 확인해 제외한 배치가 선택되지 않음을 확인했다.
+
+#### 뒤에서 오는 차를 줄인 버전 (`--rear-npcs few`)
+
+```bash
+bash AIM2026/Expert/run_highway.sh --highway-density competition --rear-npcs few --seed 100
+```
+
+Ego가 합류 후 고주로 차로에 들어오면 뒤에서 계속 오는 NPC가 쌓여 정체가 생기는 것을 줄이는 옵션입니다. 시간이 아니라
+Ego가 합류 진입점에 들어온 시점을 기준으로 하며, 그 전에는 일반 모드와 완전히 같습니다.
+
+- 진입점 이후에는 아직 진입점에 못 온 상류 NPC와, Ego 뒤쪽 NPC 중 가까운 2대를 뺀 나머지를 줄입니다. 이때도 Ego에서
+  80m 안(바로 뒤)은 건드리지 않습니다.
+- Ego 앞(추월 구간) 차량 공급은 그대로입니다. 기록은 `highway_competition.json`의 `rear_reduction`(시작 시점, 줄인 수)에 남습니다.

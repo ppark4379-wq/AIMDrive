@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
-roundabout_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-export PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1
-export GRPC_POLL_STRATEGY=epoll1
-export PYTHONPATH="$roundabout_repo:$roundabout_repo/MoraiDrive/data_collection/internal_sensor_record${PYTHONPATH:+:$PYTHONPATH}"
-exec /usr/bin/python3 -B - "$roundabout_repo" "$@" <<'PY'
+# Repeat options (shared by run_highway / run_roundabout / run_static):
+#   --runs N            run the scenario N times, one MORAI session per run
+#   --seed S            first seed; run i uses S+i-1 (add --same-seed to keep S)
+#   --stop-on-failure   stop at the first run that does not COMPLETE
+#   --pause-s T         seconds between runs (default 10)
+#   --run-timeout-s T   stop a run that takes longer than T seconds (default 1200; 0 = no limit)
+# Failure Diagnosis is recorded for every run. Reports and index.html:
+#   AIM2026/outputs/batches/<scenario>-<time>-x<N>/
+# Runner, shared AIM2026 modules and the capture environment come from AIM2026/utils/scenario_runner.
+source "$(dirname "${BASH_SOURCE[0]}")/../utils/scenario_runner/tools/project_env.sh"
+export PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 GRPC_POLL_STRATEGY=epoll1
+exec /usr/bin/python3 -B - "$SCENARIO_AIM_ROOT" "$@" <<'PY'
 import os
 import sys
-from python_environment import build_capture_environment
+from scenario_runner.utils.environment import build_capture_environment
 repo = sys.argv[1]
 os.execve('/usr/bin/python3', ['/usr/bin/python3', '-u', '-B',
-    repo + '/AIM2026/Expert/run_roundabout.py', *sys.argv[2:]], build_capture_environment())
+    repo + '/Expert/run_roundabout.py', *sys.argv[2:]], build_capture_environment())
 PY

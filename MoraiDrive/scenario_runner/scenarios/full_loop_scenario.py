@@ -12,6 +12,7 @@ from .full_loop_parts import (
     actor_lifecycle,
     dynamic_obstacle,
     highway,
+    highway_competition,
     roundabout,
     route_profile,
     static_blockage_release,
@@ -231,6 +232,13 @@ class FullLoopScenario(FullLoopDriveBase):
     _command_tunnel_hard_brake = tunnel._command_tunnel_hard_brake
     _resume_tunnel_npc_after_event = tunnel._resume_tunnel_npc_after_event
     update_tunnel_sudden_brake = tunnel.update_tunnel_sudden_brake
+
+    def activate_expert_drive(self, **hooks):
+        # Competition traffic runs independently of Ego: Ego is already placed, the NPCs start first and Ego is only
+        # switched to AUTO (and the Expert started) once their movement was measured.
+        if highway_competition.enabled(self) and highway_competition.has_state(self):
+            highway_competition.prewarm(self)
+        return super().activate_expert_drive(**hooks)
 
     def on_expert_timeline_tick(self, elapsed, ego_state, current_s, remaining_s):
         if (

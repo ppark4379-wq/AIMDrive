@@ -11,14 +11,14 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(ROOT), str(ROOT / 'MoraiDrive')]
+sys.path[:0] = [str(ROOT), str(ROOT / 'AIM2026/utils')]
 
 from scenario_runner.validation.failure_report import build_report
 from scenario_runner.validation.failure_analysis import _derive_failure
 from scenario_runner.validation.pipeline_log import PipelineWriter, read_window
 from scenario_runner.validation.run_log import ValidationRunLog
 
-RUNTIME = 'MoraiDrive/scenario_runner/.runtime'
+RUNTIME = 'AIM2026/utils/scenario_runner/.runtime'
 MISSIONS = (
     ('full_loop_highway', 'aim2026_highway', 'bash AIM2026/Expert/run_highway.sh --seed 124 --validation-events'),
     ('full_loop_roundabout', 'aim2026_roundabout',
@@ -154,7 +154,7 @@ class HighwayValidationTests(unittest.TestCase):
                     'command'], rerun)
                 client.stop.assert_called_once()
 
-    def test_launcher_without_validation_option_writes_no_validation_files(self):
+    def test_no_validation_events_option_writes_no_validation_files(self):
         from AIM2026.Expert import run_highway
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -168,7 +168,7 @@ class HighwayValidationTests(unittest.TestCase):
                  patch.object(run_highway, 'HighwayScenario', return_value=scenario), \
                  patch.object(run_highway, 'MGeoMapLoader'), \
                  patch('scenario_runner.adapters.morai_grpc.MoraiGrpcClient', return_value=Mock()):
-                self.assertEqual(run_highway.main(['--config', str(config)]), 0)
+                self.assertEqual(run_highway.main(['--config', str(config), '--no-validation-events']), 0)
             self.assertFalse((root / RUNTIME).exists())
 
     def test_direct_runtime_pipeline_can_build_html_without_morai(self):

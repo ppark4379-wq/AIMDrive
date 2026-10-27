@@ -380,8 +380,8 @@ class IncidentRecorder:
                 stream.flush()
                 os.fsync(stream.fileno())
         if manifest["controller"] == "aim2026_highway":
-            rerun_command = shlex.join(["bash", "AIM2026/Expert/run_highway.sh",
-                                        "--seed", str(manifest["seed"]), "--validation-events"])
+            rerun_command = shlex.join(["bash", "AIM2026/Expert/run_highway.sh", *(
+                list(self.run_options) or ["--seed", str(manifest["seed"]), "--validation-events"])])
         elif manifest["controller"] == "aim2026_static":
             static_options = list(self.run_options) or ["--seed", str(manifest["seed"])]
             rerun_command = shlex.join(["bash", "AIM2026/Expert/run_static.sh", *static_options])

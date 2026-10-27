@@ -7,6 +7,7 @@ the same main entry, configuration, inference and Expert as ordinary operation.
 import argparse
 import copy
 from datetime import datetime
+import errno
 import json
 import os
 from pathlib import Path
@@ -17,14 +18,19 @@ import time
 from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(ROOT), str(ROOT / 'MoraiDrive')]
+sys.path[:0] = [str(ROOT), str(ROOT / 'AIM2026/utils')]
 
+from scenario_runner.project_paths import activate_project_paths
+activate_project_paths()
 from scenario_runner.main_runner import load_configuration
 from scenario_runner.scenarios.segment_modes import events
 from scenario_runner.scenarios.segment_modes.scenario import MissionScenario
 from scenario_runner.utils.map_loader import MGeoMapLoader
 from scenario_runner.adapters.expert_controller import validate_max_velocity_kmh
 from AIM2026.main import runtime_python
+
+# Validation runs, incidents and the batch scratch of the runner (git-ignored), relative to the repository root.
+RUNNER_RUNTIME = 'AIM2026/utils/scenario_runner/.runtime'
 
 
 def expert_python():
@@ -162,9 +168,15 @@ class ExpertController:
                 raise RuntimeError('AIM2026 Expert stopped; inspect driver.console.log')
             control_log = self.scenario.driver_output / 'control.jsonl'
             if control_log.is_file():
-                with control_log.open('rb') as stream:
-                    stream.seek(max(0, control_log.stat().st_size - 65536))
-                    rows = stream.read().splitlines()
+                try:
+                    with control_log.open('rb') as stream:
+                        stream.seek(max(0, control_log.stat().st_size - 65536))
+                        rows = stream.read().splitlines()
+                except OSError as error:
+                    # A Windows writer can briefly give WSL ENODATA while the file exists; look again.
+                    if error.errno not in (errno.ENODATA, errno.EAGAIN, errno.EINTR, errno.ENOENT):
+                        raise
+                    rows = []
                 for raw in reversed(rows):
                     try:
                         row = json.loads(raw)
@@ -343,14 +355,18 @@ def _start_validation(scenario):
     from scenario_runner.validation.run_log import ValidationRunLog
 
     mission = scenario.args.mission
-    validation_root = ROOT / 'MoraiDrive/scenario_runner/.runtime'
+    validation_root = ROOT / RUNNER_RUNTIME
     log = ValidationRunLog(validation_root / 'validation_runs', mission)
     scenario._runner_validation_log = log
     scenario._runner_scenario_name = mission
     scenario._validation_controller = ('aim2026_highway' if mission == 'full_loop_highway'
                                        else 'aim2026_roundabout')
-    log.enable_incidents(validation_root / 'incidents', scenario,
-                         run_options=['--seed', str(scenario.run_seed), '--validation-events'])
+    options = ['--seed', str(scenario.run_seed), '--validation-events']
+    if getattr(scenario.args, 'highway_density', None):
+        options += ['--highway-density', scenario.args.highway_density]
+    if getattr(scenario.args, 'rear_npcs', 'normal') != 'normal':
+        options += ['--rear-npcs', scenario.args.rear_npcs]
+    log.enable_incidents(validation_root / 'incidents', scenario, run_options=options)
     log.incident_recorder.connect_pipeline(scenario.driver_output / 'pipeline.jsonl')
 
 
@@ -399,14 +415,26 @@ def main(argv=None, *, mission='full_loop_highway'):
     parser.add_argument('--speed-cap-kmh', type=validate_max_velocity_kmh, default=None,
                         help='Optional additional ceiling; tune highway.py for the highway speed')
     parser.add_argument('--seed', type=int)
-    parser.add_argument('--validation-events', action='store_true',
-                        help='Record Ego observations, incidents, and the integrated VE/Planning/Control journal')
+    parser.add_argument('--validation-events', action='store_true', default=True,
+                        help='On by default: record Ego observations, incidents and the VE/Planning/Control journal, '
+                             'and write the failure report (use --no-validation-events to switch it off)')
+    parser.add_argument('--no-validation-events', dest='validation_events', action='store_false',
+                        help='Do not record validation events or write a failure report')
     parser.add_argument('--strict-collisions', action='store_true',
                         help='Stop even for verified persistent pre-start contact records')
+    parser.add_argument('--rear-npcs', choices=('normal', 'few'), default='normal',
+                        help='With --highway-density competition: few = fewer NPCs coming from behind once Ego has '
+                             'entered the highway lane (thinned out from the merge entry on)')
+    parser.add_argument('--highway-density', choices=('dense', 'competition'), default=None,
+                        help='Highway NPC traffic (run_highway.sh only): competition = independent lane-speed traffic')
     args = parser.parse_args(argv)
     args.config = args.config.resolve()
     if not args.config.is_file():
         parser.error('Config not found: ' + str(args.config))
+    if args.highway_density is not None and mission != 'full_loop_highway':
+        parser.error('--highway-density is only for run_highway.sh')
+    if args.rear_npcs != 'normal' and args.highway_density != 'competition':
+        parser.error('--rear-npcs needs --highway-density competition')
     global_cfg, _, base = load_configuration()
     # Keep moving traffic; this merge verification run has no stopped vehicle.
     config = copy.deepcopy(base)
@@ -420,6 +448,10 @@ def main(argv=None, *, mission='full_loop_highway'):
                   expert_traffic_light_control=False, route_debug_enabled=False,
                   max_laps=1, auto_repeat=False, route_setup_attempts=1)
     config.setdefault('sync_runtime', {})['enabled'] = False
+    from scenario_runner.utils.highway_density import apply_highway_density
+    apply_highway_density(config, args.highway_density)
+    if args.rear_npcs == 'few':
+        config['highway_npc']['managed_traffic']['competition']['rear_reduction']['enabled'] = True
     if args.seed is not None:
         config['random_seed'] = args.seed
     stamp = mission.replace('full_loop_', '', 1) + '-' + datetime.now().strftime('%Y%m%d-%H%M%S-%f')

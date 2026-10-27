@@ -310,6 +310,50 @@ class HighwayLauncherTest(unittest.TestCase):
         self.assertEqual(launch.call_args.args[0], self.controller.command())
         self.controller.stop_process()
 
+    def test_a_brief_read_error_from_the_windows_writer_does_not_fail_the_startup_wait(self):
+        import errno
+        from pathlib import Path
+
+        self.scenario.driver_output.mkdir()
+        path = self.scenario.driver_output / 'control.jsonl'
+        path.write_text(json.dumps({'status': 'RUNNING', 'control_sent': True}) + '\n', encoding='utf-8')
+        process = Mock()
+        process.poll.return_value = None
+        real_open, calls = Path.open, []
+
+        def flaky_open(target, *args, **kwargs):
+            if target.name == 'control.jsonl' and args[:1] == ('rb',):
+                calls.append(1)
+                if len(calls) <= 2:
+                    raise OSError(errno.ENODATA, 'No data available')   # seen as [Errno 61] in a highway batch
+            return real_open(target, *args, **kwargs)
+        with patch('AIM2026.Expert.run_highway.subprocess.Popen', return_value=process), \
+             patch('AIM2026.Expert.run_highway.time.sleep'), \
+             patch.object(Path, 'open', flaky_open):
+            self.controller.start_process()                              # ready on the third look, no exception
+        self.assertEqual(len(calls), 3)
+        self.controller.stop_process()
+
+    def test_other_read_errors_while_waiting_still_fail(self):
+        import errno
+        from pathlib import Path
+
+        self.scenario.driver_output.mkdir()
+        (self.scenario.driver_output / 'control.jsonl').write_text('{}\n', encoding='utf-8')
+        process = Mock()
+        process.poll.return_value = None
+        real_open = Path.open
+
+        def denied(target, *args, **kwargs):
+            if target.name == 'control.jsonl' and args[:1] == ('rb',):
+                raise OSError(errno.EACCES, 'Permission denied')
+            return real_open(target, *args, **kwargs)
+        with patch('AIM2026.Expert.run_highway.subprocess.Popen', return_value=process), \
+             patch('AIM2026.Expert.run_highway.time.sleep'), patch.object(Path, 'open', denied):
+            with self.assertRaises(PermissionError):
+                self.controller.start_process()
+        self.controller.stop_process()
+
     def test_waiting_or_shadow_is_not_ready(self):
         self.scenario.driver_output.mkdir()
         path = self.scenario.driver_output / 'control.jsonl'

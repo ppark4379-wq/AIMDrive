@@ -214,6 +214,9 @@ def route_waypoints(context, plan):
 
 
 def prepare(context):
+    from . import highway_competition
+    if highway_competition.enabled(context):
+        return highway_competition.prepare(context)
     plans, candidates = build_plan(context)
     _prepare_merge_sync(context, plans)
     from . import highway_flow
@@ -257,6 +260,10 @@ def prepare(context):
 
 
 def activate(context, current_s, ego_state=None, elapsed=None):
+    from . import highway_competition
+    if highway_competition.enabled(context):
+        # Released only by the pre-warm before Ego starts, never by Ego's position; its own manager removes NPCs.
+        return bool(context.highway_spawn_points_active)
     if context.highway_spawn_points_active:
         return True
     config = context.cfg['highway_npc']
