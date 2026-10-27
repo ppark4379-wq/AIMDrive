@@ -17,12 +17,24 @@ import torch
 
 from . import checkpoint as checkpoints
 from .contract import checkpoint_contract
-from .model import decode_native_signal, decode_signal
+from .model import decode_native_signal, decode_phase, decode_signal
 from .postprocess import decode_world_boxes
 from .preprocess import InputBuilder
 
 # Development only: VE_RAW_DUMP=<file.jsonl> appends every candidate cell (score >= 0.2, before NMS) per frame.
 _RAW_DUMP = __import__('os').environ.get('VE_RAW_DUMP', '')
+
+
+# Development only: VE_SIGNAL_TOKEN_DUMP=<file.jsonl> appends the traffic-light token (the signal heads' input) per frame.
+_TOKEN_DUMP = __import__('os').environ.get('VE_SIGNAL_TOKEN_DUMP', '')
+
+
+def _dump_token(token, native_logits, x, y, yaw, speed):
+    import json
+    with open(_TOKEN_DUMP, 'a') as stream:
+        stream.write(json.dumps(dict(t=time.monotonic_ns(), ego=[x, y, yaw], speed=float(speed),
+                                     native=[round(float(v), 4) for v in native_logits.detach().float().cpu()],
+                                     token=[round(float(v), 5) for v in token.detach().float().cpu()])) + '\n')
 
 
 def _dump_raw(prediction, x, y, yaw, lidar=None):
@@ -75,6 +87,7 @@ class Perception:
     native_signal: dict     # encoder red/green {'code': 1|16|None, 'confidence'}
     counts: dict            # decode rejections (candidates, NMS, invalid speeds, ...)
     inference_ms: float
+    phase_signal: dict = None   # five-phase head {'code': 1|4|16|33|48|None, 'confidence'}; None without that head
 
 
 def _view_tokens(model, tokens, global_token, view_index, global_index):
@@ -151,7 +164,7 @@ class VisionRuntime:
 
     def __init__(self, checkpoint='P1', *, device='cuda', lidar_to_base=DEFAULT_LIDAR_TO_BASE,
                  signal_head=True, checkpoint_path=None, checkpoint_sha256=None, cpu_threads=4,
-                 object_head=None, lidar_heading=True, lidar_centers=True):
+                 object_head=None, lidar_heading=True, lidar_centers=True, phase_head=False):
         if checkpoint_path is not None:
             if not checkpoint_sha256:
                 raise ValueError('checkpoint_sha256 is required with checkpoint_path')
@@ -184,6 +197,14 @@ class VisionRuntime:
         self.inputs = InputBuilder(self.contract['adapter'], lidar_to_base)
         self.signal_head = (checkpoints.load_signal(head_path, self.checkpoint_sha256, device)
                             if head_path is not None else None)
+        self.phase_head = None
+        if phase_head:
+            phase_path = checkpoints.WEIGHTS_DIR / checkpoints.PHASE_HEADS.get(checkpoint, '')
+            if checkpoint in checkpoints.PHASE_HEADS and phase_path.is_file():
+                self.phase_head = checkpoints.load_phase(phase_path, self.checkpoint_sha256, device)
+            else:
+                print('[VE] WARNING: phase head (yellow) requested but %s is missing; straight signals keep the '
+                      'red/green head only' % phase_path, flush=True)
 
     def _body_points(self, lidar):
         """Raw sweep (sensor FLU) -> (right, forward) base-frame points 0.3-2.0 m above the road."""
@@ -216,5 +237,9 @@ class VisionRuntime:
                                            cluster_points=points if self.lidar_centers else None)
         if _RAW_DUMP:
             _dump_raw(detection[0], float(get('x')), float(get('y')), float(get('yaw_grid_rad')), lidar)
+        if _TOKEN_DUMP:
+            _dump_token(light_token[0], light[0], float(get('x')), float(get('y')), float(get('yaw_grid_rad')), speed_mps)
+        # the most likely phase with its confidence; the Expert applies its own threshold
+        phase = decode_phase(self.phase_head(light_token), threshold=1e-6)[0] if self.phase_head is not None else None
         return Perception(tuple(boxes), signal, decode_native_signal(light)[0], counts,
-                          (time.monotonic() - begin) * 1e3)
+                          (time.monotonic() - begin) * 1e3, phase)

@@ -130,6 +130,9 @@ def _ego_xy(packet):
 STATIC_HOLD_RADIUS_M = .6
 STATIC_BREAK_RADIUS_M = .9           # an established stationary object must travel this far from its anchor to count as moving
 STATIC_HOLD_MIN_STATIONARY_S = 3.   # only an object that has stood still this long is held through weak evidence
+HISTORY_GAP_S = .3                  # a detection gap longer than this restarts the motion history
+HEADING_GATE_MPS = 30.              # heading gate: farthest a vehicle can move along its axis per second ...
+HEADING_GATE_LATERAL_M = 1.         # ... and sideways between two frames (a lane is 3.5 m wide)
 
 
 class VeObjectTracker:
@@ -161,6 +164,31 @@ class VeObjectTracker:
         # Require containment on both axes, not simply touching rectangles.
         return all(offset + .5*min(old[key], box[key]) <= .5*max(old[key], box[key]) + .25
                    for offset, key in ((along, 'length_m'), (across, 'width_m')))
+
+    @staticmethod
+    def _along_heading(previous, box, xy, dt):
+        """Share of the reach used when a vehicle box moved along its own axis since the last frame, else None.
+
+        A track whose motion is not confirmed yet predicts no displacement, and VE's speed of fast vehicles reads far
+        too low (3 m/s for a car at 17 m/s), so on the highway a car drove out of the normal gate between frames and
+        got a new id every few frames, never collecting the four boxes needed to confirm its motion. A vehicle can
+        only move along its own axis: a box of the same size and heading, displaced along that heading by up to
+        HEADING_GATE_MPS * dt and at most HEADING_GATE_LATERAL_M sideways, continues the track.
+        """
+        if min(previous['length_m'], box['length_m']) < 3. or dt <= 0.:
+            return None
+        if any(max(previous[k], box[k]) / max(.1, min(previous[k], box[k])) > 1.5 for k in ('length_m', 'width_m')):
+            return None
+        a, b = math.radians(previous['heading_deg']), math.radians(box['heading_deg'])
+        if abs(math.cos(a - b)) < math.cos(math.radians(15.)):
+            return None
+        dx, dy = box['center_world'][0] - xy[0], box['center_world'][1] - xy[1]
+        along = abs(dx * math.cos(a) + dy * math.sin(a))
+        across = abs(-dx * math.sin(a) + dy * math.cos(a))
+        reach = HEADING_GATE_MPS * dt
+        if across > HEADING_GATE_LATERAL_M or along > reach:
+            return None
+        return along / reach
 
     def _support_overlapping_motion(self, boxes, now):
         """Retain both footprints of a duplicate detection, without inventing a stop.
@@ -206,7 +234,7 @@ class VeObjectTracker:
                 break
 
     def __init__(self, max_gap=.75, static_geometry_fusion=False, moving_carry_s=0., slow_window_s=0., stationary_hold_s=0., provisional_static_mps=0.,
-                 fragment_gate=False):
+                 fragment_gate=False, heading_gate=False, history_gap_s=HISTORY_GAP_S, fitted_speed_above_mps=0.):
         """``moving_carry_s``: a track that was confirmed moving and only lost its evidence (no stationary
         evidence) keeps its last planning speed/velocity for this long. Slow vehicles (1-2 m/s) otherwise flip
         to ``uncertain`` and fall back to the provisional model speed."""
@@ -238,6 +266,18 @@ class VeObjectTracker:
         # (<= 2) then starts a new identity. With this on, boxes whose centres nearly coincide relative to the larger
         # footprint (<= 0.35 of its longest side) still continue the track, at a higher cost than a normal match.
         self.fragment_gate = bool(fragment_gate)
+        # ``heading_gate``: a vehicle box whose motion is not confirmed yet continues its track when it moved along its
+        # own axis (see ``_along_heading``); fast vehicles otherwise outran the gate and were re-created every few frames.
+        self.heading_gate = bool(heading_gate)
+        # ``history_gap_s``: a detection gap longer than this restarts the motion history. With VE at 4-7 Hz on a busy
+        # highway one missed frame already exceeded 0.3 s and a confirmed mover fell back to 'uncertain'.
+        if not .1 <= history_gap_s <= .75:
+            raise ValueError('history_gap_s must be within 0.1..0.75 s')
+        self.history_gap_s = float(history_gap_s)
+        # ``fitted_speed_above_mps``: when VE's speed agrees with the observed motion the track reported VE's value; at
+        # or above this fitted speed the position fit is reported instead. Against GT on two full loops VE under-read
+        # cars above 8 m/s by about 1 m/s (|error| p90 4.3 m/s vs 3.2 for the fit); below 3 m/s VE is the better one.
+        self.fitted_speed_above_mps = float(fitted_speed_above_mps)
         self.max_gap = max_gap
         self.static_geometry_fusion = static_geometry_fusion
         self.tracks = {}
@@ -341,10 +381,14 @@ class VeObjectTracker:
                         # duplicate steal the full body on the next frame.
                         size_cost = 0. if fragment_match else .15 * (ratio - 1.)
                         cost[i, j] = .8 * distance / gate + size_cost + gap_cost
-                    elif self.fragment_gate:
+                    elif self.fragment_gate and distance <= .35 * max(box['length_m'], box['width_m'],
+                                                                     previous['length_m'], previous['width_m']):
                         limit = .35 * max(box['length_m'], box['width_m'], previous['length_m'], previous['width_m'])
-                        if distance <= limit:
-                            cost[i, j] = .5 + .3 * distance / limit + .15 * min(1., max(0., dt - .15) / .6)
+                        cost[i, j] = .5 + .3 * distance / limit + .15 * min(1., max(0., dt - .15) / .6)
+                    elif self.heading_gate and track['state'] != 'stationary':
+                        along = self._along_heading(previous, box, track['xy'], dt)
+                        if along is not None:
+                            cost[i, j] = .55 + .3 * along + .15 * min(1., max(0., dt - .15) / .6)
             rows, columns = linear_sum_assignment(cost)
             assignments = {i: ids[j] for i, j in zip(rows, columns) if j < len(ids) and cost[i, j] < 1.}
         output = []
@@ -363,7 +407,7 @@ class VeObjectTracker:
             history = track['history']
             continues = False
             # Do not infer motion across a long detection gap.
-            if history and now - history[-1][0] > .3:
+            if history and now - history[-1][0] > self.history_gap_s:
                 dt = now - history[-1][0]
                 expected = np.asarray(track.get('velocity', (0., 0.))) * dt
                 observed = np.asarray(box['center_world']) - np.asarray(history[-1][1:])
@@ -436,6 +480,8 @@ class VeObjectTracker:
                 # A low raw speed also must not hide a moving vehicle.
                 if raw_supported:
                     speed, source = raw_speed, 've_supported_by_position'
+                    if self.fitted_speed_above_mps and measured_speed >= self.fitted_speed_above_mps:
+                        speed = measured_speed
             elif (len(history) >= 4 and span >= .5 - 1e-9 and motion['radius_m'] <= .3
                   and motion['displacement_m'] < .3 and motion['latest_deviation_m'] <= .25
                   and measured_speed < .6):

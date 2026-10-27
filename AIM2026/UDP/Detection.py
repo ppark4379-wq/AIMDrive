@@ -250,7 +250,7 @@ class DetectionSender:
         self.last_ready, self.last_reason = packet['ready'], packet['reason']
         return self.socket.sendto(encode(packet), self.target)
 
-    def send(self, boxes, ego_pose, sensor_received_at, *, signal=None, native_signal=None,
+    def send(self, boxes, ego_pose, sensor_received_at, *, signal=None, native_signal=None, phase_signal=None,
              ego_position_source=GPS_POSITION, ego_status_source=UDP_STATUS, position_identity=None,
              object_received_at=None):
         """``sensor_received_at``: time.monotonic() receipt of the oldest sensor used.
@@ -284,6 +284,8 @@ class DetectionSender:
         packet.update(sensor_received_ns=received_ns, boxes=wire_boxes, ego_pose=wire_pose,
                       ego_position_source=ego_position_source, ego_status_source=ego_status_source,
                       signal=signals[0], native_signal=signals[1])
+        if phase_signal is not None:
+            packet['phase_signal'] = _signal(phase_signal, 'phase_signal')
         if position_identity is not None:
             packet['selected_samples'] = dict(gps=dict(position_identity))
         if object_received_ns is not None:

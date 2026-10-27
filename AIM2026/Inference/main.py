@@ -215,7 +215,8 @@ class VePublisher:
         ego_pose = EgoPose(pose['x'], pose['y'], math.degrees(pose['yaw_raw_rad']), pose['yaw_grid_rad'], speed)
         sent_at = time.monotonic()
         self.udp.send_detection(result.boxes, ego_pose, oldest, signal=result.signal,
-                                native_signal=result.native_signal, position_identity=identity,
+                                native_signal=result.native_signal, phase_signal=getattr(result, 'phase_signal', None),
+                                position_identity=identity,
                                 object_received_at=lidar.received_at,
                                 ego_position_source='GPS_dead_reckoning'
                                 if identity['position_mode']=='dead_reckoning' else 'GPS')
@@ -320,10 +321,11 @@ def main():
                             lidar_to_base=lidar_to_base(lidar['pos'], lidar['rot_deg']),
                             cpu_threads=options['cpu_threads'], object_head=vision.get('object_head'),
                             lidar_heading=bool(vision.get('lidar_heading', True)),
-                            lidar_centers=bool(vision.get('lidar_centers', True)))
-    print('[VE] %s loaded (%s), signal head=%s, object head=%s, lidar heading=%s, lidar centers=%s' % (
-        vision['checkpoint'], options['device'], runtime.signal_head is not None, runtime.object_head,
-        runtime.lidar_heading, runtime.lidar_centers), flush=True)
+                            lidar_centers=bool(vision.get('lidar_centers', True)),
+                            phase_head=bool(vision.get('phase_head', True)))
+    print('[VE] %s loaded (%s), signal head=%s, phase head=%s, object head=%s, lidar heading=%s, lidar centers=%s' % (
+        vision['checkpoint'], options['device'], runtime.signal_head is not None, runtime.phase_head is not None,
+        runtime.object_head, runtime.lidar_heading, runtime.lidar_centers), flush=True)
     stop = []
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stop.append(True))

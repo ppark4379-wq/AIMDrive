@@ -48,6 +48,15 @@ class SignalTests(unittest.TestCase):
         self.policy.accept(self.sample(1,20.4,confidence=.99),self.points,20.4)
         self.assertEqual(self.policy.output(20.4),1)
 
+    def test_freshness_counts_from_the_ve_output_not_the_oldest_sensor(self):
+        # Oldest sensor 0.45 s old when VE sent the result: still fresh 0.1 s later (the old rule stopped here).
+        for t in [10., 10.1, 10.2, 10.31]:
+            packet = self.sample(33, t - .45)
+            packet['sent_ns'] = int(t * 1e9)
+            self.policy.accept(packet, self.points, t)
+        self.assertEqual(self.policy.output(10.41), 33)
+        self.assertEqual(self.policy.output(10.9), 0)              # no VE output for 0.59 s: stale
+
     def test_unknown_without_a_prior_permission_stays_a_stop(self):
         self.policy.accept(self.sample(None,10.,confidence=.6),self.points,10.)
         self.assertEqual(self.policy.output(10.),0)
@@ -297,3 +306,101 @@ class GateAuditTests(unittest.TestCase):
 
 
 if __name__ == '__main__':unittest.main()
+
+
+class PhaseYellowTests(unittest.TestCase):
+    """Straight signal at path index 300 (0.5 m spacing would not matter: 1 m points here)."""
+
+    def setUp(self):
+        self.points = [(float(i), 0.) for i in range(400)]
+        self.target = dict(signal_id='C1256W000091', path_index=300, signal_movement='straight')
+
+    def drive(self, x, speed, phase, native=16, n=6, policy=None, t0=10.):
+        policy = policy or FullRouteSignalPolicy(self.points, [self.target])
+        policy.last_index = int(x)
+        codes = []
+        for i in range(n):
+            t = t0 + .1 * i
+            packet = dict(native_signal=dict(code=native, confidence=.99), sensor_received_ns=int(t * 1e9),
+                          sent_ns=int(t * 1e9), ego_pose=dict(x=x, y=0., speed_mps=speed))
+            if phase is not None:
+                packet['phase_signal'] = dict(code=phase, confidence=.95)
+            policy.accept(packet, self.points, t)
+            codes.append(policy.output(t))
+        return codes, policy
+
+    def test_yellow_far_enough_to_stop_turns_green_into_stop(self):
+        codes, policy = self.drive(260., 10., 4)             # 40 m before the line, 10 m/s: needs 16.7 m
+        self.assertEqual(codes[-1], 1)
+        self.assertTrue(policy.phase_stop)
+
+    def test_yellow_inside_the_stopping_distance_keeps_going(self):
+        codes, _ = self.drive(285., 12., 4)                   # 15 m before the line at 12 m/s: cannot stop comfortably
+        self.assertEqual(codes[-1], 16)
+
+    def test_green_phase_or_no_phase_head_changes_nothing(self):
+        self.assertEqual(self.drive(260., 10., 16)[0][-1], 16)
+        self.assertEqual(self.drive(260., 10., None)[0][-1], 16)
+
+    def test_a_single_yellow_frame_is_not_enough(self):
+        policy = FullRouteSignalPolicy(self.points, [self.target])
+        codes, policy = self.drive(260., 10., 16, n=5, policy=policy)
+        codes, policy = self.drive(260., 10., 4, n=1, policy=policy, t0=10.5)
+        codes, policy = self.drive(260., 10., 16, n=3, policy=policy, t0=10.6)
+        self.assertEqual(codes[-1], 16)
+        self.assertFalse(policy.phase_stop)
+
+    def test_the_stop_holds_through_phase_flicker_then_ends(self):
+        codes, policy = self.drive(260., 10., 4, n=3)                           # stop taken at 10.2
+        codes, policy = self.drive(262., 8., 16, n=5, policy=policy, t0=10.3)   # phase head flickers to green
+        self.assertEqual(codes, [1] * 5)
+        codes, policy = self.drive(270., 4., 16, n=3, policy=policy, t0=14.3)   # hold over, lamp really green
+        self.assertFalse(policy.phase_stop)
+
+    def test_a_green_after_red_from_the_binary_head_does_not_end_the_hold(self):
+        codes, policy = self.drive(260., 10., 4, n=3)
+        self.drive(265., 6., 1, native=1, n=2, policy=policy, t0=10.3)
+        codes, policy = self.drive(268., 4., 16, n=4, policy=policy, t0=10.5)   # misread green, phase head unsure
+        self.assertEqual(codes, [1] * 4)
+
+    def test_a_green_soon_after_red_needs_the_phase_head(self):
+        policy = FullRouteSignalPolicy(self.points, [self.target])
+        self.drive(294., 0., 4, native=1, n=4, policy=policy)                   # stopped 6 m before, red read
+        codes, policy = self.drive(294., 0., 4, native=16, n=6, policy=policy, t0=10.4)
+        self.assertEqual(codes, [1] * 6)                                        # lamp still yellow: no go
+        codes, policy = self.drive(294., 0., 16, native=16, n=3, policy=policy, t0=11.0)
+        self.assertEqual(codes[-1], 1)                                          # three green frames: not yet
+        codes, policy = self.drive(294., 0., 16, native=16, n=6, policy=policy, t0=11.3)
+        self.assertEqual(codes[-1], 16)                                         # five-phase head agrees: go
+
+    def test_a_long_red_ends_without_the_phase_head(self):
+        policy = FullRouteSignalPolicy(self.points, [self.target])
+        self.drive(288., 0., 1, native=1, n=4, policy=policy)
+        codes, policy = self.drive(288., 0., 1, native=16, n=6, policy=policy, t0=18.5)
+        self.assertEqual(codes[-1], 16)
+
+    def test_one_red_frame_on_a_yellow_lamp_does_not_arm(self):
+        policy = FullRouteSignalPolicy(self.points, [self.target])
+        self.drive(270., 6., 4, native=16, n=2, policy=policy)
+        self.drive(271., 6., 4, native=1, n=1, policy=policy, t0=10.2)         # binary head blinks red once
+        codes, policy = self.drive(272., 6., 4, native=16, n=4, policy=policy, t0=10.3)
+        self.assertEqual(codes[-1], 1)
+        self.assertTrue(policy.phase_stop)
+
+    def test_a_waiting_car_is_not_held_by_the_phase_head(self):
+        codes, policy = self.drive(287., 0., 4, native=16, n=8)                 # 13 m before, stopped
+        self.assertEqual(codes[-1], 16)
+        self.assertFalse(policy.phase_stop)
+
+    def test_one_phase_stop_per_signal(self):
+        codes, policy = self.drive(260., 10., 4, n=3)
+        self.assertTrue(policy.phase_stop)
+        codes, policy = self.drive(270., 6., 4, n=8, policy=policy, t0=14.3)    # hold over, head still says yellow
+        self.assertEqual(codes[-1], 16)
+
+    def test_right_after_a_red_to_green_start_yellow_is_ignored(self):
+        policy = FullRouteSignalPolicy(self.points, [self.target])
+        self.drive(282., 0., 1, native=1, n=3, policy=policy)                  # waiting at red, 18 m before
+        self.drive(282., 0., 1, native=1, n=3, policy=policy, t0=19.)
+        codes, policy = self.drive(282., 0., 4, native=16, n=6, policy=policy, t0=19.3)
+        self.assertEqual(codes[-1], 16)                                         # misread right after the start

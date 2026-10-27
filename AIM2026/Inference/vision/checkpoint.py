@@ -23,6 +23,10 @@ CHECKPOINTS = {
 SIGNAL_HEADS = {
     'P1': 'signal_head_p1_20261014.pt',  # signal_state_p1_20261014/run_003/signal_head_final.pt
 }
+# Five-phase heads (with yellow), same token input; optional: without the file the Expert keeps the old decisions.
+PHASE_HEADS = {
+    'P1': 'signal_phase_head_p1_20261027.pt',
+}
 # Object-head candidates replace only traffic_pred_head channels 0-6 (score, offsets, heading, size) of their base
 # checkpoint; channel 7 (speed) keeps coming from the base head, so speed behaviour is unchanged.
 OBJECT_HEADS = {
@@ -81,6 +85,12 @@ def load_signal(path, base_sha256, device):
     if not path.is_file():
         raise FileNotFoundError('Signal head not found: %s' % path)
     return load_signal_head(torch.load(str(path), map_location='cpu'), base_sha256).to(device)
+
+
+def load_phase(path, base_sha256, device):
+    import torch
+    from .model import load_phase_head
+    return load_phase_head(torch.load(str(path), map_location='cpu'), base_sha256).to(device)
 
 
 def resolve_object_head(name, base_label):
