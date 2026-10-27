@@ -322,10 +322,12 @@ def main():
                             cpu_threads=options['cpu_threads'], object_head=vision.get('object_head'),
                             lidar_heading=bool(vision.get('lidar_heading', True)),
                             lidar_centers=bool(vision.get('lidar_centers', True)),
-                            phase_head=bool(vision.get('phase_head', True)))
-    print('[VE] %s loaded (%s), signal head=%s, phase head=%s, object head=%s, lidar heading=%s, lidar centers=%s' % (
+                            phase_head=bool(vision.get('phase_head', True)),
+                            fragment_merge=vision.get('fragment_merge'))
+    print('[VE] %s loaded (%s), signal head=%s, phase head=%s, object head=%s, lidar heading=%s, lidar centers=%s, '
+          'fragment merge=%s' % (
         vision['checkpoint'], options['device'], runtime.signal_head is not None, runtime.phase_head is not None,
-        runtime.object_head, runtime.lidar_heading, runtime.lidar_centers), flush=True)
+        runtime.object_head, runtime.lidar_heading, runtime.lidar_centers, runtime.fragment_merge), flush=True)
     stop = []
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stop.append(True))

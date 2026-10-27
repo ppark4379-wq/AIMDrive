@@ -164,7 +164,8 @@ class VisionRuntime:
 
     def __init__(self, checkpoint='P1', *, device='cuda', lidar_to_base=DEFAULT_LIDAR_TO_BASE,
                  signal_head=True, checkpoint_path=None, checkpoint_sha256=None, cpu_threads=4,
-                 object_head=None, lidar_heading=True, lidar_centers=True, phase_head=False):
+                 object_head=None, lidar_heading=True, lidar_centers=True, phase_head=False,
+                 fragment_merge=None):
         if checkpoint_path is not None:
             if not checkpoint_sha256:
                 raise ValueError('checkpoint_sha256 is required with checkpoint_path')
@@ -186,6 +187,8 @@ class VisionRuntime:
         self.object_head = object_head
         self.lidar_heading = bool(lidar_heading)
         self.lidar_centers = bool(lidar_centers)
+        # Overlapping boxes of one long object (a truck in pieces) are joined into one; None: with the object head.
+        self.fragment_merge = bool(object_head) if fragment_merge is None else bool(fragment_merge)
         rotation = lidar_to_base['rotation_xyzw']
         self._lidar_offset = np.asarray(lidar_to_base['translation_xyz'], dtype=np.float64)
         self._lidar_rotation = _rotation_matrix(rotation)
@@ -232,7 +235,7 @@ class VisionRuntime:
         get = pose.get if isinstance(pose, dict) else lambda key: getattr(pose, key)
         points = self._body_points(lidar) if self.lidar_heading or self.lidar_centers else None
         boxes, counts = decode_world_boxes(detection[0], float(get('x')), float(get('y')),
-                                           float(get('yaw_grid_rad')), merge=bool(self.object_head),
+                                           float(get('yaw_grid_rad')), merge=self.fragment_merge,
                                            lidar_points=points if self.lidar_heading else None,
                                            cluster_points=points if self.lidar_centers else None)
         if _RAW_DUMP:
