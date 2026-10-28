@@ -124,7 +124,9 @@ def _repo_relative(relative):
 def project_path(path):
     """Map known historical repository locations, retaining external paths."""
     path = Path(os.path.normpath(os.path.expanduser(str(path))))
-    if not path.is_absolute():
+    # On Windows the recorded POSIX root (/home/jun/AIMDrive) has no drive, so it is not "absolute"; it is still a
+    # recorded location, not a path relative to this checkout.
+    if not path.is_absolute() and not path.root:
         return _repo_relative(path)
     for mapping in _DEPENDENCY_MAPPINGS:
         for recorded in mapping["legacy_absolute_prefixes"]:
