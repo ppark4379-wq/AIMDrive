@@ -25,8 +25,13 @@ class TrafficLightStopController(object):
         route_signal_targets=None,
         ignored_signal_ids=None,
         left_arrow_only_signal_ids=None,
+        front_axle_offset=0.0,
     ):
         self.path = list(path)
+        # The pose is the rear axle. Once the front axle is over a stop line the lamp is behind the camera, so that
+        # line no longer asks for a signal: a car stopped there (e.g. for an obstacle) would wait for a lamp it
+        # cannot see.
+        self.front_axle_offset = max(0.0, float(front_axle_offset))
         self.stopline_mapper = stopline_mapper
         self.is_closed_path = bool(is_closed_path)
         self.stop_statuses = set(int(x) for x in (stop_statuses or [1]))
@@ -192,7 +197,7 @@ class TrafficLightStopController(object):
         candidates = []
         for target in self._route_targets.get(str(signal_id), []):
             distance = self._forward_distance(current_waypoint, target)
-            if 0.0 <= distance <= self.max_lookahead:
+            if self.front_axle_offset <= distance <= self.max_lookahead:
                 candidates.append((distance, target))
         if not candidates:
             return None, None
