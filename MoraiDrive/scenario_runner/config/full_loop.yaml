@@ -608,9 +608,29 @@ scenarios:
           - cross_left_to_right
           - cross_right_to_left
           - diagonal_cross
-        # Empty uses the same model pool as dynamic_obstacle_models above.
-        # Only models reported available by the live MORAI world are used.
-        models: []
+        # Empty would use the same model pool as dynamic_obstacle_models above. Only models reported available by
+        # the live MORAI world are used. MORAI 26.R1 deletes these models about 3 s (7.4 m) after they are spawned
+        # with the scenario's parameters, so they ended the run with "pedestrian state unavailable"
+        # (tools/probe_tunnel_pedestrian.sh --cases matrix, 2026-10-28): Deer1, Dog1, Dog2, Man6, Man7, Man8,
+        # Woman4, Woman5, Woman6, Woman7, Woman8. The models that stayed are listed here instead.
+        models:
+          - Boy1
+          - Girl1
+          - Girl2
+          - Man1
+          - Man2
+          - Man3
+          - Man4
+          - Man5
+          - NCAP_EBT
+          - NCAP_EPTa
+          - Ped_Pet1
+          - Woman1
+          - Woman2
+          - Woman3
+          - police_m_2
+          - worker_f_1
+          - worker_m_1
 
     tunnel_vehicle_dynamic:
       enabled: false
