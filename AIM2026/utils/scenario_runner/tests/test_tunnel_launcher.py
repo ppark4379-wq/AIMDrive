@@ -336,11 +336,35 @@ class TunnelLauncherTest(unittest.TestCase):
         self.assertFalse({'rubbercone', 'colorcone', 'barbedwirefence'} & models)
         code, calls = self.run_main(['--variant', 'static', '--competition-morai'])
         self.assertEqual((code, calls[0][2]['installed_models']), (0, models))
-        for argv in (['--variant', 'brake', '--competition-morai'],
-                     ['--variant', 'static', '--competition-morai', '--morai-assets', str(self.root)]):
-            with patch('sys.stderr'), self.assertRaises(SystemExit) as raised:
-                self.run_main(argv)
-            self.assertEqual(raised.exception.code, 2)
+        with patch('sys.stderr'), self.assertRaises(SystemExit) as raised:
+            self.run_main(['--variant', 'static', '--competition-morai', '--morai-assets', str(self.root)])
+        self.assertEqual(raised.exception.code, 2)
+
+    def test_competition_morai_without_the_static_scene_needs_no_model_filter(self):
+        code, calls = self.run_main(['--variant', 'brake', '--competition-morai'])
+        self.assertEqual((code, 'installed_models' in calls[0][2]), (0, False))
+
+    def test_competition_morai_sets_the_competition_vehicle_interface_on_a_copy_of_the_config(self):
+        self.base.write_text(yaml.safe_dump(dict(
+            Ego=dict(ip='10.0.0.5', cmd_port=9093, cmd_layout='front_rear59', local_status_bytes=245),
+            Control=dict(positive_steer='right', max_speed_mps=None),
+            Localization=dict(enabled=True, config='Localization/config.yaml'))), encoding='utf-8')
+        before = self.base.read_text(encoding='utf-8')
+        code, calls = self.run_main(['--variant', 'pedestrian', '--competition-morai'])
+        used = Path(calls[0][0][calls[0][0].index('--config') + 1])
+        document = yaml.safe_load(used.read_text(encoding='utf-8'))
+        self.assertEqual(document['Ego'], dict(ip='10.0.0.5', cmd_port=9093, cmd_layout='single_steer55'))
+        self.assertEqual(document['Control'], dict(positive_steer='left', max_speed_mps=None))
+        self.assertEqual(self.base.read_text(encoding='utf-8'), before)           # the PC's own file is never edited
+
+    def test_without_competition_morai_the_config_values_are_left_alone(self):
+        self.base.write_text(yaml.safe_dump(dict(
+            Ego=dict(cmd_layout='front_rear59', local_status_bytes=245), Control=dict(positive_steer='right'),
+            Localization=dict(enabled=True, config='Localization/config.yaml'))), encoding='utf-8')
+        code, calls = self.run_main(['--variant', 'pedestrian'])
+        document = yaml.safe_load(Path(calls[0][0][calls[0][0].index('--config') + 1]).read_text(encoding='utf-8'))
+        self.assertEqual((document['Ego']['cmd_layout'], document['Ego']['local_status_bytes'],
+                          document['Control']['positive_steer']), ('front_rear59', 245, 'right'))
 
     def test_morai_assets_need_the_static_scene_and_a_folder_with_assets(self):
         folder = self.morai_folder('woodbox.obstacle')
