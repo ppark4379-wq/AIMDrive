@@ -55,6 +55,16 @@ RUN_GAP_S = tunnel.RUN_GAP_S
 RoundTimeout = tunnel.RoundTimeout
 
 
+def apply_highway_options(config, options):
+    """Highway-section choices of one run.
+
+    Like the highway-only launcher (Expert/run_highway.py), the course leaves out the one stopped car on the merge ramp
+    by default (moving traffic is unchanged); ``merge_static_vehicle`` keeps the course's own setting.
+    """
+    if not options.get('merge_static_vehicle'):
+        config.setdefault('highway_merge_static_vehicle', {})['enabled'] = False
+
+
 def sequence_for_scene(previous, scene):
     """The next rotation number after ``previous`` that falls on ``scene``.
 
@@ -139,6 +149,7 @@ def run_one(argv, options=None, record=None, limits=None, scene=None):
                   expert_ros_remaps=[], expert_traffic_light_control=False, route_debug_enabled=False,
                   max_laps=1, auto_repeat=False, route_setup_attempts=1)
     config.setdefault('sync_runtime', {})['enabled'] = False
+    apply_highway_options(config, options)
     if args.seed is not None:
         config['random_seed'] = args.seed
     stamp = 'competition-' + datetime.now().strftime('%Y%m%d-%H%M%S-%f')
@@ -246,8 +257,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, add_help=True)
     parser.add_argument('--runs', type=int, default=None,
                         help='Course runs in a row, each in a fresh scene (default {}: one pass over the tunnel '
-                             'scenes {}, or 1 with --tunnel-scene; the rotation continues where the last run stopped)'.format(
-                                 RUNS, ' -> '.join(TUNNEL_SCENES)))
+                             'scenes {}, fewer with --skip, or 1 with --tunnel-scene; without --skip/--tunnel-scene the rotation '
+                             'continues where the last run stopped)'.format(RUNS, ' -> '.join(TUNNEL_SCENES)))
     parser.add_argument('--round-timeout-s', type=float, default=ROUND_TIMEOUT_S,
                         help='Stop a run (counted as failed, the next one starts) after this many wall-clock seconds, '
                              'scene setup included (default {:g}; 0 = no limit)'.format(ROUND_TIMEOUT_S))
@@ -259,9 +270,16 @@ def main(argv=None):
                              '(default .runtime/competition_aim2026/results/competition-<time>.jsonl)')
     parser.add_argument('--no-virtual-gps', dest='virtual_gps', action='store_false',
                         help='Keep real GPS inside the tunnel; the dead-reckoning provider stays idle')
+    parser.add_argument('--merge-static-vehicle', action='store_true',
+                        help='Highway section: also place the one stopped car on the merge ramp (left out by default, '
+                             'as in the highway-only launcher; moving traffic is the same either way)')
     parser.add_argument('--tunnel-scene', choices=sorted(SCENE_NAMES),
                         help='Run this tunnel scene every time instead of the rotation {} (the whole course is run '
                              'either way); brake is the sudden-brake NPC scene'.format(' -> '.join(TUNNEL_SCENES)))
+    parser.add_argument('--skip', nargs='+', choices=sorted(SCENE_NAMES), default=[], metavar='SCENE',
+                        help='Leave these tunnel scenes out of the rotation ({}); the remaining ones follow each '
+                             'other in the usual order, starting with the first, e.g. --skip static'.format(
+                                 ', '.join(sorted(SCENE_NAMES))))
     parser.add_argument('--competition-morai', action='store_true',
                         help='The simulator is the competition MORAI: static tunnel layouts that use a model it does '
                              'not ship are left out (model list: config/competition_morai_models.txt), and the competition build\'s '
@@ -289,7 +307,15 @@ def main(argv=None):
         parser.error('--round-timeout-s and --stall-s must not be negative')
     if args.competition_morai and args.morai_assets is not None:
         parser.error('use either --competition-morai or --morai-assets')
-    if args.tunnel_scene in (None, 'static'):
+    if args.skip and args.tunnel_scene:
+        parser.error('--skip is for the rotation; leave out --tunnel-scene')
+    skipped = {SCENE_NAMES[name] for name in args.skip}
+    scenes = ([SCENE_NAMES[args.tunnel_scene]] if args.tunnel_scene
+              else [scene for scene in TUNNEL_SCENES if scene not in skipped])
+    if not scenes:
+        parser.error('--skip leaves no tunnel scene to run')
+    chosen = args.tunnel_scene is not None or bool(args.skip)      # a scene is named for every run
+    if 'static' in scenes:
         ensure_static_library(parser)
     args.config = args.config.expanduser().resolve()
     if not args.config.is_file():
@@ -300,8 +326,10 @@ def main(argv=None):
         return 0
     generated = Path(network_args.config) != args.config
     args.config = Path(network_args.config)
-    options = {} if args.tunnel_scene is None else {'tunnel_scene': SCENE_NAMES[args.tunnel_scene]}
-    if (args.competition_morai or args.morai_assets is not None) and args.tunnel_scene in (None, 'static'):
+    options = {}
+    if args.merge_static_vehicle:
+        options['merge_static_vehicle'] = True
+    if (args.competition_morai or args.morai_assets is not None) and 'static' in scenes:
         source = args.morai_assets or tunnel.COMPETITION_MODELS
         models = (tunnel.installed_models(args.morai_assets) if args.morai_assets is not None
                   else tunnel.competition_models())
@@ -333,11 +361,15 @@ def main(argv=None):
         return values
 
     limits = dict(round_timeout_s=args.round_timeout_s, stall_s=args.stall_s)
+
+    def options_for(index):
+        return dict(options, tunnel_scene=scenes[index % len(scenes)]) if chosen else options
+
     if checking:
-        scenes = (options['tunnel_scene'],) if 'tunnel_scene' in options else TUNNEL_SCENES
-        checks = [run_one(arguments(0), options, scene=scene) for scene in scenes]
+        checks = [run_one(arguments(0), dict(options, tunnel_scene=scene) if chosen else options, scene=scene)
+                  for scene in (scenes if chosen else TUNNEL_SCENES)]
         return 0 if not any(checks) else 1
-    runs = args.runs if args.runs is not None else (1 if args.tunnel_scene else RUNS)
+    runs = args.runs if args.runs is not None else (len(scenes) if chosen else RUNS)
     results_path = args.results or RUNTIME / 'results' / datetime.now().strftime('competition-%Y%m%d-%H%M%S.jsonl')
     print('[Competition] results file: ' + str(results_path), flush=True)
     results, rows = [], []
@@ -346,7 +378,7 @@ def main(argv=None):
         record, started = {}, datetime.now()
         outcome, reason = 'completed', None
         try:
-            code = run_one(arguments(index), options, record=record, limits=limits)
+            code = run_one(arguments(index), options_for(index), record=record, limits=limits)
             if code == INTERRUPTED:
                 outcome = 'interrupted'
             elif code != 0:

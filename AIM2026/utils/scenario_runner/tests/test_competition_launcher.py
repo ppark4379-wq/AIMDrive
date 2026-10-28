@@ -92,6 +92,39 @@ class CompetitionLauncherTest(unittest.TestCase):
         code, calls = self.run_main(['--tunnel-scene', 'pedestrian', '--runs', '3'])
         self.assertEqual((code, [call[1]['tunnel_scene'] for call in calls]), (0, ['pedestrian'] * 3))
 
+    def test_the_merge_static_vehicle_option_reaches_every_run_only_when_given(self):
+        code, calls = self.run_main(['--runs', '2', '--merge-static-vehicle'])
+        self.assertEqual([call[1].get('merge_static_vehicle') for call in calls], [True, True])
+        code, calls = self.run_main(['--runs', '1'])
+        self.assertNotIn('merge_static_vehicle', calls[0][1])
+
+    def test_skipping_a_scene_rotates_through_the_rest_in_the_usual_order(self):
+        code, calls = self.run_main(['--skip', 'static'])
+        self.assertEqual((code, [call[1]['tunnel_scene'] for call in calls]), (0, ['legacy', 'pedestrian', 'vehicle']))
+        code, calls = self.run_main(['--skip', 'static', '--runs', '5'])
+        self.assertEqual([call[1]['tunnel_scene'] for call in calls],
+                         ['legacy', 'pedestrian', 'vehicle', 'legacy', 'pedestrian'])
+        code, calls = self.run_main(['--skip', 'brake', 'vehicle'])
+        self.assertEqual([call[1]['tunnel_scene'] for call in calls], ['static', 'pedestrian'])
+
+    def test_a_rotation_without_static_needs_no_static_library_or_model_filter(self):
+        with patch.object(run_competition, 'ensure_static_library') as ensure, \
+                patch.object(run_competition, 'run_one', return_value=0), patch.object(run_competition, 'RUNTIME', self.root / 'rt'), \
+                patch.object(run_competition.time, 'sleep'):
+            run_competition.main(['--config', str(self.config), '--no-virtual-gps', '--skip', 'static', '--competition-morai'])
+        self.assertEqual(ensure.call_count, 0)
+
+    def test_check_with_skip_validates_only_the_remaining_scenes(self):
+        code, calls = self.run_main(['--check', '--skip', 'static'])
+        self.assertEqual((code, [call[3] for call in calls]), (0, ['legacy', 'pedestrian', 'vehicle']))
+
+    def test_skip_cannot_be_combined_with_a_chosen_scene_or_leave_nothing(self):
+        for argv in (['--skip', 'static', '--tunnel-scene', 'brake'],
+                     ['--skip', 'brake', 'static', 'pedestrian', 'vehicle']):
+            with patch('sys.stderr'), self.assertRaises(SystemExit) as raised:
+                self.run_main(argv)
+            self.assertEqual(raised.exception.code, 2, argv)
+
     def test_check_with_a_chosen_scene_validates_only_that_scene(self):
         code, calls = self.run_main(['--check', '--tunnel-scene', 'vehicle'])
         self.assertEqual((code, [call[3] for call in calls]), (0, ['vehicle']))
@@ -192,6 +225,19 @@ class CompetitionLauncherTest(unittest.TestCase):
 def actor(identity, x, y, kind=2, z=0.):
     return SimpleNamespace(actor_info=SimpleNamespace(id=SimpleNamespace(value=identity), object_type=kind),
                            transform=SimpleNamespace(location=SimpleNamespace(x=x, y=y, z=z)))
+
+
+class HighwayOptionsTest(unittest.TestCase):
+    def test_the_merge_ramp_stopped_car_is_left_out_unless_asked_for(self):
+        config = {'highway_merge_static_vehicle': {'enabled': True, 'route_link': 'A2256W000411'}}
+        run_competition.apply_highway_options(config, {})
+        self.assertEqual(config['highway_merge_static_vehicle'], {'enabled': False, 'route_link': 'A2256W000411'})
+        config['highway_merge_static_vehicle']['enabled'] = True
+        run_competition.apply_highway_options(config, {'merge_static_vehicle': True})
+        self.assertTrue(config['highway_merge_static_vehicle']['enabled'])       # the course's own setting stays
+        bare = {}
+        run_competition.apply_highway_options(bare, {})
+        self.assertEqual(bare, {'highway_merge_static_vehicle': {'enabled': False}})
 
 
 class TunnelSceneChoiceTest(unittest.TestCase):
