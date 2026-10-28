@@ -12,6 +12,7 @@ inputs were captured at; the caller supplies it (UDP Pose GridProjector).
 from dataclasses import dataclass
 import time
 
+import cv2
 import numpy as np
 import torch
 
@@ -20,6 +21,7 @@ from .contract import checkpoint_contract
 from .model import decode_native_signal, decode_phase, decode_signal
 from .postprocess import decode_world_boxes
 from .preprocess import InputBuilder
+from .arrow_rule import left_arrow
 
 # Development only: VE_RAW_DUMP=<file.jsonl> appends every candidate cell (score >= 0.2, before NMS) per frame.
 _RAW_DUMP = __import__('os').environ.get('VE_RAW_DUMP', '')
@@ -27,6 +29,31 @@ _RAW_DUMP = __import__('os').environ.get('VE_RAW_DUMP', '')
 
 # Development only: VE_SIGNAL_TOKEN_DUMP=<file.jsonl> appends the traffic-light token (the signal heads' input) per frame.
 _TOKEN_DUMP = __import__('os').environ.get('VE_SIGNAL_TOKEN_DUMP', '')
+
+
+def _left_arrow_signal(signal, front):
+    """The three-phase output for the left-turn signal (052), decided by the front-image arrow check.
+
+    The three-phase output is read only for that signal, and its own 33 call followed the yellow and the straight green.
+    An arrow seen in the image is 33. A lamp fully in view without the arrow is a confident 1 (stop): it cancels a
+    permission the Expert still holds, so a stray arrow frame cannot grant the turn. No lamp in view (the vehicle past
+    ~11 m sees it leave the image, or nothing readable) is no reading (None), which keeps a permission already granted.
+    """
+    try:
+        if isinstance(front, (bytes, bytearray, memoryview)):
+            bgr = cv2.imdecode(np.frombuffer(front, dtype=np.uint8), cv2.IMREAD_COLOR)
+        else:
+            bgr = cv2.cvtColor(np.asarray(front), cv2.COLOR_RGB2BGR)
+        check = left_arrow(bgr)
+    except (cv2.error, TypeError, ValueError):
+        return signal
+    if not check['valid']:
+        return signal
+    if check['arrow']:
+        return dict(signal, code=33, confidence=1.0, arrow_rule='arrow')
+    if check['lamp_in_view']:
+        return dict(signal, code=1, confidence=1.0, arrow_rule='lamp_without_arrow')
+    return dict(signal, code=None, arrow_rule='no_lamp')
 
 
 def _dump_token(token, native_logits, x, y, yaw, speed):
@@ -165,7 +192,7 @@ class VisionRuntime:
     def __init__(self, checkpoint='P1', *, device='cuda', lidar_to_base=DEFAULT_LIDAR_TO_BASE,
                  signal_head=True, checkpoint_path=None, checkpoint_sha256=None, cpu_threads=4,
                  object_head=None, lidar_heading=True, lidar_centers=True, phase_head=False,
-                 fragment_merge=None):
+                 fragment_merge=None, left_arrow_rule=False):
         if checkpoint_path is not None:
             if not checkpoint_sha256:
                 raise ValueError('checkpoint_sha256 is required with checkpoint_path')
@@ -189,6 +216,7 @@ class VisionRuntime:
         self.lidar_centers = bool(lidar_centers)
         # Overlapping boxes of one long object (a truck in pieces) are joined into one; None: with the object head.
         self.fragment_merge = bool(object_head) if fragment_merge is None else bool(fragment_merge)
+        self.left_arrow_rule = bool(left_arrow_rule)
         rotation = lidar_to_base['rotation_xyzw']
         self._lidar_offset = np.asarray(lidar_to_base['translation_xyz'], dtype=np.float64)
         self._lidar_rotation = _rotation_matrix(rotation)
@@ -232,6 +260,8 @@ class VisionRuntime:
         detection, light, light_token = forward_perception(self.model, inputs)
         signal = (decode_signal(self.signal_head(light_token))[0]
                   if self.signal_head is not None else None)
+        if self.left_arrow_rule and signal is not None:
+            signal = _left_arrow_signal(signal, images.get('rgb_front'))
         get = pose.get if isinstance(pose, dict) else lambda key: getattr(pose, key)
         points = self._body_points(lidar) if self.lidar_heading or self.lidar_centers else None
         boxes, counts = decode_world_boxes(detection[0], float(get('x')), float(get('y')),

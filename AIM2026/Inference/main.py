@@ -36,6 +36,8 @@ LIDAR_STAMP_RESOLUTION_S = 1e-6  # LiDAR stamps are whole microseconds; status s
 # the LiDAR time with its own body gyro rate instead of declaring the frame unusable.
 IMU_PROPAGATION_S = 0.10
 STATUS_INTERPOLATION_S = 0.10  # bounded bracketing only; never extrapolate speed
+_FRAME_DUMP = (Path(__import__('os').environ['VE_SIGNAL_TOKEN_DUMP'] + '.frames')
+               if __import__('os').environ.get('VE_SIGNAL_TOKEN_DUMP') else None)
 
 
 def _causal(records, source_time, tolerance=SPEED_ALIGNMENT_S):
@@ -206,6 +208,14 @@ class VePublisher:
                                         lidar.value, speed, pose)
         except ValueError as exc:
             return self._not_ready('input_rejected: ' + str(exc))
+        if _FRAME_DUMP:
+            # Development only (with VE_SIGNAL_TOKEN_DUMP): the front camera JPEG of every inferred frame, named by the
+            # monotonic clock the token dump and the collection labels use, for an image-level signal classifier.
+            try:
+                _FRAME_DUMP.mkdir(parents=True, exist_ok=True)
+                (_FRAME_DUMP / ('%d.jpg' % time.monotonic_ns())).write_bytes(bytes(chosen['rgb_front'].value))
+            except (OSError, TypeError, ValueError):
+                pass
         received = {name: chosen[name].received_at for name in (*CAMERAS, 'lidar', 'vehicle_status', 'gps', 'imu')}
         oldest_name = min(received, key=received.get)
         oldest = received[oldest_name]
@@ -323,11 +333,13 @@ def main():
                             lidar_heading=bool(vision.get('lidar_heading', True)),
                             lidar_centers=bool(vision.get('lidar_centers', True)),
                             phase_head=bool(vision.get('phase_head', True)),
-                            fragment_merge=vision.get('fragment_merge'))
+                            fragment_merge=vision.get('fragment_merge'),
+                            left_arrow_rule=bool(vision.get('left_arrow_rule', True)))
     print('[VE] %s loaded (%s), signal head=%s, phase head=%s, object head=%s, lidar heading=%s, lidar centers=%s, '
-          'fragment merge=%s' % (
+          'fragment merge=%s, left arrow rule=%s' % (
         vision['checkpoint'], options['device'], runtime.signal_head is not None, runtime.phase_head is not None,
-        runtime.object_head, runtime.lidar_heading, runtime.lidar_centers, runtime.fragment_merge), flush=True)
+        runtime.object_head, runtime.lidar_heading, runtime.lidar_centers, runtime.fragment_merge,
+        runtime.left_arrow_rule), flush=True)
     stop = []
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stop.append(True))

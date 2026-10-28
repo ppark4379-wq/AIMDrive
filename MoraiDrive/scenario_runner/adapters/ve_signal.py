@@ -49,6 +49,7 @@ class SignalPolicy:
         self._reset_allow(reason)
         self.bound = False
         self.latched_until = None
+        self.granted = False           # the gate has output this permission (see accept: only then is it latched)
 
     def accept(self, packet, points, now):
         previous_code = self.code
@@ -70,14 +71,18 @@ class SignalPolicy:
         if valid:
             self.code = code
             self.latched_until = now+self.PERMISSION_LATCH_S if code in self.permission_codes else None
-        elif (previous_code in self.permission_codes and self.latched_until is not None
+        elif (previous_code in self.permission_codes and self.granted and self.latched_until is not None
                 and now <= self.latched_until and self.bound and fresh
                 and not (code == 1 and type(confidence) in (float, int) and confidence >= self.MIN_CONFIDENCE)):
-            self.code = previous_code      # permission kept briefly; a confident red always cancels it
+            # Permission kept briefly once the gate has granted it (the vehicle that started through the junction sees the
+            # lamp leave the image); a confident red always cancels it. Before the grant a lost reading is no permission:
+            # one stray arrow frame during the yellow, then no readings, counted up to a start through the latch (10-28).
+            self.code = previous_code
             latched = True
         else:
             self.code = None
             self.latched_until = None
+            self.granted = False
         self._audit_raw = dict(latched=latched, code=code if type(code) is int else None,
                                confidence=float(confidence) if type(confidence) in (float, int) and math.isfinite(confidence) else None,
                                valid=bool(valid), reject=None if valid else self._reject_reason(code, confidence, now))
@@ -89,6 +94,8 @@ class SignalPolicy:
             if self.allow_since is None:
                 self.allow_since = now
             self.allow_samples += 1
+            if self.allow_samples >= self.REQUIRED_SAMPLES and now-self.allow_since >= self.REQUIRED_HOLD_S:
+                self.granted = True    # the gate's own condition, whether or not output() ran since
 
     def _reject_reason(self, code, confidence, now):
         if not (type(code) is int and code in self.accepted_codes):
@@ -122,6 +129,8 @@ class SignalPolicy:
             self._audit_gate = dict(output=0, reason='debounce_samples' if self.allow_samples < self.REQUIRED_SAMPLES
                                     else 'debounce_duration')
             return 0
+        if self.code in self.permission_codes:
+            self.granted = True
         result = self.code or 0
         self._audit_gate = dict(output=result, reason=None if self.code else (self._audit_raw or {}).get('reject') or 'no_valid_code')
         return result
@@ -168,8 +177,14 @@ class FullRouteSignalPolicy(SignalPolicy):
     either the end of a false red (the five-phase head agrees at once) or that head reading the yellow/red lamp as
     green from closer than ~11 m, which sent a car stopped 6 m before the line through the red.
     Without ``phase_signal`` the decisions are unchanged.
+    Left turn (052, three-class head; cycle red 60 s -> straight green 27 s -> yellow 3 s -> left arrow): that head
+    never saw yellow and read the yellow lamp as the arrow in 91 % of yellow frames (40 drives), so a car waiting at
+    the line left on the yellow (10-28). An arrow read within LEFT_AFTER_GREEN_S of a straight green does not grant the turn
+    while the car waits or can still stop comfortably: a car waiting at the line always sees that green before the
+    yellow. The five-phase head is no help here: it never learnt the arrow and read a lit arrow as yellow for minutes.
     """
     permission_codes = (16, 33)
+    LEFT_AFTER_GREEN_S = 4.               # the 3 s yellow plus 1 s: the turn starts about 1 s after the arrow
 
     OFF_ROUTE_M = 6.
     PHASE_STOP_CODES = (1, 4, 33)
@@ -208,6 +223,7 @@ class FullRouteSignalPolicy(SignalPolicy):
         self._phase_used = None            # signal id whose one phase stop is spent
         self._phase_go = deque(maxlen=self.PHASE_GO_FRAMES)
         self._red = None                   # [signal id, first red time, reds in a row, confirmed red start]
+        self._left_green = None            # (signal id, time) of the last straight green on the left-turn signal
 
     def accept(self, packet, points, now):
         super().accept(packet, points, now)
@@ -226,6 +242,8 @@ class FullRouteSignalPolicy(SignalPolicy):
         elif native == 16:
             self._red[2] = 0
         phase = packet.get('phase_signal')
+        if self.head_source == 'three_class':
+            self._left_turn_yellow(packet, now)
         if self.head_source != 'native_binary' or not isinstance(phase, dict):
             self._phase_calls.clear()
             self._phase_go.clear()
@@ -265,6 +283,24 @@ class FullRouteSignalPolicy(SignalPolicy):
         self.code = 1
         self.latched_until = None
         self._reset_allow('phase_yellow')
+        self.phase_stop = True
+
+    def _left_turn_yellow(self, packet, now):
+        """Withhold a left arrow that may be the yellow before it (see the class docstring)."""
+        if self.code == 16:
+            self._left_green = (self.target_id, now)
+        if self.code != 33:
+            return
+        if not (self._left_green is not None and self._left_green[0] == self.target_id
+                and now - self._left_green[1] < self.LEFT_AFTER_GREEN_S):
+            return
+        speed = abs(float(packet['ego_pose'].get('speed_mps') or 0.))
+        if (speed >= self.PHASE_MIN_SPEED_MPS and self.distance is not None
+                and self.distance - self.STOP_MARGIN_M <= speed * speed / (2. * self.COMFORT_DECEL_MPS2)):
+            return                         # moving and too close to stop comfortably: keep going
+        self.code = 1
+        self.latched_until = None
+        self._reset_allow('left_yellow')
         self.phase_stop = True
 
     def select_signal(self, packet):

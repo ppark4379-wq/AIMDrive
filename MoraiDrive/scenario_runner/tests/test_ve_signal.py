@@ -48,6 +48,18 @@ class SignalTests(unittest.TestCase):
         self.policy.accept(self.sample(1,20.4,confidence=.99),self.points,20.4)
         self.assertEqual(self.policy.output(20.4),1)
 
+    def test_a_stray_arrow_frame_is_not_latched_into_a_start(self):
+        # 10-28 live run: one arrow frame during the yellow, then no readings, started the car through the latch.
+        self.policy.accept(self.sample(33, 10.), self.points, 10.)
+        self.assertEqual(self.policy.output(10.), 0)
+        for t in (10.15, 10.3, 10.45, 10.6):
+            self.policy.accept(self.sample(None, t, confidence=.6), self.points, t)
+            self.assertEqual(self.policy.output(t), 0)
+        # three fresh arrow frames afterwards still grant the turn
+        for t in (11., 11.1, 11.2, 11.31):
+            self.policy.accept(self.sample(33, t), self.points, t)
+        self.assertEqual(self.policy.output(11.31), 33)
+
     def test_freshness_counts_from_the_ve_output_not_the_oldest_sensor(self):
         # Oldest sensor 0.45 s old when VE sent the result: still fresh 0.1 s later (the old rule stopped here).
         for t in [10., 10.1, 10.2, 10.31]:
@@ -404,3 +416,41 @@ class PhaseYellowTests(unittest.TestCase):
         self.drive(282., 0., 1, native=1, n=3, policy=policy, t0=19.)
         codes, policy = self.drive(282., 0., 4, native=16, n=6, policy=policy, t0=19.3)
         self.assertEqual(codes[-1], 16)                                         # misread right after the start
+
+
+class LeftTurnYellowTests(unittest.TestCase):
+    """052: the three-class head reads the yellow between straight green and the left arrow as the arrow."""
+
+    def setUp(self):
+        self.points = [(float(i), 0.) for i in range(400)]
+        self.target = dict(signal_id=TARGET_ID, path_index=300, signal_movement='left')
+
+    def run_codes(self, x, speed, frames, policy=None, t0=10.):
+        """frames: list of (three-class code, phase code or None); 10 Hz."""
+        policy = policy or FullRouteSignalPolicy(self.points, [self.target])
+        policy.last_index = int(x)
+        out = []
+        for i, (three, phase) in enumerate(frames):
+            t = t0 + .1 * i
+            packet = dict(signal=dict(code=three, confidence=.99), sensor_received_ns=int(t * 1e9),
+                          sent_ns=int(t * 1e9), ego_pose=dict(x=x, y=0., speed_mps=speed))
+            if phase is not None:
+                packet['phase_signal'] = dict(code=phase, confidence=.95)
+            policy.accept(packet, self.points, t)
+            out.append(policy.output(t))
+        return out, policy
+
+    def test_waiting_car_does_not_leave_on_the_yellow_after_the_straight_green(self):
+        frames = [(16, 16)] * 20 + [(33, None)] * 30            # green, then 3 s of 'arrow' (the yellow)
+        codes, _ = self.run_codes(287., 0., frames)
+        self.assertNotIn(33, codes)
+        codes, _ = self.run_codes(287., 0., [(16, 16)] * 20 + [(33, None)] * 60)
+        self.assertEqual(codes[-1], 33)                          # the arrow 5 s after the last green goes
+
+    def test_the_five_phase_head_reading_the_arrow_as_yellow_does_not_hold_the_car(self):
+        codes, _ = self.run_codes(287., 0., [(33, 4)] * 10)
+        self.assertEqual(codes[-1], 33)
+
+    def test_a_car_too_close_to_stop_keeps_going(self):
+        codes, _ = self.run_codes(296., 8., [(16, 16)] * 5 + [(33, None)] * 10)   # 4 m before the line at 8 m/s
+        self.assertEqual(codes[-1], 33)
