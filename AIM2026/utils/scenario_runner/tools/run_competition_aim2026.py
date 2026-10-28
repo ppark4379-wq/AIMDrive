@@ -33,6 +33,7 @@ from types import SimpleNamespace
 import zipfile
 
 from AIM2026.Expert import run_highway as harness
+from AIM2026.Expert import wsl_network
 from scenario_runner.adapters.expert_controller import validate_max_velocity_kmh
 from scenario_runner.main_runner import load_configuration
 from scenario_runner.scenarios.full_loop_competition import FullLoopCompetitionScenario, TUNNEL_SCENES
@@ -271,6 +272,14 @@ def main(argv=None):
     parser.add_argument('--config', type=Path, default=tunnel.AIM_ROOT / 'config_local.yaml')
     parser.add_argument('--seed', type=int, help='First run seed; later runs use seed+1, seed+2, ...')
     args, remaining = parser.parse_known_args(argv)
+    # In WSL without --config: the UDP settings written for this PC (addresses read from the running WSL, see
+    # AIM2026/Expert/wsl_network.py). Elsewhere, or with an explicit --config, nothing changes.
+    network = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
+    network.add_argument('--expert-python', default=None)
+    wsl_network.add_arguments(network)
+    network_args, remaining = network.parse_known_args(remaining)
+    if network_args.expert_python is not None:
+        remaining = [*remaining, '--expert-python', network_args.expert_python]
     checking = '--check' in remaining
     if args.runs is not None and args.runs < 1:
         parser.error('--runs must be at least 1')
@@ -285,6 +294,12 @@ def main(argv=None):
     args.config = args.config.expanduser().resolve()
     if not args.config.is_file():
         parser.error('Config not found: ' + str(args.config))
+    network_args.config = args.config
+    network_args.expert_python = network_args.expert_python or harness.expert_python()
+    if wsl_network.configure_launcher(network_args, ROOT, parser):
+        return 0
+    generated = Path(network_args.config) != args.config
+    args.config = Path(network_args.config)
     options = {} if args.tunnel_scene is None else {'tunnel_scene': SCENE_NAMES[args.tunnel_scene]}
     if (args.competition_morai or args.morai_assets is not None) and args.tunnel_scene in (None, 'static'):
         source = args.morai_assets or tunnel.COMPETITION_MODELS
@@ -298,8 +313,13 @@ def main(argv=None):
     stamp = datetime.now().strftime('%Y%m%d-%H%M%S-%f')
     if args.competition_morai:
         config = tunnel.competition_config(config, RUNTIME / 'config' / (stamp + '-competition'))
-        print('[Competition] competition MORAI: Ego cmd_layout=single_steer55, 181 B status, positive_steer=left '
-              'set in ' + str(config), flush=True)
+        if generated:
+            size = wsl_network.keep_status_layout(args.config, config)
+            if size is not None:
+                print('[Competition] Ego status layout kept at {} B (the size MORAI sends on this PC; --status-bytes)'.format(size),
+                      flush=True)
+        print('[Competition] competition MORAI: Ego cmd_layout=single_steer55, {} status, positive_steer=left '
+              'set in '.format('{} B'.format(size) if generated and size is not None else '181 B') + str(config), flush=True)
     if args.virtual_gps:
         config = tunnel.virtual_gps_config(config, RUNTIME / 'config' / stamp)
         print('[Competition] virtual GPS: Localization test_blackout zone enabled in ' + str(config), flush=True)

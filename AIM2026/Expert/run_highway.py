@@ -28,6 +28,7 @@ from scenario_runner.scenarios.segment_modes.scenario import MissionScenario
 from scenario_runner.utils.map_loader import MGeoMapLoader
 from scenario_runner.adapters.expert_controller import validate_max_velocity_kmh
 from AIM2026.main import runtime_python
+from AIM2026.Expert import wsl_network
 from scenario_runner.core.contact_verification import SpawnContactVerifier
 
 # Validation runs, incidents and the batch scratch of the runner (git-ignored), relative to the repository root.
@@ -520,6 +521,7 @@ def main(argv=None, *, mission='full_loop_highway'):
                              'entered the highway lane (thinned out from the merge entry on)')
     parser.add_argument('--highway-density', choices=('dense', 'competition'), default=None,
                         help='Highway NPC traffic (run_highway.sh only): competition = independent lane-speed traffic')
+    wsl_network.add_arguments(parser)
     args = parser.parse_args(argv)
     args.config = args.config.resolve()
     if not args.config.is_file():
@@ -528,6 +530,8 @@ def main(argv=None, *, mission='full_loop_highway'):
         parser.error('--highway-density is only for run_highway.sh')
     if args.rear_npcs != 'normal' and args.highway_density != 'competition':
         parser.error('--rear-npcs needs --highway-density competition')
+    if wsl_network.configure_launcher(args, ROOT, parser):
+        return 0
     global_cfg, _, base = load_configuration()
     # Keep moving traffic; this merge verification run has no stopped vehicle.
     config = copy.deepcopy(base)

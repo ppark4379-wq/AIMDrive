@@ -130,6 +130,33 @@ class CompetitionLauncherTest(unittest.TestCase):
                                                                   dict(positive_steer='left')))
         self.assertIn('local_status_bytes: 245', self.config.read_text(encoding='utf-8'))   # the original stays untouched
 
+    def test_the_wsl_network_config_replaces_the_config_and_keeps_its_status_size(self):
+        generated = self.root / 'wsl.yaml'
+        generated.write_text('Ego:\n  ip: 172.30.144.1\n  local_status_bytes: 229\nControl:\n  positive_steer: left\n',
+                             encoding='utf-8')
+        calls = []
+
+        def configure(args, root, parser):
+            args.config = generated
+            return False
+
+        def fake(arguments, options=None, record=None, limits=None, scene=None):
+            calls.append(arguments)
+            return 0
+        with patch.object(run_competition.wsl_network, 'configure_launcher', side_effect=configure),                 patch.object(run_competition, 'run_one', fake), patch.object(run_competition, 'RUNTIME', self.root / 'rt'),                 patch.object(run_competition, 'ensure_static_library'), patch.object(run_competition.time, 'sleep'):
+            run_competition.main(['--config', str(self.config), '--no-virtual-gps', '--runs', '1', '--competition-morai'])
+            used = run_competition.tunnel._load(Path(calls[0][calls[0].index('--config') + 1]))
+            self.assertEqual((used['Ego']['ip'], used['Ego']['local_status_bytes'], used['Ego']['cmd_layout']),
+                             ('172.30.144.1', 229, 'single_steer55'))      # the competition build's 181 B is not forced
+            calls.clear()
+            run_competition.main(['--config', str(self.config), '--no-virtual-gps', '--runs', '1'])
+            self.assertEqual(Path(calls[0][calls[0].index('--config') + 1]), generated)
+
+    def test_prepare_network_stops_before_any_run(self):
+        with patch.object(run_competition.wsl_network, 'configure_launcher', return_value=True),                 patch.object(run_competition, 'run_one') as run_one, patch.object(run_competition, 'RUNTIME', self.root / 'rt'),                 patch.object(run_competition, 'ensure_static_library'):
+            self.assertEqual(run_competition.main(['--config', str(self.config), '--prepare-network']), 0)
+        run_one.assert_not_called()
+
     def test_a_failed_run_is_recorded_and_the_next_one_still_starts(self):
         results = self.root / 'results.jsonl'
         code, calls = self.run_main(['--runs', '3', '--results', str(results)],

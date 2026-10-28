@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT), str(ROOT / 'MoraiDrive')]
 
 from AIM2026.Expert import run_highway as shared
+from AIM2026.Expert import wsl_network
 from scenario_runner.adapters.expert_controller import validate_max_velocity_kmh
 from scenario_runner.main_runner import load_configuration
 from scenario_runner.scenarios.segment_modes import events
@@ -325,6 +326,7 @@ def main(argv=None):
     parser.add_argument('--ignore-signals', type=lambda text: [x for x in text.split(',') if x],
                         default=None, help='Comma-separated map signal IDs the Expert ignores')
     parser.add_argument('--strict-collisions', action='store_true')
+    wsl_network.add_arguments(parser)
     args = parser.parse_args(argv)
     args.mission = AVOID_MISSION if args.avoid else MISSION
     if not args.avoid and (args.model or args.obstacle_y != AVOID_OBSTACLE_Y):
@@ -337,6 +339,8 @@ def main(argv=None):
     args.config = args.config.resolve()
     if not args.config.is_file():
         parser.error('Config not found: ' + str(args.config))
+    if wsl_network.configure_launcher(args, ROOT, parser):
+        return 0
 
     if not args.check:
         probe = subprocess.run([args.expert_python, '-c', 'import torch'],
