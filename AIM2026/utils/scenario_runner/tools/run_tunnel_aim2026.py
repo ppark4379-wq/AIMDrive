@@ -292,6 +292,7 @@ def run_one(argv, variant, options=None, record=None, limits=None):
     scenario.pedestrian_reaction_s = options.get('pedestrian_reaction_s')
     scenario.pedestrian_margin_m = options.get('pedestrian_margin_m')
     scenario.static_report_dir = output
+    scenario.competition_static_installed_models = options.get('installed_models')
     scenario.stall_s = float(limits.get('stall_s', STALL_S))
     scenario.args, scenario.output = args, output
     scenario.driver_output = RUNTIME / 'expert' / stamp
@@ -397,6 +398,31 @@ def static_library():
     return Path(DEFAULT_LIBRARY)
 
 
+MORAI_ASSET_SUFFIXES = ('.obstacle', '.vehicle', '.pedestrian')
+COMPETITION_MODELS = RUNNER_ROOT / 'config' / 'competition_morai_models.txt'
+
+
+def competition_models(path=COMPETITION_MODELS):
+    """Normalized asset names listed in the repository's copy of the competition MORAI's model list."""
+    lines = Path(path).read_text(encoding='utf-8').splitlines()
+    return frozenset(competition_static.model_key(line) for line in lines if line.strip() and not line.startswith('#'))
+
+
+def installed_models(folder):
+    """Normalized names of the obstacle/vehicle/pedestrian assets a MORAI install ships.
+
+    ``folder`` is the MORAI launcher folder, its ``<name>_Data/Bundle`` folder or one bundle version inside it.
+    """
+    folder = Path(folder).expanduser()
+    roots = [folder, *folder.glob('*'), *folder.glob('Bundle/*'), *folder.glob('*_Data/Bundle/*')]
+    names = set()
+    for root in roots:
+        if root.is_dir():
+            names.update(competition_static.model_key(path.stem) for path in root.iterdir()
+                         if path.suffix in MORAI_ASSET_SUFFIXES)
+    return frozenset(names)
+
+
 def restore_lf_evidence(roots=(RUNNER_ROOT / 'data' / 'geometry', RUNNER_ROOT / 'config')):
     """Put CRLF line ends back to LF in the static scene's evidence and configuration JSON files.
 
@@ -453,6 +479,12 @@ def main(argv=None):
                         help='Keep real GPS inside the tunnel; the dead-reckoning provider stays idle')
     parser.add_argument('--config', type=Path, default=AIM_ROOT / 'config_local.yaml')
     parser.add_argument('--seed', type=int, help='First run seed; later runs use seed+1, seed+2, ...')
+    parser.add_argument('--competition-morai', action='store_true',
+                        help='static: the simulator is the competition MORAI; layouts that use a model it does not '
+                             'ship are left out (model list: config/competition_morai_models.txt)')
+    parser.add_argument('--morai-assets', type=Path, metavar='FOLDER',
+                        help='static: like --competition-morai, but read the models from this MORAI launcher folder '
+                             '(or its Bundle folder)')
     args, remaining = parser.parse_known_args(argv)
     if args.runs is not None and args.runs < 1:
         parser.error('--runs must be at least 1')
@@ -505,6 +537,18 @@ def main(argv=None):
     reaction = PEDESTRIAN_REACTION_S if args.pedestrian_reaction_s is None else args.pedestrian_reaction_s
     options = dict(fixed_pedestrian=args.fixed_pedestrian, vehicle_behavior=args.vehicle_behavior,
                    pedestrian_reaction_s=reaction, pedestrian_margin_m=args.pedestrian_margin_m)
+    if args.morai_assets is not None or args.competition_morai:
+        if args.morai_assets is not None and args.competition_morai:
+            parser.error('use either --competition-morai or --morai-assets')
+        if 'static' not in (rotation if rotating else (args.variant,)):
+            parser.error('--competition-morai/--morai-assets are for the static scene '
+                         '(--variant static, or all without --skip static)')
+        source = args.morai_assets or COMPETITION_MODELS
+        models = installed_models(args.morai_assets) if args.morai_assets is not None else competition_models()
+        if not models:
+            parser.error('No obstacle/vehicle/pedestrian assets found in ' + str(source))
+        options['installed_models'] = models
+        print('[Tunnel] MORAI models: {} from {}'.format(len(models), source), flush=True)
     if args.fixed_pedestrian and args.variant not in ('pedestrian', 'all'):
         parser.error('--fixed-pedestrian is for --variant pedestrian or all')
     if args.vehicle_behavior and args.variant not in ('vehicle', 'all'):

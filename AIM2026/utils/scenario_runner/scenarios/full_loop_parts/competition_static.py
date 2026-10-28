@@ -26,6 +26,17 @@ CHECK_PERIOD_SEC = 0.5
 RETIRE_AFTER_EXIT_M = 30.0
 
 
+def model_key(name):
+    """MORAI asset file names and library model names differ only in case and punctuation."""
+    return "".join(char for char in str(name).lower() if char.isalnum())
+
+
+def layout_models_available(obstacles, installed):
+    """True when every model of a layout is in ``installed`` (normalized names); None means no restriction."""
+    return installed is None or all(model_key(item["model"]) in installed for item in obstacles)
+
+
+
 def _save(context):
     path = getattr(context, "competition_static_report_path", None)
     if path is not None:
@@ -124,7 +135,12 @@ def _select_layout(context):
     contracts = _environment_models(library, document, geometry, pins)
     provenance = replay.screening.screening_provenance()
     eligible, fingerprints = [], set()
+    installed = getattr(context, "competition_static_installed_models", None)
+    unavailable = 0
     for row in document["candidates"]:
+        if not layout_models_available(row["obstacles"], installed):
+            unavailable += 1
+            continue
         paths, hashes, evidence = {}, {}, {}
         for name in ("candidate", "preview_report", "drive_report", "ego_trace",
                      "trial_manifest", "planner_diagnostics"):
@@ -186,6 +202,11 @@ def _select_layout(context):
             strata=dict(count=len(stations), longitudinal_third=min(2, int(sum(stations) / len(stations) / geometry["length_m"] * 3)),
                         actor_kind="mixed" if len(kinds) > 1 else next(iter(kinds)), actual_behavior=actual["realized_pattern"]),
             source_comparison=_source_comparison(screen, provenance)))
+    if installed is not None:
+        print("[Static] MORAI model filter: {} of {} curated layouts use only installed models".format(
+            len(eligible), len(eligible) + unavailable), flush=True)
+        if not eligible:
+            raise ValueError("No curated static layout uses only models installed in this MORAI")
     selected, balance = replay.balanced_choice(eligible, context.run_seed)
     pins.update(replay.current_runtime_sources())
     project = AIM_ROOT
@@ -197,6 +218,7 @@ def _select_layout(context):
     return selected, geometry, pins, {
         "library_path": str(library), "library_sha256": library_sha,
         "eligible_count": len(eligible), "balance_decisions": balance,
+        "excluded_missing_model_count": unavailable,
         "historical_evidence_status": "sealed_curated_environment_only",
         "source_comparison": selected["source_comparison"],
         "historically_pinned_evidence": ["candidate", "preview_report", "drive_report", "ego_trace"],

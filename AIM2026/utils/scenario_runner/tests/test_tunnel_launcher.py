@@ -297,6 +297,60 @@ class TunnelLauncherTest(unittest.TestCase):
             code, calls = self.run_main(['--variant', variant], library=missing)
             self.assertEqual((code, [call[1] for call in calls]), (0, [variant]))
 
+    def morai_folder(self, *names):
+        bundle = self.root / 'morai/Sim_Data/Bundle/v.S4.test'
+        bundle.mkdir(parents=True)
+        for name in names:
+            (bundle / name).write_text('', encoding='utf-8')
+        return self.root / 'morai'
+
+    def test_installed_models_are_read_from_the_morai_bundle_and_normalized(self):
+        folder = self.morai_folder('rubber-cone.obstacle', 'Steel_Barricade.obstacle', 'steel_barricade.obstacle.manifest',
+                                   'stinger_2020.vehicle', 'woman1.pedestrian', 'sensor.scene')
+        models = run_tunnel.installed_models(folder)
+        self.assertEqual(models, frozenset({'rubbercone', 'steelbarricade', 'stinger2020', 'woman1'}))
+        self.assertEqual(run_tunnel.installed_models(folder / 'Sim_Data/Bundle'), models)
+        self.assertEqual(run_tunnel.installed_models(self.root / 'nowhere'), frozenset())
+
+    def test_layouts_with_a_model_the_morai_lacks_are_left_out(self):
+        layout = [dict(model='Steel_Barricade'), dict(model='WoodBox')]
+        installed = frozenset({'steelbarricade', 'woodbox', 'tree01'})
+        self.assertTrue(run_tunnel.competition_static.layout_models_available(layout, installed))
+        self.assertFalse(run_tunnel.competition_static.layout_models_available(
+            layout + [dict(model='Rubber_Cone')], installed))
+        self.assertFalse(run_tunnel.competition_static.layout_models_available(
+            [dict(model='2020_Kia_Stinger')], frozenset({'stinger2020'})))      # only an exact name match counts
+        self.assertTrue(run_tunnel.competition_static.layout_models_available(layout + [dict(model='Rubber_Cone')], None))
+
+    def test_morai_assets_hand_the_installed_models_to_the_static_scene_only_when_asked(self):
+        folder = self.morai_folder('woodbox.obstacle', 'cargobox.obstacle')
+        code, calls = self.run_main(['--variant', 'static', '--morai-assets', str(folder)])
+        self.assertEqual(code, 0)
+        self.assertEqual(calls[0][2]['installed_models'], frozenset({'woodbox', 'cargobox'}))
+        code, calls = self.run_main(['--variant', 'static'])
+        self.assertNotIn('installed_models', calls[0][2])
+
+    def test_the_competition_morai_model_list_filters_the_static_scene_without_any_folder(self):
+        models = run_tunnel.competition_models()
+        self.assertTrue({'woodbox', 'cargobox', 'steelbarricade'} <= models)
+        self.assertFalse({'rubbercone', 'colorcone', 'barbedwirefence'} & models)
+        code, calls = self.run_main(['--variant', 'static', '--competition-morai'])
+        self.assertEqual((code, calls[0][2]['installed_models']), (0, models))
+        for argv in (['--variant', 'brake', '--competition-morai'],
+                     ['--variant', 'static', '--competition-morai', '--morai-assets', str(self.root)]):
+            with patch('sys.stderr'), self.assertRaises(SystemExit) as raised:
+                self.run_main(argv)
+            self.assertEqual(raised.exception.code, 2)
+
+    def test_morai_assets_need_the_static_scene_and_a_folder_with_assets(self):
+        folder = self.morai_folder('woodbox.obstacle')
+        for argv in (['--variant', 'pedestrian', '--morai-assets', str(folder)],
+                     ['--variant', 'all', '--skip', 'static', '--morai-assets', str(folder)],
+                     ['--variant', 'static', '--morai-assets', str(self.root / 'empty')]):
+            with patch('sys.stderr'), self.assertRaises(SystemExit) as raised:
+                self.run_main(argv)
+            self.assertEqual(raised.exception.code, 2)
+
     def test_a_present_library_keeps_static_and_restores_the_evidence_line_ends(self):
         calls = []
         with patch.object(run_tunnel, 'restore_lf_evidence', side_effect=lambda: calls.append(1) or [Path('a.json')]) as _:
