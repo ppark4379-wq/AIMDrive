@@ -1,0 +1,145 @@
+# 대회(본선) 통신 설정: MORAI Client PC 192.168.0.1 -> 참가팀 PC 192.168.0.10 (본선 통신환경 세팅 메뉴얼, 2026-10-26).
+# config_local.yaml(같은 PC 개발용)과 IP·센서 목적지 포트가 다르다(센서별 단독 포트, 분배기 미사용). 실행: --config AIM2026/config_competition.yaml
+TargetHz: 30
+Ego:
+  ip: 192.168.0.1
+  vehicle_status_port: 9099 # Competition Vehicle Status, 181 B (MORAI Host 9088 -> here)
+  cmd_port: 9093
+  ctrl_mode: 2
+  cmd_type: 1
+  gear: 4
+  cmd_source_port: 9094 # = MORAI Ego Ctrl Cmd "Destination" port (MORAI Host 9093 receives)
+  cmd_layout: single_steer55 # competition build 25.S4: 55 B (front steer only). 26.R1: front_rear59
+  # local_status_bytes: 245  # only for a non-competition build sending full 245 B Ego status
+Weight_Path:
+  VE: null
+  Connector: null
+  LLM: null
+GPS:
+  ip: 192.168.0.1
+  bind: 0.0.0.0
+  host_port: 7506
+  dest_port: 10506
+  pos:
+    - 0.0
+    - 0.0
+    - 0.0
+  rot_deg:
+    - 0.0
+    - 0.0
+    - 0.0
+IMU:
+  ip: 192.168.0.1
+  bind: 0.0.0.0
+  host_port: 7507
+  dest_port: 10507
+  pos:
+    - 0.0
+    - 0.0
+    - 0.0
+  rot_deg:
+    - 0.0
+    - 0.0
+    - 0.0
+LiDAR:
+  ip: 192.168.0.1
+  bind: 0.0.0.0
+  host_port: 2369
+  dest_port: 2368
+  pos:
+    - 1.0
+    - 0.0
+    - 1.48
+  rot_deg:
+    - 0.0
+    - 0.0
+    - 0.0
+Camera:
+  Cam_Front:
+    ip: 192.168.0.1
+    bind: 0.0.0.0
+    host_port: 7501
+    dest_port: 10501
+    width: 1280
+    height: 720
+    fov: 90
+    pos:
+      - 1.9
+      - 0.0
+      - 1.2
+    rot_deg:
+      - 0.0
+      - 2.0
+      - 0.0
+  Cam_Left:
+    ip: 192.168.0.1
+    bind: 0.0.0.0
+    host_port: 7502
+    dest_port: 10502
+    width: 640
+    height: 480
+    fov: 130
+    pos:
+      - 1.15
+      - 0.65
+      - 1.2
+    rot_deg:
+      - 0.0
+      - 10.0
+      - 70.0
+  Cam_Right:
+    ip: 192.168.0.1
+    bind: 0.0.0.0
+    host_port: 7503
+    dest_port: 10503
+    width: 640
+    height: 480
+    fov: 130
+    pos:
+      - 1.15
+      - -0.65
+      - 1.2
+    rot_deg:
+      - 0.0
+      - 10.0
+      - 290.0
+  Cam_Rear:
+    ip: 192.168.0.1
+    bind: 0.0.0.0
+    host_port: 7504
+    dest_port: 10504
+    width: 640
+    height: 480
+    fov: 90
+    pos:
+      - -0.14
+      - 0.0
+      - 1.2
+    rot_deg:
+      - 0.0
+      - 2.0
+      - 180.0
+Control:
+  positive_steer: left # Local 26.R1.H3: positive command decreased GPS/IMU yaw in the recorded run.
+  max_speed_mps: null
+Detection:
+  ip: 127.0.0.1
+  port: 12050
+  pose_hz: 50
+Inference:
+  device: cuda
+  cpu_threads: 4
+  status_file: AIM2026/outputs/live/ve_status.json
+  status_interval_s: 2.0
+  vision:
+    checkpoint: P1
+    object_head: truck      # Weights/VE/object_head_truck_20261024.pt: 객체 검출 헤드 (P1 속도·신호등 헤드는 유지)
+    signal_head: true
+    fragment_merge: false   # 겹친 박스를 하나로 합치기 (null: object_head 쓰면 켜짐). 꺼서 붙은 장애물을 따로 받음
+    max_sensor_age_s: 0.5
+
+# Shared GPS/IMU-speed position provider, independent of LiDAR wall detection.
+Localization:
+  enabled: true
+  config: Localization/config.yaml
+  record_dir: null

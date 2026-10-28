@@ -31,6 +31,8 @@ def read_config(path):
         raise ValueError('Inference.vision.lidar_heading: true or false')
     if vision.get('fragment_merge') not in (None, True, False):
         raise ValueError('Inference.vision.fragment_merge: null, true or false')
+    if type(vision.get('left_arrow_rule', True)) is not bool:
+        raise ValueError('Inference.vision.left_arrow_rule: true or false')
     if type(vision.get('signal_head')) is not bool:
         raise ValueError('Inference.vision.signal_head: true or false')
     if not isinstance(options.get('device'), str) or options['device'].split(':')[0] not in ('cuda', 'cpu'):
