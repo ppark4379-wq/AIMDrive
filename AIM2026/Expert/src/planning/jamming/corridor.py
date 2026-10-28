@@ -3,13 +3,14 @@
 The static-section planner (static_obstacle/corridor_optimizer.py) on the tunnel's accumulated occupancy map
 (Expert/tunnel_map.py), in the section's forward-Y frame. Its drivable corridor is the mapped tunnel road (both lanes,
 RoadBoundary) instead of the recorded routes: the body corners keep the road's planning margin from its edges.
-Moving traffic is not handled here; JammingPlanner keeps its existing planner whenever movers are present.
+Moving traffic reaches it only as boxes added to the map and a speed cap (traffic.py).
 """
 import numpy as np
 from shapely.geometry import LineString
 
 from ..static_obstacle.corridor_optimizer import StaticCorridorPlanner, ESCAPE_DISTANCE
-from ...config.parameters.jamming import TIGHT_GAP_MARGIN, TIGHT_GAP_SPEED
+from ...config.parameters.jamming import (TIGHT_GAP_MARGIN, TIGHT_GAP_SPEED, TUNNEL_MAX_SPEED_KPH,
+                                          TUNNEL_CLEARANCE_SPEED)
 
 ROAD_STEP = .25           # longitudinal spacing of the tabulated road edges [m]
 ROAD_PROBE = 15.          # lateral half-length of the probe line that cuts the road polygon [m]
@@ -20,6 +21,8 @@ class TunnelCorridorPlanner(StaticCorridorPlanner):
     # Objects are seen too small from afar and grow on the map as the car closes in: tight gaps are entered slowly.
     TIGHT_MARGIN = TIGHT_GAP_MARGIN
     TIGHT_SPEED = TIGHT_GAP_SPEED
+    MAX_SPEED = TUNNEL_MAX_SPEED_KPH/3.6
+    CLEARANCE_SPEED = TUNNEL_CLEARANCE_SPEED
 
     def __init__(self, base, occupancy, section, road_boundary):
         super().__init__(base, occupancy)
@@ -27,6 +30,14 @@ class TunnelCorridorPlanner(StaticCorridorPlanner):
         self.road_boundary = road_boundary
         self.margin = road_boundary.planning_margin_m
         self.road_y = self.road_low = self.road_high = None
+
+    def _speed_clearance(self, x, y, yaw, clear):
+        """Traffic boxes on the map include stretches a car may drive through (tunnel_map virtual boxes); the speed
+        beside them follows the cars' own footprints, not those stretches."""
+        if not getattr(self.occupancy, 'virtual', None):
+            return clear
+        with self.occupancy.footprints_only():
+            return self.clearance(x, y, yaw)
 
     def _add_lane_bounds(self, ego):
         """Called once after the base setup: tabulate the road's lateral edges along the section."""

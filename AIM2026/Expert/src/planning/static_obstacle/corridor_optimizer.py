@@ -70,6 +70,8 @@ class StaticCorridorPlanner:
     REASON = 'static_corridor_'    # result reason prefix; + phase
     TIGHT_MARGIN = 0.            # path points within this of the minimum clearance are a tight gap [m]; 0: off
     TIGHT_SPEED = math.inf       # speed cap in a tight gap [m/s]
+    MAX_SPEED = None             # speed cap [m/s]; None: the static-obstacle limit
+    CLEARANCE_SPEED = CORRIDOR_CLEARANCE_SPEED   # (speed at the minimum clearance [m/s], gain per metre more)
 
     def __init__(self, base, occupancy, map_data_dir=None):
         self.base = base              # RecordedStaticPlanner: geometry, global curve, recorded corridor
@@ -106,6 +108,10 @@ class StaticCorridorPlanner:
         options = dict(exact_below=0.) if screen else {}
         d = self.occupancy.distance(x[..., None]+self.circle_t*c, y[..., None]+self.circle_t*s, **options)
         return d.min(axis=-1)-self.circle_r
+
+    def _speed_clearance(self, x, y, yaw, clear):
+        """Clearance the speed is chosen by; the planning clearance here (a subclass may plan round more)."""
+        return clear
 
     def _corridor(self, ys, y0=None, x0=None):
         """Lateral bounds of the recorded drivable corridor; near the pose they also include the measured x."""
@@ -517,22 +523,23 @@ class StaticCorridorPlanner:
 
     def _finish(self, ego, dense, blocked, pose_clear, details, begin, source='new'):
         yy, xx, yaw, curvature, dense_clear = dense
+        speed_clear = self._speed_clearance(xx, yy, yaw, dense_clear)
         if source == 'previous':
             stations = np.arange(yy[0], yy[-1], CORRIDOR_STATION_STEP)
             self.previous = (stations, np.interp(stations, yy, xx))
         details['source'] = source
         # Speed: curvature, clearance, stopping before an impassable station.
         station = np.r_[0., np.cumsum(np.hypot(np.diff(xx), np.diff(yy)))]
-        base_speed, gain = CORRIDOR_CLEARANCE_SPEED
+        base_speed, gain = self.CLEARANCE_SPEED
         # The first metres only join the measured heading to the plan; the tracker looks ahead past them.
         speed_curvature = np.where(station < CURVATURE_SPEED_SKIP, 0., curvature)
         limit = np.minimum.reduce([
-            np.full(len(yy), p.STATIC_MAX_SPEED_KPH/3.6),
+            np.full(len(yy), p.STATIC_MAX_SPEED_KPH/3.6 if self.MAX_SPEED is None else self.MAX_SPEED),
             np.sqrt(CORRIDOR_LATERAL_ACCEL/np.maximum(speed_curvature, 1e-6)),
-            base_speed+gain*np.maximum(0., np.minimum(dense_clear, 10.)-CORRIDOR_MIN_CLEARANCE)])
+            base_speed+gain*np.maximum(0., np.minimum(speed_clear, 10.)-CORRIDOR_MIN_CLEARANCE)])
         # A tight gap is entered slowly: an object seen too small from afar grows on the map as the car closes in,
         # and at this speed the car can still stop or take the re-solved path instead of driving into it.
-        tight = dense_clear < CORRIDOR_MIN_CLEARANCE+self.TIGHT_MARGIN
+        tight = speed_clear < CORRIDOR_MIN_CLEARANCE+self.TIGHT_MARGIN
         limit = np.where(tight, np.minimum(limit, self.TIGHT_SPEED), limit)
         if blocked:
             stop = station[-1]-CORRIDOR_STOP_BUFFER

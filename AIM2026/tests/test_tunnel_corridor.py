@@ -11,7 +11,7 @@ from AIM2026.Expert.src.interfaces.geometry import Point
 from AIM2026.Expert.src.vehicle_state import VehicleState
 from AIM2026.Expert.src.obstacle.object_info import ObjectInfo
 from AIM2026.Expert.src.config.parameters.static_obstacle import CORRIDOR_MIN_CLEARANCE
-from AIM2026.Expert.src.planning.jamming.recorded_planner import JammingPlanner, QUIET_TICKS
+from AIM2026.Expert.src.planning.jamming.recorded_planner import JammingPlanner
 from AIM2026.Expert.src.planning.jamming.road_boundary import RoadBoundary
 from AIM2026.Expert.src.planning.jamming.section import JammingSection
 from AIM2026.Expert.tunnel_map import TunnelObstacleMap
@@ -62,13 +62,14 @@ def test_tunnel_map_is_in_the_section_frame():
 
 def test_standing_box_with_flickering_labels_is_mapped_and_a_mover_is_not():
     m = TunnelObstacleMap()
-    for k in range(8):                   # standing: uncertain/moving labels from box jitter
+    for k in range(25):                  # standing: uncertain/moving labels from box jitter; a car is mapped once it
+                                         # has stood PARK_OBSERVE_S near the vehicle (it might be about to drive off)
         jitter = .15*(-1)**k
         m.observe_packet(packet((-1.2, 20.), [box(-1.+jitter, 40., 4.5, 2., track=5, state=('uncertain', 'moving')[k % 2]),
                                               box(-4.5, 32.+1.*k, 4.5, 2., track=9, state='moving')], k*.1))
     assert not m.motion.is_mover(5) and m.motion.is_mover(9)
     assert m.distance(-1., 40.) == 0.
-    for k in range(8, 20):               # the mover drove away; its early cells are cleared as free space
+    for k in range(25, 37):              # the mover drove away; its early cells are cleared as free space
         m.observe_packet(packet((-1.2, 20.), [box(-1., 40., 4.5, 2., track=5)], k*.1))
     assert m.distance(-4.5, 33.) > 1.
 
@@ -101,33 +102,6 @@ def test_standing_car_in_the_own_lane_is_passed_in_the_opposite_lane(road):
         jam.close()
 
 
-def test_moving_traffic_sets_the_speed_on_the_map_path(road):
-    # A mover used to hand the section to the recorded-route planner, whose path starts at the lane centre: in the
-    # middle of a detour the commanded path jumped by metres and the steering swung. Now the map path stays and the
-    # moving-object overlay only sets the speed.
-    def lateral_at_40(result):
-        local = np.array([SECTION.to_local((q.x, q.y)) for q in result.path])
-        return float(np.interp(40., local[:, 1], local[:, 0]))
-    jam, m = planner_with(road, [(-.7, 40., 4.6, 2.)])
-    try:
-        free = jam.run(ego(-1.25, 5.), ROUTE[:5], [], global_path=ROUTE)
-        mover = ObjectInfo(*world(-4.6, 30.), 6., -1, name='ve_tracked_unknown:moving', is_static=False,
-                           size_x=4.5, size_y=2., heading_deg=math.degrees(world_yaw(-math.pi/2)), unique_id=11)
-        m.motion.tracks[11] = dict(first=(0., 0.), run=0, mover=True, seen=0.)
-        result = jam.run(ego(-1.25, 5.), ROUTE[:5], [dict(object_info=mover)], global_path=ROUTE)
-        assert result.reason.startswith('jamming_dynamic')
-        assert lateral_at_40(result) == pytest.approx(lateral_at_40(free), abs=.05)   # same detour, no jump
-        assert result.acc_target_velocity < free.acc_target_velocity                  # oncoming car: slower
-        assert result.debug_details['jamming_dynamic']['speed_authority']
-        m.motion.tracks.clear()
-        for _ in range(QUIET_TICKS):     # the band has been quiet long enough: the map planner alone again
-            result = jam.run(ego(-1.25, 5.), ROUTE[:5], [], global_path=ROUTE)
-        assert result.reason.startswith('jamming_corridor')
-        assert result.debug_details['jamming_corridor']['standing_only']
-    finally:
-        jam.close()
-
-
 def test_far_box_jitter_is_not_motion_but_near_motion_is():
     m = TunnelObstacleMap()
     for k in range(10):                  # 25 m ahead the box centre slides 2.5 m as more of the car is seen
@@ -138,16 +112,165 @@ def test_far_box_jitter_is_not_motion_but_near_motion_is():
     assert m.motion.is_mover(4)
 
 
-def test_a_mover_that_stops_is_standing_again():
+def lane(forward):
+    """Own lane centre (the route) in the section frame at a forward position."""
+    route = np.array([SECTION.to_local((q.x, q.y)) for q in ROUTE])
+    route = route[(np.abs(route[:, 0]) < 8) & (route[:, 1] > -40) & (route[:, 1] < 150)]
+    route = route[np.argsort(route[:, 1])]
+    return float(np.interp(forward, route[:, 1], route[:, 0]))
+
+
+def drive(jam, m, frames, ego_local, start=0., dt=.1):
+    """Feed one packet per frame (a list of boxes) and plan after each; returns the last result and the time."""
+    t, result = start, None
+    for boxes in frames:
+        m.observe_packet(packet(ego_local, boxes, t))
+        result = jam.run(ego(*ego_local), ROUTE[:5], [], global_path=ROUTE)
+        t += dt
+    return result, t
+
+
+def lateral_at(result, forward):
+    local = np.array([SECTION.to_local((q.x, q.y)) for q in result.path])
+    return float(np.interp(forward, local[:, 1], local[:, 0]))
+
+
+def test_a_moving_lead_is_followed_in_the_lane(road):
+    jam, m = planner_with(road, [])
+    try:
+        frames = [[box(lane(24.+.6*k), 24.+.6*k, 4.6, 1.9, track=21, state='moving')] for k in range(15)]
+        result, _ = drive(jam, m, frames, (lane(5.), 5.))
+        details = result.debug_details['jamming_traffic']
+        assert result.reason == 'jamming_traffic_lead'
+        assert [d['state'] for d in details['leads']] == ['moving']
+        assert details['leads'][0]['speed'] == pytest.approx(6., abs=1.)
+        assert abs(lateral_at(result, 30.)-lane(30.)) < .3       # behind it in the lane, no detour
+        assert not details['overtaking']
+    finally:
+        jam.close()
+
+
+def test_a_car_that_never_moved_is_waited_behind_then_passed_as_parked(road):
+    jam, m = planner_with(road, [])
+    try:
+        car = lambda: [box(lane(30.), 30., 4.6, 1.9, track=22, state='stationary')]
+        result, t = drive(jam, m, [car() for _ in range(10)], (lane(15.), 15.))
+        assert result.reason == 'jamming_traffic_lead'                    # not judged yet: may drive off
+        assert result.debug_details['jamming_traffic']['leads'][0]['state'] == 'waiting'
+        result, _ = drive(jam, m, [car() for _ in range(15)], (lane(15.), 15.), start=t)
+        assert not result.debug_details['jamming_traffic']['leads']        # 2.5 s still: parked
+        assert lateral_at(result, 30.) < lane(30.)-1.9                     # passed in the opposite lane
+    finally:
+        jam.close()
+
+
+def test_a_slow_car_is_overtaken_and_a_pedestrian_never_is(road):
+    jam, m = planner_with(road, [])
+    try:
+        frames = [[box(lane(22.+.12*k), 22.+.12*k, 4.6, 1.9, track=23, state='moving')] for k in range(35)]
+        result, _ = drive(jam, m, frames, (lane(5.), 5.))
+        details = result.debug_details['jamming_traffic']
+        assert details['overtaking'] == [23] and not details['leads']
+        assert lateral_at(result, 27.) < lane(27.)-1.9                     # round it in the opposite lane
+    finally:
+        jam.close()
+    jam, m = planner_with(road, [])
+    try:                                 # a pedestrian walking the lane even slower: waited for, not overtaken
+        frames = [[box(lane(20.+.1*k), 20.+.1*k, .7, .6, track=24, state='moving')] for k in range(35)]
+        result, _ = drive(jam, m, frames, (lane(5.), 5.))
+        details = result.debug_details['jamming_traffic']
+        assert not details['overtaking'] and details['yields']
+        assert result.reason == 'jamming_traffic_yield'
+    finally:
+        jam.close()
+
+
+def test_no_detour_into_an_oncoming_car(road):
+    jam, m = planner_with(road, [])
+    try:
+        frames = [[box(lane(22.+.12*k), 22.+.12*k, 4.6, 1.9, track=23, state='moving'),
+                   box(-4.8, 50.-.6*k, 4.6, 1.9, track=31, state='moving' if k > 3 else 'uncertain',
+                       local_heading=-90.)] for k in range(35)]
+        result, _ = drive(jam, m, frames, (lane(5.), 5.))
+        details = result.debug_details['jamming_traffic']
+        assert any(b['id'] == 31 for b in details['blockers'])
+        entry = details['entry_station']
+        # Whatever the plan, the car can stop before its body would cross into the opposite lane.
+        if entry is not None:
+            assert result.acc_target_velocity <= math.sqrt(2.*3.*max(0., entry-1.))+1e-6
+    finally:
+        jam.close()
+
+
+def test_a_crossing_pedestrian_is_waited_for_and_one_on_the_far_side_is_not(road):
+    jam, m = planner_with(road, [])
+    try:
+        frames = [[box(-6.+.25*k, 20., .7, .6, track=41, state='moving')] for k in range(10)]
+        result, _ = drive(jam, m, frames, (lane(5.), 5.))
+        assert result.reason == 'jamming_traffic_yield'
+    finally:
+        jam.close()
+    jam, m = planner_with(road, [])
+    try:
+        frames = [[box(-5.8, 20.+.25*k, .7, .6, track=42, state='moving')] for k in range(10)]
+        result, _ = drive(jam, m, frames, (lane(5.), 5.))
+        assert not result.debug_details['jamming_traffic']['yields']
+    finally:
+        jam.close()
+
+
+def test_a_pedestrian_who_stops_in_the_lane_is_waited_for():
     m = TunnelObstacleMap()
     t = 0.
-    for k in range(8):                   # crosses ...
-        m.observe_packet(packet((-1.2, 50.), [box(-6.+.9*k, 62., .8, .6, track=11, state='moving')], t)); t += .1
-    assert m.motion.is_mover(11)
-    for k in range(25):                  # ... and stands at the road edge for 2.5 s
-        m.observe_packet(packet((-1.2, 50.), [box(.5+.05*(-1)**k, 62., .8, .6, track=11, state='stationary')], t)); t += .1
-    assert not m.motion.is_mover(11)
-    assert m.distance(.5, 62.) == 0.     # now it is mapped and planned around
+    for k in range(16):                  # walks 4 m into the lane ...
+        m.observe_packet(packet((-1.2, 50.), [box(-5.+.25*k, 62., .8, .6, track=11, state='moving')], t)); t += .1
+    for k in range(40):                  # ... and stands there for 4 s
+        m.observe_packet(packet((-1.2, 50.), [box(-1.+.05*(-1)**k, 62., .8, .6, track=11, state='stationary')], t)); t += .1
+    assert m.motion.is_mover(11) and m.motion.tracks[11]['person']
+    assert m.distance(-1., 62.) > 1.     # never planned around
+
+
+def test_a_stopped_car_stands_again_after_the_stall_time_and_other_movers_sooner():
+    m = TunnelObstacleMap()
+    t = 0.
+    for k in range(10):
+        m.observe_packet(packet((-1.2, 30.), [box(-1.2, 40.+.5*k, 4.6, 1.9, track=12, state='moving'),
+                                               box(-5., 38.+.3*k, 2.2, 1.6, track=13, state='moving')], t)); t += .1
+    assert m.motion.is_mover(12) and m.motion.is_mover(13)
+    still = lambda: [box(-1.2, 44.5, 4.6, 1.9, track=12, state='stationary'),
+                     box(-5., 40.7, 2.2, 1.6, track=13, state='stationary')]
+    for _ in range(25):                  # 2.5 s still
+        m.observe_packet(packet((-1.2, 30.), still(), t)); t += .1
+    assert m.motion.is_mover(12) and not m.motion.is_mover(13)
+    for _ in range(8):                   # 3.3 s still
+        m.observe_packet(packet((-1.2, 30.), still(), t)); t += .1
+    assert not m.motion.is_mover(12) and m.motion.standing(12)
+
+
+def test_a_renumbered_parked_car_keeps_its_judgement_and_a_crosswise_car_is_parked_at_once():
+    m = TunnelObstacleMap()
+    t = 0.
+    for k in range(20):                  # a parked car seen 2 s ...
+        m.observe_packet(packet((-1.2, 20.), [box(-1.2, 40., 4.6, 1.9, track=51)], t)); t += .1
+    assert m.motion.standing(51)
+    m.observe_packet(packet((-1.2, 20.), [box(-1.15, 40.1, 4.6, 1.9, track=52)], t))   # ... renumbered by the tracker
+    assert m.motion.standing(52) and m.distance(-1.2, 40.) == 0.
+    for k in range(3):                   # a car across the lane cannot be traffic about to drive off along it
+        m.observe_packet(packet((-1.2, 20.), [box(-1.2, 30., 4.6, 1.9, track=53, local_heading=0.)], t)); t += .1
+    assert m.motion.standing(53)
+
+
+def test_a_box_merged_with_the_wall_is_not_an_oncoming_car(road):
+    jam, m = planner_with(road, [])
+    try:
+        frames = [[box(-6.9, 40., 7.4, 2.7, track=61, state='uncertain')] for _ in range(5)]
+        result, _ = drive(jam, m, frames, (lane(15.), 15.))
+        assert not result.debug_details['jamming_traffic']['blockers']
+        frames = [[box(-4.8, 45., 4.5, 1.9, track=62, state='uncertain')] for _ in range(5)]
+        result, _ = drive(jam, m, frames, (lane(15.), 15.), start=1.)
+        assert [b['id'] for b in result.debug_details['jamming_traffic']['blockers']] == [62]
+    finally:
+        jam.close()
 
 
 def test_legacy_acc_leaves_ve_objects_to_the_map_planner():

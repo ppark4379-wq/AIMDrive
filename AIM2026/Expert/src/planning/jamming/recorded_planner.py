@@ -24,6 +24,8 @@ from .prepare_routes import PREPARED_DIRECTORY, clip_rows
 from .motion import stationary, moving, key as motion_key
 from .dynamic_planner import DynamicObstaclePlanner
 from .road_boundary import RoadBoundary
+from .traffic import TunnelTraffic
+from ...config.parameters.jamming import TUNNEL_TRAFFIC_ENABLED
 
 QUIET_TICKS = 10          # planner ticks without a mover in the band before standing-obstacle planning resumes
 
@@ -318,19 +320,22 @@ class JammingPlanner:
         self.corridor = None          # set by attach_map(): standing obstacles on the accumulated tunnel map
         self.occupancy = None
         self._quiet_ticks = QUIET_TICKS   # ticks since a mover was last seen in the section band
+        self.traffic = None           # set by attach_map(): moving traffic on the map planner's path (traffic.py)
         self._corridor_mode = False
 
     def attach_map(self, occupancy, global_path=None):
-        """Plan standing obstacles on the accumulated tunnel map (Expert/tunnel_map.py) while no traffic moves.
+        """Plan standing obstacles on the accumulated tunnel map (Expert/tunnel_map.py).
 
-        Moving traffic keeps the recorded-route planner and its moving-object overlay unchanged. With the global
-        route the one-time corridor setup runs now instead of on the first tick in the tunnel."""
+        Moving traffic (TUNNEL_TRAFFIC_ENABLED): followed, waited for or overtaken on the map planner's path
+        (traffic.py). Otherwise a mover hands the speed to the recorded-route planner's moving-object overlay. With the
+        global route the one-time corridor setup runs now instead of on the first tick in the tunnel."""
         from .corridor import TunnelCorridorPlanner
         if self.local.road_boundary is None:
             return None
         base = _LocalPlanner(self.section, self.local.planner, False, self.local.road_boundary)
         self.corridor = TunnelCorridorPlanner(base, occupancy, self.section, self.local.road_boundary)
         self.occupancy = occupancy
+        self.traffic = TunnelTraffic(occupancy, self.corridor, self.section) if TUNNEL_TRAFFIC_ENABLED else None
         if global_path is not None:
             self.corridor.prepare(self._path(global_path))
         return self.corridor
@@ -646,7 +651,18 @@ class JammingPlanner:
         x, y = local_ego.position
         if global_path is not None:
             self._global_path = list(global_path)
-        if self.corridor is not None:
+        if self.traffic is not None:
+            # The map planner owns the path everywhere in the section; traffic adds boxes to its map and caps the
+            # speed. Outside the section's map corridor the recorded-route planner below drives as before.
+            self.traffic.before(local_ego)
+            result = self._run_corridor(ego, local_ego, reference_path, prediction_path, global_path)
+            if result is not None:
+                result = self.traffic.after(result, local_ego)
+                # The map planner and traffic own every VE object here (object_selection reads this).
+                result.debug_details['jamming_corridor'] = dict(standing_only=True)
+                return self._world_result(result)
+            self.traffic.clear()
+        elif self.corridor is not None:
             # Standing obstacles are planned on the accumulated map. While a mover is in the band (and until it has
             # been quiet for QUIET_TICKS) the moving-object overlay sets the speed, judged on the same map path:
             # switching to the recorded-route path would jump the commanded path by metres in the middle of a
