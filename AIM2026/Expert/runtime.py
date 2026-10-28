@@ -85,7 +85,8 @@ def wire_command(command, max_steering, hold_steer=0.):
 class Inputs:
     """Pin one publisher and reject stale/reordered frames before updating state."""
     def __init__(self, generation, digest, tracker, memory=None, static_map=None, resolver=None, dedup=True, alias=None,
-                 tunnel_map=None):
+                 tunnel_map=None, ve_object_speed=False):
+        self.ve_object_speed = ve_object_speed
         self.generation, self.digest, self.tracker = generation, digest, tracker
         self.dedup = dedup
         self.alias = alias
@@ -153,6 +154,9 @@ class Inputs:
             self.packet = self.static_map.apply(self.packet)
         if self.tunnel_map is not None:
             self.tunnel_map.observe_packet(self.packet)
+        if self.ve_object_speed:
+            from AIM2026.Expert.ve_speed_experiment import use_ve_speed
+            self.packet = use_ve_speed(self.packet)
         self.frames += 1
         return 'detection'
 
@@ -186,6 +190,8 @@ def main(argv=None, control_tick=None):
     from AIM2026.Inference.vision.checkpoint import resolve, digest
     from AIM2026.UDP import UDPManager
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--ve-object-speed', action='store_true',
+                        help='Experiment: use raw VE speed for moving/uncertain objects; retain stationary handling')
     parser.add_argument('--config', type=Path, default=ROOT/'AIM2026/config_local.yaml')
     parser.add_argument('--check', action='store_true')
     parser.add_argument('--drive', action='store_true', help='Send vehicle commands; default is observation only')
@@ -264,6 +270,7 @@ def main(argv=None, control_tick=None):
     config_path.write_text(yaml.safe_dump(child_cfg, sort_keys=False), encoding='utf-8')
     print(json.dumps(dict(output=str(output), model=label, weights=str(weights),
                          sim_profile=args.sim_profile,
+                         object_speed_source='ve_raw_experiment' if args.ve_object_speed else 'tracked',
                          ignored_signals=args.ignore_signals,
                          steering_sign=-1 if args.sim_profile == 'normal' else 1,
                          command_target=[cfg['Ego']['ip'],cfg['Ego']['cmd_port']],
@@ -285,7 +292,8 @@ def main(argv=None, control_tick=None):
         resolver=None if args.no_stationary_resolver else StationaryResolver(), dedup=not args.no_box_dedup,
         alias=None if args.no_track_alias else TrackAliaser(),
         static_map=None if args.no_static_map else StaticObstacleMap(),
-        tunnel_map=None if args.no_static_map else TunnelObstacleMap())
+        tunnel_map=None if args.no_static_map else TunnelObstacleMap(),
+        ve_object_speed=args.ve_object_speed)
     stop = []
     old_handlers = {sig: signal.signal(sig, lambda *_: stop.append(True))
                     for sig in (signal.SIGINT, signal.SIGTERM)}
@@ -388,6 +396,10 @@ def main(argv=None, control_tick=None):
                     raise RuntimeError('GPS pose outside route corridor')
                 vehicle, objects = planner_inputs(inputs.packet, inputs.pose, position_sources=('GPS', 'GPS_dead_reckoning')
                     if (cfg.get('Localization') or {}).get('enabled', False) else ('GPS',))
+                # Admission needs a recently observed gap, not merely a packet
+                # that still passes the wider running/coasting expiry budget.
+                observed_ns = inputs.packet.get('object_received_ns', inputs.packet['sensor_received_ns'])
+                vehicle.object_observation_age_s = max(0., now - observed_ns / 1e9)
                 traffic = [policy.target_id, code, 0, now]
                 with contextlib.redirect_stdout(expert_log):
                     tick = control_tick or (lambda d,*a,**kw: d.execute(*a,**kw))

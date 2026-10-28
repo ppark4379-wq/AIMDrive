@@ -1,5 +1,6 @@
 """Speed-matched admission and the recorded 16:18 one-tick brake regression."""
 import math
+import json
 from pathlib import Path
 from unittest.mock import patch
 import unittest
@@ -46,6 +47,27 @@ class EntryFollowResponseTests(unittest.TestCase):
         result = self.step(ego,[{'object_info':lead}])
         self.assertGreater(result.acc_target_velocity,0.)
         self.assertNotEqual(result.reason,'entry_merge_front_hazard')
+
+    def test_old_observation_cannot_start_but_fresh_frame_can(self):
+        ego = VehicleState(62.14, 249.58, math.radians(-89.), 10.)
+        lead = ObjectInfo(66., 232.8, 10., -1, unique_id=8, size_x=4.55,
+                          size_y=1.98, heading_deg=-89.)
+        entries = [{'object_info': lead}]
+        ego.object_observation_age_s = .453  # latest recorded launch used a frame this old
+        result = self.step(ego, entries)
+        self.assertEqual(result.reason, 'entry_merge_approach')
+        self.assertEqual(result.debug_details['entry_merge']['conflict']['kind'],
+                         'await_fresh_merge_observation')
+        self.assertIsNone(self.planner.active_candidate)
+        ego.object_observation_age_s = .15
+        result = self.step(ego, entries)
+        self.assertEqual(result.reason, 'entry_merge_start')
+        candidate = self.planner.active_candidate
+        ego.object_observation_age_s = .45
+        result = self.step(ego, entries)
+        self.assertGreater(result.acc_target_velocity, 0.)
+        self.assertIs(self.planner.active_candidate, candidate)
+        self.assertNotEqual(result.reason, 'entry_merge_approach')
 
     def recorded_maneuver(self):
         planner = self.planner
@@ -128,6 +150,124 @@ class EntryFollowResponseTests(unittest.TestCase):
         result.debug_details['entry_merge']['phase']='COMPLETE'
         self.assertIsNone(PathController._entry_merge_launch_acceleration_gain(8.,ego,result))
 
+    def test_recorded_parallel_bus_does_not_apply_zero_gap_acc_during_crossing(self):
+        # 2026-10-28 17:41, seed 208256029199771517, control cycle 943:
+        # the newly visible bus is alongside, not yet on our swept path.
+        ego = VehicleState(62.00748143659439, 250.66841629426926,
+                           -1.540708823877215, 15.361817677815754)
+        start = self.step(ego, [])
+        self.assertEqual(start.reason, 'entry_merge_start')
+        candidate = self.planner.active_candidate
+        bus = ObjectInfo(65.83681277693157, 248.3953975559801,
+                         9.928157806396484, -1, unique_id=14,
+                         size_x=7.438310329767903, size_y=2.922016143798828,
+                         heading_deg=-90.27611306672931)
+        bus.motion_uncertain = True
+        self.planner.set_control_dt(.0324227)
+        result = self.step(ego, [{'object_info': bus}])
+        self.assertIs(self.planner.active_candidate, candidate)
+        self.assertEqual(result.reason, 'entry_merge_in_progress')
+        self.assertGreaterEqual(result.acc_target_velocity, ego.velocity)
+        self.assertIsNone(result.debug_details['entry_merge']['front_follow_limit'])
+        self.assertAlmostEqual(result.acc_target_velocity-start.acc_target_velocity,
+                               p.ENTRY_MERGE_PROGRESS_ACCEL*.0324227)
+
+    def test_progress_increase_is_bounded_and_does_not_depend_on_follower_slew(self):
+        ego, _ = self.recorded_maneuver()
+        candidate = self.planner.active_candidate
+        candidate.entry_speed_ceiling = candidate.safety_speed + 3.
+        self.planner.entry_merge.following.command = 0.
+        result = self.step(ego, [])
+        self.assertAlmostEqual(result.acc_target_velocity,
+            candidate.safety_speed+p.ENTRY_MERGE_PROGRESS_ACCEL*self.planner.control_dt)
+        previous = result.acc_target_velocity
+        result = self.step(ego, [])
+        self.assertAlmostEqual(result.acc_target_velocity-previous,
+                               p.ENTRY_MERGE_PROGRESS_ACCEL*self.planner.control_dt)
+
+    def test_completed_merge_returns_to_real_front_following(self):
+        ego = VehicleState(62.14, 249.58, math.radians(-89.), 10.)
+        self.assertEqual(self.step(ego, []).reason, 'entry_merge_start')
+        target_pose = self.lanes.project(Point(66.4, 220.), self.target)
+        ego = VehicleState(target_pose.x, target_pose.y,
+                           target_pose.yaw, 10.)
+        lead = ObjectInfo(ego.position.x, ego.position.y-12., 6., -1,
+                          unique_id=20, size_x=4.8, size_y=2., heading_deg=-90.)
+        result = self.step(ego, [{'object_info': lead}])
+        self.assertEqual(result.reason, 'entry_merge_complete')
+        self.assertLess(result.acc_target_velocity, ego.velocity)
+        self.assertIsNone(self.planner.active_candidate)
+
+    def test_handoff_expands_spacing_gradually_and_retains_close_obstacle_braking(self):
+        merge = self.planner.entry_merge
+        ego = VehicleState(66.4, 200., -math.pi/2, 10.)
+        merge.handoff_remaining = p.ENTRY_MERGE_HANDOFF_TIME
+        initial = merge._handoff_front_limit(ego, 3., float('inf'), 10.)
+        merge.handoff_remaining -= self.planner.control_dt
+        next_value = merge._handoff_front_limit(ego, 3., float('inf'), 10.)
+        self.assertLess(abs(next_value-initial), .1)
+        merge.handoff_remaining = 0.
+        self.assertAlmostEqual(merge._handoff_front_limit(ego, 3., float('inf'), 10.),
+                               self.planner._acc_speed_limit(10., 3., float('inf'), 10.))
+        # Interpolation never delays a real near stationary body.
+        merge.handoff_remaining = p.ENTRY_MERGE_HANDOFF_TIME
+        self.assertEqual(merge._handoff_front_limit(ego, .5, .05, 0.), 0.)
+
+    def test_verified_moving_launch_releases_previous_gap_making_brake(self):
+        config = json.loads((Path(__file__).resolve().parents[1]/'Expert/src/config/config.json').read_text())
+        controller = PathController(config)
+        ego = VehicleState(62.14, 249.58, math.radians(-89.), 9.4)
+        result = self.step(ego, [])
+        controller.previous_target_velocity = 5.6
+        controller.previous_acc_cmd = -.7
+        command, _, _ = controller._calculate_control(ego, result.path,
+                                                       result.acc_target_velocity, result)
+        self.assertGreaterEqual(command, 0.)
+        # A lower emergency target still overrides the launch release.
+        command, _, _ = controller._calculate_control(ego, result.path, 0., result)
+        self.assertEqual(command, -1.)
+
+    def test_recorded_speed_dip_does_not_choose_braking_to_let_rear_overtake(self):
+        start = VehicleState(62.0764058243,249.070189637,-1.533369526,9.404489729)
+        c = self.planner._build_candidate(start, self.target,
+            self.lanes.project(start.position,self.target), 'left', self.source,
+            56.953134, prediction_horizon=p.MERGE_SAFETY_HORIZON)
+        c.entry_merge = True
+        c.compact_static = False
+        c.safety_speed = 9.656252048
+        c.entry_last_verified_speed = 9.975305393
+        c.entry_speed_ceiling = 20.
+        self.planner.active_candidate = c
+        self.planner.state = self.planner.CHANGE_LEFT
+        self.planner.source_link_id, self.planner.target_link_id = self.source.id,self.target.id
+        ego = VehicleState(62.1075010166,248.10666163,-1.534628225,8.332477146)
+        data = [(2,66.1142129453,260.932391511,11.0059108734,4.852992,2.072742,-89.203877),
+                (14,66.205535665,231.130159941,8.4609012604,7.123889,2.962166,-87.927720)]
+        entries = [{'object_info':ObjectInfo(x,y,v,-1,unique_id=i,size_x=ln,size_y=wd,heading_deg=yaw)}
+                   for i,x,y,v,ln,wd,yaw in data]
+        result = self.step(ego, entries)
+        self.assertGreaterEqual(result.acc_target_velocity, ego.velocity)
+        self.assertNotEqual(result.reason, 'entry_merge_front_hazard')
+
+    def test_recorded_front_and_fast_rear_slot_does_not_default_to_zero(self):
+        # Same 17:41 recording, cycle 1160: a prior brake has already allowed
+        # a faster rear car to close. Full braking is NOT a safe escape.
+        self.step(VehicleState(62.00748, 250.6684, -1.5402, 15.3618), [])
+        ego = VehicleState(63.6032690, 219.06029598, -1.4964631, 9.5634863)
+        data = [(15, 66.5092814111, 204.669633109, 10.1539783478, 7.04536235, 2.83070326, -89.71014),
+                (16, 66.1957664075, 232.998577171, 13.2277231216, 5.05505, 2.11059, -91.71014)]
+        entries = [{'object_info': ObjectInfo(x,y,v,-1,unique_id=i,size_x=ln,size_y=wd,heading_deg=yaw)}
+                   for i,x,y,v,ln,wd,yaw in data]
+        result = self.step(ego, entries)
+        self.assertGreaterEqual(result.acc_target_velocity, ego.velocity)
+        self.assertEqual(result.reason, 'entry_merge_rear_risk_progress')
+        info = result.debug_details['entry_merge']
+        self.assertTrue(info['rear_gap_unresolved']['rear'])
+        self.assertFalse(info['verified'])
+        matches = self.planner._match_objects(entries)
+        self.assertIsNone(self.planner.entry_merge._front_conflict(
+            self.planner.active_candidate, ego, entries, matches, result.acc_target_velocity))
+
     def test_matched_lead_does_not_override_a_fast_rear_vehicle(self):
         ego=VehicleState(62.14,249.58,math.radians(-89.),10.)
         lead=ObjectInfo(66.,232.8,10.,-1,unique_id=8,size_x=4.55,size_y=1.98,heading_deg=-89.)
@@ -208,6 +348,53 @@ class EntryFollowResponseTests(unittest.TestCase):
         self.assertEqual(result.target_link_id, p.ENTRY_MERGE_TARGET)
         self.assertGreater(result.acc_target_velocity, 0.)
         self.assertIsNone(result.debug_details['entry_merge']['lead_id'])
+
+    def rear_follow_fixture(self):
+        ego, _ = self.recorded_maneuver()
+        rear = ObjectInfo(66.4, ego.position.y+10., 3., -1, unique_id=2,
+                          size_x=4.8, size_y=2., heading_deg=-89.)
+        entries = [{'object_info': rear}]
+        following = self.planner.entry_merge.following
+        self.planner._requested_speed = 10.
+        following.update(ego, self.target, self.planner._match_objects(entries), 100.)
+        self.assertEqual(following.lead['identity'], 2)
+        following.command = 2.  # Already lowered by the erroneous rear follower.
+        return ego, entries
+
+    def test_existing_rear_target_cannot_decelerate_committed_merge(self):
+        ego, entries = self.rear_follow_fixture()
+        candidate = self.planner.active_candidate
+        result = self.step(ego, entries)
+        self.assertEqual(result.debug_details['entry_merge']['released_rear_id'], 2)
+        for _ in range(20):
+            self.assertIs(self.planner.active_candidate, candidate)
+            self.assertIsNone(result.debug_details['entry_merge']['lead_id'])
+            self.assertGreaterEqual(result.acc_target_velocity, ego.velocity)
+            result = self.step(ego, entries)
+
+    def test_rear_release_also_applies_to_completed_merge_handoff(self):
+        ego, entries = self.rear_follow_fixture()
+        following = self.planner.entry_merge.following
+        for _ in range(20):
+            # EntryMerge's completion handoff calls this same committed path.
+            speed = following.update(ego, self.target,
+                self.planner._match_objects(entries), 100., committed=True, speed_ceiling=10.)
+            self.assertIsNone(following.lead)
+            self.assertGreaterEqual(speed, ego.velocity)
+
+    def test_rear_release_keeps_actual_front_emergency_braking(self):
+        ego, entries = self.rear_follow_fixture()
+        front = ObjectInfo(ego.position.x, ego.position.y-3., 0., -1,
+            unique_id=9, size_x=4.8, size_y=2., heading_deg=-89., is_static=True)
+        result = self.step(ego, entries+[{'object_info':front}])
+        self.assertEqual(result.acc_target_velocity, 0.)
+
+    def test_precommit_rear_yield_target_is_unchanged(self):
+        ego, entries = self.rear_follow_fixture()
+        following = self.planner.entry_merge.following
+        following.update(ego, self.target, self.planner._match_objects(entries), 100.)
+        self.assertEqual(following.lead['identity'], 2)
+        self.assertIsNone(following.details['released_rear_id'])
 
 
 if __name__=='__main__':

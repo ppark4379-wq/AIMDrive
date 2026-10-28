@@ -351,6 +351,7 @@ def _create(context, state, lane, slot, label, source, elapsed, *, models, stric
     grpc = context.grpc
     actor, model = None, None
     for model in models:
+        spawn_started = time.monotonic()
         actor = grpc.spawn_vehicle(
             transform=grpc.make_transform(slot['x'], slot['y'], slot['z'], slot['yaw_deg']),
             model_name=model, label=label, velocity=0., multi_ego=False, pause=True,
@@ -373,6 +374,9 @@ def _create(context, state, lane, slot, label, source, elapsed, *, models, stric
         grpc.destroy_vehicle_by_id(str(actor.get_id()))
         _forget(context, actor)
         return None
+    record_spawn = getattr(context, 'record_live_spawn_contact_evidence', None)
+    if callable(record_spawn):
+        record_spawn(actor, (slot['x'], slot['y']), spawn_started)
     return dict(slot, lane=lane['name'], merge_adjacent=lane['merge_adjacent'], speed_kmh=lane['speed_kmh'],
                 target_speed_kmh=lane['speed_kmh'], actual_speed_kmh=None, speed_samples=0, speed_sum_kmh=0.,
                 retire_at_route_end=lane['retire_at_route_end'], actor=actor, actor_id=str(actor.get_id()),
@@ -608,6 +612,8 @@ def _note_shortage(state, lane, deficit, reason, elapsed):
 
 
 def _resupply(context, state, states, ego, elapsed):
+    if not state['cfg'].get('live_spawn_enabled', True):
+        return
     cap = state['cfg']['cap']
     if state.get('route_state') and state['cfg']['feed']['enabled']:
         return                                          # the Ego-synchronised feed replaces the fork supply
@@ -831,6 +837,8 @@ def _try_feed(context, state, lane, absolute, states, ego, elapsed, min_distance
 
 def _feed(context, state, states, ego, ego_state, elapsed, current_s):
     """Keep traffic around Ego where it will actually be: at the merge entry, then ahead of it."""
+    if not state['cfg'].get('live_spawn_enabled', True):
+        return
     feed = state['cfg']['feed']
     if not feed['enabled']:
         return
@@ -992,6 +1000,7 @@ def _persist(context, phase):
     output = Path(context.global_cfg['paths']['runtime_root']) / _REPORT
     output.parent.mkdir(parents=True, exist_ok=True)
     document = dict(policy=POLICY, phase=phase, seed=context.run_seed, cap=state['cfg']['cap'],
+                    live_spawn_enabled=state['cfg'].get('live_spawn_enabled', True),
                     initial_count=state['initial_count'], active=len(records), supplied=state['supplied'], fed=state['fed'], fed_by_source=state['fed_by_source'], feed_blocked=state['feed_blocked'],
                     rear_reduction=dict(state['cfg']['rear_reduction'], started=state.get('rear_started'), removed=state.get('rear_removed', 0)),
                     prewarm=state['prewarm'], distinct_models=len({r['model'] for r in records}),

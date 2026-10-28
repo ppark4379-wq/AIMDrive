@@ -85,7 +85,22 @@ class MergeFollowing:
         origin = self.planner.lane_map.project(ego.position, target)
         rows = [r for entry, match in matches if (r := self._row(entry, match, origin)) is not None]
         event = self._observe(rows, dt, committed)
+        released_rear_id = None
+        if committed and self.lead is not None:
+            gap = self.lead['s'] + self.lead['speed']*min(self.age, p.ENTRY_MERGE_TARGET_HOLD) - origin.s
+            if gap <= 0.:
+                # Once steering has begun (including the completion handoff),
+                # an old target behind Ego cannot remain a longitudinal leader.
+                # Only release the follow target; collision checks retain it.
+                released_rear_id = self.lead['identity']
+                self.lead = None
+                self.age = 0.
+                event = 'released_rear_target'
         limit = p.ENTRY_MERGE_CRUISE_SPEED if speed_ceiling is None else speed_ceiling
+        if released_rear_id is not None and self.command is not None:
+            # Do not carry the erroneous rear-following deceleration forward.
+            # Real front/geometry limits are still applied by EntryMerge.
+            self.command = max(self.command, min(limit, max(0., ego.velocity)))
         requested = min(limit, self.planner._requested_speed) if not committed else limit
         gap = desired_gap = None
         if self.lead:
@@ -109,6 +124,7 @@ class MergeFollowing:
             requested = min(limit, ego.velocity)
         self.command = max(0., min(limit, requested))
         self.details = dict(lead_id=self.lead['identity'] if self.lead else None,
+                            released_rear_id=released_rear_id,
                             expired_lead_id=self.expired_lead_id,
                             lead_age=self.age, target_event=event, lead_gap=gap,
                             desired_gap=desired_gap, follow_speed=self.command,

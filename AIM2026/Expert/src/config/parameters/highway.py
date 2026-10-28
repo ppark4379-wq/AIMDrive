@@ -18,6 +18,10 @@ ENTRY_MERGE_REAR_GAP = 3.0  # [m, 범퍼 간] 411→409 최소 뒤 간격. 줄�
 ENTRY_MERGE_SEARCH_FRONT = 30.0  # [m] 옆 차선에서 추종 타깃을 고르는 앞쪽 범위(409 진행거리 기준). 안전 검사는 범위 밖 객체도 포함
 ENTRY_MERGE_SEARCH_REAR = 15.0  # [m] 옆 차선에서 추종 타깃을 고르는 뒤쪽 범위. 줄여도 뒤차 충돌 검사를 끄지는 않음
 ENTRY_MERGE_CRUISE_SPEED = 20.0  # [m/s] 첫 합류 준비 속도 상한. 10=36km/h; 올리면 준비 구간을 더 빠르게 주행 가능
+ENTRY_MERGE_START_MAX_OBSERVATION_AGE = 0.25  # [s] 합류 시작에 쓸 객체 관측의 최대 나이. 진행 중에는 이 값으로 제동하지 않음
+ENTRY_MERGE_PROGRESS_ACCEL = 0.8  # [m/s²] 1차 합류 진행 중 승인 속도에서 더 높여 볼 목표속도 변화율; 앞뒤 안전검사 통과 시만 적용
+ENTRY_MERGE_LAUNCH_SPEED_DELTA = 2.0  # [m/s] 이미 주행 중 합류를 시작할 때 현재속도보다 추가할 최대 목표속도 (2=7.2km/h)
+ENTRY_MERGE_PROGRESS_LEAD_DELTA = 0.5  # [m/s] 합류 중 앞차보다 추가 가속할 속도 여유. 0.5=1.8km/h; 앞차를 따라잡고 재제동하는 현상 억제
 
 # 세부 설정 — 아래 항목도 실행 코드에서 사용됨
 FIRST_MERGE_STATIC_FRONT_BUMPER_GAP = 8.0  # [m, 범퍼 간] 첫 합류 정지 장애물 회피의 초기 앞 여유. 전체 회피 궤적 검사를 통과해야 적용

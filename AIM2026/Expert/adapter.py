@@ -162,7 +162,8 @@ def planner_inputs(packet, control_pose=None, position_sources=('GPS',), coordin
         # Highway planning uses the supplied speed even before motion history
         # matures. Keep this confidence flag without inventing zero velocity.
         obj.motion_uncertain = (box['motion_state'] == 'uncertain'
-                                and box.get('planning_speed_source') not in ('carry_over', 'overlap_supported'))
+                                and box.get('tracked_planning_speed_source', box.get('planning_speed_source'))
+                                not in ('carry_over', 'overlap_supported'))
         obj.speed_unknown = box['planning_speed_mps'] is None
         # Raw detections/tracker history stay at measurement time. Construct a
         # fresh planning position each tick, shared verbatim with the RViz

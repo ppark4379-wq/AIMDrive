@@ -150,6 +150,15 @@ class RunManyTests(unittest.TestCase):
         summary = json.loads((batch / 'batch_summary.json').read_text(encoding='utf-8'))
         self.assertEqual((summary['finished_runs'], summary['complete']), (1, False))
 
+    def test_deferred_collision_review_is_not_counted_as_a_clean_pass(self):
+        code, fake, batch = self.run_batch(
+            [('REVIEW_REQUIRED', None, 'distant spawn report'), ('COMPLETE', None, 'ok')],
+            '--stop-on-failure')
+        self.assertEqual(code, 1)
+        self.assertEqual(len(fake.calls), 1)
+        summary = json.loads((batch / 'batch_summary.json').read_text(encoding='utf-8'))
+        self.assertEqual(summary['counts'], {'REVIEW_REQUIRED': 1})
+
     def test_ctrl_c_in_a_run_stops_the_batch_and_keeps_what_was_done(self):
         code, fake, batch = self.run_batch([('COMPLETE', None, 'a'), ('STOPPED', None, 'b'), ('COMPLETE', None, 'c')])
         self.assertEqual(len(fake.calls), 2)

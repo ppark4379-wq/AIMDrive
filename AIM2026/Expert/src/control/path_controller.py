@@ -78,8 +78,8 @@ class PathController:
                                 and self.previous_target_velocity is not None
                                 and self.previous_target_velocity <= .05)
         entry_merge_release = (entry_merge_launch_gain is not None
-                               and self.previous_target_velocity is not None
-                               and self.previous_target_velocity <= .05)
+                               and (getattr(lattice_result, 'reason', '') == 'entry_merge_start'
+                                    or self.previous_acc_cmd < 0.0))
         merge_safety = lattice_result.debug_details.get('merge_safety', {})
         merge_brake_release = (merge_safety.get('brake_release_verified', False)
                                and target_velocity >= max(.05, vehicle_state.velocity)
@@ -114,6 +114,13 @@ class PathController:
             # constant-speed lane change while we are still below its setpoint.
             # Overspeed, lowered legal/signal limits and new hazards retain PID braking.
             acc_cmd = max(0., self._smooth_longitudinal_command(acc_cmd))
+        elif entry_merge_launch_gain is not None:
+            # A newly verified 411->409 launch may follow moving gap-making
+            # braking, not just a full stop. Never carry that old brake into
+            # an approved acceleration while Ego is below the target speed.
+            # Lowered safety targets/overspeed have no launch gain and still brake.
+            acc_cmd = max(0.0, acc_cmd if fast_stop_release
+                          else self._smooth_longitudinal_command(acc_cmd))
         elif fast_stop_release:
             acc_cmd = max(0.0, acc_cmd)
         else:

@@ -11,6 +11,25 @@ from AIM2026 import main as integrated_main
 
 
 class HighwayLauncherTest(unittest.TestCase):
+    def test_no_live_spawn_is_private_scenario_setting_not_expert_or_port_setting(self):
+        from AIM2026.Expert import run_highway
+        base = {'highway_npc': {'managed_traffic': {
+            'policy': 'competition', 'competition': {'live_spawn_enabled': True}}}}
+        config_path = self.output / 'ports.yaml'
+        config_path.write_text('Ego: {cmd_port: 9093}', encoding='utf-8')
+        with patch.object(run_highway, 'ROOT', self.output), \
+             patch.object(run_highway, 'load_configuration', return_value=(
+                 {'paths': {'mgeo_root': 'map'}}, {}, base)), \
+             patch.object(run_highway, 'HighwayScenario') as scenario, \
+             patch.object(run_highway, 'MGeoMapLoader'), \
+             patch.object(run_highway.events, 'prepare_mission'), \
+             patch.object(run_highway.subprocess, 'run', return_value=SimpleNamespace(returncode=0)):
+            self.assertEqual(run_highway.main(['--check', '--config', str(config_path), '--no-live-spawn']), 0)
+            selected = scenario.call_args.kwargs['scenario_cfg']
+        self.assertFalse(selected['highway_npc']['managed_traffic']['competition']['live_spawn_enabled'])
+        self.assertTrue(base['highway_npc']['managed_traffic']['competition']['live_spawn_enabled'])
+        self.assertEqual(config_path.read_text(encoding='utf-8'), 'Ego: {cmd_port: 9093}')
+
     def test_launcher_disables_only_stopped_vehicle_in_private_scene_config(self):
         from AIM2026.Expert import run_highway
         base = {'highway_merge_static_vehicle': {'enabled': True, 'route_link': '411'},

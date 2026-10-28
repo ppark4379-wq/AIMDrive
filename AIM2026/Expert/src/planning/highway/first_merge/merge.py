@@ -69,7 +69,7 @@ class EntryMerge:
             speed = self.following.update(ego, target, traffic_matches, max(1., finish_s-source_match.s),
                                           committed=True)
             gap, ttc = planner._front_risk(ego, match, traffic_matches, traffic)
-            speed = min(speed, planner._acc_speed_limit(ego.velocity, gap, ttc, planner._front_lead_speed))
+            speed = min(speed, self._handoff_front_limit(ego, gap, ttc, planner._front_lead_speed))
             keep = planner._build_candidate(ego, target, match, 'keep')
             common['debug_details']['entry_merge'].update(self.following.details)
             return self._result(keep, speed, common, 'FOLLOWING', 'entry_merge_following')
@@ -123,6 +123,16 @@ class EntryMerge:
         distances = list(dict.fromkeys(round(value, 6) for value in distances if value >= 12.))
         details['attempts'] = []
         self.last_conflict = None
+        observation_age = getattr(ego, 'object_observation_age_s', 0.)
+        details['observation_age_s'] = observation_age
+        fresh_gap = (math.isfinite(observation_age)
+                     and observation_age <= p.ENTRY_MERGE_START_MAX_OBSERVATION_AGE)
+        if not fresh_gap:
+            # Re-evaluate on the next frame BEFORE crossing. Never turn this
+            # admission gate into stop/go braking on an already committed path.
+            distances = []
+            self.last_conflict = dict(kind='await_fresh_merge_observation', age_s=observation_age,
+                                     max_age_s=p.ENTRY_MERGE_START_MAX_OBSERVATION_AGE)
         if not (allow_change and legal and ego.position.y <= p.ENTRY_MERGE_START_Y):
             distances = []
         for distance in distances:
@@ -146,7 +156,10 @@ class EntryMerge:
             if proposal.compact_static:
                 geometry_valid = geometry_valid and curvature <= p.STATIC_CHANGE_MAX_CURVATURE
             fits = geometry_valid and endpoint.y >= p.ENTRY_MERGE_END_Y+p.VEHICLE_LENGTH+p.ENTRY_MERGE_END_MARGIN-.1
-            speeds = [('close_gap', min(follow_speed, speed_limit))]
+            close_speed = min(follow_speed, speed_limit)
+            if ego.velocity > .5:
+                close_speed = min(close_speed, ego.velocity + p.ENTRY_MERGE_LAUNCH_SPEED_DELTA)
+            speeds = [('close_gap', close_speed)]
             lead_speed = self.following.details.get('lead_speed')
             lead_gap = self.following.details.get('lead_gap')
             desired_gap = self.following.details.get('desired_gap')
@@ -221,20 +234,32 @@ class EntryMerge:
     def _continue(self, ego, match, candidate, entries, matches, common):
         planner = self.planner
         target = planner.lane_map.links[p.ENTRY_MERGE_TARGET]
-        speed = self.following.update(ego, target, matches, 100., committed=True,
-                                      speed_ceiling=candidate.entry_speed_ceiling)
-        # Apply the same rear-axle gap and closing-distance reserve before,
-        # during and after handoff. Newly observed leads must constrain speed
-        # even when the maneuver started into an empty perception window.
-        target_match = planner.lane_map.project(ego.position, target)
-        gap, ttc = planner._front_risk(ego, target_match, matches, entries)
-        front_limit = planner._acc_speed_limit(ego.velocity, gap, ttc, planner._front_lead_speed)
-        speed = min(speed, front_limit)
-        self.following.command = speed
+        following_speed = self.following.update(ego, target, matches, 100., committed=True,
+                                                speed_ceiling=candidate.entry_speed_ceiling)
         common['debug_details']['entry_merge'].update(self.following.details)
-        common['debug_details']['entry_merge']['front_follow_limit'] = front_limit
+        # While crossing, a target-lane car alongside Ego is NOT already a
+        # same-lane ACC leader. Validate speed on the actual swept path instead.
+        # Keep the last accepted maneuver speed separate from the follower's
+        # temporary gap-making setpoint; a bad frame must not poison recovery.
+        held_speed = getattr(candidate, 'entry_last_verified_speed', candidate.safety_speed)
+        speed = min(candidate.entry_speed_ceiling,
+                    held_speed + p.ENTRY_MERGE_PROGRESS_ACCEL * planner.control_dt)
+        lead_speed = self.following.details.get('lead_speed')
+        if lead_speed is not None:
+            # Once near the leader's speed, stop increasing the setpoint. The
+            # full swept-path check still decides whether holding is possible.
+            speed = min(speed, max(held_speed, lead_speed+p.ENTRY_MERGE_PROGRESS_LEAD_DELTA))
+        common['debug_details']['entry_merge'].update(
+            speed_policy='committed_progress', admitted_speed=held_speed,
+            progress_requested_speed=speed, front_follow_limit=None)
         aligned = abs(planner.lane_map._angle_difference(ego.yaw, match.yaw)) < math.radians(5.)
         if match.lane_link.id == target.id and match.distance <= p.MANEUVER_COMPLETE_DISTANCE and aligned:
+            self.handoff_remaining = p.ENTRY_MERGE_HANDOFF_TIME
+            gap, ttc = planner._front_risk(ego, match, matches, entries)
+            front_limit = self._handoff_front_limit(ego, gap, ttc, planner._front_lead_speed)
+            speed = min(following_speed, front_limit)
+            self.following.command = speed
+            common['debug_details']['entry_merge']['front_follow_limit'] = front_limit
             planner.state = planner.KEEP
             planner.active_candidate = None
             planner.source_link_id = None
@@ -264,8 +289,7 @@ class EntryMerge:
         info['front_conflict'] = front_conflict
         # Verify raising a matched-speed command. A rejected acceleration is
         # not a reason to brake if the admitted speed still clears the front.
-        held_speed = getattr(candidate, 'entry_last_verified_speed', candidate.safety_speed)
-        if front_conflict and speed > held_speed + .05:
+        if front_conflict and speed > held_speed + 1e-6:
             held_front = self._front_conflict(candidate, ego, entries, matches, held_speed)
             if held_front is None:
                 speed = held_speed
@@ -297,15 +321,76 @@ class EntryMerge:
             # Only a newly unsafe actual maneuver may lower the held speed.
             # Keep its lateral path, and validate any braking against rear traffic.
             safe_speed = None
-            for value in (max(0., speed-2*i) for i in range(1, int(math.ceil(speed/2))+1)):
+            # Test the admitted/measured/leader speeds before a fine downward
+            # search. The old 2 m/s steps could skip a viable moving slot and
+            # jump to zero even though braking itself failed the rear check.
+            options = [held_speed, max(0., ego.velocity)]
+            lead_speed = info.get('lead_speed')
+            if lead_speed is not None:
+                options.append(lead_speed)
+            options += [max(0., speed-.25*i) for i in range(1, int(math.ceil(speed/.25))+1)]
+            # Prefer the fastest verified slot, not the first (possibly much
+            # slower) measured-speed option. This also avoids needless braking
+            # for a small future front-gap constraint.
+            options = sorted({round(min(candidate.entry_speed_ceiling, v), 6)
+                              for v in options}, reverse=True)
+            for value in options:
                 if planner.lane_change_safety.check(candidate, ego, entries, matches, value,
                                                     require_completion=False, committed=True) is None:
                     safe_speed = value
                     break
+            if safe_speed is None or safe_speed < ego.velocity-.05:
+                # Already crossing: stopping solely because every usable speed
+                # misses a fast rear car's gap makes that approach worse. Keep
+                # the fastest non-braking speed that still clears EVERY front
+                # body on the remaining path. This is mitigation, not a claim
+                # that the rear gap is safe; expose it explicitly in the log.
+                for value in options:
+                    if value < ego.velocity:
+                        break
+                    rear_conflict = planner.lane_change_safety.check(
+                        candidate, ego, entries, matches, value, committed=True)
+                    if (rear_conflict and rear_conflict.get('rear')
+                            and rear_conflict.get('kind') == 'gap'
+                            and self._front_conflict(candidate, ego, entries, matches, value) is None):
+                        candidate.entry_last_verified_speed = value
+                        self.following.command = value
+                        info.update(speed_policy='rear_risk_progress',
+                                    rear_gap_unresolved=rear_conflict)
+                        return self._result(candidate, value, common,
+                                            'MERGING', 'entry_merge_rear_risk_progress')
+            if safe_speed is not None:
+                candidate.entry_last_verified_speed = safe_speed
+                self.following.command = safe_speed
+                info['speed_policy'] = 'verified_front_adjustment'
+                if safe_speed >= ego.velocity-.05:
+                    return self._result(candidate, safe_speed, common,
+                                        'MERGING', 'entry_merge_in_progress')
             speed = 0. if safe_speed is None else safe_speed
             return self._result(candidate, speed, common, 'EMERGENCY', 'entry_merge_front_hazard')
         candidate.entry_last_verified_speed = speed
+        self.following.command = speed
         return self._result(candidate, speed, common, 'MERGING', 'entry_merge_in_progress')
+
+    def _handoff_front_limit(self, ego, gap, ttc, lead_speed):
+        """Grow the entry gap into ordinary ACC's gap without a one-tick jump.
+
+        Closing-speed stopping room is applied immediately, even at completion.
+        Only the desired following spacing changes gradually over the existing
+        handoff period; a real close/stopped obstacle still requires braking.
+        """
+        if math.isinf(gap):
+            return float('inf')
+        if lead_speed is None:
+            closing = 0. if math.isinf(ttc) else gap/max(.1, ttc)
+            lead_speed = max(0., ego.velocity-closing)
+        fraction = min(1., max(0., 1.-self.handoff_remaining/max(.001, p.ENTRY_MERGE_HANDOFF_TIME)))
+        entry_gap = p.ENTRY_MERGE_FRONT_GAP+p.ENTRY_MERGE_FOLLOW_RESERVE
+        regular_gap = p.ACC_STANDSTILL_DISTANCE+max(0., ego.velocity)*p.ACC_TIME_GAP
+        desired_gap = entry_gap + fraction*(regular_gap-entry_gap)
+        closing = max(0., ego.velocity-lead_speed)
+        desired_gap += closing*p.LANE_CHANGE_CONTROL_DELAY + closing**2/(2.*p.ACC_APPROACH_DECEL)
+        return max(0., lead_speed+p.ACC_DISTANCE_GAIN*(gap-desired_gap))
 
     def _front_conflict(self, candidate, ego, entries, matches, speed):
         """Do not let the first rear gap hide a second, genuine front hazard."""
@@ -363,7 +448,8 @@ retain immediate intervention. This never makes uncertain objects stationary.
         info = common['debug_details']['entry_merge']
         info.update(phase=phase, target_speed=speed, compact=getattr(candidate, 'compact_static', False),
                     committed=phase in ('MERGING', 'EMERGENCY'),
-                    verified=phase != 'EMERGENCY' and reason != 'entry_merge_confirm_crossing')
+                    verified=(phase != 'EMERGENCY' and reason != 'entry_merge_confirm_crossing'
+                              and not info.get('rear_gap_unresolved')))
         return HighwayPlanningResult(candidate.points, active=True, acc_override=True,
             acc_target_velocity=speed, highway_state=self.planner.state, selected_offset=candidate.offset,
             candidates=[candidate], reason=reason, **common)

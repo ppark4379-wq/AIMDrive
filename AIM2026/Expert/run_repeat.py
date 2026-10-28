@@ -27,7 +27,7 @@ import time
 ROOT = Path(__file__).resolve().parents[2]
 SCENARIOS = ROOT / 'AIM2026/outputs/scenarios'
 BATCHES = ROOT / 'AIM2026/outputs/batches'
-FINISHED = ('COMPLETE', 'FAILED', 'STOPPED')
+FINISHED = ('COMPLETE', 'FAILED', 'STOPPED', 'REVIEW_REQUIRED')
 
 
 def split_repeat_options(argv):

@@ -325,6 +325,20 @@ class StartTests(CompetitionTestCase):
 
 
 class ManagementTests(CompetitionTestCase):
+    def test_no_live_spawn_keeps_initial_traffic_and_blocks_both_replacement_paths(self):
+        config = self.config()
+        config['highway_npc']['managed_traffic']['competition']['live_spawn_enabled'] = False
+        context = self.prewarmed(config=config)
+        initial = context.sim.count
+        self.assertGreater(initial, 0)
+        with patch.object(competition, '_create', side_effect=AssertionError('live spawn')):
+            self.run_traffic(context, 2.)
+            competition._resupply(context, context.highway_competition, {}, EGO_FAR, 10.)
+            competition._feed(context, context.highway_competition, {}, EGO_FAR, {}, 10., 500.)
+        self.assertEqual(context.sim.count, initial)
+        competition.finish(context)
+        self.assertFalse(self.report(context)['live_spawn_enabled'])
+
     def test_lane_drop_npcs_are_removed_before_the_taper_and_leave_the_population(self):
         context = self.prewarmed()
         self.run_traffic(context, 120)
@@ -629,6 +643,20 @@ class CoverageTests(CompetitionTestCase):
 
 
 class EvidenceTests(CompetitionTestCase):
+    def test_spawn_evidence_hook_receives_the_actual_slot_before_release(self):
+        context = self.context()
+        seen = []
+        def record(actor, xy, started):
+            vehicle = context.sim.vehicles[actor.get_id()]
+            self.assertTrue(vehicle['paused'])
+            self.assertEqual(xy, (vehicle['x'], vehicle['y']))
+            self.assertLessEqual(started, time.monotonic())
+            seen.append(actor.get_id())
+        context.record_live_spawn_contact_evidence = record
+        competition.prepare(context)
+        self.assertEqual(set(seen), set(context.sim.vehicles))
+        self.assertGreater(len(seen), 0)
+
     def test_a_lane_change_is_reported_and_normal_driving_is_not(self):
         context = self.prewarmed()
         self.run_traffic(context, 30)

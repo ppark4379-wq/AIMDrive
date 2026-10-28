@@ -28,6 +28,7 @@ from scenario_runner.scenarios.segment_modes.scenario import MissionScenario
 from scenario_runner.utils.map_loader import MGeoMapLoader
 from scenario_runner.adapters.expert_controller import validate_max_velocity_kmh
 from AIM2026.main import runtime_python
+from scenario_runner.core.contact_verification import SpawnContactVerifier
 
 # Validation runs, incidents and the batch scratch of the runner (git-ignored), relative to the repository root.
 RUNNER_RUNTIME = 'AIM2026/utils/scenario_runner/.runtime'
@@ -136,6 +137,8 @@ class ExpertController:
                 '--stop-file', self.child_path(self.stop_file)]
         if args.speed_cap_kmh is not None:
             command.extend(['--speed-cap-kmh', str(args.speed_cap_kmh)])
+        if getattr(args, 've_object_speed', False):
+            command.append('--ve-object-speed')
         if getattr(args, 'validation_events', False) and not check:
             command.extend(['--run-id', str(self.scenario.run_instance_id)])
         return command
@@ -183,6 +186,7 @@ class ExpertController:
                     except (ValueError, UnicodeError):
                         continue
                     if row.get('status') == 'RUNNING' and row.get('control_sent'):
+                        self.scenario._contact_drive_active = True
                         print('[Highway] AIM2026 UDP + perception + Expert ready', flush=True)
                         return
                     break
@@ -208,6 +212,75 @@ class ExpertController:
 
 
 class HighwayScenario(MissionScenario):
+    def record_live_spawn_contact_evidence(self, actor, requested_xy, started):
+        """Own-NPC birth evidence; never called by the perception/control pipeline."""
+        verifier = getattr(self, '_spawn_contact_verifier', None)
+        ego = getattr(self, '_contact_latest_ego', None)
+        if verifier is None or not getattr(self, '_contact_drive_active', False) or ego is None:
+            return
+        event = dict(actor_id=str(actor.get_id()), request_started=started,
+                     ego=ego, requested_xy=requested_xy)
+        try:
+            before = time.monotonic()
+            state = actor.get_actor_state()
+            duration = time.monotonic() - before
+            if state is None or str(state.actor_info.id.value) != event['actor_id']:
+                raise ValueError('Spawn lookup did not return the requested actor')
+            actual = (float(state.transform.location.x), float(state.transform.location.y))
+            event.update(actual_xy=actual, query_s=duration)
+            if duration <= verifier.MAX_QUERY_S:
+                verifier.record_spawn(event['actor_id'], started, ego['time'], ego['xy'], requested_xy, actual)
+            event['registered'] = event['actor_id'] in verifier.births
+        except Exception as exc:
+            event['error'] = str(exc)  # missing evidence never grants an exception
+        with (self.output / 'spawn_contact_evidence.jsonl').open('a', encoding='utf-8') as stream:
+            stream.write(json.dumps(event) + '\n')
+
+    def _verify_runtime_contacts(self, state):
+        verifier = getattr(self, '_spawn_contact_verifier', None)
+        if verifier is None or not getattr(self, '_contact_drive_active', False):
+            return state
+        reports = state.get('collision_objects', [])
+        ego_xy, targets, error = None, {}, None
+        before = time.monotonic()
+        if any(identity in verifier.births or identity in verifier.continuing for identity in reports):
+            try:
+                snapshot = self.grpc.world.get_all_actors_state(vehicle=True, pedestrian=True, obstacle=True)
+                if snapshot is None or not hasattr(snapshot, 'states'):
+                    raise ValueError('No actor snapshot')
+                for actor in snapshot.states:
+                    identity = str(actor.actor_info.id.value)
+                    if identity == 'Ego' or identity in reports:
+                        xy = (float(actor.transform.location.x), float(actor.transform.location.y))
+                        if identity == 'Ego':
+                            ego_xy = xy
+                        else:
+                            targets[identity] = xy
+            except Exception as exc:
+                ego_xy, targets, error = None, {}, str(exc)
+        now = time.monotonic()
+        decisions = verifier.assess(reports, now, now-before, ego_xy, targets)
+        if not decisions:
+            return state
+        deferred = [identity for identity, decision in decisions.items()
+                    if decision['action'] == 'continue_with_review']
+        evidence = dict(observed_at=datetime.now().astimezone().isoformat(), monotonic=now,
+                        ego_xy=ego_xy, targets=targets, query_s=now-before,
+                        query_error=error, reports=reports, decisions=decisions)
+        # Persist the raw report AND its proof before filtering the stop list.
+        # This is not a clean pass; final reports/batches retain REVIEW_REQUIRED.
+        with (self.output / 'runtime_contact_checks.jsonl').open('a', encoding='utf-8') as stream:
+            stream.write(json.dumps(evidence) + '\n')
+        state = dict(state, collision_objects=[v for v in reports if v not in deferred],
+                     runtime_contact_deferred=deferred, runtime_contact_checks=decisions)
+        signature = tuple((identity, d['action'], d['reason']) for identity, d in decisions.items())
+        if signature != getattr(self, '_last_runtime_contact_signature', None):
+            for identity, decision in decisions.items():
+                print('[Contact verification] {}: {} ({})'.format(
+                    identity, decision['action'], decision['reason']), flush=True)
+            self._last_runtime_contact_signature = signature
+        return state
+
     def prepare_full_loop_route(self):
         # FullLoopScenario.setup assigns run_seed and run_instance_id immediately
         # before this hook. Bind validation to those actual per-run values.
@@ -230,7 +303,10 @@ class HighwayScenario(MissionScenario):
             return None
 
     def get_ego_motion_state(self):
+        sampled = time.monotonic()
         state = super().get_ego_motion_state()
+        if SpawnContactVerifier.point((state.get('x'), state.get('y'))) is not None:
+            self._contact_latest_ego = dict(time=sampled, xy=(state['x'], state['y']))
         baseline = getattr(self, '_startup_contact_baseline', None)
         if baseline is None:
             return state
@@ -238,6 +314,7 @@ class HighwayScenario(MissionScenario):
         state = baseline.apply(state, actor_ids)
         if baseline.removed_actor_ids:
             state['startup_contact_live_actor_ids'] = sorted(actor_ids) if actor_ids is not None else None
+        state = self._verify_runtime_contacts(state)
         signature = (tuple(sorted(state['raw_collision_objects'])),
                      tuple(state['startup_contact_ignored']), tuple(sorted(state['collision_objects'])))
         if signature != getattr(self, '_last_contact_signature', None):
@@ -270,7 +347,7 @@ class HighwayScenario(MissionScenario):
             first_observations=getattr(self, '_contact_first_reports', {}),
             collision_time_known=False, target_snapshots={},
             note='Positions below are sampled after stop request, not at physical impact. '
-                 'No geometric distance is used to dismiss a MORAI collision report.')
+                 'Any runtime distant-spawn exception is separately recorded in runtime_contact_checks.jsonl.')
         destination = self.output / 'collision_stop.json'
         # Persist the triggering observation even if the subsequent actor query fails.
         destination.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
@@ -301,6 +378,8 @@ class HighwayScenario(MissionScenario):
         self._contact_started_monotonic = time.monotonic()
         self._contact_first_reports = {}
         self._last_contact_signature = None
+        self._contact_drive_active = False
+        self._spawn_contact_verifier = None if self.args.strict_collisions else SpawnContactVerifier()
         (self.output / 'before_placement.json').write_text(
             json.dumps(state, ensure_ascii=False, indent=2), encoding='utf-8')
         if not self.args.strict_collisions:
@@ -362,6 +441,10 @@ def _start_validation(scenario):
     scenario._validation_controller = ('aim2026_highway' if mission == 'full_loop_highway'
                                        else 'aim2026_roundabout')
     options = ['--seed', str(scenario.run_seed), '--validation-events']
+    if getattr(scenario.args, 'no_live_spawn', False):
+        options.append('--no-live-spawn')
+    if getattr(scenario.args, 've_object_speed', False):
+        options.append('--ve-object-speed')
     if getattr(scenario.args, 'highway_density', None):
         options += ['--highway-density', scenario.args.highway_density]
     if getattr(scenario.args, 'rear_npcs', 'normal') != 'normal':
@@ -374,14 +457,20 @@ def _finish_validation(scenario, output, status, error):
     from scenario_runner.validation.finish import finish_validation_run
 
     validation_log = getattr(scenario, '_runner_validation_log', None)
-    if validation_log is None:
-        return
-    finish_validation_run(validation_log, scenario, status, error)
+    verifier = getattr(scenario, '_spawn_contact_verifier', None)
+    review_ids = sorted(verifier.review_ids) if verifier else []
+    validation_status = 'review_required' if status == 'run_returned' and review_ids else status
+    finish_validation_run(validation_log, scenario, validation_status, error)
     report = dict(status={'run_returned': 'COMPLETE', 'interrupted': 'STOPPED',
                           'exception': 'FAILED'}[status],
                   error=str(error) if error else None, run_id=scenario.run_instance_id,
                   plan=dict(mission=scenario.args.mission, seed=scenario.run_seed,
                             driver_output=str(scenario.driver_output)))
+    if review_ids:
+        report['collision_review'] = dict(required=True, actor_ids=review_ids,
+                                         evidence=str(output / 'runtime_contact_checks.jsonl'))
+        if status == 'run_returned':
+            report['status'] = 'REVIEW_REQUIRED'
     (output / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2),
                                         encoding='utf-8')
     if (scenario.driver_output / 'pipeline.jsonl').is_file():
@@ -409,6 +498,10 @@ def main(argv=None, *, mission='full_loop_highway'):
             return run_many(lambda one: main(one, mission=mission), argv, repeat,
                             label=mission.replace('full_loop_', '', 1))
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--no-live-spawn', action='store_true',
+                        help='Competition traffic diagnostic: keep initial NPCs but do not create replacements during driving')
+    parser.add_argument('--ve-object-speed', action='store_true',
+                        help='Experiment: forward raw VE object speed option to Expert')
     parser.add_argument('--check', action='store_true', help='Validate without connecting to MORAI')
     parser.add_argument('--config', type=Path, default=ROOT / 'AIM2026/config_local.yaml')
     parser.add_argument('--expert-python', default=expert_python())
@@ -450,6 +543,11 @@ def main(argv=None, *, mission='full_loop_highway'):
     config.setdefault('sync_runtime', {})['enabled'] = False
     from scenario_runner.utils.highway_density import apply_highway_density
     apply_highway_density(config, args.highway_density)
+    if args.no_live_spawn:
+        managed = config.get('highway_npc', {}).get('managed_traffic', {})
+        if mission != 'full_loop_highway' or managed.get('policy') != 'competition':
+            parser.error('--no-live-spawn needs highway competition traffic')
+        managed['competition']['live_spawn_enabled'] = False
     if args.rear_npcs == 'few':
         config['highway_npc']['managed_traffic']['competition']['rear_reduction']['enabled'] = True
     if args.seed is not None:
