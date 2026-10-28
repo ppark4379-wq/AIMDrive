@@ -203,6 +203,11 @@ LIDAR_MIN_LONG_M = 1.5
 LIDAR_MIN_SHOWN = .6          # the outline must show this share of max(detector length, LIDAR_SHOWN_FLOOR_M)
 LIDAR_SHOWN_FLOOR_M = 4.      # a car seen only from behind (a 2 m line) must not pass as a barrier
 LIDAR_MIN_ASPECT = 1.8        # clearly elongated; irregular piles (rockslide) keep the detector's box
+LIDAR_MAX_SHORT_M = 2.5       # an outline wider than a parked car is two objects in one cluster: keep the detector's box
+LIDAR_SMALL_HEAD_M = 2.        # a head box this short is a small prop (barricade, firewall), not a car ...
+LIDAR_SMALL_MIN_LONG_M = 1.    # ... and its outline, this long ...
+LIDAR_SMALL_SLACK_M = .6       # ... and at most this much longer than the head box, gives its heading
+LIDAR_MAX_LONG_M = 5.5         # a small head box's cluster longer than a car runs into a wall: keep the head box
 
 
 def lshape_axis(points):
@@ -226,7 +231,7 @@ def lshape_axis(points):
 LIDAR_VOXEL_M = .1
 
 
-def object_points(points, center):
+def object_points(points, center, nearest_only=False):
     """The LiDAR points connected to the detector's centre (gaps < LIDAR_CLUSTER_GAP_M), within LIDAR_CLUSTER_MAX_M.
 
     Connectivity is computed on 0.1 m voxels: the all-pairs version took up to 0.5 s on a frame next to a building
@@ -241,7 +246,15 @@ def object_points(points, center):
     np.add.at(centres, index, near)
     centres /= np.bincount(index)[:, None]
     member = np.zeros(len(voxels), dtype=bool)
-    member[index[np.hypot(near[:, 0] - center[0], near[:, 1] - center[1]) < LIDAR_SEED_RADIUS_M]] = True
+    distance = np.hypot(near[:, 0] - center[0], near[:, 1] - center[1])
+    if nearest_only:
+        # Grow from the one point nearest the centre: a second object within the seed radius (two firewalls side
+        # by side 0.6 m apart) is then left out unless the points really connect.
+        if distance.min() >= LIDAR_SEED_RADIUS_M:
+            return near[:0]
+        member[index[int(np.argmin(distance))]] = True
+    else:
+        member[index[distance < LIDAR_SEED_RADIUS_M]] = True
     tree = cKDTree(centres)
     frontier = np.flatnonzero(member)
     while len(frontier):
@@ -269,18 +282,43 @@ def refine_heading_with_lidar(boxes, points):
         if len(cluster) < LIDAR_MIN_POINTS:
             continue
         axis, long_side, short_side = lshape_axis(cluster)
-        if (long_side < max(LIDAR_MIN_LONG_M, LIDAR_MIN_SHOWN * max(box['length'], LIDAR_SHOWN_FLOOR_M))
-                or long_side < LIDAR_MIN_ASPECT * max(short_side, .05)):
+        head_long = max(box['length'], box['width'])
+        shown = long_side >= max(LIDAR_MIN_LONG_M, LIDAR_MIN_SHOWN * max(box['length'], LIDAR_SHOWN_FLOOR_M))
+        # Small props (a 1.36 m firewall, 1.8-1.9 m concrete barricades) never show the 2.4 m the car rule asks, so
+        # their head heading (28-32 deg median error, 78-83 deg p90) was kept: a firewall across the lane turned
+        # 40-60 deg narrowed a 3.25 m tunnel gap to 2.87 m and blocked the planner. Their outline matches the head
+        # box in size; a car the head boxed as a fragment shows a longer outline (its 1.9 m rear) and stays out.
+        # Tunnel benchmark: props 1.6 deg median error with the outline; 7 car frames of thousands turned wrongly.
+        small = head_long <= LIDAR_SMALL_HEAD_M and LIDAR_SMALL_MIN_LONG_M <= long_side <= head_long + LIDAR_SMALL_SLACK_M
+        if head_long <= LIDAR_SMALL_HEAD_M and long_side > LIDAR_MAX_LONG_M:
+            # A 0.4 x 0.9 m head box on a prop by the tunnel wall: the cluster ran 6 m along the wall and the box
+            # came out 6.6 x 2.8 m, 3.5 m outside the prop. No car outline is that long.
+            continue
+        if not (shown or small) or long_side < LIDAR_MIN_ASPECT * max(short_side, .05):
+            continue
+        if short_side > LIDAR_MAX_SHORT_M:
+            # Two barriers end to end at an angle, the detector's centre near the joint: both lie within the seed
+            # radius and form one cluster (outline 5.3-5.8 x 2.6-2.9 m); its rectangle came out 5.4-6.6 x 3.6-4.2 m,
+            # 1.3 m into the bypass, and blocked the tunnel planner where the GT boxes pass. Tunnel benchmark: 1 of
+            # 2051 refined car frames and 2 of 369 open-door G80 frames are this wide.
             continue
         u = np.array([math.cos(axis), math.sin(axis)])
         if float(u @ box['heading']) < 0.:
             u = -u
         v = np.array([-u[1], u[0]])
         center = np.asarray(box['center'], dtype=np.float64)
-        length, width = max(box['length'], long_side), max(box['width'], short_side)
+        # The head's longer side goes along the measured axis: a barricade lying across the lane comes from the head
+        # as 0.6 m long x 2.2 m wide; taking its width as the new width made it 2.2 m deep instead of 0.6.
+        head_long, head_short = max(box['length'], box['width']), min(box['length'], box['width'])
+        length, width = max(head_long, long_side), max(head_short, short_side)
         # cover both the detector's footprint (now along the measured axis) and every object point
         along, across = (cluster - center) @ u, (cluster - center) @ v
-        lo_u, hi_u = min(-length / 2, along.min()), max(length / 2, along.max())
+        if small and not shown:
+            # A small prop's length is its own outline: the head box sat 0.3 m off the firewall and stretched it to
+            # 1.7 m (1.36 m long), into the gap the planner needed.
+            lo_u, hi_u = along.min(), along.max()
+        else:
+            lo_u, hi_u = min(-length / 2, along.min()), max(length / 2, along.max())
         lo_v, hi_v = min(-width / 2, across.min()), max(width / 2, across.max())
         refined = _rectangle(center + u * (lo_u + hi_u) / 2 + v * (lo_v + hi_v) / 2, u, hi_u - lo_u, hi_v - lo_v)
         refined.update({k: box[k] for k in ('score', 'cell_index')}, partial=_partial(refined),
@@ -354,7 +392,9 @@ def decode_world_boxes(prediction, x, y, yaw_grid_rad, merge=False, lidar_points
             if len(cluster) >= LIDAR_CENTER_MIN_POINTS:
                 lidar_center = to_world(cluster.mean(0), (0., 1.), x, y, yaw_grid_rad)[0]
                 lidar_count = int(len(cluster))
-                box = _cover(box, cluster)
+                # Grow over this object's points only: with every seed within 1.5 m, two firewalls side by side became
+                # one 2.2 x 1.7 m box (64-74 % of the frames in the competition tunnel) whose heading spun 60 degrees.
+                box = _cover(box, object_points(cluster_points, box['center'], nearest_only=True))
         (wx, wy), heading_deg = to_world(box['center'], box['heading'], x, y, yaw_grid_rad)
         result.append(Box(wx, wy, heading_deg, float(box['width']), float(box['length']), speed,
                           lidar_center, lidar_count))
