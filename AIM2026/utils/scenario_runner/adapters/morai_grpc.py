@@ -779,14 +779,31 @@ class MoraiGrpcClient:
         active_dist=100.0,
         move_dist=20.0,
         start_action=False,
+        request_id="",
+        bind_native=False,
     ):
+        if bind_native:
+            from .pedestrian_binding import bind_spawn
+            before = self.get_global_pedestrian_states()
+            started = time.monotonic()
+            created = self.world.spawn_pedestrian(
+                transform=transform, model_name=model_name, label=label,
+                request_id=request_id, velocity=float(velocity), active_dist=float(active_dist),
+                move_dist=float(move_dist), start_action=bool(start_action))
+            actor = bind_spawn(self, before, request_id, model_name, transform,
+                               float(velocity)/3.6, started, creation_rejected=created is None)
+            print(f"[Spawn] pedestrian {label}: alias={request_id} native_id={actor.get_id()}")
+            return actor
+        request_id = str(request_id or "").strip()
         before_ids = {
             str(state.actor_info.id.value)
-            for state in self.get_all_pedestrian_states()
+            for state in self.get_all_pedestrian_states(**({"strict": True} if request_id else {}))
             if str(state.actor_info.id.value).strip()
         }
         spawn_x = float(transform.location.x)
         spawn_y = float(transform.location.y)
+        if request_id and request_id in before_ids:
+            raise RuntimeError(f"Pedestrian request ID is already present: {request_id}")
         pedestrian = self.world.spawn_pedestrian(
             transform=transform,
             model_name=model_name,
@@ -795,7 +812,14 @@ class MoraiGrpcClient:
             active_dist=float(active_dist),
             move_dist=float(move_dist),
             start_action=bool(start_action),
+            **({"request_id": request_id} if request_id else {}),
         )
+        if request_id and pedestrian is not None:
+            returned_id = str(pedestrian.get_id()).strip()
+            if returned_id != request_id:
+                raise RuntimeError(
+                    f"MORAI did not preserve pedestrian request ID: requested={request_id}, returned={returned_id}"
+                )
         if pedestrian is None:
             # MORAI 26.R1 can create the pedestrian server-side while returning
             # status=0/Unknown error with no actor ID. Poll the actual actor
@@ -804,12 +828,27 @@ class MoraiGrpcClient:
             for attempt in range(5):
                 if attempt:
                     time.sleep(0.1)
-                pedestrian = self.find_spawned_pedestrian_near(
-                    spawn_x,
-                    spawn_y,
-                    max_dist_m=3.0,
-                    exclude_ids=before_ids,
-                )
+                if request_id:
+                    # A nearby actor is not proof of ownership. Recover only
+                    # the explicitly requested identity, never the closest NPC.
+                    states = self.get_all_pedestrian_states(strict=True)
+                    matches = [state for state in states
+                               if str(state.actor_info.id.value).strip() == request_id]
+                    if len(matches) > 1:
+                        raise RuntimeError(f"Duplicate pedestrian request ID: {request_id}")
+                    if matches:
+                        from api.pedestrian import Pedestrian
+                        pedestrian = Pedestrian(self.world._sim_adapter, self.client_key, request_id)
+                        self.world._actors[request_id] = pedestrian
+                    else:
+                        continue
+                else:
+                    pedestrian = self.find_spawned_pedestrian_near(
+                        spawn_x,
+                        spawn_y,
+                        max_dist_m=3.0,
+                        exclude_ids=before_ids,
+                    )
                 if pedestrian is not None:
                     setattr(
                         pedestrian,
@@ -898,6 +937,18 @@ class MoraiGrpcClient:
         self.world._actors[response.custom_message] = ped
         print(f"[Spawn] pedestrian_with_waypoints {label} dest=({dest_x:.2f},{dest_y:.2f}): ok")
         return ped
+
+    def get_global_pedestrian_states(self):
+        from proto.morai.actor.actor_get_pb2 import GetAllActorsFilter
+        query = GetAllActorsFilter(client_key="", vehicle=False, pedestrian=True, obstacle=False)
+        response = self.world._sim_adapter._actor_stub.GetAllActorsState(query, timeout=1.0)
+        if response is None or not hasattr(response, "states"):
+            raise RuntimeError("Global pedestrian inventory unavailable")
+        states = list(response.states)
+        ids = [str(s.actor_info.id.value).strip() for s in states]
+        if any(not value for value in ids) or len(ids) != len(set(ids)):
+            raise RuntimeError("Global pedestrian inventory has duplicate or empty IDs")
+        return states
 
     def get_all_pedestrian_states(self, strict=False):
         if self.world is None:

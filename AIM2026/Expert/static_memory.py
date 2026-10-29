@@ -6,7 +6,10 @@ treats as a mover, so it brakes and releases in turns. A world position that was
 therefore remembered: for a short time after its last detection a stationary box is published at that position.
 
 Conservative by design: a position needs several recent hits to be remembered, a mover cancels it, the memory ends a few
-seconds after the last hit and as soon as the vehicle has passed the position.
+seconds after the last hit and as soon as the vehicle has passed the position. A slow vehicle (1-2 m/s) is rarely
+labelled moving, so pieces of it were remembered and published behind it (179 frames 0-15 m ahead in the 10-27 tunnel
+vehicle drives; 77 with this rule, the rest has new track IDs and is removed by tunnel_map.py): a position whose
+detections came from a track that is still reported, but now away from the position, is dropped.
 """
 import math
 
@@ -56,10 +59,12 @@ class StaticMemory:
             x, y = box['center_world']
             spot = next((k for k in self.spots if self._near(k, (x, y))), None)
             if spot is None:
-                spot = dict(id=self.next_id, x=x, y=y, hits=[], last=now, template=None)
+                spot = dict(id=self.next_id, x=x, y=y, hits=[], last=now, template=None, sources=set())
                 self.next_id += 1
                 self.spots.append(spot)
             spot['hits'] = [t for t in spot['hits'] if now - t <= self.hit_window_s] + [now]
+            if box.get('track_id') is not None:
+                spot['sources'].add(box['track_id'])
             spot['x'], spot['y'], spot['last'] = .7 * spot['x'] + .3 * x, .7 * spot['y'] + .3 * y, now
             area = box['length_m'] * box['width_m']
             if spot['template'] is None or area >= spot['template']['length_m'] * spot['template']['width_m']:
@@ -70,6 +75,10 @@ class StaticMemory:
             age = now - spot['last']
             forward = c * (spot['x'] - ego['x']) + s * (spot['y'] - ego['y'])
             if age > self.hold_s or forward < PASSED_M or any(self._near(spot, m['center_world']) for m in movers):
+                continue
+            if spot['id'] not in seen and any(b.get('track_id') in spot['sources'] and not self._inside(b, (spot['x'], spot['y']))
+                                              and not self._near(spot, b['center_world']) for b in real):
+                # The object these detections came from is still reported, away from here: it moved on.
                 continue
             if spot['id'] not in seen and any(self._inside(b, (spot['x'], spot['y'])) for b in real):
                 # A reported box (of any size) now covers this position: a fragment of that object was remembered, not a

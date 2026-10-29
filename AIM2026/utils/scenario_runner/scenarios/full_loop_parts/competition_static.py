@@ -26,6 +26,17 @@ CHECK_PERIOD_SEC = 0.5
 RETIRE_AFTER_EXIT_M = 30.0
 
 
+def model_key(name):
+    """MORAI asset file names and library model names differ only in case and punctuation."""
+    return "".join(char for char in str(name).lower() if char.isalnum())
+
+
+def layout_models_available(obstacles, installed):
+    """True when every model of a layout is in ``installed`` (normalized names); None means no restriction."""
+    return installed is None or all(model_key(item["model"]) in installed for item in obstacles)
+
+
+
 def _save(context):
     path = getattr(context, "competition_static_report_path", None)
     if path is not None:
@@ -124,7 +135,12 @@ def _select_layout(context):
     contracts = _environment_models(library, document, geometry, pins)
     provenance = replay.screening.screening_provenance()
     eligible, fingerprints = [], set()
+    installed = getattr(context, "competition_static_installed_models", None)
+    unavailable = 0
     for row in document["candidates"]:
+        if not layout_models_available(row["obstacles"], installed):
+            unavailable += 1
+            continue
         paths, hashes, evidence = {}, {}, {}
         for name in ("candidate", "preview_report", "drive_report", "ego_trace",
                      "trial_manifest", "planner_diagnostics"):
@@ -186,6 +202,11 @@ def _select_layout(context):
             strata=dict(count=len(stations), longitudinal_third=min(2, int(sum(stations) / len(stations) / geometry["length_m"] * 3)),
                         actor_kind="mixed" if len(kinds) > 1 else next(iter(kinds)), actual_behavior=actual["realized_pattern"]),
             source_comparison=_source_comparison(screen, provenance)))
+    if installed is not None:
+        print("[Static] MORAI model filter: {} of {} curated layouts use only installed models".format(
+            len(eligible), len(eligible) + unavailable), flush=True)
+        if not eligible:
+            raise ValueError("No curated static layout uses only models installed in this MORAI")
     selected, balance = replay.balanced_choice(eligible, context.run_seed)
     pins.update(replay.current_runtime_sources())
     project = AIM_ROOT
@@ -197,6 +218,7 @@ def _select_layout(context):
     return selected, geometry, pins, {
         "library_path": str(library), "library_sha256": library_sha,
         "eligible_count": len(eligible), "balance_decisions": balance,
+        "excluded_missing_model_count": unavailable,
         "historical_evidence_status": "sealed_curated_environment_only",
         "source_comparison": selected["source_comparison"],
         "historically_pinned_evidence": ["candidate", "preview_report", "drive_report", "ego_trace"],
@@ -242,6 +264,24 @@ def _fixture_client(parent):
     return fixture
 
 
+POSE_BIND_TOLERANCE_M = 1.0
+
+
+def _bind_by_pose(state, inventory, taken):
+    """Native inventory ID of a parent actor whose own state carries only its request alias.
+
+    The competition MORAI lists scenario-spawned actors by native ID in the global inventory but answers a single
+    actor query with the alias that created it. A parent actor is still stationary at setup, so the one unclaimed
+    inventory entry of the same type at the same place is that actor; anything less certain is not bound.
+    """
+    kind = getattr(state.actor_info, "object_type", None)
+    here = live._xyz(state.transform.location, "actor position")
+    found = [identity for identity, other in inventory.items()
+             if identity not in taken and getattr(other.actor_info, "object_type", None) == kind
+             and math.dist(here, live._xyz(other.transform.location, "actor position")) <= POSE_BIND_TOLERANCE_M]
+    return found[0] if len(found) == 1 else None
+
+
 def _preserved_baseline(context, inventory, ego_id):
     """Parent-owned actors may retire normally; every other baseline actor stays."""
     parent = context.grpc
@@ -252,9 +292,13 @@ def _preserved_baseline(context, inventory, ego_id):
             raise RuntimeError("Parent actor lacks its original namespace ownership pin")
         identity = str(handle.get_id())
         if identity not in inventory:
-            identity = live._id(live._read_one(parent, handle))
+            state = live._read_one(parent, handle)
+            identity = live._id(state)
+            if identity not in inventory:
+                identity = _bind_by_pose(state, inventory, owned_ids) or identity
         if identity not in inventory:
-            raise RuntimeError("Parent actor cannot be bound to the setup inventory")
+            raise RuntimeError("Parent actor cannot be bound to the setup inventory: id={} info={} inventory_size={}".format(
+                identity, str(info).replace("\n", " ")[:160], len(inventory)))
         owned_ids.add(identity)
     return {identity: value for identity, value in inventory.items()
             if identity == ego_id or identity not in owned_ids}

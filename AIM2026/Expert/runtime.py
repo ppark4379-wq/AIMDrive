@@ -481,7 +481,6 @@ def main(argv=None, control_tick=None):
                               tunnel_edge_watch=plan_details.get('jamming_traffic', {}).get('edge_watch'),
                               tunnel_crossing=plan_details.get('jamming_traffic', {}).get('approach_crossing'),
                               tunnel_side_pass=plan_details.get('jamming_traffic', {}).get('stationary_side_pass'),
-                              tunnel_forced_resume=plan_details.get('jamming_traffic', {}).get('forced_resume'),
                               dynamic_crossing=plan_details.get('dynamic_crossing'),
                               legacy_acc=plan_details.get('legacy_acc'),
                               speed_limits=plan_details.get('speed_limits'),

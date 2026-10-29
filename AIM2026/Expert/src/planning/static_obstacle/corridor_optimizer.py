@@ -82,6 +82,7 @@ class StaticCorridorPlanner:
         self.circle_t = (np.arange(count)+.5)*length/count
         self.circle_r = math.hypot(half_width, .5*length/count)
         self.ready = False
+        self.min_clearance = CORRIDOR_MIN_CLEARANCE   # required body clearance [m]; a subclass relaxes it as a last resort
         self.previous = None          # (ys, xs) of the last station solution
         self.committed = None         # (yy, xx, yaw, curvature) dense samples of the last valid path
         self._since_solve = RESOLVE_EVERY   # ticks since the last full solve
@@ -141,12 +142,12 @@ class StaticCorridorPlanner:
         return np.where(y-y0 <= ESCAPE_DISTANCE, np.inf, margin)
 
     # ------------------------------------------------------------------ planning steps
-    @staticmethod
-    def _required(ys, y0, pose_clear):
+    def _required(self, ys, y0, pose_clear):
         """Required clearance per station: a pose that already lost clearance (the map grew) may still move away."""
-        escape = min(CORRIDOR_MIN_CLEARANCE, max(CONTACT_CLEARANCE, pose_clear-VALIDATION_TOLERANCE))
+        minimum = self.min_clearance
+        escape = min(minimum, max(CONTACT_CLEARANCE, pose_clear-VALIDATION_TOLERANCE))
         ramp = np.clip((np.asarray(ys)-y0)/ESCAPE_DISTANCE, 0., 1.)
-        return escape+(CORRIDOR_MIN_CLEARANCE-escape)*ramp
+        return escape+(minimum-escape)*ramp
 
     @staticmethod
     def _steps():
@@ -513,7 +514,7 @@ class StaticCorridorPlanner:
         # A path the car is already on may continue while it never gets closer than the car is now: beside an
         # obstacle that grew in the map, clearance cannot recover until the obstacle is passed.
         required = np.minimum(self._required(yy, y0, pose_clear),
-                              min(CORRIDOR_MIN_CLEARANCE, max(CONTACT_CLEARANCE, pose_clear-VALIDATION_TOLERANCE)))
+                              min(self.min_clearance, max(CONTACT_CLEARANCE, pose_clear-VALIDATION_TOLERANCE)))
         ok = ((clear >= required-VALIDATION_TOLERANCE)
               & ((curvature <= MAX_CURVATURE+1e-6) | (station < CURVATURE_SPEED_SKIP))
               & (self._corridor_margin(xx, yy, yaw, y0) >= 0.))

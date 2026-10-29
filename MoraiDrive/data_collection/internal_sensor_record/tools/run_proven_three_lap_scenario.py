@@ -115,8 +115,10 @@ def software_inventory(expert_root):
         source = source.resolve()
         if ROOT == source or ROOT in source.parents:
             name = source.relative_to(ROOT).as_posix()
-        else:
+        elif PROJECT_ROOT in source.parents:
             name = 'project/' + source.relative_to(PROJECT_ROOT).as_posix()
+        else:  # the external Expert (AIM2026/Expert) lives beside the project
+            name = 'repo/' + source.relative_to(PROJECT_ROOT.parent).as_posix()
         inventory[name] = digest(source)
     return inventory
 
@@ -435,7 +437,8 @@ class RawScenario(FullLoopScenario):
         command = ['/usr/bin/python3', '-u', str(ROOT / 'tools/collect_async_raw_proven.py'),
                    '--output', str(self.output / 'raw'),
                    '--seconds', str(self.seconds + (120 if self.cfg.get('_tunnel_static_collection') else 60)),
-                   '--max-gib', '15', '--sensor-contract', str(self.contract_path),
+                   # Raw ROS per lap is ~0.5 GB; the recorder demands reserve + this free before starting.
+                   '--max-gib', '3', '--sensor-contract', str(self.contract_path),
                    '--ready-file', str(self.output / 'ready.json'),
                    '--stop-file', str(self.output / 'stop.json'),
                    '--episode-metadata', str(self.output / 'episode.json')]

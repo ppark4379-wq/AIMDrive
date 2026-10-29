@@ -21,7 +21,7 @@ RECOVERY_NAMES = {3: "ADMISSION_RECOVERY_SCALE_V1.json",
 # New captures use V5 once a LiDAR registry is installed here.
 STATIC_UNIT_3D_REGISTRY = ROOT / "evidence/object_geometry_registry_unit3d_v1/registry.json"
 DEFAULT_3D_REGISTRY = ROOT / "evidence/object_geometry_registry_default3d_v2/registry.json"
-HEAVY_3D_REGISTRY = ROOT / "evidence/object_geometry_registry_heavy4_v1/registry.json"
+HEAVY_3D_REGISTRY = ROOT / "evidence/object_geometry_registry_heavy5_v1/registry.json"  # heavy4 + 2016_Hyundai_Universe
 DEFAULT_GEOMETRY_REGISTRY = next(
     (path for path in (HEAVY_3D_REGISTRY, DEFAULT_3D_REGISTRY, STATIC_UNIT_3D_REGISTRY)
      if path.is_file()),

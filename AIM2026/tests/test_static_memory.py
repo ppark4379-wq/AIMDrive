@@ -63,3 +63,16 @@ def test_a_fragment_is_not_remembered_next_to_the_whole_object_that_replaces_it(
         assert [b['track_id'] for b in out['boxes']] == [7]
     # and the fragment is forgotten for good, even if the car box disappears for a moment
     assert memory.apply(packet(3., []))['boxes'] == []
+
+
+def test_pieces_of_a_slow_vehicle_are_not_remembered_once_it_drove_on():
+    memory = StaticMemory()
+    for t in (0., .3, .6):                                          # pieces of a 1.5 m/s car, labelled uncertain
+        memory.apply(packet(t, [box(20.+1.5*t, 0., length=1.9, width=1.6)]))
+    car = box(25., 0., length=4.6, width=2.)                        # the same track now reports the whole car, ahead
+    assert [b['track_id'] for b in memory.apply(packet(1.4, [car]))['boxes']] == [7]
+    other = dict(box(40., 3.), track_id=8)                          # an unrelated object keeps a parked piece remembered
+    parked = StaticMemory()
+    for t in (0., .3, .6):
+        parked.apply(packet(t, [box(20., 0.)]))
+    assert len(parked.apply(packet(1.4, [other]))['boxes']) == 2

@@ -41,8 +41,6 @@ from ...config.parameters.jamming import (
     NEW_OBSTACLE_CAUTION_ACCEL_MPS2, NEW_OBSTACLE_RECHECK_MOVE_M,
     YIELD_RESTART_SIDE_CLEARANCE_M,
     NEW_OBSTACLE_WATCH_EXTRA_M, NEW_OBSTACLE_WATCH_HOLD_S, NEW_OBSTACLE_WATCH_SPEED_KPH,
-    TUNNEL_FORCE_RESUME_ENABLED, TUNNEL_FORCE_RESUME_WAIT_S,
-    TUNNEL_FORCE_RESUME_SPEED_KPH, TUNNEL_FORCE_RESUME_ACCEL_MPS2,
 )
 from ...config.parameters.static_obstacle import CORRIDOR_LANE_HALF_WIDTH
 from ...config.parameters.jamming import VEHICLE_MIN_LONG_M
@@ -73,7 +71,6 @@ class TunnelTraffic:
         self._caution_target = 0.
         self._crossing_guard = None
         self._edge_watches = {}
-        self._resume = {}
 
     def clear(self):
         self.map.set_virtual([])
@@ -82,8 +79,6 @@ class TunnelTraffic:
         self.overtaking, self.slow_since, self.blockers = {}, {}, []
         self._caution_time, self._caution_target = None, 0.
         self._edge_watches.clear()
-        self._resume.clear()
-        self.corridor._restart_previous = None
         if self._crossing_guard is not None:
             self._crossing_guard.reset()
 
@@ -427,109 +422,6 @@ class TunnelTraffic:
                 clear[o['id']] = forward+radius > 0.
         return clear
 
-    @staticmethod
-    def _validated_detour(result):
-        """Use only the corridor's current, fully checked path, with body room.
-
-        The corridor solver checks road bounds, curvature and occupied cells;
-        its DP cost favours clearance, then smooth/reference/previous-path
-        tracking. Traffic has no alternate paths to rank or invent here.
-        """
-        static = result.debug_details.get('static_avoidance', {})
-        clearance = static.get('min_clearance_m')
-        return (static.get('path_validated') is True and static.get('phase') == 'follow'
-                and clearance is not None and math.isfinite(clearance)
-                and clearance >= YIELD_RESTART_SIDE_CLEARANCE_M)
-
-    def _forced_resume(self, result, ego, now, planner_speed, details):
-        """Simulator-only liveness override for a prolonged traffic stop.
-
-        This overrides person/unknown-object danger only. Confirmed vehicle
-        following/clearance, road/steering feasibility and signal/freshness
-        stops remain. Rank other-object overlap instead of requiring clearance. State
-        belongs to Ego, so track renumbering cannot restart the wait timer.
-        """
-        state = self._resume
-        protected = set(details.get('protected_vehicle_ids', ()))
-        sources = (set(state.get('source_ids', ()))
-                   if state.get('active') or abs(float(ego.velocity)) <= .2 else set()) - protected
-        sources.update(details.get('extension_stop_ids', ()))
-        vehicle_cap = details.get('vehicle_speed_cap_mps', math.inf)
-        if not sources or vehicle_cap <= .05:
-            state.clear()
-            details['forced_resume'] = dict(enabled=TUNNEL_FORCE_RESUME_ENABLED, active=False,
-                stopped_s=0., geometry_validated=False, normal_target_mps=result.acc_target_velocity,
-                normal_kind=details.get('kind'), scope='person_unknown',
-                protected_vehicle_ids=sorted(protected))
-            return
-        previous_time = state.get('time', now)
-        if not TUNNEL_FORCE_RESUME_ENABLED or not 0. <= now-previous_time <= TRACK_STALE_S:
-            state.clear()
-        dt = min(.2, max(0., now-previous_time)) if state else 0.
-        state['time'] = now
-        state['source_ids'] = sorted(sources)
-        static = result.debug_details.get('static_avoidance', {})
-        blocking = (result.acc_target_velocity <= .05 and
-                    (details.get('kind') in ('crossing', 'new_obstacle', 'caution', 'lead', 'yield', 'wait')
-                     or static.get('phase') == 'blocked'))
-        if not state.get('active'):
-            if not TUNNEL_FORCE_RESUME_ENABLED or abs(float(ego.velocity)) > .2:
-                state.pop('since', None)
-            elif blocking:
-                state.setdefault('since', now)
-            # A one-frame positive target is not an actual restart. Once a
-            # traffic stop begins, count until Ego really moves, even if the
-            # object prediction/ID flickers between stop and go meanwhile.
-        elapsed = max(0., now-state['since']) if 'since' in state else 0.
-        valid = False
-        choice = None
-        if TUNNEL_FORCE_RESUME_ENABLED and elapsed >= TUNNEL_FORCE_RESUME_WAIT_S:
-            select = getattr(self.corridor, 'least_risk_restart', None)
-            if select is not None:
-                choice = select(ego, self._objects(now))
-                valid = choice is not None
-            else:
-                valid = self._validated_detour(result) and planner_speed > .05
-        if (valid and elapsed >= TUNNEL_FORCE_RESUME_WAIT_S and TUNNEL_FORCE_RESUME_ENABLED
-                and (blocking or state.get('active'))):
-            state['active'] = True
-        if not valid:
-            state['active'] = False
-            state['target'] = 0.
-        # A sustained natural release hands speed control back to normal
-        # planning. A one-frame positive prediction must not re-arm 12 s waits.
-        if (state.get('active') and static.get('path_validated')
-                and result.acc_target_velocity >= TUNNEL_FORCE_RESUME_SPEED_KPH/3.6):
-            state.setdefault('clear_since', now)
-            if now-state['clear_since'] >= NEW_OBSTACLE_CLEAR_S:
-                state.clear()
-        else:
-            state.pop('clear_since', None)
-        info = details['forced_resume'] = dict(
-            enabled=TUNNEL_FORCE_RESUME_ENABLED, active=bool(state.get('active')),
-            stopped_s=round(elapsed, 3), geometry_validated=bool(valid),
-            normal_target_mps=result.acc_target_velocity, normal_kind=details.get('kind'),
-            scope='person_unknown', protected_vehicle_ids=sorted(protected),
-            vehicle_speed_cap_mps=vehicle_cap)
-        if not info['active']:
-            return
-        if choice is not None:
-            result.path, candidate, geometry = choice
-            result.candidates = [candidate]
-            details['restart_path'] = geometry
-            info['path_selection'] = geometry
-            # Never label a risk-ranked, potentially overlapping path as
-            # collision-free static validation; final speed has its own flag.
-            static.update(path_validated=False, phase='last_resort',
-                          min_clearance_m=geometry['min_clearance_m'])
-        previous = min(state.get('target', 0.), max(0., float(ego.velocity))+.5)
-        state['target'] = min(vehicle_cap, TUNNEL_FORCE_RESUME_SPEED_KPH/3.6,
-                              previous+TUNNEL_FORCE_RESUME_ACCEL_MPS2*dt)
-        result.acc_target_velocity = state['target']
-        result.reason = 'jamming_traffic_forced_resume'
-        details.update(kind='forced_resume', cautious_restart=True)
-        info.update(target_mps=state['target'], path_source='least_risk_restart' if choice else 'validated_corridor')
-
     def _crossing_speed(self, objects, ego, path, now, desired_speed, side_clear=()):
         """Reuse ordinary-road crossing prediction before tunnel class confirmation.
 
@@ -698,15 +590,12 @@ class TunnelTraffic:
         details = dict(overtaking=sorted(self.overtaking), blockers=self.blockers, leads=[], yields=[], kind=None)
         result.debug_details['jamming_traffic'] = details
         if now is None or not self.corridor.ready or len(result.path) < 2:
-            self._resume.clear()
             return result
-        planner_speed = result.acc_target_velocity
         length, half = self._vehicle()
         path = np.array([(p.x, p.y) for p in result.path], dtype=float)
         keep = np.r_[True, np.hypot(*np.diff(path, axis=0).T) > 1e-6]
         path = path[keep]
         if len(path) < 2:
-            self._resume.clear()
             return result
         stations = np.r_[0., np.cumsum(np.hypot(*np.diff(path, axis=0).T))]
         yaw = np.arctan2(*np.diff(path, axis=0).T[::-1])
@@ -813,22 +702,4 @@ class TunnelTraffic:
             details['caution_target_mps'] = self._caution_target
         else:
             self._caution_time, self._caution_target = None, max(0., float(ego.velocity))
-        stop_ids = {d['id'] for d in guard if d['phase'] != 'released' and d['cap_mps'] <= .05}
-        if crossing_cap <= .05 and crossing_details.get('object_id') is not None:
-            stop_ids.add(crossing_details['object_id'])
-        stop_ids.update(d['id'] for d in details['yields'] if d['cap'] <= .05 and d['id'] not in protected)
-        if phase == 'blocked' and result.acc_target_velocity <= .05:
-            for o in extension_objects:
-                radius = .5*math.hypot(o['length'], o['width'])
-                forward = (o['x']-ego.position.x)*math.cos(ego.yaw)+(o['y']-ego.position.y)*math.sin(ego.yaw)
-                side = -(o['x']-ego.position.x)*math.sin(ego.yaw)+(o['y']-ego.position.y)*math.cos(ego.yaw)
-                if (o['age'] <= TRACK_STALE_S and -radius < forward < length+YIELD_RANGE_M
-                        and abs(side) < half+radius+YIELD_CLEARANCE_M):
-                    stop_ids.add(o['id'])
-        details['extension_stop_ids'] = sorted(stop_ids)
-        vehicle_caps = [d['cap'] for d in details['leads'] if d['id'] in protected]
-        if entering and phase == 'blocked' and any(b['id'] in protected for b in self.blockers):
-            vehicle_caps.append(_stop_speed(s_in-GATE_MARGIN_M, GATE_DECEL))
-        details['vehicle_speed_cap_mps'] = min(vehicle_caps, default=math.inf)
-        self._forced_resume(result, ego, now, planner_speed, details)
         return result

@@ -3,6 +3,7 @@ import json
 import math
 import random
 import copy
+import os
 from pathlib import Path
 
 from ...utils.transform_utils import (interpolate_on_polyline, polyline_length,
@@ -13,6 +14,10 @@ EXCLUDED_MODELS = frozenset(('SE_CT797F_2009', 'RandomVehicle', 'AR_DJMini3pro_2
 
 
 def enabled(context):
+    # Data collection with pinned models (MORAI_HIGHWAY_SPAWN_MODELS) keeps the native SpawnPoints: managed traffic
+    # needs distinct models, so it could not repeat one bus or truck model.
+    if os.environ.get('MORAI_HIGHWAY_SPAWN_MODELS', '').strip():
+        return False
     return bool(context.cfg.get('highway_npc', {}).get('managed_traffic', {}).get('enabled', False))
 
 

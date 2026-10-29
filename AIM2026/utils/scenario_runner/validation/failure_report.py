@@ -8,6 +8,7 @@ referenced log excerpts - never the full JSONL.
 
 import argparse
 import json
+import math
 from pathlib import Path
 import sys
 
@@ -94,6 +95,17 @@ def _lean(data):
     return {k: v for k, v in data.items() if not k.startswith("_")}
 
 
+def _json_safe(value):
+    """Keep non-finite log evidence readable without emitting invalid JSON."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value)
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    return value
+
+
 def build_report(source, out_dir=None, verifications=None, **params):
     data = analyze(source, verifications=verifications, **params)
     ctx = data["_ctx"]
@@ -109,6 +121,7 @@ def build_report(source, out_dir=None, verifications=None, **params):
         payload["status_counts"][item["status"]] = payload["status_counts"].get(item["status"], 0) + 1
     payload["verified_causes"] = [f["id"] for f in payload["findings"]
                                   if f["status"] == VERIFIED and f.get("group") == "hypothesis"]
+    payload = _json_safe(payload)
     text = json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
     (out_dir / "report_data.json").write_text(json.dumps(payload, ensure_ascii=False, indent=1, allow_nan=False),
                                               encoding="utf-8")

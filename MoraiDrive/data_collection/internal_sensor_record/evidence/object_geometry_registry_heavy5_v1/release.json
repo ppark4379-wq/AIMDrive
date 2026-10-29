@@ -1,0 +1,19 @@
+{
+  "schema": "heavy5_geometry_release_v1",
+  "status": "VALIDATED",
+  "base_registry": "object_geometry_registry_heavy4_v1",
+  "base_models_preserved": 312,
+  "new_models": 1,
+  "calibration_root": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/bus_universe_v1",
+  "scope": "Default-scale visible-surface geometry from LiDAR (image refinement rejected: cast shadow); independent moving-then-held capture at 19/25 m. Not sensor synchronization or trained model accuracy.",
+  "files": {
+    "camera_review.json": "f8c770cd1ac11e6cff6ee90a892db59860a3a7a9133ad23a10a263f7f68c65ba",
+    "combined_confirmation.json": "983c72d55c8b60e80619c215b0c2793af24bdc7165cae8f587d96839e2cc3589",
+    "configured_frozen_profiles.json": "696232b3512982aaf19195ec76529b72e16d2a86d411d45685fc734803d57644",
+    "registry.json": "6f280901b098f959c179ad5d4e798bd4cf85418a5b1fe32cac817bdcac1a7674",
+    "review/2016_Hyundai_Universe.jpg": "1af03986bd8a40e27cf5216e27cea9937f1d884026e21fe0bcde57299a8fc10c",
+    "review/2016_Hyundai_Universe_far.jpg": "91ba08ff4cb83570bace230c5faad1f08d4bd5bea59c4c9cff504c9ee541089b",
+    "runtime_api_contracts.json": "7cfa23cc4940f03ee2c22ba2d426818023e0a3c4754ec9bbe9a112498e8b6730",
+    "selection.json": "6be84c0a569583904ce2826e5630f5644375b9151085b654463971761a8c19af"
+  }
+}
