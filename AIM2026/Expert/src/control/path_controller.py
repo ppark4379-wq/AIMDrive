@@ -156,7 +156,22 @@ class PathController:
             "CHANGE_LEFT",
             "CHANGE_RIGHT",
         )
+        highway = lattice_result.mode == 'highway_lane'
         if highway_lane_change:
+            self._highway_steer_settling = True
+            self._highway_steer_settled_s = 0.
+        elif highway and getattr(self, '_highway_steer_settling', False):
+            # A completed/aborted change can still be 0.45 m off centre.
+            # Keep the lateral authority until the controller itself settles.
+            if abs(requested_steer_rad) <= np.deg2rad(highway_parameters.LANE_CHANGE_STEERING_LIMIT_DEG)*.8:
+                self._highway_steer_settled_s += self.control_dt
+            else:
+                self._highway_steer_settled_s = 0.
+            if self._highway_steer_settled_s >= .5:
+                self._highway_steer_settling = False
+        elif not highway:
+            self._highway_steer_settling = False
+        if highway_lane_change or highway and getattr(self, '_highway_steer_settling', False):
             compact_escape = ((lattice_result.debug_details.get("highway_static_escape", {}).get("compact", False)
                                or lattice_result.debug_details.get("entry_merge", {}).get("compact", False))
                               and vehicle_state.velocity <= highway_parameters.STATIC_CHANGE_MAX_SPEED)
@@ -179,6 +194,16 @@ class PathController:
                 self.previous_front_steer_rad - max_steer_step,
                 self.previous_front_steer_rad + max_steer_step,
             )
+        elif highway:
+            # Mode changes must not remove the rate limit in a single tick.
+            step = np.deg2rad(highway_parameters.STEERING_RATE_LIMIT_DEG_PER_SEC)*self.control_dt
+            requested_steer_rad = np.clip(requested_steer_rad,
+                self.previous_front_steer_rad-step, self.previous_front_steer_rad+step)
+        if highway:
+            lattice_result.debug_details['highway_steering'] = dict(
+                settling=getattr(self, '_highway_steer_settling', False),
+                raw_deg=float(np.rad2deg(self.steering_sign*raw_steering_rad)),
+                limited_deg=float(np.rad2deg(requested_steer_rad)))
         front_steer_rad = np.clip(
             requested_steer_rad,
             -self.max_steering,
@@ -307,8 +332,9 @@ class PathController:
     def _second_merge_launch_acceleration_gain(target_velocity, vehicle_state, lattice_result):
         safety = getattr(lattice_result, "debug_details", {}).get("merge_safety", {})
         if (getattr(lattice_result, "mode", "") != "highway_lane"
-                or safety.get("zone") != "SECOND_ENTRY"
-                or safety.get("decision") != "GO" or not safety.get("launch_verified")
+                or safety.get("zone") not in ("FIRST_PREDICTIVE", "SECOND_ENTRY")
+                or not ((safety.get('decision') == 'GO' and safety.get('launch_verified'))
+                        or (safety.get('decision') == 'MITIGATE' and safety.get('rear_mitigation_verified')))
                 or target_velocity <= max(.05, vehicle_state.velocity)
                 or target_velocity < safety.get("launch_target", float("inf")) - 1e-6):
             return None

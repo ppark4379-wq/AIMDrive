@@ -24,6 +24,7 @@ class MergeSafety:
         self.ego_lane_match = None
 
     def reset(self):
+        self._cleared_rows = None
         self.tracks.clear()
         self.second_rear_gap_ids.clear()
         self.spacing_ids = None
@@ -189,15 +190,32 @@ class MergeSafety:
         yaw = ego.yaw + max(-maximum_turn, min(maximum_turn, delta))
         return point, yaw
 
-    def _conflict(self, ego, points, cumulative, target, tracks, predictions, ignore_ids=(), acceleration=None):
-        initial_rear = set()
+    def _conflict(self, ego, points, cumulative, target, tracks, predictions, ignore_ids=(), acceleration=None,
+                  body_only=False):
         side_margins = [self.planner._parallel_lane_margin(ego, self.ego_lane_match, obj, match)
                         for _, (obj, match, _) in tracks]
+        # Enclosing circles include BOTH padded bodies and the gap clearance.
+        # Outside this bound neither exact OBB nor spacing can conflict.
+        radii_squared = [(
+            .5*p.VEHICLE_LENGTH
+            + math.hypot(.5*p.VEHICLE_LENGTH+p.COLLISION_MARGIN,
+                         .5*p.VEHICLE_WIDTH+max(p.COLLISION_MARGIN, margin))
+            + .5*math.hypot(max(1., obj.size_x), max(1., obj.size_y))
+            + p.MERGE_BUMPER_CLEARANCE + max(0., margin))**2
+            for (_, (obj, _, _)), margin in zip(tracks, side_margins)]
+        # Many speed candidates share exactly the same acceleration/braking
+        # trajectory before reaching their target. Reuse only fully cleared
+        # rows, within this limit() call and identical prediction/ignore sets.
+        cache = getattr(self, '_cleared_rows', None)
+        context = (id(predictions), id(points), id(tracks), tuple(sorted(ignore_ids)), body_only)
         for index, row in enumerate(predictions):
             time_value = index * p.MERGE_SAFETY_STEP
             distance = self.travel(max(0.0, ego.velocity), target, time_value, acceleration)
             if distance > cumulative[-1]:
                 return {"time": time_value, "id": "path_end", "distance": distance}
+            cache_key = (context, index, distance)
+            if cache is not None and cache_key in cache:
+                continue
             point, yaw = self.ego_pose(ego, points, cumulative, distance)
             for track_index, ((key, (obj, obj_match, _)), options) in enumerate(zip(tracks, row)):
                 if key in ignore_ids:
@@ -207,26 +225,22 @@ class MergeSafety:
                         and self.planner._parallel_lane_margin(ego, self.ego_lane_match, obj, obj_match) == 0.):
                     continue
                 for center, angle in options:
-                    # Rear vehicles on a converging lane must stay in this check.
-                    # Only an already-following, same-path car is exempt from a
-                    # new braking demand that would increase its closing speed.
+                    # Every rear body stays in collision prediction. Only its
+                    # spacing margin may be exempt below once following is
+                    # established; a converging car retains both checks.
                     dx, dy = center.x - point.x, center.y - point.y
+                    if dx*dx + dy*dy > radii_squared[track_index]:
+                        continue
                     longitudinal = dx * math.cos(yaw) + dy * math.sin(yaw)
                     lateral = abs(-dx * math.sin(yaw) + dy * math.cos(yaw))
-                    rear_along = dx * math.cos(angle) + dy * math.sin(angle)
-                    rear_lateral = abs(-dx * math.sin(angle) + dy * math.cos(angle))
-                    if (self.zone != 'SECOND_ENTRY' and index == 0
-                            and key in self.following_ids and rear_along < -3.0
-                            and rear_lateral < 1.0 and math.cos(angle - yaw) > 0.95):
-                        initial_rear.add(track_index)
-                    if track_index in initial_rear:
-                        continue
                     side_margin = side_margins[track_index]
                     if self.planner._obb_collision(point, yaw, center, angle, obj, lateral_margin=side_margin):
                         return {"time": time_value, "id": key, "distance": distance,
                                 "rear": longitudinal < 0.0, "kind": "obb",
                                 "ego_xy": (point.x, point.y), "ego_yaw_deg": math.degrees(yaw),
                                 "object_xy": (center.x, center.y), "object_yaw_deg": math.degrees(angle)}
+                    if body_only:
+                        continue
                     # Parallel neighbors must not become in-lane leads just
                     # because Ego is still angled after a lane change. Evaluate
                     # spacing along the other car's lane; OBB tests above still
@@ -245,8 +259,7 @@ class MergeSafety:
                     # Once a car is measurably following us, its rear spacing
                     # is not a demand to brake in front of it. This exempts ONLY
                     # rear clearance, not the OBB check above or a future lead.
-                    if (self.zone == 'SECOND_ENTRY' and gap_rear
-                            and key in self.second_rear_gap_ids):
+                    if gap_rear and key in self.second_rear_gap_ids:
                         continue
                     if math.cos(angle - yaw) > 0.8 and lateral_overlap:
                         if gap < p.MERGE_BUMPER_CLEARANCE:
@@ -255,6 +268,8 @@ class MergeSafety:
                                     "lateral": gap_lateral, "bumper_gap": gap,
                                     "ego_xy": (point.x, point.y), "ego_yaw_deg": math.degrees(yaw),
                                     "object_xy": (center.x, center.y), "object_yaw_deg": math.degrees(angle)}
+            if cache is not None:
+                cache.add(cache_key)
         return None
 
     def _second_merge_entered(self, ego_match):
@@ -265,6 +280,56 @@ class MergeSafety:
             return False
         center = self.lane_map.project(Point(*p.CONSERVATIVE_MERGE_POINT), ego_match.lane_link)
         return ego_match.s >= center.s - p.CONSERVATIVE_MERGE_ENTRY_RADIUS
+
+    def _rear_mitigation(self, ego, points, cumulative, requested, forward_limit, tracks, predictions,
+                         stop_conflict):
+        """Compare actual rear impact, without trading it for a front hazard.
+
+        A violated spacing margin is not evidence that stopping is safer.
+        This fallback may still predict rear impact, so report MITIGATE, never
+        GO. Only a later worst-case body impact (or none) justifies movement.
+        """
+        stopped = self._conflict(ego, points, cumulative, 0., tracks, predictions, body_only=True)
+        if not stopped or not stopped.get('rear'):
+            return None
+        key = stopped['id']
+        best = None
+        speed = min(requested, forward_limit)
+        while speed > .05:
+            accelerations = ((p.SECOND_MERGE_LAUNCH_ACCEL_MIN,
+                              .5*(p.SECOND_MERGE_LAUNCH_ACCEL_MIN+p.SECOND_MERGE_LAUNCH_ACCEL_MAX),
+                              p.SECOND_MERGE_LAUNCH_ACCEL_MAX) if speed > ego.velocity+.05
+                             else (p.MERGE_PREDICT_ACCEL,))
+            worst_time = float('inf')
+            allowed = True
+            for acceleration in accelerations:
+                # Every OTHER vehicle keeps both gap and body constraints.
+                if self._conflict(ego, points, cumulative, speed, tracks, predictions,
+                                  ignore_ids={key}, acceleration=acceleration) is not None:
+                    allowed = False
+                    break
+                impact = self._conflict(ego, points, cumulative, speed, tracks, predictions,
+                                        acceleration=acceleration, body_only=True)
+                if impact and (not impact.get('rear') or impact['id'] != key):
+                    allowed = False
+                    break
+                worst_time = min(worst_time, impact['time'] if impact else float('inf'))
+            if allowed and worst_time > stopped['time'] + p.MERGE_SAFETY_STEP:
+                if best is None or worst_time > best[0]:
+                    best = (worst_time, speed)
+                if math.isinf(worst_time):
+                    break
+            speed -= p.MERGE_SPEED_SEARCH_STEP
+        if best is None:
+            return None
+        impact_time, speed = best
+        self.yield_speed = speed
+        self.details.update(decision='MITIGATE', target=speed, speed_floor=speed,
+            cause='merge_rear_impact_mitigation', stop_conflict=stop_conflict,
+            stop_body_conflict=stopped, mitigated_body_time=impact_time,
+            rear_mitigation_verified=True, launch_target=speed,
+            brake_release_verified=True, brake_release_target=speed)
+        return speed
 
     def _second_merge_follower(self, ego, ego_match, obj, match):
         # The two MGeo links remain distinct after their physical lanes have
@@ -287,6 +352,17 @@ class MergeSafety:
         # as the rear car approached, causing a harmful fallback STOP.
         return (rear and gap >= 0.0 and lateral < .5*p.VEHICLE_WIDTH
                 and math.cos(angle - ego.yaw) > .95)
+
+    def _first_merge_follower(self, ego, ego_match, obj, match):
+        """Exempt established following distance, never a rear body collision."""
+        if self.zone != 'FIRST_PREDICTIVE' or match is None:
+            return False
+        connected = (match.lane_link.id == ego_match.lane_link.id
+                     or self.lane_map.forward_distance(match, ego_match) is not None)
+        gap, rear, lateral, _ = self.body_gap(
+            ego.position, ego.yaw, obj.position, math.radians(obj.heading_deg), obj)
+        return (connected and rear and gap >= 0. and lateral < .5*p.VEHICLE_WIDTH
+                and math.cos(math.radians(obj.heading_deg)-ego.yaw) > .95)
 
     def _remember_second_yield(self, collision, tracks, ego_match):
         """Latch the actual vehicle yielded to, never replace it with a later car."""
@@ -342,10 +418,12 @@ class MergeSafety:
             self.reset()
             self.zone = zone
         self.ego_lane_match = ego_match
+        self._cleared_rows = set()
         tracks = self._update_tracks(ego, entries, matches)
         self.second_rear_gap_ids = {
             key for key, (obj, match, _) in tracks
-            if self._second_merge_follower(ego, ego_match, obj, match)
+            if (self._second_merge_follower(ego, ego_match, obj, match)
+                or self._first_merge_follower(ego, ego_match, obj, match))
         }
         self.spacing_ids = {key for key, (obj, match, _) in tracks
                             if self._shares_corridor(ego_match, obj, match)}
@@ -408,9 +486,10 @@ class MergeSafety:
             self.details['brake_release_verified'] = True
             self.details['brake_release_target'] = requested
         launch_eligible = (
-            zone == "SECOND_ENTRY"
-            and ego_match.lane_link.id in p.SECOND_MERGE_LAUNCH_LINK_IDS
-            and ego.position.distance(Point(*p.CONSERVATIVE_MERGE_POINT)) <= p.SECOND_MERGE_LAUNCH_RADIUS
+            ((zone == "SECOND_ENTRY"
+              and ego_match.lane_link.id in p.SECOND_MERGE_LAUNCH_LINK_IDS
+              and ego.position.distance(Point(*p.CONSERVATIVE_MERGE_POINT)) <= p.SECOND_MERGE_LAUNCH_RADIUS)
+             or (zone == 'FIRST_PREDICTIVE' and collision is not None and collision.get('rear')))
             # A moving vehicle also needs a verified acceleration option when
             # braking would put it in a converging rear vehicle's path.
             and (self.second_launch_active or ego.velocity <= p.SECOND_MERGE_LAUNCH_START_SPEED
@@ -437,7 +516,8 @@ class MergeSafety:
             if launch_conflict is None:
                 self.second_launch_active = True
                 self.details.update(decision="GO", target=requested, conflict=None,
-                                    requested_conflict=collision, cause="second_merge_verified_launch",
+                                    requested_conflict=collision, cause=("second_merge_verified_launch"
+                                        if zone == 'SECOND_ENTRY' else 'first_merge_rear_verified_launch'),
                                     launch_verified=True, launch_target=requested,
                                     launch_acceleration=(p.SECOND_MERGE_LAUNCH_ACCEL_MIN,
                                                          p.SECOND_MERGE_LAUNCH_ACCEL_MAX))
@@ -450,12 +530,11 @@ class MergeSafety:
                                     speed_floor=requested)
             return float("inf") if desired_velocity is None else requested
         checked = [(requested, collision)]
-        # Once past the second merge area, reducing speed for a closing rear
+        # In either merge area, reducing speed for a closing rear
         # car can create the collision. Validate holding the measured speed
         # before searching slower candidates. Never accelerate above it, exceed
         # front ACC, or exempt the rear car from the trajectory check.
-        if (zone == "SECOND_ENTRY" and collision.get("rear")
-                and self._second_merge_entered(ego_match)
+        if (collision.get("rear")
                 and ego.velocity > requested + 0.05
                 and ego.velocity <= forward_speed_limit):
             hold_conflict = self._conflict(
@@ -464,7 +543,8 @@ class MergeSafety:
             checked.append((float(ego.velocity), hold_conflict))
             if hold_conflict is None:
                 self.details.update(decision="GO", target=float(ego.velocity),
-                                    cause="second_merge_rear_safe_hold",
+                                    cause=("second_merge_rear_safe_hold" if zone == 'SECOND_ENTRY'
+                                           else 'first_merge_rear_safe_hold'),
                                     requested_conflict=collision, conflict=None,
                                     speed_floor=float(ego.velocity))
                 return float(ego.velocity)
@@ -490,13 +570,17 @@ class MergeSafety:
                 return target
             checked.append((target, conflict))
             target -= p.MERGE_SPEED_SEARCH_STEP
-        if zone == "SECOND_ENTRY":
+        if zone in ("FIRST_PREDICTIVE", "SECOND_ENTRY"):
             # Exhausting the moving candidates is not proof that stopping is
             # safe. Expose an unavoidable/fallback stop separately for diagnosis.
             stop_conflict = self._conflict(ego, points, cumulative, 0.0, tracks, predictions)
             self.details.update(stop_conflict=stop_conflict,
                                 cause="no_safe_speed" if stop_conflict else "validated_stop")
             if stop_conflict and stop_conflict.get("rear"):
+                mitigation = self._rear_mitigation(ego, points, cumulative, requested,
+                    forward_speed_limit, tracks, predictions, stop_conflict)
+                if mitigation is not None:
+                    return mitigation
                 # No collision-free solution: choose a checked non-accelerating
                 # rear-risk mitigation only if stopping predicts earlier impact.
                 # Apply on the approach too: the old centre-radius boundary
@@ -507,7 +591,8 @@ class MergeSafety:
                     current_conflict = self._conflict(ego, points, cumulative, current, tracks, predictions)
                     if current_conflict is None:
                         self.details.update(decision="GO", target=current, speed_floor=current,
-                                            cause="second_merge_rear_safe_hold", conflict=None)
+                                            cause=("second_merge_rear_safe_hold" if zone == 'SECOND_ENTRY'
+                                                   else 'first_merge_rear_safe_hold'), conflict=None)
                         return current
                     checked.append((current, current_conflict))
                 alternatives = [(speed, hazard) for speed, hazard in checked
@@ -519,7 +604,8 @@ class MergeSafety:
                 if alternatives:
                     speed, hazard = max(alternatives, key=lambda item: (item[1]["time"], item[0]))
                     self.details.update(decision="MITIGATE", target=speed, speed_floor=speed,
-                                        cause="second_merge_rear_risk_mitigation",
+                                        cause=("second_merge_rear_risk_mitigation" if zone == 'SECOND_ENTRY'
+                                               else 'first_merge_rear_risk_mitigation'),
                                         requested_conflict=collision, conflict=hazard)
                     return speed
         self._remember_second_yield(collision, tracks, ego_match)

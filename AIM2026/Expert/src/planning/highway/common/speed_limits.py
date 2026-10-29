@@ -9,7 +9,7 @@ def _merge_ego_curvature_speed_floor(
     """Do not let route curvature brake either Ego-first merge."""
     details = getattr(lattice_result, "debug_details", {}) or {}
     safety = details.get("merge_safety", {}) or {}
-    if safety.get("zone") == "SECOND_ENTRY" and "speed_floor" in safety:
+    if safety.get("zone") in ("FIRST_PREDICTIVE", "SECOND_ENTRY") and "speed_floor" in safety:
         # This exact speed was checked on the current path. Signals, front
         # ACC and the final planner ceiling still take precedence below.
         planned_velocity = max(float(planned_velocity), float(safety["speed_floor"]))

@@ -99,7 +99,15 @@ class Inputs:
         self.packet = self.pose = None
         self.sequences = {False: 0, True: 0}
         self.frames = self.pose_frames = self.held_frames = 0
+        self.input_rejections = dict(count=0, pose=0, detection=0, last=None)
         self.reason = 'waiting_for_inference'
+
+    def _record_rejection(self, is_pose, seq, reason):
+        counts = self.input_rejections
+        counts['count'] += 1
+        counts['pose' if is_pose else 'detection'] += 1
+        counts['last'] = dict(stream='pose' if is_pose else 'detection',
+                              sequence=seq, reason=str(reason))
 
     def accept(self, data):
         row = json.loads(data)
@@ -116,6 +124,7 @@ class Inputs:
             (decode_pose if is_pose else decode)(data, generation=self.generation,
                                                  checkpoint_sha256=self.digest)
         except NotReady as exc:
+            self._record_rejection(is_pose, seq, exc)
             self.sequences[is_pose] = seq
             self.reason = str(exc)
             if is_pose or exc.reason in HARD_NOT_READY:
@@ -131,6 +140,7 @@ class Inputs:
             self.held_frames += 1
             return 'held_detection'
         except (ValueError, KeyError, TypeError) as exc:
+            self._record_rejection(is_pose, seq, exc)
             if self.ve_lead_memory is not None:
                 self.ve_lead_memory.reset()
             if is_pose:
@@ -473,6 +483,7 @@ def main(argv=None, control_tick=None):
                 sender.send(encoded)
             sent_ns = time.monotonic_ns() if sender else None
             row = dict(status='RUNNING' if fresh else 'WAITING', stale_hold=stale_hold, VE_frames=inputs.frames,
+                       input_rejections=inputs.input_rejections,
                        position_source=(inputs.pose or {}).get('ego_position_source', 'unavailable'),
                        VE_held=inputs.held_frames,
                        control_pose_frames=inputs.pose_frames, reason=None if fresh else inputs.reason,
