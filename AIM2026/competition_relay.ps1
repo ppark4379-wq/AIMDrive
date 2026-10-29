@@ -13,7 +13,9 @@ WSL2는 NAT라서 랜으로 들어온 UDP가 Windows에서 멈춘다. 이 스크
   powershell -NoProfile -ExecutionPolicy Bypass -File \\wsl.localhost\Ubuntu-20.04\home\dydwns\AIMDrive\AIM2026\competition_relay.ps1
   옵션: -SetIp (IP 고정)  -ControlCheck (차가 서 있을 때 brake 0.37/1.0을 보내 제어 경로까지 확인)
         -Config <WSL 경로>  -AdapterIndex <번호>  -NoRelay  -ProbeSeconds 5  -SharedPort 9090
-끝나면 WSL에서: cd ~/AIMDrive && python3 AIM2026/main.py --config AIM2026/config_competition.yaml --competition
+끝나면 WSL에서: conda activate lmdrive && cd ~/AIMDrive && python3 AIM2026/main.py --config AIM2026/config_competition.yaml
+(--competition은 붙이지 않는다: 터널 입구 LCS01과 C1256W000123 무시가 풀려 VE가 못 읽는 신호 앞에서 설 수 있다.
+ 10-28/29 실주행은 모두 옵션 없이 돌았다. 시스템 python3에는 torch가 없어 lmdrive 환경이 필요하다.)
 #>
 param(
     [string]$SimIp = "192.168.0.1",
@@ -202,4 +204,4 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host ""
 Write-Host "준비 완료. WSL 터미널에서:" -ForegroundColor Green
-Write-Host "    cd $repoWsl && python3 AIM2026/main.py --config AIM2026/config_competition.yaml --competition" -ForegroundColor White
+Write-Host "    conda activate lmdrive && cd $repoWsl && python3 AIM2026/main.py --config AIM2026/config_competition.yaml" -ForegroundColor White
