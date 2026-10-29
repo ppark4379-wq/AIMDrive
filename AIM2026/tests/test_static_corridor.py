@@ -263,3 +263,75 @@ def test_static_last_resort_switched_off(monkeypatch):
     for _ in range(10):
         result = tick()
     assert details(result)['phase'] == 'blocked'
+
+
+# The tunnel last-resort checks (test_tunnel_fallback.py) on the static section: same logic and values.
+def test_static_last_resort_counts_creeping_towards_the_stop_point_as_waiting():
+    plan, tick = stalled(gap_wall(2.8))
+    for speed in (1.3, .4, 1.2, 0., .8, 0.):                       # 3.0 s blocked, never at a full stop for long
+        result = tick(speed=speed)
+    assert 'fallback' not in details(result)
+    result = tick(speed=.2)                                       # 3.5 s
+    assert result.reason == 'static_corridor_follow' and 'fallback' in details(result)
+
+
+def test_static_last_resort_uses_the_first_stage_that_works():
+    plan, tick = stalled(gap_wall(2.4))
+    for _ in range(7):
+        result = tick()
+    assert result.reason == 'static_corridor_follow'
+    assert 0. <= details(result)['fallback']['required_clearance_m'] < plan.FALLBACK_CLEARANCES[0]
+    assert 0. < result.acc_target_velocity <= plan.FALLBACK_SPEED+1e-9
+
+
+def test_static_last_resort_contact_stage_after_a_full_stop_and_kept_while_moving():
+    plan, tick = stalled(gap_wall(1.8))                           # passes only with contact accepted
+    for speed in (1.5, .5, 1., .5, 1., .5, 1., .5):               # 4 s creeping
+        result = tick(speed=speed)
+    assert plan._fallback_active and details(result)['phase'] == 'blocked'
+    for _ in range(6):                                            # 0-2.5 s at a full stop: still waiting
+        result = tick()
+        assert details(result)['phase'] == 'blocked'
+    result = tick()                                               # 3.0 s at a full stop
+    assert result.reason == 'static_corridor_follow'
+    assert details(result)['fallback']['required_clearance_m'] < 0.
+    for speed in (.5, 1., 1.5):                                   # moving along it does not withdraw it
+        result = tick(.1, speed=speed)
+        assert result.reason == 'static_corridor_follow'
+
+
+def test_static_last_resort_ends_after_the_release_ticks_of_fresh_normal_paths():
+    from AIM2026.Expert.src.planning.static_obstacle.corridor_optimizer import RESOLVE_EVERY
+    plan, tick = stalled(gap_wall(2.8))
+    for _ in range(8):
+        tick()
+    assert plan._fallback_active
+    plan.occupancy.occupied = np.zeros(plan.occupancy.shape, dtype=bool)   # the blocks were a misdetection
+    plan.occupancy.version += 1
+    fresh = ticks = 0
+    while plan._fallback_active:
+        result = tick(.1, speed=2.)
+        ticks += 1
+        d = details(result)
+        assert result.reason == 'static_corridor_follow'
+        if 'fallback' in d:                                       # the last-resort path held by the normal solve
+            assert d['fallback']['source'] == 'held' and result.acc_target_velocity <= plan.FALLBACK_SPEED+1e-9
+            assert fresh == 0
+        else:
+            fresh += 1
+        assert ticks <= RESOLVE_EVERY+plan.FALLBACK_RELEASE_TICKS+1
+    assert fresh == plan.FALLBACK_RELEASE_TICKS
+    assert 'fallback' not in details(tick(.1, speed=2.))
+
+
+def test_static_last_resort_restores_the_nominal_clearance_after_every_solve():
+    plan, tick = stalled(gap_wall(2.4))
+    for _ in range(8):
+        tick()
+        assert plan.min_clearance == CORRIDOR_MIN_CLEARANCE
+
+
+def test_static_last_resort_leaves_a_free_section_unchanged():
+    plan, tick = stalled([])
+    result = tick(speed=5.)
+    assert details(result)['phase'] == 'follow' and 'fallback' not in details(result)
