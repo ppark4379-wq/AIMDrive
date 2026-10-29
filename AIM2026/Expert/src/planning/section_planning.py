@@ -20,6 +20,7 @@ from ..config.parameters.sections import (
     STATIC_OBSTACLE_ZONE_START,
     STATIC_OBSTACLE_ZONE_END,
     STATIC_OBSTACLE_ZONE_HALF_WIDTH,
+    STATIC_RECORDED_ACTIVE_X,
     HIGHWAY_ZONE_CENTERLINE,
     HIGHWAY_RIGHT_TURN_CENTERLINE,
     HIGHWAY_RIGHT_TURN_HALF_WIDTH,
@@ -50,8 +51,9 @@ class LatticePlanningProcess:
         self.zone_half_width = float(zone_half_width)
         self.planner = planner or LatticePlanner(sample_spacing=parameters.STATIC_SAMPLE_SPACING)
         self.static_avoidance = StaticAvoidance(self.planner)
-        from .static_obstacle.recorded_planner import RecordedStaticPlanner
-        self.recorded_static = (RecordedStaticPlanner(self.planner, background=True).use_static_zone_policy()
+        from .static_obstacle.recorded_planner import RecordedStaticPlanner, RecordedRouteGeometry
+        self.recorded_static = (RecordedStaticPlanner(self.planner, background=True,
+                                geometry=RecordedRouteGeometry(active_x=STATIC_RECORDED_ACTIVE_X)).use_static_zone_policy()
                                 if zone_bounds is None and zone_start == STATIC_OBSTACLE_ZONE_START
                                 else None)
         from .jamming.recorded_planner import JammingPlanner
@@ -88,8 +90,9 @@ class LatticePlanningProcess:
         from .static_obstacle.recorded_planner import RecordedStaticPlanner
         from .static_obstacle.corridor_optimizer import StaticCorridorPlanner
         if self.recorded_static is not None and occupancy is not None:
-            self.static_corridor = StaticCorridorPlanner(RecordedStaticPlanner(self.planner), occupancy,
-                                                         map_data_dir=self.map_data_dir)
+            self.static_corridor = StaticCorridorPlanner(
+                RecordedStaticPlanner(self.planner, geometry=self.recorded_static.geometry),
+                occupancy, map_data_dir=self.map_data_dir)
             if global_path is not None:
                 self.static_corridor.prepare(list(global_path))
         if self.recorded_jamming is not None and tunnel_map is not None:
