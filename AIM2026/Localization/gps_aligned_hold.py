@@ -19,6 +19,13 @@ from .gps_blackout_hold import GpsBlackoutHold, MAX_STATUS_GAP_S
 OFFSET_TAU_S = .7          # time constant for following a new GPS offset [s]
 OFFSET_FAST_GAP_M = .5     # an offset change larger than this ...
 OFFSET_FAST_TAU_S = .15    # ... is followed with this time constant [s]
+# Status samples without a matching IMU sample wait (no position meanwhile) for the next IMU sample; once it arrives
+# within this time of the last integrated sample, the heading over the gap is interpolated between the two.
+IMU_GAP_MAX_S = 1.
+# Longest source-clock interval between two status samples that is still integrated (trapezoid of their speeds and
+# headings). A lagging simulator sent status and IMU 0.3-0.54 s apart (10-27): with the old 0.25 s limit the tunnel
+# dead reckoning ended there for good. No position is published while the next sample is late.
+TRACK_GAP_MAX_S = 1.
 
 
 def forward_vector(value, dt=0.):
@@ -66,22 +73,57 @@ def aligned_forward(history, identity):
     return None, dict(method='missing')
 
 
+def bridged_forward(last, history, identity, now_ns):
+    """Heading for a status sample that no IMU sample matches: from the last integrated state to the next IMU sample.
+
+    A short IMU gap (a lost packet, an IMU history emptied by a source-clock reset) used to end dead reckoning for
+    good: the error stayed until GPS returned, so a car in the tunnel blackout stopped there. Returns
+    (forward, alignment); forward None with method 'waiting' while the next IMU sample may still come in time.
+    """
+    if last is None:
+        return None, dict(method='missing')
+    receipt, start = identity['received_ns'], last['received_ns']
+    after = next(((v, i) for v, i in history if i['received_ns'] >= receipt), None)
+    if after is not None:
+        span = after[1]['received_ns']-start
+        if 0 < span <= IMU_GAP_MAX_S*1e9:
+            fraction = (receipt-start)/span
+            a, b = last['forward'], forward_vector(after[0])
+            return tuple(x+fraction*(y-x) for x, y in zip(a, b)), dict(
+                method='gap_interpolation', source_delta_s=None, gap_s=round(span/1e9, 3))
+        return None, dict(method='missing')
+    if now_ns-start <= IMU_GAP_MAX_S*1e9:
+        return None, dict(method='waiting')
+    return None, dict(method='missing')
+
+
 class MotionTrack:
     """Continuous relative odometry, independent of GPS anchors and polling batches."""
     def __init__(self, convergence):
         self.convergence = convergence
         self.states = deque(maxlen=4096)
         self.failure = None
+        self.waiting = None         # why the newest status samples are not integrated yet (not a failure)
+        # Receipt of the last state integrated across a gap. The motion over a gap is assumed, not measured: at a
+        # run start MORAI held the car still for 0.38 s while the status kept its 4 m/s, and the track gained 1.4 m.
+        self.discontinuity_ns = None
 
     def update(self, speed, imu, now_ns):
         last = self.states[-1] if self.states else None
+        self.waiting = None
+        seen = [(v, i) for v, i in imu if i['received_ns'] <= now_ns]
         for value, identity in speed:
             receipt = identity['received_ns']
             if receipt > now_ns or (last and receipt <= last['received_ns']):
                 continue
-            forward, alignment = aligned_forward([(v, i) for v, i in imu if i['received_ns'] <= now_ns], identity)
+            forward, alignment = aligned_forward(seen, identity)
             if forward is None:
-                self.failure = 'imu_missing_or_stale'
+                forward, alignment = bridged_forward(last, seen, identity, now_ns)
+            if forward is None:
+                if alignment['method'] == 'waiting':
+                    self.waiting = 'imu_missing_or_stale'
+                else:
+                    self.failure = 'imu_missing_or_stale'
                 break
             speed_mps = value['signed_speed']/3.6
             if not all(math.isfinite(v) for v in (*forward, speed_mps)) or abs(speed_mps) > 100:
@@ -95,14 +137,16 @@ class MotionTrack:
             if last:
                 source_pair = source and last['source_stamp_ns']
                 dt = ((source-last['source_stamp_ns']) if source_pair else (receipt-last['received_ns']))/1e9
-                if not 0 < dt <= MAX_STATUS_GAP_S:
+                if not 0 < dt <= TRACK_GAP_MAX_S:
                     self.failure = 'invalid_motion_interval'
                     break
                 point = (last['xy'][0]+.5*(last['velocity'][0]+vx)*dt,
                          last['xy'][1]+.5*(last['velocity'][1]+vy)*dt)
                 distance = last['distance_m']+math.hypot(point[0]-last['xy'][0], point[1]-last['xy'][1])
+                if dt > MAX_STATUS_GAP_S or alignment['method'] == 'gap_interpolation':
+                    self.discontinuity_ns = receipt
             last = dict(received_ns=receipt, source_stamp_ns=source, xy=point, velocity=(vx, vy),
-                        yaw=math.atan2(forward[1], forward[0]), speed_mps=speed_mps,
+                        yaw=math.atan2(forward[1], forward[0]), forward=tuple(forward), speed_mps=speed_mps,
                         distance_m=distance, alignment=alignment)
             self.states.append(last)
 
@@ -158,6 +202,13 @@ class AlignedGpsBlackoutHold(GpsBlackoutHold):
             return
         while self.offsets and identity['received_ns']-self.offsets[0][0] > self.anchor_window_s*1e9:
             self.offsets.popleft()
+        gap = self.track.discontinuity_ns
+        if gap is not None and self.offsets and self.offsets[0][0] < gap:
+            # GPS before a bridged gap does not describe the track after it: start the offset from this fix, as a
+            # new track would (no 1 s mean across the gap, no smoothing from the old offset).
+            while self.offsets and self.offsets[0][0] < gap:
+                self.offsets.popleft()
+            self.smooth_offset = self.smooth_ns = None
         self.offsets.append((identity['received_ns'], tuple(a-b for a, b in zip(raw, point['xy']))))
         self.offset = tuple(sum(item[1][k] for item in self.offsets)/len(self.offsets) for k in (0, 1))
         anchor = tuple(a+b for a, b in zip(self.offset, point['xy']))
@@ -195,6 +246,13 @@ class AlignedGpsBlackoutHold(GpsBlackoutHold):
         elif self.core.distance_m > self.core.max_distance_m:
             self.core.failure = 'hold_distance_limit'
         return rows
+
+    def _stale_reason(self):
+        # Waiting for an IMU sample (or status samples a little late) is refused without ending the hold: a gap
+        # the track cannot bridge sets its own failure (imu_missing_or_stale, invalid_motion_interval).
+        if self.offset is None:
+            return super()._stale_reason()
+        return self.track.waiting or 'status_stale'
 
     def _comparison_metadata(self):
         return dict(super()._comparison_metadata(), anchor_filter=self.anchor_metadata,

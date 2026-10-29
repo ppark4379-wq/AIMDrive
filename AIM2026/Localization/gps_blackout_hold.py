@@ -314,6 +314,10 @@ class GpsBlackoutHold:
         self._last_source_stamp_ns = 0
         self._last_status_identity = {}
 
+    def _stale_reason(self):
+        """Reason for a recoverable refusal while the status samples are late, or None: the hold ends for good."""
+        return None
+
     def _refuse(self, identity, reason):
         self.counts['refused'] += 1
         self.last_reason = reason
@@ -360,6 +364,10 @@ class GpsBlackoutHold:
             if hold_s > self.core.max_hold_s:
                 self.core.failure = self.core.failure or 'hold_time_limit'
             elif not 0 <= status_age <= MAX_STATUS_GAP_S:
+                stale = self._stale_reason()
+                if stale is not None and self.core.failure is None:
+                    self.max_hold_seen_s = max(self.max_hold_seen_s, hold_s)
+                    return self._refuse(identity, stale)        # no position now, the hold goes on
                 self.core.failure = self.core.failure or 'status_stale'
             elif not rows and self.core.last_sample is None:
                 self.core.failure = self.core.failure or 'no_status_sample'
