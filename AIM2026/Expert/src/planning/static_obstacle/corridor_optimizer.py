@@ -14,7 +14,9 @@ recorded drivable corridor, widened by the map lanes). Each tick:
    the smoothing, a few rounds. Speed from curvature, clearance and stopping distance.
 The same MIN_CLEARANCE decides planning and stopping, so a valid plan never stops the car at its own pose.
 Last resort: blocked and standing (or creeping) for FALLBACK_STALL_S, the same solve is retried with the required
-clearance lowered step by step (the corridor condition stays) and the car drives on slowly.
+clearance lowered step by step (the corridor condition stays) and the car drives on slowly. A later layer that holds
+the car on a valid path for a standing obstacle shares that stall clock (note_held).
+Curvature alone never stops the car (CURVATURE_OVERRIDE): the least-bent path keeping every margin is driven slowly.
 """
 from collections import deque
 import json
@@ -52,6 +54,7 @@ from ...config.parameters.static_obstacle import (
     CORRIDOR_FALLBACK_CONTACT_STALL_S,
     CORRIDOR_FALLBACK_CONTACT_STALL_SPEED,
     CORRIDOR_FALLBACK_RELEASE_TICKS,
+    CORRIDOR_CURVATURE_OVERRIDE,
 )
 from ..lattice.structures import CandidatePath, LatticePlanningResult
 
@@ -90,6 +93,7 @@ class StaticCorridorPlanner:
     FALLBACK_CONTACT_STALL_S = CORRIDOR_FALLBACK_CONTACT_STALL_S         # full stop before a contact stage (< 0) [s]
     FALLBACK_CONTACT_STALL_SPEED = CORRIDOR_FALLBACK_CONTACT_STALL_SPEED  # [m/s]
     FALLBACK_RELEASE_TICKS = CORRIDOR_FALLBACK_RELEASE_TICKS # fresh normal paths in a row that end the last resort
+    CURVATURE_OVERRIDE = CORRIDOR_CURVATURE_OVERRIDE        # a path over the curvature limit only is driven at FALLBACK_SPEED
 
     def __init__(self, base, occupancy, map_data_dir=None):
         self.base = base              # RecordedStaticPlanner: geometry, global curve, recorded corridor
@@ -107,13 +111,15 @@ class StaticCorridorPlanner:
         self._held_error = (math.inf, math.inf)   # (distance, heading) of the car from the committed path
         self._global_xy = None
         self.clock = time.monotonic             # replaced by the replay's clock in offline checks
-        self._stall_since = None                # when the car began standing or creeping blocked
+        self._stall_since = None                # when the car began standing or creeping blocked (or held: note_held)
         self._fallback_active = False           # stays on until a path passes the normal clearance again
         self._fallback_stage = None             # index of the last stage that gave a path
         self._clear_ticks = 0                   # consecutive ticks with a normal path
         self._committed_relaxed = False         # the committed path came from a last-resort solve
         self._standing_since = None             # when the car came to a full stop, blocked
         self._contact_granted = False           # the contact stages are allowed until the last resort ends
+        self._stall_reset_due = False           # a normal path this tick: the stall clock clears next tick unless held
+        self._hold_released = False             # held on a valid path for FALLBACK_STALL_S: may creep until it ends
         self.fallback_log = deque(maxlen=1000)  # (clock, stage clearance) of the recent ticks that used the last resort
 
     # ------------------------------------------------------------------ geometry
@@ -366,6 +372,9 @@ class StaticCorridorPlanner:
         result = self._solve(ego, reference_path, global_path)
         if self.FALLBACK_STALL_S <= 0.:
             return result
+        if self._stall_reset_due:       # the last tick's normal path, and no later layer held the car on it
+            self._stall_since, self._hold_released = None, False
+        self._stall_reset_due = False
         info = None if result is None else result.debug_details['static_avoidance']
         if info is None or info.get('phase') != 'blocked':
             if info is not None and info.get('source') == 'new':
@@ -379,7 +388,12 @@ class StaticCorridorPlanner:
             # that passes and fails tick by tick would start and stop the car again).
             self._clear_ticks += 1
             if not self._fallback_active or info is None or self._clear_ticks >= self.FALLBACK_RELEASE_TICKS:
+                # The stall clock clears at the next tick, unless a later layer holds the car on this path meanwhile
+                # (note_held): blocked or held, the car has been waiting all along.
+                stall = (self._stall_since, self._hold_released)
                 self._reset_fallback()
+                self._stall_since, self._hold_released = stall
+                self._stall_reset_due = True
             return result
         self._clear_ticks = 0
         now = self.clock()
@@ -413,6 +427,27 @@ class StaticCorridorPlanner:
         self._fallback_stage = None
         self._standing_since = None
         self._contact_granted = False
+        self._hold_released = False
+
+    def note_held(self, ego):
+        """A later layer stops the car on this tick's valid path for a standing obstacle; called on each such tick.
+
+        The blocked path's stall clock and limits: True once the car has stood or crept (below FALLBACK_STALL_SPEED)
+        for FALLBACK_STALL_S, blocked or held, and from then on until a tick without the hold; the caller then lets the
+        car creep at FALLBACK_SPEED. Called after run() on the same tick, it keeps the clock run() would clear."""
+        if self.FALLBACK_STALL_S <= 0.:
+            return False
+        self._stall_reset_due = False
+        if self._hold_released:
+            return True
+        if abs(ego.velocity) >= self.FALLBACK_STALL_SPEED:
+            self._stall_since = None
+            return False
+        now = self.clock()
+        if self._stall_since is None:
+            self._stall_since = now
+        self._hold_released = now-self._stall_since >= self.FALLBACK_STALL_S
+        return self._hold_released
 
     def _contact_allowed(self):
         """The contact stages only after a full stop of FALLBACK_CONTACT_STALL_S; once used, until the last resort ends
@@ -552,6 +587,8 @@ class StaticCorridorPlanner:
         route = self.base.global_curve(np.r_[y0-ds, station_y])   # x of the route at x_-1, x_0 and the stations
         constraints = []
         any_heading = feasible.any(axis=0)
+        best = None     # (max curvature, station x, dense samples, violations) of the least-bent iterate with every
+                        # clearance and corridor margin kept: driven when curvature alone fails (CURVATURE_OVERRIDE)
         for attempt in range(2):
             if attempt:
                 if ok.all():
@@ -577,6 +614,10 @@ class StaticCorridorPlanner:
                 ok = clear_ok & curvature_ok & corridor_ok
                 details['violations'] = dict(clearance=int((~clear_ok).sum()), curvature=int((~curvature_ok).sum()),
                                              corridor=int((~corridor_ok).sum()))
+                if self.CURVATURE_OVERRIDE and (clear_ok & corridor_ok).all():
+                    bend = float(np.max(curvature))
+                    if best is None or bend < best[0]:
+                        best = (bend, station_x, (yy, xx, yaw, curvature, dense_clear), dict(details['violations']))
                 if ok.all() or repair == MAX_REPAIRS:
                     break
                 details['repairs'] = repair+1
@@ -605,22 +646,36 @@ class StaticCorridorPlanner:
                     cap = .9*MAX_CURVATURE*(1+slope**2)**1.5
                     for k in np.flatnonzero(curvature > CURVATURE_HOLD*MAX_CURVATURE):
                         constraints.append((KB[k], math.copysign(min(abs(second[k]), cap[k]), second[k])-K0[k]))
+        bent = False
         if not ok.all():
             if held is not None:
                 # The new solve failed but the committed path is still clear on the current map: keep it.
                 details['new_plan_error'] = 'smoothed_path_violation'
                 return self._finish(ego, held, False, pose_clear, details, begin, source='previous')
-            bad = int(np.flatnonzero(~ok)[0])
-            blocked = True
-            yy, xx, yaw, curvature, dense_clear = (v[:max(bad, 2)] for v in (yy, xx, yaw, curvature, dense_clear))
-            details['error'] = 'smoothed_path_violation'
+            if best is not None and not blocked:
+                # A way through exists and only the curvature limit failed: a bend tighter than the tracker's limit is
+                # no obstacle. Drive the least-bent path that keeps every clearance and corridor margin, slowly; it is
+                # re-planned from the measured pose each tick and never committed (a held path must pass the limit).
+                # A path blocked further on still stops where the curvature first fails, as before.
+                bent = True
+                _, station_x, (yy, xx, yaw, curvature, dense_clear), details['violations'] = best
+                details['curvature_override'] = dict(max_curvature=round(best[0], 3), limit=MAX_CURVATURE,
+                                                     speed_cap_mps=self.FALLBACK_SPEED)
+            else:
+                bad = int(np.flatnonzero(~ok)[0])
+                blocked = True
+                yy, xx, yaw, curvature, dense_clear = (v[:max(bad, 2)] for v in (yy, xx, yaw, curvature, dense_clear))
+                details['error'] = 'smoothed_path_violation'
         if held is not None and blocked and held[0][-1] > yy[-1]:
             details['new_plan_error'] = 'blocked_earlier_than_committed'
             return self._finish(ego, held, False, pose_clear, details, begin, source='previous')
         self.previous = (station_y, station_x)
-        if not blocked:
+        if not blocked and not bent:
             self.committed = (yy, xx, yaw, curvature)
-        return self._finish(ego, (yy, xx, yaw, curvature, dense_clear), blocked, pose_clear, details, begin)
+        result = self._finish(ego, (yy, xx, yaw, curvature, dense_clear), blocked, pose_clear, details, begin)
+        if bent:
+            result.acc_target_velocity = min(result.acc_target_velocity, self.FALLBACK_SPEED)
+        return result
 
     def _held_path(self, ego, pose_clear):
         """The committed path ahead of the car, if the car is on it and it is still valid on the current map."""

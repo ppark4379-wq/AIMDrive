@@ -12,7 +12,8 @@ from ..static_obstacle.corridor_optimizer import StaticCorridorPlanner, ESCAPE_D
 from ...config.parameters.jamming import (TIGHT_GAP_MARGIN, TIGHT_GAP_SPEED, TUNNEL_MAX_SPEED_KPH,
                                           TUNNEL_CLEARANCE_SPEED, FALLBACK_STALL_S, FALLBACK_STALL_SPEED,
                                           FALLBACK_CLEARANCES, FALLBACK_SPEED, FALLBACK_RELEASE_TICKS,
-                                          FALLBACK_CONTACT_STALL_S, FALLBACK_CONTACT_STALL_SPEED)
+                                          FALLBACK_CONTACT_STALL_S, FALLBACK_CONTACT_STALL_SPEED,
+                                          CURVATURE_OVERRIDE)
 
 ROAD_STEP = .25           # longitudinal spacing of the tabulated road edges [m]
 ROAD_PROBE = 15.          # lateral half-length of the probe line that cuts the road polygon [m]
@@ -33,6 +34,7 @@ class TunnelCorridorPlanner(StaticCorridorPlanner):
     FALLBACK_CONTACT_STALL_S = FALLBACK_CONTACT_STALL_S
     FALLBACK_CONTACT_STALL_SPEED = FALLBACK_CONTACT_STALL_SPEED
     FALLBACK_RELEASE_TICKS = FALLBACK_RELEASE_TICKS
+    CURVATURE_OVERRIDE = CURVATURE_OVERRIDE
 
     def __init__(self, base, occupancy, section, road_boundary):
         super().__init__(base, occupancy)

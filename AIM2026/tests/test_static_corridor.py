@@ -13,6 +13,7 @@ from AIM2026.Expert.src.config.parameters import lattice as p
 from AIM2026.Expert.src.config.parameters.static_obstacle import CORRIDOR_MIN_CLEARANCE, MAX_CURVATURE
 from AIM2026.Expert.src.planning.lattice.lattice_planner import LatticePlanner
 from AIM2026.Expert.src.planning.static_obstacle.recorded_planner import RecordedStaticPlanner
+from AIM2026.Expert.src.planning.static_obstacle import corridor_optimizer
 from AIM2026.Expert.src.planning.static_obstacle.corridor_optimizer import StaticCorridorPlanner
 from AIM2026.Expert.src.planning.section_planning import LatticePlanningProcess
 from AIM2026.Expert.static_map import StaticObstacleMap
@@ -263,6 +264,29 @@ def test_static_last_resort_switched_off(monkeypatch):
     for _ in range(10):
         result = tick()
     assert details(result)['phase'] == 'blocked'
+
+
+def test_static_curvature_alone_does_not_stop_the_car(monkeypatch):
+    # Only the curvature limit fails (lowered here; tunnel run 20261030-044207: 0.296 > 0.24 stopped the car at its
+    # start): the least-bent path keeping every clearance and corridor margin is driven slowly and never committed.
+    monkeypatch.setattr(corridor_optimizer, 'MAX_CURVATURE', .005)
+    plan = planner([IN_LANE]+RIGHT)
+    result = plan.run(ego(), [], ROUTE)
+    d = details(result)
+    assert d['phase'] == 'follow' and d['path_validated'] and 'error' not in d
+    assert d['violations']['curvature'] > 0 and d['violations']['clearance'] == d['violations']['corridor'] == 0
+    assert d['curvature_override']['limit'] == .005
+    assert d['min_clearance_m'] >= CORRIDOR_MIN_CLEARANCE-.05
+    assert 0. < result.acc_target_velocity <= plan.FALLBACK_SPEED+1e-9
+    assert lateral_at(result, -142.7) > -59.                     # still round the obstacle
+    assert plan.committed is None
+
+
+def test_static_curvature_override_switched_off(monkeypatch):
+    monkeypatch.setattr(corridor_optimizer, 'MAX_CURVATURE', .005)
+    monkeypatch.setattr(StaticCorridorPlanner, 'CURVATURE_OVERRIDE', False)
+    d = details(planner([IN_LANE]+RIGHT).run(ego(), [], ROUTE))
+    assert d['phase'] == 'blocked' and d['error'] == 'smoothed_path_violation'
 
 
 # The tunnel last-resort checks (test_tunnel_fallback.py) on the static section: same logic and values.
