@@ -16,6 +16,13 @@ from ..scenarios.segment_modes.scenario import MissionScenario
 from ..tools import run_competition_aim2026 as run_competition
 
 
+def setUpModule():
+    # The real cleanup asks Windows PowerShell for the UDP port owners (seconds per run); it has its own tests.
+    patcher = patch.object(run_competition.tunnel, 'clear_stale_sensor_receivers')
+    patcher.start()
+    unittest.addModuleCleanup(patcher.stop)
+
+
 class CompetitionScenarioTest(unittest.TestCase):
     def test_the_harness_runs_over_the_competition_course_not_over_a_segment_mission(self):
         scenario = run_competition.CompetitionScenario
@@ -125,6 +132,13 @@ class CompetitionLauncherTest(unittest.TestCase):
                 self.run_main(argv)
             self.assertEqual(raised.exception.code, 2, argv)
 
+    def test_clear_leftovers_runs_before_every_run_only_when_asked(self):
+        with patch.object(run_competition.tunnel, 'clear_leftover_actors') as clear:
+            self.run_main(['--runs', '3'])
+            self.assertEqual(clear.call_count, 0)
+            self.run_main(['--runs', '3', '--clear-leftovers'])
+            self.assertEqual(clear.call_count, 3)
+
     def test_check_with_a_chosen_scene_validates_only_that_scene(self):
         code, calls = self.run_main(['--check', '--tunnel-scene', 'vehicle'])
         self.assertEqual((code, [call[3] for call in calls]), (0, ['vehicle']))
@@ -199,6 +213,27 @@ class CompetitionLauncherTest(unittest.TestCase):
         self.assertEqual([row['result'] for row in rows], ['collision', 'completed', 'completed'])
         self.assertEqual([row['tunnel_scene'] for row in rows], ['legacy', 'static', 'pedestrian'])
 
+    def test_a_run_with_ignored_contacts_is_marked_not_collision_free(self):
+        results = self.root / 'results.jsonl'
+        original = run_competition.run_one
+
+        def fake(arguments, options=None, record=None, limits=None, scene=None):
+            record.update(run_seed=1, run_instance_id='id', tunnel_scene='vehicle', output=str(self.root / 'run'))
+            if '--seed' in arguments and options and options.get('ignore_collisions'):
+                record['ignored_contacts'] = {'1': {'first_seen_s': 4.0}}
+            return 0
+        with patch.object(run_competition, 'run_one', fake), patch.object(run_competition, 'RUNTIME', self.root / 'rt'), \
+                patch.object(run_competition, 'ensure_static_library'), patch.object(run_competition.time, 'sleep'):
+            for flag in ([], ['--ignore-collisions']):
+                with patch('builtins.print'):
+                    run_competition.main(['--config', str(self.config), '--no-virtual-gps', '--runs', '1', '--seed', '5',
+                                          '--results', str(results), *flag])
+        rows = [json.loads(line) for line in results.read_text(encoding='utf-8').splitlines()]
+        self.assertEqual([(row['result'], row['collision_free']) for row in rows],
+                         [('completed', True), ('completed', False)])
+        self.assertIsNone(rows[0]['ignored_contacts'])
+        self.assertEqual(rows[1]['ignored_contacts'], {'1': {'first_seen_s': 4.0}})
+
     def test_ctrl_c_stops_the_campaign_after_the_cleanup(self):
         code, calls = self.run_main(['--runs', '4'], outcomes=[0, run_competition.INTERRUPTED, 0, 0])
         self.assertEqual((code, len(calls)), (run_competition.INTERRUPTED, 2))
@@ -238,6 +273,53 @@ class HighwayOptionsTest(unittest.TestCase):
         bare = {}
         run_competition.apply_highway_options(bare, {})
         self.assertEqual(bare, {'highway_merge_static_vehicle': {'enabled': False}})
+
+
+class EmptyTunnelTest(unittest.TestCase):
+    def test_the_empty_tunnel_switches_every_tunnel_scenario_off(self):
+        scenario = object.__new__(run_competition.CompetitionScenario)
+        scenario.cfg = {}
+        scenario.competition_sequence, scenario.competition_tunnel_scene = 1, 'legacy'
+        scenario.empty_tunnel = True
+        with patch('builtins.print'):
+            scenario._configure_scene()
+        self.assertEqual([scenario.cfg[key]['enabled'] for key in
+                          ('tunnel_sudden_brake', 'tunnel_dynamic', 'tunnel_vehicle_dynamic')], [False] * 3)
+        scenario.empty_tunnel = False
+        with patch('builtins.print'):
+            scenario._configure_scene()
+        self.assertTrue(scenario.cfg['tunnel_sudden_brake']['enabled'])      # the normal scene is untouched
+
+    def test_the_empty_tunnel_is_a_scene_choice_but_not_a_skip_choice(self):
+        self.assertNotIn(run_competition.EMPTY_TUNNEL, run_competition.SCENE_NAMES)      # so --skip cannot name it
+
+
+class IgnoreCollisionsTest(unittest.TestCase):
+    def scenario(self, ignore):
+        scenario = object.__new__(run_competition.CompetitionScenario)
+        scenario.ignore_collisions = ignore
+        return scenario
+
+    def state(self, contacts):
+        return {'collision_objects': list(contacts), 'x': 1.0, 'y': 2.0, 'speed_mps': 3.0}
+
+    def test_a_contact_is_hidden_from_the_drive_loop_but_written_down(self):
+        scenario = self.scenario(True)
+        base = run_competition.CompetitionScenario.__mro__[1]
+        with patch.object(base, 'get_ego_motion_state', return_value=self.state(['7', 'Ego', '-100'])):
+            with patch('builtins.print'):
+                seen = scenario.get_ego_motion_state()
+                scenario.get_ego_motion_state()          # the same contact reported again is not a second entry
+        self.assertEqual(seen['collision_objects'], [])
+        self.assertEqual(sorted(scenario.ignored_contacts), ['7'])      # the Ego's own / anonymous records are not contacts
+        self.assertEqual(scenario.ignored_contacts['7']['ego_x'], 1.0)
+
+    def test_without_the_option_contacts_still_end_the_run(self):
+        scenario = self.scenario(False)
+        base = run_competition.CompetitionScenario.__mro__[1]
+        with patch.object(base, 'get_ego_motion_state', return_value=self.state(['7'])):
+            self.assertEqual(scenario.get_ego_motion_state()['collision_objects'], ['7'])
+        self.assertFalse(hasattr(scenario, 'ignored_contacts'))
 
 
 class TunnelSceneChoiceTest(unittest.TestCase):

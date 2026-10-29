@@ -46,6 +46,8 @@ RUNTIME = RUNNER_ROOT / '.runtime/competition_aim2026'
 MISSION = 'full_loop_competition'   # the name the harness's validation log and report use
 # --tunnel-scene names -> the rotation's own scene names (the sudden-brake NPC scene is called "legacy" there).
 SCENE_NAMES = {'brake': 'legacy', 'static': 'static', 'pedestrian': 'pedestrian', 'vehicle': 'vehicle'}
+SELF_LABELS = ('Ego', '-100')   # MORAI lists the Ego itself and an anonymous record before any driving: not contacts
+EMPTY_TUNNEL = 'empty'      # --tunnel-scene empty: the plain tunnel, no scenario inside it
 RUNS = len(TUNNEL_SCENES)   # one pass over the tunnel scene rotation
 # A whole course lasts several times the tunnel window, and signals/roundabouts hold the Ego for a while.
 ROUND_TIMEOUT_S = 900.
@@ -101,6 +103,16 @@ class CompetitionScenario(graft(harness.HighwayScenario, FullLoopCompetitionScen
     """The competition course with the harness's UDP Expert, collision evidence and startup-contact checks."""
     stall_s = STALL_S
     forced_tunnel_scene = None
+    empty_tunnel = False
+
+    def _configure_scene(self):
+        super()._configure_scene()
+        if self.empty_tunnel:
+            # Same course, nothing happens in the tunnel (the rotation record keeps its usual scene number).
+            self.cfg['tunnel_sudden_brake']['enabled'] = False
+            self.cfg['tunnel_dynamic']['enabled'] = False
+            self.cfg['tunnel_vehicle_dynamic']['enabled'] = False
+            print('[Competition] empty tunnel: no scenario inside the tunnel', flush=True)
     watch_stall = tunnel.TunnelScenario.watch_stall
 
     def _select_scene(self):
@@ -115,6 +127,25 @@ class CompetitionScenario(graft(harness.HighwayScenario, FullLoopCompetitionScen
         result = super().prepare_full_loop_route()
         self._validation_controller = 'aim2026_competition'
         return result
+
+    ignore_collisions = False
+
+    def get_ego_motion_state(self):
+        state = super().get_ego_motion_state()
+        if not self.ignore_collisions:
+            return state
+        # Watching the run by eye: a contact is written down but does not end the run. The harness has already
+        # journaled it in contact_events.jsonl; the drive loop and the startup check see an empty contact list.
+        seen = state.get('collision_objects') or []
+        known = self.__dict__.setdefault('ignored_contacts', {})
+        for item in seen:
+            if item not in known and item not in SELF_LABELS:
+                known[item] = {'first_seen_s': round(time.monotonic() - getattr(self, '_contact_started_monotonic',
+                                                                                 time.monotonic()), 1),
+                               'ego_x': state.get('x'), 'ego_y': state.get('y'), 'speed_mps': state.get('speed_mps')}
+                print('[Competition] contact {!r} ignored (--ignore-collisions) at ({}, {})'.format(
+                    item, state.get('x'), state.get('y')), flush=True)
+        return dict(state, collision_objects=[])
 
     def on_expert_timeline_tick(self, elapsed, ego_state, current_s, remaining_s):
         super().on_expert_timeline_tick(elapsed, ego_state, current_s, remaining_s)
@@ -131,7 +162,9 @@ def run_one(argv, options=None, record=None, limits=None, scene=None):
     parser.add_argument('--check', action='store_true', help='Validate without connecting to MORAI')
     parser.add_argument('--config', type=Path, default=ROOT / 'AIM2026/config_local.yaml')
     parser.add_argument('--expert-python', default=harness.expert_python())
-    parser.add_argument('--speed-cap-kmh', type=validate_max_velocity_kmh, default=None)
+    parser.add_argument('--speed-cap-kmh', type=validate_max_velocity_kmh, default=None,
+                        help='Lower the Expert\'s speed limits to this value for the run (default: no cap, the Expert '
+                             'keeps its own limits)')
     parser.add_argument('--seed', type=int)
     parser.add_argument('--validation-events', action='store_true')
     parser.add_argument('--strict-collisions', action='store_true')
@@ -145,7 +178,7 @@ def run_one(argv, options=None, record=None, limits=None, scene=None):
         if key.startswith('ve_'):
             config.pop(key)
     config.update(drive_control_mode='aimdrive_expert',
-                  expert_speed_cap_kmh=60. if args.speed_cap_kmh is None else args.speed_cap_kmh,
+                  expert_speed_cap_kmh=args.speed_cap_kmh,      # None: the Expert runs with its own speed limits
                   expert_ros_remaps=[], expert_traffic_light_control=False, route_debug_enabled=False,
                   max_laps=1, auto_repeat=False, route_setup_attempts=1)
     config.setdefault('sync_runtime', {})['enabled'] = False
@@ -169,6 +202,8 @@ def run_one(argv, options=None, record=None, limits=None, scene=None):
     args.mission = MISSION
     scenario.competition_static_installed_models = options.get('installed_models')
     scenario.forced_tunnel_scene = options.get('tunnel_scene')
+    scenario.empty_tunnel = bool(options.get('empty_tunnel'))
+    scenario.ignore_collisions = bool(options.get('ignore_collisions'))
     scenario.stall_s = float(limits.get('stall_s', STALL_S))
     scenario.args, scenario.output = args, output
     scenario.driver_output = RUNTIME / 'expert' / stamp
@@ -214,9 +249,10 @@ def run_one(argv, options=None, record=None, limits=None, scene=None):
         if old_alarm is not None:
             signal.setitimer(signal.ITIMER_REAL, 0)
             signal.signal(signal.SIGALRM, old_alarm)
-        record.update(run_seed=getattr(scenario, 'run_seed', None),
+        record.update(ignored_contacts=dict(getattr(scenario, 'ignored_contacts', {})),
+                      run_seed=getattr(scenario, 'run_seed', None),
                       run_instance_id=getattr(scenario, 'run_instance_id', None),
-                      tunnel_scene=getattr(scenario, 'competition_tunnel_scene', None))
+                      tunnel_scene=EMPTY_TUNNEL if scenario.empty_tunnel else getattr(scenario, 'competition_tunnel_scene', None))
         try:
             try:
                 scenario.stop_expert_controller()
@@ -268,14 +304,23 @@ def main(argv=None):
     parser.add_argument('--results', type=Path,
                         help='JSON-lines file with one row per run '
                              '(default .runtime/competition_aim2026/results/competition-<time>.jsonl)')
+    parser.add_argument('--ignore-collisions', action='store_true',
+                        help='Do not end a run on a contact (static, vehicle, pedestrian, start-up): it is printed and '
+                             'written to the results row as ignored_contacts, and the run goes on. Meant for watching '
+                             'a run by eye; a run with contacts is not a collision-free run. The stall and round limits '
+                             'still apply')
+    parser.add_argument('--clear-leftovers', action='store_true',
+                        help='Before every run, remove all actors but the Ego from MORAI, so a failed run cannot block '
+                             'the following ones (only for a simulator used for these runs)')
     parser.add_argument('--no-virtual-gps', dest='virtual_gps', action='store_false',
                         help='Keep real GPS inside the tunnel; the dead-reckoning provider stays idle')
     parser.add_argument('--merge-static-vehicle', action='store_true',
                         help='Highway section: also place the one stopped car on the merge ramp (left out by default, '
                              'as in the highway-only launcher; moving traffic is the same either way)')
-    parser.add_argument('--tunnel-scene', choices=sorted(SCENE_NAMES),
+    parser.add_argument('--tunnel-scene', choices=sorted(SCENE_NAMES) + [EMPTY_TUNNEL],
                         help='Run this tunnel scene every time instead of the rotation {} (the whole course is run '
-                             'either way); brake is the sudden-brake NPC scene'.format(' -> '.join(TUNNEL_SCENES)))
+                             'either way); brake is the sudden-brake NPC scene, empty is the plain tunnel with nothing in it'.format(
+                                 ' -> '.join(TUNNEL_SCENES)))
     parser.add_argument('--skip', nargs='+', choices=sorted(SCENE_NAMES), default=[], metavar='SCENE',
                         help='Leave these tunnel scenes out of the rotation ({}); the remaining ones follow each '
                              'other in the usual order, starting with the first, e.g. --skip static'.format(
@@ -310,7 +355,7 @@ def main(argv=None):
     if args.skip and args.tunnel_scene:
         parser.error('--skip is for the rotation; leave out --tunnel-scene')
     skipped = {SCENE_NAMES[name] for name in args.skip}
-    scenes = ([SCENE_NAMES[args.tunnel_scene]] if args.tunnel_scene
+    scenes = ([SCENE_NAMES.get(args.tunnel_scene, 'legacy')] if args.tunnel_scene
               else [scene for scene in TUNNEL_SCENES if scene not in skipped])
     if not scenes:
         parser.error('--skip leaves no tunnel scene to run')
@@ -329,6 +374,10 @@ def main(argv=None):
     options = {}
     if args.merge_static_vehicle:
         options['merge_static_vehicle'] = True
+    if args.ignore_collisions:
+        options['ignore_collisions'] = True
+    if args.tunnel_scene == EMPTY_TUNNEL:
+        options['empty_tunnel'] = True
     if (args.competition_morai or args.morai_assets is not None) and 'static' in scenes:
         source = args.morai_assets or tunnel.COMPETITION_MODELS
         models = (tunnel.installed_models(args.morai_assets) if args.morai_assets is not None
@@ -378,6 +427,13 @@ def main(argv=None):
         record, started = {}, datetime.now()
         outcome, reason = 'completed', None
         try:
+            tunnel.clear_stale_sensor_receivers()      # a killed run's workers keep the sensor ports
+            if args.clear_leftovers:
+                try:
+                    tunnel.clear_leftover_actors()
+                except Exception as error:
+                    print('[Competition] could not clear leftover actors: {}: {}'.format(type(error).__name__, error),
+                          flush=True)
             code = run_one(arguments(index), options_for(index), record=record, limits=limits)
             if code == INTERRUPTED:
                 outcome = 'interrupted'
@@ -398,18 +454,24 @@ def main(argv=None):
                    run_instance_id=record.get('run_instance_id'),
                    started_at=started.isoformat(timespec='seconds'), ended_at=ended.isoformat(timespec='seconds'),
                    duration_s=round((ended - started).total_seconds(), 1),
+                   collision_free=not record.get('ignored_contacts'),
+                   ignored_contacts=record.get('ignored_contacts') or None,
                    output=record.get('output'), driver_output=record.get('driver_output'),
                    report=str(report) if report is not None and report.is_file() else None)
         rows.append(row)
         tunnel.append_result(results_path, row)
         results.append((row['tunnel_scene'], outcome if outcome in ('completed', 'interrupted')
                         else 'failed ({}): {}'.format(outcome, reason)))
+        if row['ignored_contacts'] and outcome == 'completed':
+            print('[Competition] run {} completed WITH ignored contacts {} - not a collision-free run'.format(
+                index + 1, sorted(row['ignored_contacts'])), flush=True)
         if outcome == 'interrupted':
             break
         if index + 1 < runs:
             time.sleep(RUN_GAP_S)
     for index, (scene, result) in enumerate(results, 1):
-        print('[Competition] run {} (tunnel {}): {}'.format(index, scene, result), flush=True)
+        note = ' (with ignored contacts, not collision-free)' if not rows[index - 1]['collision_free'] else ''
+        print('[Competition] run {} (tunnel {}): {}{}'.format(index, scene, result, note), flush=True)
     failed = [row for row in rows if row['result'] not in ('completed', 'interrupted')]
     if failed:
         print('[Competition] failed runs (seed, reason, folder):', flush=True)

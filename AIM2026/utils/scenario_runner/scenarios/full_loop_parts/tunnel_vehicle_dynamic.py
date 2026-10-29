@@ -22,7 +22,11 @@ from ...utils.transform_utils import (
     interpolate_on_polyline,
     project_distance_on_polyline,
 )
+from .vehicle_common import actors_near
 
+
+SPAWN_ATTEMPTS = 5          # a vehicle can start a few seconds late; the pedestrian spawn (tunnel_dynamic) is timed and keeps 3
+SPAWN_RETRY_PAUSE_SEC = 1.0
 
 class TunnelVehicleHandler:
     def validate(self, context):
@@ -425,6 +429,10 @@ class TunnelVehicleHandler:
         self.record_interruption(context, error)
         raise error
 
+    @staticmethod
+    def _actors_near(context, x, y, radius_m):
+        return actors_near(context, x, y, radius_m)
+
     def _read_state(self, context):
         actor = context.tunnel_vehicle_actor
         state = actor.get_actor_state()
@@ -692,22 +700,47 @@ class TunnelVehicleHandler:
             route = plan["route_links"][p["route_index"] :]
             endpoint = self._native_route_endpoint(context, route)
             context.tunnel_vehicle_result["motion_commands"]["route_endpoint"] = endpoint
-            actor = context._spawn_highway_vehicle(
-                context.grpc.make_transform(p["x"], p["y"], p["z"], p["yaw_deg"]),
-                route,
-                p["waypoint"],
-                plan["behavior"],
-                spawn_speed,
-                end_waypoint=endpoint["waypoint"],
-                configure_ai=False,
-                unpause=not wait_departure,
-                spawn_paused=wait_departure,
-                on_spawn=track,
-                spawn_velocity=spawn_speed,
-                command_report=context.tunnel_vehicle_result["motion_commands"],
-            )
+            def spawn_once():
+                return context._spawn_highway_vehicle(
+                    context.grpc.make_transform(p["x"], p["y"], p["z"], p["yaw_deg"]),
+                    route,
+                    p["waypoint"],
+                    plan["behavior"],
+                    spawn_speed,
+                    end_waypoint=endpoint["waypoint"],
+                    configure_ai=False,
+                    unpause=not wait_departure,
+                    spawn_paused=wait_departure,
+                    on_spawn=track,
+                    spawn_velocity=spawn_speed,
+                    command_report=context.tunnel_vehicle_result["motion_commands"],
+                )
+
+            actor = spawn_once()
+            # A rejected spawn is retried only while nothing at all stands near the spot: an occupied spot
+            # cannot be fixed by asking again, and an actor that appeared despite the rejection must not be
+            # duplicated.
+            attempts = 1
+            while (actor is None and attempts < SPAWN_ATTEMPTS
+                   and not context.tunnel_vehicle_result.get("spawned")):
+                # MORAI can publish an actor a moment after it answered "failed" (the grpc client waits 0.35 s
+                # for that), so look only after a pause: an actor made by the rejected request must show up
+                # before it is asked for again.
+                time.sleep(SPAWN_RETRY_PAUSE_SEC)
+                if self._actors_near(context, p["x"], p["y"], 12.0):
+                    break
+                attempts += 1
+                print(f"[TunnelVehicle] spawn rejected; retry {attempts}/{SPAWN_ATTEMPTS}")
+                actor = spawn_once()
+            context.tunnel_vehicle_result["spawn_attempts"] = attempts
         if actor is None:
-            self._fail(context, "Failed to spawn tunnel vehicle or assign route")
+            # MORAI refuses a spawn on an occupied spot. Record what stands there so the failure can be told
+            # apart from a route problem; never remove anything that is not ours.
+            nearby = self._actors_near(context, p["x"], p["y"], 12.0)
+            context.tunnel_vehicle_result["spawn_failure_nearby_actors"] = nearby
+            print(f"[TunnelVehicle] spawn failed at ({p['x']:.1f},{p['y']:.1f}); actors within 12 m: {nearby}")
+            self._fail(context, "Failed to spawn tunnel vehicle or assign route"
+                       + (f" (occupied by {[a['id'] for a in nearby]})" if nearby else ""))
         context.tunnel_vehicle_spawned_at = self._now(context)
         context.tunnel_vehicle_startup_wall_at = time.monotonic()
         context.tunnel_vehicle_command_speed = spawn_speed

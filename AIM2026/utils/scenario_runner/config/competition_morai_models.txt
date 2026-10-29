@@ -1,5 +1,9 @@
 # Obstacle/vehicle/pedestrian assets shipped with the competition MORAI (Bundle v.S4.251001.MolitComp03).
 # One asset name per line; names are matched ignoring case and punctuation. Used by run_tunnel_aim2026.sh --competition-morai.
+# Left out although the competition MORAI ships them: these fell through the tunnel floor right after being placed
+# (WoodBox, CargoBox, PE_Firewall_White; the height dropped to hundreds of metres below the map, tested 2026-10-29).
+# Same for PE_Drum, PE_Firewall_Orange, RedBarrel, Steel_Barricade, YellowBarrel (an overnight run of 300 static scenes: every
+# "initial spawn readback deadline" failure, 69 in all, was one of these models falling below the tunnel floor).
 2016_hyundai_genesis_dh
 2017_hyundai_solati_h350
 2019_hyundai_genesis_g90
@@ -28,7 +32,6 @@ bollard01
 bollard04
 boy
 boy2
-cargobox
 concrete-barrier
 concrete_barricade01
 concrete_barricade02
@@ -104,15 +107,11 @@ obj_kia_niro
 obj_kia_sorento
 obj_kona_ev_2019
 obj_niro_ev_2020
-pe_drum
-pe_firewall_orange
-pe_firewall_white
 ped_pet1
 police1
 police_f_1
 police_m_2
 prius_naverlabs
-red_barrel
 road_sign_mark
 scooter1
 scooter2
@@ -122,7 +121,6 @@ soul_ev_2016
 soul_ev_2020
 speed_bump
 sportbike
-steel_barricade
 stinger_2020
 traffic_barrel
 tree_01
@@ -142,7 +140,5 @@ woman5
 woman6
 woman7
 woman8
-woodbox
 worker_f_1
 worker_m_1
-yellow_barrel
