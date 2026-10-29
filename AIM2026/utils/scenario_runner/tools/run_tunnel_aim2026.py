@@ -113,6 +113,25 @@ def _load(path):
     return document
 
 
+def competition_config(base_config, folder):
+    """Copy of the runtime config with the competition MORAI build's vehicle interface.
+
+    The competition build (25.S4) sends the 181 B Competition Vehicle Status, takes the 55 B front-steer-only command
+    and steers positive = left. A config written for another build (245 B status, 59 B command with rear steer, the
+    opposite steer sign) leaves the Expert without any vehicle status. Only these three values are set; addresses,
+    ports and everything else stay the PC's own.
+    """
+    runtime = _load(base_config)
+    ego = runtime.setdefault('Ego', {})
+    ego['cmd_layout'] = 'single_steer55'
+    ego.pop('local_status_bytes', None)
+    runtime.setdefault('Control', {})['positive_steer'] = 'left'
+    folder.mkdir(parents=True)
+    destination = folder / 'runtime.yaml'
+    destination.write_text(yaml.safe_dump(runtime, allow_unicode=True, sort_keys=False), encoding='utf-8')
+    return destination
+
+
 def virtual_gps_config(base_config, folder):
     """Copy of the runtime config whose Localization masks real GPS inside the tunnel zone.
 
@@ -481,7 +500,8 @@ def main(argv=None):
     parser.add_argument('--seed', type=int, help='First run seed; later runs use seed+1, seed+2, ...')
     parser.add_argument('--competition-morai', action='store_true',
                         help='static: the simulator is the competition MORAI; layouts that use a model it does not '
-                             'ship are left out (model list: config/competition_morai_models.txt)')
+                             'ship are left out (model list: config/competition_morai_models.txt), and the competition build\'s '
+                             'vehicle interface (181 B status, single_steer55, positive_steer left) is used')
     parser.add_argument('--morai-assets', type=Path, metavar='FOLDER',
                         help='static: like --competition-morai, but read the models from this MORAI launcher folder '
                              '(or its Bundle folder)')
@@ -540,22 +560,28 @@ def main(argv=None):
     if args.morai_assets is not None or args.competition_morai:
         if args.morai_assets is not None and args.competition_morai:
             parser.error('use either --competition-morai or --morai-assets')
-        if 'static' not in (rotation if rotating else (args.variant,)):
-            parser.error('--competition-morai/--morai-assets are for the static scene '
-                         '(--variant static, or all without --skip static)')
-        source = args.morai_assets or COMPETITION_MODELS
-        models = installed_models(args.morai_assets) if args.morai_assets is not None else competition_models()
-        if not models:
-            parser.error('No obstacle/vehicle/pedestrian assets found in ' + str(source))
-        options['installed_models'] = models
-        print('[Tunnel] MORAI models: {} from {}'.format(len(models), source), flush=True)
+        has_static = 'static' in (rotation if rotating else (args.variant,))
+        if args.morai_assets is not None and not has_static:
+            parser.error('--morai-assets is for the static scene (--variant static, or all without --skip static)')
+        if has_static:
+            source = args.morai_assets or COMPETITION_MODELS
+            models = installed_models(args.morai_assets) if args.morai_assets is not None else competition_models()
+            if not models:
+                parser.error('No obstacle/vehicle/pedestrian assets found in ' + str(source))
+            options['installed_models'] = models
+            print('[Tunnel] MORAI models: {} from {}'.format(len(models), source), flush=True)
     if args.fixed_pedestrian and args.variant not in ('pedestrian', 'all'):
         parser.error('--fixed-pedestrian is for --variant pedestrian or all')
     if args.vehicle_behavior and args.variant not in ('vehicle', 'all'):
         parser.error('--vehicle-behavior is for --variant vehicle or all')
     config = args.config
+    stamp = datetime.now().strftime('%Y%m%d-%H%M%S-%f')
+    if args.competition_morai:
+        config = competition_config(config, RUNTIME / 'config' / (stamp + '-competition'))
+        print('[Tunnel] competition MORAI: Ego cmd_layout=single_steer55, 181 B status, positive_steer=left '
+              'set in ' + str(config), flush=True)
     if args.virtual_gps:
-        config = virtual_gps_config(args.config, RUNTIME / 'config' / datetime.now().strftime('%Y%m%d-%H%M%S-%f'))
+        config = virtual_gps_config(config, RUNTIME / 'config' / stamp)
         print('[Tunnel] virtual GPS: Localization test_blackout zone enabled in ' + str(config), flush=True)
     else:
         print('[Tunnel] virtual GPS masking off; config ' + str(config), flush=True)

@@ -38,6 +38,12 @@ from AIM2026.Expert.src.config.parameters.jamming import (
 MOVER_DISPLACEMENT = 2.0  # a track whose centre moved this far from its first position is a mover [m]
 MOVER_RANGE = 20.         # ... counting only positions seen this close to the vehicle [m]
 MOVER_FRAMES = 5          # ... or one labelled moving this many frames in a row
+THIN_SHORT_MAX = 1.5      # a thin object: size 'unknown' and even its widest boxes (p90 short side) below this [m] ...
+THIN_MIN_DISPLACEMENT = 2.5  # ... must move at least this far [m] ...
+THIN_LENGTH_SHARE = .75   # ... and this share of the longest box seen of it. The detector reports a 3 m steel barricade as
+                          # 1-2 m pieces from one end, then the other: the centre slid 2.0-2.2 m (competition tunnel
+                          # 10-28) and the barricade left the map as a mover. A car cut into fragments still shows a
+                          # 1.7 m+ short side now and then and keeps MOVER_DISPLACEMENT. THIN_LENGTH_SHARE 0 turns this off
 STILL_RADIUS = .5         # a mover whose centre stays this close to one spot ... [m]
 STILL_S = 2.              # ... for this long, without a moving label, is standing again [s]
 TRACK_TIMEOUT_S = 5.      # forget a track not seen for this long
@@ -109,7 +115,7 @@ class TrackMotion:
                 elif now-track['still'] >= (STALL_S if track['size'] == 'vehicle' else STILL_S):
                     track.update(mover=False, first=(x, y) if near else None, run=0)
             elif ((near and track['first'] is not None
-                   and math.hypot(x-track['first'][0], y-track['first'][1]) >= MOVER_DISPLACEMENT)
+                   and math.hypot(x-track['first'][0], y-track['first'][1]) >= self._mover_displacement(track))
                     or track['run'] >= MOVER_FRAMES):
                 track['mover'] = track['observed_moving'] = True
             if (track['mover'] and track['size'] == 'person' and track.get('origin') is not None
@@ -137,6 +143,17 @@ class TrackMotion:
         track = {k: old[k] for k in keep if k in old}
         track.update(run=0, history=deque(old.get('history', ())), inherited=True)
         return track
+
+    @staticmethod
+    def _mover_displacement(track):
+        """MOVER_DISPLACEMENT, raised for thin objects (see THIN_SHORT_MAX). Cars (also seen from behind or in
+        fragments: some boxes show their 1.8-2 m width), people and objects not yet classed keep MOVER_DISPLACEMENT."""
+        if THIN_LENGTH_SHARE <= 0. or track.get('size') != 'unknown':
+            return MOVER_DISPLACEMENT
+        frames = [h for h in track['history'] if h[5] <= SIZE_RANGE_M]
+        if len(frames) < SIZE_MIN_FRAMES or float(np.percentile([h[4] for h in frames], 90)) >= THIN_SHORT_MAX:
+            return MOVER_DISPLACEMENT
+        return max(MOVER_DISPLACEMENT, THIN_MIN_DISPLACEMENT, THIN_LENGTH_SHARE*max(h[3] for h in frames))
 
     @staticmethod
     def _size_class(track):

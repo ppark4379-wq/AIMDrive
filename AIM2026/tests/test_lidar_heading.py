@@ -69,6 +69,40 @@ class LidarHeadingTest(unittest.TestCase):
         self.assertLess(axis_error(boxes[0]['heading'], 30.), 2.)
         self.assertGreater(boxes[0]['length'], 3.1)
 
+    def test_two_barriers_touching_at_an_angle_keep_the_head_box(self):
+        # Two 3.2 m barriers end to end, 0.4 m apart, the second turned 55 degrees. The head box sits near the joint,
+        # so both are within the seed radius and form one cluster (outline 5.4 x 2.6 m) that still passes the
+        # elongation gate; its rectangle came out 6.2 x 3.6 m (live tunnel: 5.4-6.6 x 3.6-4.2 m) into the bypass.
+        a = math.radians(55.)
+        first = [[0., 12. + t] for t in np.linspace(-3.2, 0., 33)]
+        second = [[math.sin(a) * t, 12.4 + math.cos(a) * t] for t in np.linspace(0., 3.2, 33)]
+        boxes = [box((.3, 12.3), 35., length=2.35, width=1.3)]
+        self.assertEqual(postprocess.refine_heading_with_lidar(boxes, np.array(first + second)), 0)
+        self.assertAlmostEqual(boxes[0]['length'], 2.35)
+
+    def test_a_head_box_wider_than_long_keeps_its_short_side_as_the_width(self):
+        # Two 1.36 m firewalls end to end across the lane (competition tunnel): the head reports 0.6 m long (along the
+        # road) x 2.2 m wide; the outline turns the box across the lane, where 0.6 m must stay the depth (not 2.2 m).
+        line = np.array([[x, 12.] for x in np.linspace(-1.45, 1.45, 60)])
+        boxes = [box((0., 12.1), 90., length=.6, width=2.2)]
+        self.assertEqual(postprocess.refine_heading_with_lidar(boxes, line), 1)
+        self.assertLess(axis_error(boxes[0]['heading'], 0.), 2.)
+        self.assertGreater(boxes[0]['length'], 2.8)
+        self.assertLess(boxes[0]['width'], .8)
+
+    def test_a_small_firewall_across_the_lane_takes_the_outline_heading(self):
+        # A single 1.36 m firewall across the lane, the head box 1.1 x 0.7 m turned 40 degrees off.
+        line = np.array([[x, 12.] for x in np.linspace(-.68, .68, 30)])
+        boxes = [box((0., 12.1), 40., length=1.1, width=.7)]
+        self.assertEqual(postprocess.refine_heading_with_lidar(boxes, line), 1)
+        self.assertLess(axis_error(boxes[0]['heading'], 0.), 2.)
+
+    def test_a_car_fragment_box_is_not_turned_by_the_car_rear(self):
+        # The head boxed a car seen from behind as a 0.7 x 0.4 m fragment; its 1.9 m rear face must not turn it.
+        rear = np.array([[x, 10.] for x in np.linspace(-.95, .95, 40)])
+        boxes = [box((0., 10.3), 90., length=.7, width=.4)]
+        self.assertEqual(postprocess.refine_heading_with_lidar(boxes, rear), 0)
+
     def test_round_piles_and_small_props_keep_the_head_box(self):
         rng = np.random.default_rng(1)
         pile = rng.normal(0, .5, (80, 2)) + np.array([0., 10.])      # irregular, not elongated

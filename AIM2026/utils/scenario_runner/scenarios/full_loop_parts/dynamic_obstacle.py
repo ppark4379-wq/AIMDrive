@@ -13,10 +13,12 @@ import math
 import os
 import random
 import time
+import uuid
 
 from ...utils import safe_print as print
 from . import traffic_light_override
 from .pedestrian_timing import interaction_timing
+from ...adapters.pedestrian_binding import PedestrianSpawnNotObserved
 
 
 def _dynamic_cfg(self):
@@ -102,31 +104,82 @@ def _read_event_state(self, event):
     # uniqueness. Do not bypass its stronger contract after an exception.
     if {"read_states", "attempts"}.issubset(getattr(event["actor"], "__dict__", {})):
         return event["actor"].get_actor_state()
+    cfg = _dynamic_cfg(self)
+    now = time.monotonic()
+    if now < float(event.get("state_next_retry_wall", float("-inf"))):
+        return None
+    actor_id = event.get("actor_id") or _actor_id(event["actor"])
+
+    def recovered(state):
+        if event.get("state_read_failures"):
+            print(f"[DYNAMIC] state_recovered id={actor_id} failures={event['state_read_failures']}")
+        event["state_read_failures"] = 0
+        event["state_absence_checks"] = 0
+        event.pop("state_missing_since_wall", None)
+        event.pop("state_next_retry_wall", None)
+        event["state_read_error"] = None
+        event["state_read_status"] = "available"
+        return state
+
     errors = []
     try:
         state = event["actor"].get_actor_state()
         if state is not None:
-            event["state_read_failures"] = 0
-            return state
+            info = getattr(state, "actor_info", None)
+            if info is not None and (str(info.id.value).strip() != str(actor_id)
+                                     or getattr(info, "object_type", 2) != 2):
+                errors.append("individual RPC returned a different actor/type")
+            else:
+                return recovered(state)
     except Exception as error:
         errors.append(str(error))
-    actor_id = event.get("actor_id") or _actor_id(event["actor"])
+    absent = False
+    ambiguous = False
     try:
-        matches = [state for state in self.grpc.get_all_pedestrian_states(strict=True)
+        native = getattr(event["actor"], "_native_binding", False) is True
+        inventory = (self.grpc.get_global_pedestrian_states() if native
+                     else self.grpc.get_all_pedestrian_states(strict=True))
+        matches = [state for state in inventory
                    if str(state.actor_info.id.value).strip() == str(actor_id)
                    and getattr(state.actor_info, "object_type", 2) == 2]
         if len(matches) == 1:
-            event["state_read_failures"] = 0
-            return matches[0]
+            if native:
+                event["actor"].validate_state(matches[0])
+            return recovered(matches[0])
+        absent = len(matches) == 0
+        ambiguous = len(matches) > 1
         errors.append(f"expected one exact pedestrian, found {len(matches)}")
     except Exception as error:
         errors.append(str(error))
     count = int(event.get("state_read_failures", 0)) + 1
     event["state_read_failures"] = count
     event["state_read_error"] = "; ".join(errors) or "exact actor ID absent"
-    if count >= 3:
-        _fail_event(self, event, "Failed to read dynamic obstacle state after 3 checks: "
+    since = event.setdefault("state_missing_since_wall", now)
+    event["state_absence_checks"] = int(event.get("state_absence_checks", 0)) + 1 if absent else 0
+    event["state_read_status"] = "absent" if absent else "ambiguous" if ambiguous else "query_unavailable"
+    event["state_next_retry_wall"] = now + float(cfg.get("state_retry_interval_wall_sec", 0.2))
+    if count == 1:
+        print(f"[DYNAMIC] state_read_deferred id={actor_id}: {event['state_read_error']}")
+    if ambiguous and count >= 3:
+        _fail_event(self, event, "Ambiguous dynamic obstacle identity after 3 checks: "
                     + event["state_read_error"])
+    grace = float(cfg.get("state_recovery_grace_wall_sec", 2.0))
+    if now - since >= grace and count >= 3:
+        if absent and event["state_absence_checks"] >= 3 and cfg.get("continue_on_confirmed_actor_loss"):
+            actor = event["actor"]
+            event.update(phase="state_lost", retired=True, actor=None,
+                         failure_reason="pedestrian_absent_from_verified_inventory")
+            if actor in self.scenario_actors:
+                self.scenario_actors.remove(actor)
+            if self.dynamic_obstacle is actor:
+                self.dynamic_obstacle = None
+            _assessment_issue(self, "pedestrian_state_lost", event, actor_id=actor_id)
+            _emit_event(self, "dynamic_obstacle_state_lost", event, actor_id=actor_id,
+                        absent_checks=event["state_absence_checks"], elapsed_wall_sec=now-since)
+            _persist_progress(self)
+        else:
+            _fail_event(self, event, f"Dynamic pedestrian state unavailable for {now-since:.2f}s "
+                        f"({event['state_read_status']}): " + event["state_read_error"])
     return None
 
 
@@ -179,6 +232,33 @@ def _single_event_probability(cfg):
 
 def _select_random_schedule(scene_random, schedules, cfg):
     """Choose a one- or two-event schedule with an explicit mode ratio."""
+    if cfg.get("only_location") is not None:
+        choices = [seq for seq in schedules.get(1, [])
+                   if len(seq) == 1 and _location_number(seq[0]) == cfg["only_location"]]
+        if not choices:
+            raise RuntimeError("No feasible single-location verification crossing")
+        return list(scene_random.choice(choices))
+    if cfg.get("location_mix", False):
+        counts = [n for n in range(2, 6) if schedules.get(n)]
+        required = cfg.get("required_count")
+        if required is not None:
+            counts = [n for n in counts if n == required]
+        if not counts:
+            raise RuntimeError("No feasible multi-location dynamic schedule is available")
+        count = scene_random.choice(counts)
+        # Select location sets uniformly before selecting their path variants.
+        groups = {}
+        for schedule in schedules[count]:
+            key = tuple(_crossing_location(e["id"]) for e in schedule)
+            groups.setdefault(key, []).append(schedule)
+        return list(scene_random.choice(groups[scene_random.choice(sorted(groups))]))
+    required_count = cfg.get("required_count")
+    if required_count is not None:
+        if required_count not in (1, 2):
+            raise RuntimeError("dynamic_obstacle.required_count must be 1 or 2")
+        if not schedules.get(required_count):
+            raise RuntimeError(f"No valid {required_count}-event dynamic schedule is available")
+        return list(scene_random.choice(schedules[required_count]))
     available_counts = [count for count in (1, 2) if schedules.get(count)]
     if not available_counts:
         raise RuntimeError("No one- or two-event dynamic schedule is available")
@@ -664,6 +744,127 @@ def _schedule_candidates(entries, maximum_count, minimum_spacing_m):
     return schedules
 
 
+def _crossing_location(path_id):
+    if path_id.startswith("general_south_"):
+        return "front_road"
+    if path_id.startswith("front_crosswalk_"):
+        return "first_crosswalk"
+    if path_id.startswith("between_crosswalks_"):
+        return "between_crosswalks"
+    if path_id.startswith(("rear_crosswalk_", "legacy_")):
+        return "second_crosswalk"
+    if path_id.startswith("general_north_"):
+        return "rear_road"
+    raise RuntimeError(f"Unknown dynamic crossing location: {path_id}")
+
+
+def _location_schedules(self, entries, cfg, zone_start_s):
+    """One approved path per location, with feasible approach/recovery timing."""
+    groups = {}
+    for entry in entries:
+        if entry["status"] == "approved":
+            groups.setdefault(_crossing_location(entry["id"]), []).append(entry)
+    order = ("front_road", "first_crosswalk", "between_crosswalks",
+             "second_crosswalk", "rear_road")
+    locations = [key for key in order if key in groups]
+    feasible = {}
+    schedules = {}
+
+    def extend(selected, remaining):
+        if not remaining:
+            schedules.setdefault(len(selected), []).append(tuple(selected))
+            return
+        previous = selected[-1] if selected else None
+        for entry in groups[remaining[0]]:
+            key = (previous["id"] if previous else None, entry["id"])
+            if key not in feasible:
+                available = entry["route_s"] - (previous["route_s"] if previous else zone_start_s)
+                if previous:
+                    available -= float(cfg.get("retire_after_conflict_m", 3.0))
+                if cfg.get("early_following_spawn"):
+                    available = entry["route_s"] - zone_start_s
+                feasible[key] = any(
+                    _timing_room(self, entry, speed, available, cfg)
+                    for speed in {speed for _, speed in _model_speed_pairs(self, entry)}
+                )
+            if feasible[key]:
+                extend(selected + [entry], remaining[1:])
+
+    for count in range(2, min(5, int(cfg.get("max_count", 5)), len(locations)) + 1):
+        for subset in itertools.combinations(locations, count):
+            extend([], subset)
+    return schedules
+
+
+def _location_number(event):
+    return {"front_road": 1, "first_crosswalk": 2, "between_crosswalks": 5,
+            "second_crosswalk": 3, "rear_road": 4}[_crossing_location(event["id"])]
+
+
+def _location_rank(number):
+    return (1, 2, 5, 3, 4).index(number)
+
+
+def _progress_spawn_anchor(self, event, ego_state=None):
+    """Gate rear spawns by Ego progress, with a two-second lead for location 4."""
+    if not _dynamic_cfg(self).get("location_mix"):
+        return None
+    anchor = {
+        3: (2, "front_crosswalk_straight_left_to_right"),
+        4: (3, "legacy_left_to_right"),
+    }.get(_location_number(event))
+    if anchor is None:
+        return None
+    number, path_id = anchor
+    entry = next(e for e in self.dynamic_obstacle_catalog if e["id"] == path_id)
+    trigger_s = float(entry["route_s"]) - float(
+        _dynamic_cfg(self).get("ego_body_length_m", 4.64)) / 2.0
+    lead_sec = 2.0 if _location_number(event) == 4 else 0.0
+    if ego_state is not None:
+        trigger_s -= max(0.0, _ego_speed_mps(ego_state)) * lead_sec
+    event["spawn_anchor_location_number"] = number
+    event["spawn_anchor_route_s"] = trigger_s
+    event["spawn_lead_sec"] = lead_sec
+    return trigger_s
+
+
+def _validate_unique_locations(events):
+    numbers = [_location_number(event) for event in events]
+    if len(numbers) != len(set(numbers)):
+        raise RuntimeError(f"Duplicate dynamic location in one scenario: {numbers}")
+    if numbers != sorted(numbers, key=_location_rank) or any(
+        following["route_s"] <= previous["route_s"]
+        for previous, following in zip(events, events[1:])
+    ):
+        raise RuntimeError(f"Dynamic locations must follow Ego route order: {numbers}")
+
+
+def _claim_location_spawn(self, event):
+    """Consume a location before RPC; an ambiguous reply never permits respawn."""
+    number = _location_number(event)
+    if getattr(self, "cfg", {}).get("dynamic_obstacle", {}).get("opposing_crosswalk"):
+        _validate_opposing_schedule(self.dynamic_obstacle_events, _dynamic_cfg(self))
+        claims = getattr(self, "dynamic_opposing_spawn_claims", set())
+        if event["id"] in claims or event.get("actor") is not None or event.get("actor_id"):
+            raise RuntimeError("Duplicate opposing pedestrian spawn")
+        if any(_location_rank(_location_number(e)) > _location_rank(number)
+               for e in self.dynamic_obstacle_events if e['id'] in claims):
+            raise RuntimeError("Backward dynamic spawn blocked")
+        claims.add(event["id"])
+        self.dynamic_opposing_spawn_claims = claims
+        event["location_number"] = number
+        return
+    claims = getattr(self, "dynamic_location_spawn_claims", None)
+    if claims is None:
+        claims = self.dynamic_location_spawn_claims = {}
+    if number in claims or event.get("actor_id") or event.get("actor") is not None:
+        raise RuntimeError(f"Duplicate dynamic spawn blocked: location={number} id={event['id']}")
+    if claims and _location_rank(number) <= max(_location_rank(n) for n in claims):
+        raise RuntimeError(f"Backward dynamic spawn blocked: location={number}")
+    claims[number] = event["id"]
+    event["location_number"] = number
+
+
 def _choose_schedule(self, catalogue, cfg):
     _single_event_probability(cfg)
     excluded = _excluded_model_path_pairs(self)
@@ -707,11 +908,17 @@ def _choose_schedule(self, catalogue, cfg):
             raise RuntimeError("Dynamic review schedule has unsafe count or spacing")
     else:
         selected = None
+    if cfg.get("opposing_crosswalk"):
+        ids = _opposing_path_ids(cfg["opposing_crosswalk"])
+        by_id = {entry["id"]: entry for entry in catalogue if entry["status"] == "approved"}
+        selected = [by_id[path_id] for path_id in ids]
     # Filter unavailable model/speed pairs before selecting an event count.
     # A catalogue with an unavailable model must not poison an otherwise valid
     # one- or two-event schedule.
     eligible = []
     for entry in catalogue:
+        if cfg.get("only_location") is not None and _location_number(entry) != cfg["only_location"]:
+            continue
         if _model_speed_pairs(self, entry):
             eligible.append(entry)
     # Production scenes deliberately use at most two sequential interactions.
@@ -729,6 +936,10 @@ def _choose_schedule(self, catalogue, cfg):
         for count, choices in schedules.items()
     }
     schedules = {count: choices for count, choices in schedules.items() if choices}
+    if cfg.get("location_mix", False) and cfg.get("only_location") is None and not cfg.get("opposing_crosswalk"):
+        if review:
+            raise RuntimeError("location_mix cannot be combined with dynamic_obstacle_review")
+        schedules = _location_schedules(self, eligible, cfg, zone_start_s)
     if not schedules and selected is None:
         raise RuntimeError(
             "No approved dynamic crossing schedule is available; pending "
@@ -738,6 +949,16 @@ def _choose_schedule(self, catalogue, cfg):
     # zone setup. The same run_seed therefore reproduces the same complete
     # pedestrian scene even when the previous run's profile file differs.
     scene_random = random.Random(int(self.run_seed) ^ 0x44594E414D4943)
+    if cfg.get("opposing_roads"):
+        for number in sorted(cfg["opposing_roads"], key=_location_rank):
+            choices = [entry for entry in eligible if entry['status'] == 'approved'
+                       and _location_number(entry) == number
+                       and any(_timing_room(self, entry, speed, entry['route_s'] - zone_start_s, cfg)
+                               for _, speed in _model_speed_pairs(self, entry))]
+            if not choices:
+                raise RuntimeError(f"No feasible ordinary-road crossing at location {number}")
+            selected.append(scene_random.choice(choices))
+        selected.sort(key=lambda e: _location_rank(_location_number(e)))
     if selected is None:
         selected = _select_random_schedule(scene_random, schedules, cfg)
     events = []
@@ -747,7 +968,14 @@ def _choose_schedule(self, catalogue, cfg):
         available = entry["route_s"] - previous_s
         if sequence > 1:
             available -= float(cfg.get("retire_after_conflict_m", 3.0))
-        pairs = [pair for pair in pairs if _timing_room(self, entry, pair[1], available, cfg)]
+        if cfg.get("early_following_spawn"):
+            available = entry["route_s"] - zone_start_s
+        # A paired trigger is governed by the farther pedestrian's ETA;
+        # the near-side pedestrian is intentionally spawned at the same time.
+        # Its solo ETA window is not the pair's trigger window. Both stopping
+        # distances and the later arrival are checked together at runtime.
+        if _location_number(entry) != cfg.get("opposing_crosswalk"):
+            pairs = [pair for pair in pairs if _timing_room(self, entry, pair[1], available, cfg)]
         if not pairs:
             raise RuntimeError(
                 f"Dynamic crossing {entry['id']} has no eligible model/speed pair"
@@ -755,6 +983,7 @@ def _choose_schedule(self, catalogue, cfg):
         model, speed = scene_random.choice(pairs)
         event = dict(entry)
         event.update(
+            location=_crossing_location(entry["id"]) if cfg.get("location_mix") else None,
             sequence=sequence,
             phase="armed" if sequence == 1 else "pending",
             model=model,
@@ -776,9 +1005,39 @@ def _choose_schedule(self, catalogue, cfg):
     return events
 
 
+def _opposing_path_ids(number):
+    return {
+        2: ("front_crosswalk_straight_left_to_right", "front_crosswalk_straight_right_to_left"),
+        3: ("rear_crosswalk_diagonal_left_to_right_north", "rear_crosswalk_diagonal_right_to_left_north"),
+    }[number]
+
+
+def _validate_opposing_pair(events, number):
+    if (len(events) != 2 or tuple(e["id"] for e in events) != _opposing_path_ids(number)
+            or any(_location_number(e) != number for e in events)):
+        raise RuntimeError("Invalid opposing-crosswalk pair")
+
+
+def _validate_opposing_schedule(events, cfg):
+    number = cfg['opposing_crosswalk']
+    pair = [e for e in events if _location_number(e) == number]
+    _validate_opposing_pair(pair, number)
+    roads = [e for e in events if _location_number(e) != number]
+    if sorted(_location_number(e) for e in roads) != sorted(cfg.get('opposing_roads', [])):
+        raise RuntimeError('Opposing schedule contains unexpected or duplicate roads')
+    collapsed = [e for e in events if e is not pair[1]]
+    _validate_unique_locations(collapsed)
+
+
 def _model_speed_pairs(self, entry):
     policy = _model_selection_policy(self)
     models = sorted(set(self.dynamic_obstacle_models))
+    compatible_models = _dynamic_cfg(self).get('compatible_models')
+    if compatible_models is not None:
+        models = [model for model in models if model in compatible_models]
+    diagnostic_models = _dynamic_cfg(self).get("diagnostic_models")
+    if diagnostic_models is not None:
+        models = [model for model in models if model in diagnostic_models]
     if policy != "yaml_pool" and entry["allowed_models"]:
         models = [model for model in models if model in entry["allowed_models"]]
     pairs = [(model, speed) for model in models for speed in entry["allowed_speeds_mps"]]
@@ -807,11 +1066,16 @@ def _timing_room(self, entry, npc_speed, available, cfg):
     available -= float(cfg.get("event_recovery_distance_m", 2.0))
     low = float(cfg.get("minimum_ego_speed_mps", 2.0))
     high = max(low, float(cfg.get("planning_ego_speed_mps", 8.333333)))
-    for step in range(9):
-        speed = low + (high - low) * step / 8.0
+    steps = 32 if cfg.get("location_mix") else 8
+    for step in range(steps + 1):
+        speed = low + (high - low) * step / steps
         event = dict(entry, speed_mps=npc_speed)
         timing = _timing_snapshot(self, event, {"speed_mps": speed}, entry["route_s"])
         distance = timing["trigger_distance_m"]
+        if cfg.get("location_mix"):
+            # A trigger is an upper bound. A close following event may become
+            # eligible inside it, but must still satisfy braking and ETA gates.
+            distance = min(distance, available)
         delta = distance / speed - timing["npc_eta_sec"]
         if (distance <= available and distance >= timing["safe_stop_distance_m"]
                 and float(cfg.get("minimum_eta_delta_sec", 0.0)) <= delta
@@ -878,8 +1142,19 @@ def _event_report(event):
     return {
         "sequence": int(event["sequence"]),
         "crossing_id": event["id"],
+        "location": event.get("location"),
+        "location_number": event.get("location_number"),
+        "scheduled_spawn_scenario_time": event.get("scheduled_spawn_scenario_time"),
+        "spawn_anchor_location_number": event.get("spawn_anchor_location_number"),
+        "spawn_anchor_route_s": event.get("spawn_anchor_route_s"),
+        "spawn_lead_sec": event.get("spawn_lead_sec"),
+        "spawn_wait_reason": event.get("spawn_wait_reason"),
+        "skip_reason": event.get("skip_reason"),
+        "lane_cleared": bool(event.get("lane_cleared")),
+        "retired": bool(event.get("retired")),
         "phase": event["phase"],
         "actor_id": event.get("actor_id"),
+        "requested_actor_id": event.get("requested_actor_id"),
         "model": event["model"],
         "planned_model": event.get("planned_model", event["model"]),
         "model_selection_policy": event.get("model_selection_policy", "approved_pairs"),
@@ -900,6 +1175,8 @@ def _event_report(event):
         "trigger": event.get("trigger"),
         "response_observed": bool(event.get("response_observed", False)),
         "response_kind": event.get("response_kind"),
+        "response_origin_sequence": event.get("response_origin_sequence"),
+        "response_stop_since": event.get("response_stop_since"),
         "resumed_after_clear": bool(event.get("resumed_after_clear", False)),
         "min_ego_distance_m": _finite_or_none(
             event.get("min_ego_distance_m", float("inf"))
@@ -929,6 +1206,9 @@ def _event_report(event):
         },
         "resume_wait_reason": event.get("resume_wait_reason"),
         "state_read_error": event.get("state_read_error"),
+        "state_read_status": event.get("state_read_status"),
+        "state_read_failures": event.get("state_read_failures", 0),
+        "state_absence_checks": event.get("state_absence_checks", 0),
         "removed": event.get("actor_id") is not None and event.get("actor") is None,
     }
 
@@ -988,6 +1268,8 @@ def _emit_event(self, name, event, **fields):
         "route_s": float(event["route_s"]),
     }
     payload.update(fields)
+    if _dynamic_cfg(self).get("location_mix"):
+        payload["location_number"] = _location_number(event)
     print(f"[DYNAMIC] {name} {payload}")
     writer = getattr(self, "event", None)
     if callable(writer):
@@ -996,6 +1278,7 @@ def _emit_event(self, name, event, **fields):
 
 def spawn_dynamic_obstacle(self):
     # Cleanup can run after any setup failure, including the stop-line guard.
+    self._dynamic_response_stop = None
     self.dynamic_validation = {
         "review_only": bool(self.cfg.get("dynamic_obstacle_review")),
         "goal_reached": False,
@@ -1019,6 +1302,15 @@ def spawn_dynamic_obstacle(self):
     ]
     self.dynamic_obstacle_catalog = catalogue
     self.dynamic_obstacle_events = _choose_schedule(self, catalogue, cfg)
+    if cfg.get("location_mix"):
+        if cfg.get("opposing_crosswalk"):
+            _validate_opposing_schedule(self.dynamic_obstacle_events, cfg)
+        else:
+            _validate_unique_locations(self.dynamic_obstacle_events)
+        for event in self.dynamic_obstacle_events:
+            event["location_number"] = _location_number(event)
+    self.dynamic_location_spawn_claims = {}
+    self.dynamic_opposing_spawn_claims = set()
     if bool(_signal_guard_cfg(self).get("enabled", False)) and not getattr(
         self, "traffic_light_stops", []
     ):
@@ -1030,6 +1322,7 @@ def spawn_dynamic_obstacle(self):
         _initialize_signal_guard(self, event)
     self.dynamic_obstacle_event_index = 0
     self.dynamic_obstacle_owned_ids = set()
+    self.dynamic_native_actor_ids = set()
 
     self.dynamic_obstacle_phase = "waiting"
     self.dynamic_obstacle_started_at = None
@@ -1061,8 +1354,14 @@ def _spawn_active_dynamic_obstacle(self, yaw_offset_deg=0.0):
     event = _current_event(self)
     if event is None or event["phase"] != "armed":
         raise RuntimeError("No armed dynamic obstacle event is available")
+    if _dynamic_cfg(self).get("location_mix"):
+        if not _existing_pedestrians_ready(self, event):
+            return
+        _claim_location_spawn(self, event)
     start = event["start"]
-    stale_ids = self.grpc.destroy_pedestrians_near(
+    # A previous pedestrian may still be walking to its endpoint nearby.
+    # Never bulk-delete it when the next event overlaps in the location mix.
+    stale_ids = [] if _dynamic_cfg(self).get("early_following_spawn") else self.grpc.destroy_pedestrians_near(
         start["x"], start["y"], max_dist_m=3.0,
     )
     if stale_ids:
@@ -1090,6 +1389,19 @@ def _spawn_active_dynamic_obstacle(self, yaw_offset_deg=0.0):
     if not models:
         _fail_event(self, event, "Failed to spawn every eligible dynamic obstacle model")
     selected_model = models[0]
+    spawn_identity = {}
+    if _dynamic_cfg(self).get("location_mix"):
+        # Use explicit identities rather than MORAI's recyclable 1/2/3 slots.
+        # Numeric strings also work with simulator builds using integer IDs.
+        requested = event.get("requested_actor_id")
+        if requested is None:
+            used = {e.get("requested_actor_id") for e in self.dynamic_obstacle_events}
+            requested = str(100000000 + uuid.uuid4().int % 1900000000)
+            while requested in used:
+                requested = str(100000000 + uuid.uuid4().int % 1900000000)
+            event["requested_actor_id"] = requested
+        spawn_identity["request_id"] = requested
+        spawn_identity["bind_native"] = True
     attempt = {
         "model": selected_model,
         "scenario_time": self._scenario_now(),
@@ -1097,6 +1409,15 @@ def _spawn_active_dynamic_obstacle(self, yaw_offset_deg=0.0):
         "result": "requested",
     }
     attempts.append(attempt)
+    move_dist = (max(100.0, float(event["path_length_m"]) + 2.0)
+                 if (_crossing_location(event["id"]) == "between_crosswalks"
+                     or _location_number(event) == self.cfg.get("dynamic_obstacle", {}).get("opposing_crosswalk"))
+                 else float(event["path_length_m"]) + 2.0)
+    if getattr(getattr(self, "args", None), "pedestrian_trace", False):
+        event["spawn_request"] = dict(model=selected_model, start=dict(start),
+                                      yaw_deg=event["yaw_deg"] + float(yaw_offset_deg),
+                                      velocity=float(event["speed_mps"]) * 3.6,
+                                      active_dist=0.0, move_dist=move_dist, start_action=True)
     try:
         actor = self.grpc.spawn_pedestrian(
             transform=self.grpc.make_transform(
@@ -1110,16 +1431,41 @@ def _spawn_active_dynamic_obstacle(self, yaw_offset_deg=0.0):
             ),
             velocity=float(event["speed_mps"]) * 3.6,
             active_dist=0.0,
-            move_dist=float(event["path_length_m"]) + 2.0,
+            # Give location 5 and opposing pairs ample automatic travel allowance.
+            # endpoint monitor still stops it at the approved destination.
+            move_dist=move_dist,
             start_action=True,
+            **spawn_identity,
         )
     except Exception as error:
+        cfg = _dynamic_cfg(self)
+        if (isinstance(error, PedestrianSpawnNotObserved)
+                and cfg.get("location_mix") and cfg.get("continue_on_confirmed_spawn_failure")
+                and not self.cfg.get("dynamic_obstacle_review")
+                and not callable(getattr(self, "observe_collision", None))):
+            # No retry: a late simulator publication must not create duplicates.
+            # Keep this as an incomplete scenario, never as a passed crossing.
+            attempt.update(result="not_created", error=str(error))
+            event.update(phase="skipped", retired=True,
+                         skip_reason="spawn_not_observed", failure_reason=str(error))
+            event.setdefault("scheduled_spawn_scenario_time", self._scenario_now())
+            if event["scheduled_spawn_scenario_time"] is None:
+                event["scheduled_spawn_scenario_time"] = self._scenario_now()
+            _assessment_issue(self, "spawn_not_observed", event)
+            _emit_event(self, "dynamic_obstacle_skipped", event,
+                        reason=event["skip_reason"], error=str(error))
+            _persist_progress(self)
+            return
         # An RPC exception is not proof that no actor was created. Preserve
         # the existing stop-on-exception behaviour; do not create duplicates.
         attempt.update(result="error", error=str(error))
         _fail_event(self, event, f"Dynamic obstacle spawn raised: {error}")
     if actor is None:
         attempt["result"] = "failed"
+        if _dynamic_cfg(self).get("location_mix"):
+            _fail_event(self, event,
+                        "Dynamic spawn unconfirmed; same-location respawn is disabled: "
+                        f"location={_location_number(event)}")
         if len(models) == 1:
             _fail_event(
                 self, event,
@@ -1136,6 +1482,11 @@ def _spawn_active_dynamic_obstacle(self, yaw_offset_deg=0.0):
         # again before a fallback model may be spawned.
         return
 
+    returned_id = _actor_id(actor)
+    if any(other is not event and other.get("actor") is not None
+           and other.get("actor_id") == returned_id
+           for other in getattr(self, "dynamic_obstacle_events", [])):
+        _fail_event(self, event, f"MORAI reused a live pedestrian ID: {returned_id}")
     attempt["result"] = (
         "recovered" if getattr(actor, "_scenario_runner_ambiguous_recovery", False)
         is True else "spawned"
@@ -1149,6 +1500,8 @@ def _spawn_active_dynamic_obstacle(self, yaw_offset_deg=0.0):
     event["spawn_yaw_offset_deg"] = float(yaw_offset_deg)
     if event["actor_id"]:
         self.dynamic_obstacle_owned_ids.add(event["actor_id"])
+        if getattr(actor, "_native_binding", False) is True:
+            self.dynamic_native_actor_ids.add(event["actor_id"])
     self.scenario_actors.append(actor)
     if not event["actor_id"]:
         raise RuntimeError("Spawned dynamic pedestrian has no verifiable actor ID")
@@ -1168,11 +1521,38 @@ def _spawn_active_dynamic_obstacle(self, yaw_offset_deg=0.0):
     _persist_progress(self)
 
 
+def _existing_pedestrians_ready(self, pending):
+    """Resolve missing handles before MORAI can recycle their IDs on spawn.
+
+    Include retired endpoint actors: retirement ends the interaction, but
+    those actors remain in the world until cleanup. Never destroy a missing
+    handle, since its native ID may subsequently belong to a new pedestrian.
+    """
+    ready = True
+    for previous in self.dynamic_obstacle_events:
+        if previous is pending or previous.get("actor") is None:
+            continue
+        state = _read_event_state(self, previous)
+        if state is None:
+            # Even when this read confirms loss, reassess Ego timing on the
+            # next tick rather than spawning with a pre-recovery snapshot.
+            ready = False
+    if not ready:
+        pending["spawn_wait_reason"] = "existing_pedestrian_state_unresolved"
+    else:
+        pending.pop("spawn_wait_reason", None)
+    return ready
+
+
 def _owned_actor_is_present(self, actor_id):
+    if actor_id in getattr(self, "dynamic_native_actor_ids", set()):
+        return any(str(state.actor_info.id.value).strip() == str(actor_id)
+                   for state in self.grpc.get_global_pedestrian_states())
     if not actor_id or not hasattr(self.grpc, "get_all_pedestrian_states"):
         raise RuntimeError("Cannot verify pedestrian removal without actor ID and inventory")
     try:
-        states = self.grpc.get_all_pedestrian_states(strict=True)
+        states = (self.grpc.get_global_pedestrian_states() if getattr(self, "dynamic_native_actor_ids", set())
+                  else self.grpc.get_all_pedestrian_states(strict=True))
     except TypeError:
         # Narrow compatibility for mocked/older adapters used by offline tests.
         states = self.grpc.get_all_pedestrian_states()
@@ -1227,6 +1607,10 @@ def _destroy_event_actor(self, event, strict=True):
 
 
 def _destroy_dynamic_obstacle_actor(self):
+    if _dynamic_cfg(self).get("early_following_spawn"):
+        for event in getattr(self, "dynamic_obstacle_events", []):
+            _destroy_event_actor(self, event, strict=True)
+        return
     event = _current_event(self)
     if event is not None:
         _destroy_event_actor(self, event, strict=True)
@@ -1315,7 +1699,13 @@ def _finish_dynamic_obstacle(self, reason):
             else "response_not_observed"
         )
         _assessment_issue(self, reason, event)
-        if _strict_assessment(self):
+        missing_response_is_report_only = (
+            reason == "response_not_observed"
+            and cfg.get("abort_on_missing_ego_response", True) is False
+            and not self.cfg.get("dynamic_obstacle_review")
+            and not callable(getattr(self, "observe_collision", None))
+        )
+        if _strict_assessment(self) and not missing_response_is_report_only:
             _fail_event(self, event,
                         f"Dynamic crossing {event['id']} completed without meaningful Ego response ({reason})")
     _persist_progress(self)
@@ -1657,15 +2047,49 @@ def _red_route_signal_ahead(self, current_s):
 
 
 def _timing_snapshot(self, event, ego_state, current_s):
+    cfg = _dynamic_cfg(self)
     return interaction_timing(
-        _dynamic_cfg(self), event["route_s"], event["start_to_conflict_m"],
+        cfg, event["route_s"], event["start_to_conflict_m"],
         event["speed_mps"], ego_state, current_s,
-        minimum_event_distance_m=event.get("trigger_distance_m", 0.0),
+        minimum_event_distance_m=(0.0 if cfg.get("location_mix")
+                                  else event.get("trigger_distance_m", 0.0)),
     )
+
+
+def _maintain_response_stop(self, ego_state, current_s):
+    """Keep only continuously observed, signal-free obstacle-induced stops.
+
+Called once per timeline tick, including after the original NPC clears its
+lane. A stale stop from an earlier interaction must not certify a new one.
+"""
+    stop = getattr(self, "_dynamic_response_stop", None)
+    if stop is None:
+        return
+    now = self._scenario_now()
+    raw_speed = ego_state.get("speed_mps", ego_state.get("speed"))
+    source = next((e for e in self.dynamic_obstacle_events
+                   if e["sequence"] == stop["origin_sequence"]), None)
+    threshold = float(_dynamic_cfg(self).get("stopped_speed_mps", 0.5))
+    if (raw_speed is None or not math.isfinite(float(raw_speed))
+            or abs(float(raw_speed)) > threshold
+            or not 0. <= now-stop["last_seen"] <= 1.0
+            or abs(float(current_s)-stop["route_s"]) > 1.0
+            or source is None or source.get("phase") in ("failed", "skipped", "state_lost")
+            or source.get("response_signal_limited")
+            or (source.get("signal_guard") or {}).get("confounded")
+            or ((source.get("signal_guard") or {}).get("required")
+                and not (source.get("signal_guard") or {}).get("verified"))
+            or _signal_wait_active(self, ego_state)
+            or _red_route_signal_ahead(self, current_s) is not False):
+        self._dynamic_response_stop = None
+        return
+    stop["last_seen"] = now
 
 
 def _observe_ego_response(self, event, ego_state, current_s):
     cfg = _dynamic_cfg(self)
+    if cfg.get("early_following_spawn") and event.get("lane_cleared"):
+        return  # Do not credit braking for the following NPC to this one.
     guard = event.get("signal_guard") or {}
     if guard.get("required"):
         signal_limited = bool(
@@ -1684,14 +2108,36 @@ def _observe_ego_response(self, event, ego_state, current_s):
         # guarded light was verified green. Sustained guard failure is marked
         # separately by guard.confounded in _update_signal_guard().
         event["response_speed_samples"] = []
+        self._dynamic_response_stop = None
         return
     remaining = float(event["route_s"]) - float(current_s)
-    if abs(remaining) > float(cfg.get("response_observation_distance_m", 30.0)):
+    raw_speed = ego_state.get("speed_mps", ego_state.get("speed"))
+    if raw_speed is None or not math.isfinite(float(raw_speed)):
+        event["response_speed_samples"] = []
+        self._dynamic_response_stop = None
         return
     speed = _ego_speed_mps(ego_state)
+    now = self._scenario_now()
+    stopped_threshold = float(cfg.get("stopped_speed_mps", 0.5))
+    stop = getattr(self, "_dynamic_response_stop", None)
+    continued_stop = bool(
+        cfg.get("early_following_spawn") and speed <= stopped_threshold and remaining >= 0.
+        and stop is not None and stop["origin_sequence"] != event["sequence"]
+        and now-stop["since"] >= .5 and 0. <= now-stop["last_seen"] <= 1.0
+        and abs(float(current_s)-stop["route_s"]) <= 1.0)
+    observation_distance = float(cfg.get("response_observation_distance_m", 30.0))
+    if continued_stop:
+        # Early yielding can hold Ego just outside the old 30 m response gate
+        # (30.032 m in the recorded run). Match the crossing guard's 45 m reach
+        # only for an already verified, continuously observed obstacle stop.
+        observation_distance = max(observation_distance,
+            float(cfg.get("continued_yield_observation_distance_m", 45.0)))
+    if abs(remaining) > observation_distance:
+        return
+    if cfg.get("location_mix") and remaining < 0.0:
+        return  # Braking after passing the crossing is not yielding to this NPC.
     event["min_ego_speed_mps"] = min(event["min_ego_speed_mps"], speed)
     trigger = event.get("trigger") or {}
-    now = self._scenario_now()
     samples = [(stamp, value) for stamp, value in event.get("response_speed_samples", [])
                if 0 <= now - stamp <= 4.0]
     # Initial speed remains usable only until a signal interrupts observation.
@@ -1704,7 +2150,6 @@ def _observe_ego_response(self, event, ego_state, current_s):
     # Do not credit slowdown for an NPC still stuck at its spawn point.
     if float(event.get("observed_along_m", 0.0)) < float(cfg.get("minimum_movement_m", 0.4)):
         return
-    stopped_threshold = float(cfg.get("stopped_speed_mps", 0.5))
     slowdown = baseline - speed
     response_kind = None
     if speed <= stopped_threshold and baseline >= float(
@@ -1713,6 +2158,19 @@ def _observe_ego_response(self, event, ego_state, current_s):
         response_kind = "stop"
     elif slowdown >= float(cfg.get("meaningful_slowdown_mps", 1.0)):
         response_kind = "slowdown"
+    if cfg.get("early_following_spawn"):
+        if response_kind == "stop" and stop is None:
+            # Only an observed moving-to-stopped response seeds the evidence.
+            self._dynamic_response_stop = dict(
+                origin_sequence=event["sequence"], since=now, last_seen=now,
+                route_s=float(current_s))
+        elif response_kind is None and continued_stop:
+            # The current NPC has moved, the signal is clear, and a preceding
+            # NPC already caused the uninterrupted stop. No second speed drop
+            # can be required from a vehicle that is still yielding at rest.
+            response_kind = "yield_hold"
+            event["response_origin_sequence"] = stop["origin_sequence"]
+            event["response_stop_since"] = stop["since"]
     if response_kind is not None and (
         not event["response_observed"]
         or (response_kind == "stop" and event["response_kind"] != "stop")
@@ -1727,6 +2185,8 @@ def _observe_ego_response(self, event, ego_state, current_s):
             baseline_speed_mps=baseline,
             observed_speed_mps=speed,
             route_remaining_m=remaining,
+            response_origin_sequence=event.get("response_origin_sequence"),
+            response_stop_since=event.get("response_stop_since"),
         )
         _persist_progress(self)
 
@@ -1793,6 +2253,15 @@ def _advance_after_clear(self, event, ego_state, current_s):
 
     if not event["resumed_after_clear"] or not passed:
         return
+    if cfg.get("location_mix"):
+        # Retire the interaction, not its visible pedestrian. The actor has
+        # stopped at the approved endpoint; retain it until scenario cleanup
+        # so it cannot disappear beside Ego as soon as Ego passes the conflict.
+        event["retired"] = True
+        _emit_event(self, "dynamic_obstacle_retired", event,
+                    ego_route_s=float(current_s), actor_retained=True)
+        _persist_progress(self)
+        return
     _destroy_event_actor(self, event, strict=True)
     _emit_event(
         self,
@@ -1800,6 +2269,10 @@ def _advance_after_clear(self, event, ego_state, current_s):
         event,
         ego_route_s=float(current_s),
     )
+    if cfg.get("early_following_spawn"):
+        event["retired"] = True
+        _persist_progress(self)
+        return
     self.dynamic_obstacle_event_index += 1
     following = _current_event(self)
     if following is None:
@@ -1878,8 +2351,146 @@ def _observe_dynamic_zone(self, ego_state, current_s):
             raise RuntimeError(f"Ego left conservative dynamic lane corridor: {extent:.3f}m > {limit:.3f}m")
 
 
+def _prepare_following_signal(self, current_s):
+    """Settle the next guard during this interaction; never spawn it early."""
+    if not _dynamic_cfg(self).get("location_mix"):
+        return
+    events = getattr(self, "dynamic_obstacle_events", [])
+    index = int(getattr(self, "dynamic_obstacle_event_index", 0))
+    if not 0 <= index < len(events) - 1:
+        return
+    if events[index]["phase"] not in ("crossing", "cleared"):
+        return
+    following = events[index + 1]
+    if following["phase"] == "pending" and (following.get("signal_guard") or {}).get("required"):
+        _update_signal_guard(self, following, current_s, crossing=False)
+
+
 def update_dynamic_obstacle(self, ego_state, current_s):
+    _maintain_response_stop(self, ego_state, current_s)
     _observe_dynamic_zone(self, ego_state, current_s)
+    if _dynamic_cfg(self).get("early_following_spawn"):
+        _update_overlapping_events(self, ego_state, current_s)
+        return
+    _prepare_following_signal(self, current_s)
+    _update_single_dynamic_obstacle(self, ego_state, current_s)
+
+
+def _update_overlapping_events(self, ego_state, current_s):
+    """Monitor every live actor while allowing the next yield before retirement."""
+    events = self.dynamic_obstacle_events
+    opposing = _dynamic_cfg(self).get('opposing_crosswalk')
+    pair = [e for e in events if _location_number(e) == opposing] if opposing else []
+    pair_started_this_tick = False
+    for index, event in enumerate(events):
+        if event.get("retired"):
+            continue
+        if pair_started_this_tick and event is pair[1]:
+            continue
+        if pair and event is pair[1] and event['phase'] in ('pending', 'armed'):
+            continue  # The pair leader always triggers both actors together.
+        self.dynamic_obstacle_event_index = index
+        _apply_event_compatibility_state(self, event)
+        # Prepare signals even while waiting for the preceding pedestrian.
+        if event["phase"] == "pending":
+            if (event.get("signal_guard") or {}).get("required"):
+                _update_signal_guard(self, event, current_s, crossing=False)
+            previous = events[index - 1] if index else {}
+            previous_started = previous.get("started_scenario_time")
+            if previous.get("phase") == "skipped":
+                previous_started = previous.get("scheduled_spawn_scenario_time")
+            if previous_started is not None:
+                event["scheduled_spawn_scenario_time"] = (
+                    previous_started + float(_dynamic_cfg(self).get("following_spawn_interval_sec", 2.0)))
+            anchor_s = _progress_spawn_anchor(self, event, ego_state)
+            due = (current_s >= anchor_s if anchor_s is not None else
+                   previous_started is not None and
+                   self._scenario_now() >= event["scheduled_spawn_scenario_time"])
+            if due:
+                if anchor_s is not None:
+                    event["scheduled_spawn_scenario_time"] = self._scenario_now()
+                event["phase"] = "armed"
+                _emit_event(self, "dynamic_obstacle_armed", event,
+                            reason="ego_progress_spawn_due" if anchor_s is not None
+                            else "staggered_spawn_due")
+            else:
+                continue
+        if pair and event is pair[0] and event['phase'] == 'armed':
+            _spawn_opposing_pair_when_ready(self, ego_state, current_s)
+            pair_started_this_tick = event['phase'] == 'crossing'
+        else:
+            _update_single_dynamic_obstacle(self, ego_state, current_s)
+    unfinished = [i for i, e in enumerate(events) if not e.get("retired")]
+    self.dynamic_obstacle_event_index = unfinished[0] if unfinished else len(events)
+    if unfinished:
+        _apply_event_compatibility_state(self, events[unfinished[0]])
+    phase = ("crossing" if any(e["phase"] == "crossing" for e in events)
+             else "waiting" if unfinished else "cleared")
+    changed = self.dynamic_obstacle_phase != phase
+    self.dynamic_obstacle_phase = phase
+    if changed:
+        _persist_progress(self)
+
+
+def _spawn_opposing_pair_when_ready(self, ego_state, current_s):
+    """Check both approaches before issuing two spawns in one runner tick."""
+    cfg = _dynamic_cfg(self)
+    events = [e for e in self.dynamic_obstacle_events if _location_number(e) == cfg['opposing_crosswalk']]
+    _validate_opposing_pair(events, cfg["opposing_crosswalk"])
+    anchor = _progress_spawn_anchor(self, events[0], ego_state) if cfg.get('opposing_roads') else None
+    if anchor is not None and current_s < anchor:
+        return
+    staggered = bool(cfg.get('opposing_roads')) and (anchor is not None or events[0].get('sequence', 1) > 1)
+    if not staggered and _ego_speed_mps(ego_state) < float(cfg.get("minimum_ego_speed_mps", 1.0)):
+        return
+    timings = [_timing_snapshot(self, e, ego_state, current_s) for e in events]
+    if cfg.get('opposing_roads') and any(t['remaining_m'] <= float(cfg.get('ego_body_length_m', 4.64))/2 + .5
+                                       or t['remaining_m'] < t['safe_stop_distance_m'] for t in timings):
+        for event in events:
+            event.update(phase='skipped', retired=True, skip_reason='pair_missed_safe_spawn_window',
+                         scheduled_spawn_scenario_time=self._scenario_now())
+            _assessment_issue(self, 'planned_crossing_not_spawned', event)
+            _emit_event(self, 'dynamic_obstacle_skipped', event, reason=event['skip_reason'])
+        _persist_progress(self)
+        return
+    if any(t["remaining_m"] < t["safe_stop_distance_m"] for t in timings):
+        _fail_event(self, events[0], "Opposing pair missed safe stopping-distance window")
+    # The farther pedestrian must also reach the conflict before Ego.
+    delta = min(t["eta_delta_sec"] for t in timings)
+    if not staggered and delta > float(cfg.get("maximum_eta_delta_sec", 1.0)):
+        return
+    if not staggered and delta < float(cfg.get("minimum_eta_delta_sec", 0.0)):
+        _fail_event(self, events[0], "Opposing pair missed safe ETA window")
+    ready = True
+    for event in events:
+        if (event.get("signal_guard") or {}).get("required"):
+            ready = _update_signal_guard(self, event, current_s, crossing=False) and ready
+        elif _signal_wait_active(self, ego_state) or _red_route_signal_ahead(self, current_s) is not False:
+            ready = False
+    if not ready:
+        return
+    if not _existing_pedestrians_ready(self, events[0]):
+        return
+    for index, (event, timing) in enumerate(zip(events, timings)):
+        event["phase"] = "armed"
+        event["trigger"] = dict(timing, trigger_scenario_time=self._scenario_now(), ego_route_s=float(current_s))
+        self.dynamic_obstacle_event_index = next(i for i, e in enumerate(self.dynamic_obstacle_events) if e is event)
+        _apply_event_compatibility_state(self, event)
+        self._spawn_active_dynamic_obstacle()
+        if event.get("actor") is None:
+            if event.get("phase") == "skipped" and event.get("skip_reason") == "spawn_not_observed":
+                continue
+            _fail_event(self, event, "Opposing pair spawn incomplete")
+    if any(event.get("phase") == "skipped" for event in events):
+        _emit_event(self, "dynamic_opposing_pair_incomplete", events[0], reason="spawn_not_observed")
+        _persist_progress(self)
+        return
+    gap = events[1]["started_scenario_time"] - events[0]["started_scenario_time"]
+    _emit_event(self, "dynamic_opposing_pair_started", events[0], spawn_gap_sec=gap)
+    _persist_progress(self)
+
+
+def _update_single_dynamic_obstacle(self, ego_state, current_s):
     event = _current_event(self)
     if event is None:
         return
@@ -1896,7 +2507,26 @@ def update_dynamic_obstacle(self, ego_state, current_s):
         )
 
     if phase == "armed":
+        anchor_s = _progress_spawn_anchor(self, event, ego_state)
+        if anchor_s is not None and current_s < anchor_s:
+            return
         timing = _timing_snapshot(self, event, ego_state, current_s)
+        staggered = (anchor_s is not None or
+                     (_dynamic_cfg(self).get("early_following_spawn")
+                      and event.get("sequence", 1) > 1))
+        if _dynamic_cfg(self).get("location_mix"):
+            # Do not create an actor once Ego's front has entered its crossing.
+            entry_margin = float(_dynamic_cfg(self).get("ego_body_length_m", 4.64)) / 2.0 + 0.5
+            reason = ("ego_already_entered_crossing" if timing["remaining_m"] <= entry_margin
+                      else "insufficient_stopping_distance" if staggered and
+                      timing["remaining_m"] < timing["safe_stop_distance_m"] else None)
+            if reason:
+                event.update(phase="skipped", retired=True, skip_reason=reason)
+                _assessment_issue(self, "planned_crossing_not_spawned", event, reason=reason)
+                _emit_event(self, "dynamic_obstacle_skipped", event, reason=reason,
+                            route_remaining_m=timing["remaining_m"])
+                _persist_progress(self)
+                return
         passed_tolerance = float(
             _dynamic_cfg(self).get("missed_trigger_tolerance_m", 1.0)
         )
@@ -1935,9 +2565,9 @@ def update_dynamic_obstacle(self, ego_state, current_s):
         minimum_speed = float(
             _dynamic_cfg(self).get("minimum_ego_speed_mps", 1.0)
         )
-        if timing["ego_speed_mps"] < minimum_speed:
+        if not staggered and timing["ego_speed_mps"] < minimum_speed:
             return
-        if timing["remaining_m"] > timing["trigger_distance_m"]:
+        if not staggered and timing["remaining_m"] > timing["trigger_distance_m"]:
             return
         if timing["remaining_m"] < timing["safe_stop_distance_m"]:
             _fail_event(
@@ -1948,9 +2578,9 @@ def update_dynamic_obstacle(self, ego_state, current_s):
                 f"safe_stop={timing['safe_stop_distance_m']:.2f}m",
             )
         cfg = _dynamic_cfg(self)
-        if timing["eta_delta_sec"] > float(cfg.get("maximum_eta_delta_sec", 5.0)):
+        if not staggered and timing["eta_delta_sec"] > float(cfg.get("maximum_eta_delta_sec", 5.0)):
             return  # Too early: keep the actor unspawned and reassess next tick.
-        if timing["eta_delta_sec"] < float(cfg.get("minimum_eta_delta_sec", 0.0)):
+        if not staggered and timing["eta_delta_sec"] < float(cfg.get("minimum_eta_delta_sec", 0.0)):
             _fail_event(self, event, "unsafe_trigger_window: NPC would arrive after Ego")
         if signal is None:
             _assessment_issue(self, "trigger_signal_unverified", event)
@@ -2015,6 +2645,14 @@ def update_dynamic_obstacle(self, ego_state, current_s):
     )
     event["observed_along_m"] = along
     _observe_ego_response(self, event, ego_state, current_s)
+    if _dynamic_cfg(self).get("early_following_spawn"):
+        # Signed route-lateral distance changes linearly along the approved
+        # straight crossing. Require the pedestrian centre to clear the lane
+        # plus a 0.75m footprint margin on the destination side.
+        lateral = event["start_d_m"] + (event["end_d_m"] - event["start_d_m"]) * along / path_length
+        clearance = float(_dynamic_cfg(self).get("ego_lane_half_width_m", 1.75)) + 0.75
+        if lateral * event["end_d_m"] > 0 and abs(lateral) >= clearance:
+            event["lane_cleared"] = True
 
     now = self._scenario_now()
     elapsed = now - float(event.get("started_scenario_time", now))
@@ -2081,7 +2719,8 @@ def verify_dynamic_obstacles_removed(self):
     if not owned or not hasattr(self.grpc, "get_all_pedestrian_states"):
         return
     try:
-        states = self.grpc.get_all_pedestrian_states(strict=True)
+        states = (self.grpc.get_global_pedestrian_states() if getattr(self, "dynamic_native_actor_ids", set())
+                  else self.grpc.get_all_pedestrian_states(strict=True))
     except TypeError:
         states = self.grpc.get_all_pedestrian_states()
     present = {

@@ -224,6 +224,8 @@ scenarios:
       # never count as safety approval. Collision/motion/ETA rules unchanged.
       assessment_policy: report
       response_observation_distance_m: 30.0
+      # Existing obstacle stop held through a following crossing (Expert preview: 45 m).
+      continued_yield_observation_distance_m: 45.0
       meaningful_slowdown_mps: 1.0
       stopped_speed_mps: 0.5
       resume_speed_mps: 1.0

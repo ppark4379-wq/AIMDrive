@@ -264,6 +264,24 @@ def _fixture_client(parent):
     return fixture
 
 
+POSE_BIND_TOLERANCE_M = 1.0
+
+
+def _bind_by_pose(state, inventory, taken):
+    """Native inventory ID of a parent actor whose own state carries only its request alias.
+
+    The competition MORAI lists scenario-spawned actors by native ID in the global inventory but answers a single
+    actor query with the alias that created it. A parent actor is still stationary at setup, so the one unclaimed
+    inventory entry of the same type at the same place is that actor; anything less certain is not bound.
+    """
+    kind = getattr(state.actor_info, "object_type", None)
+    here = live._xyz(state.transform.location, "actor position")
+    found = [identity for identity, other in inventory.items()
+             if identity not in taken and getattr(other.actor_info, "object_type", None) == kind
+             and math.dist(here, live._xyz(other.transform.location, "actor position")) <= POSE_BIND_TOLERANCE_M]
+    return found[0] if len(found) == 1 else None
+
+
 def _preserved_baseline(context, inventory, ego_id):
     """Parent-owned actors may retire normally; every other baseline actor stays."""
     parent = context.grpc
@@ -274,9 +292,13 @@ def _preserved_baseline(context, inventory, ego_id):
             raise RuntimeError("Parent actor lacks its original namespace ownership pin")
         identity = str(handle.get_id())
         if identity not in inventory:
-            identity = live._id(live._read_one(parent, handle))
+            state = live._read_one(parent, handle)
+            identity = live._id(state)
+            if identity not in inventory:
+                identity = _bind_by_pose(state, inventory, owned_ids) or identity
         if identity not in inventory:
-            raise RuntimeError("Parent actor cannot be bound to the setup inventory")
+            raise RuntimeError("Parent actor cannot be bound to the setup inventory: id={} info={} inventory_size={}".format(
+                identity, str(info).replace("\n", " ")[:160], len(inventory)))
         owned_ids.add(identity)
     return {identity: value for identity, value in inventory.items()
             if identity == ego_id or identity not in owned_ids}
