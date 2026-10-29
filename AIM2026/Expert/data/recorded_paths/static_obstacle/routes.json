@@ -1,3 +1,7 @@
 {
-  "routes": ["right_01.csv", "right_02.csv", "right_03.csv", "right_04.csv", "right_05.csv", "right_06_retry.csv"]
+  "routes": [
+    "right_01.csv", "right_02.csv", "right_03.csv", "right_04.csv", "right_05.csv", "right_06_retry.csv",
+    "left_static_obstacle_01.csv", "left_static_obstacle_02.csv", "left_static_obstacle_03.csv",
+    "left_static_obstacle_04.csv", "left_static_obstacle_05.csv"
+  ]
 }

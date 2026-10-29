@@ -88,7 +88,8 @@ def test_pose_inside_min_clearance_still_moves_away():
 
 
 def test_blocked_section_stops_before_the_blockage():
-    wall = [dict(center_world=[x, -140.], length_m=1., width_m=1., heading_deg=0.) for x in np.arange(-62., -47., .8)]
+    # Cover the newly registered left corridor too; the old wall now has a valid left bypass.
+    wall = [dict(center_world=[x, -140.], length_m=1., width_m=1., heading_deg=0.) for x in np.arange(-72., -47., .8)]
     result = planner(wall).run(ego(y=-160.), [], ROUTE)
     d = details(result)
     assert d['phase'] == 'blocked' and not d['path_validated']
@@ -128,7 +129,7 @@ def test_numerical_failure_stops_the_car_instead_of_raising(monkeypatch):
 
 
 def test_blocked_right_gap_passes_left_inside_the_own_lane():
-    # All recordings bypass to the right; with that gap closed the car uses the left half of its lane.
+    # This obstacle still fits a bypass inside the own lane, without using the wide left recordings.
     gap = dict(center_world=[-57.45, -143.57], length_m=3.4, width_m=1.9, heading_deg=90.)
     result = planner([gap]+RIGHT).run(ego(), [], ROUTE)
     d = details(result)

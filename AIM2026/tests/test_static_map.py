@@ -56,7 +56,7 @@ def test_object_that_disappears_in_view_is_released_but_occluded_one_is_kept():
 
 def test_boxes_outside_the_section_pass_through_unchanged():
     m = StaticObstacleMap()
-    outside = [box(-63.5, -140., state='moving', track=7), box(-60., -100., track=8), box(-60., -170., track=9)]
+    outside = [box(-73.5, -140., state='moving', track=7), box(-60., -100., track=8), box(-60., -170., track=9)]
     _, out = frame(m, outside)
     assert out['boxes'] == outside
 

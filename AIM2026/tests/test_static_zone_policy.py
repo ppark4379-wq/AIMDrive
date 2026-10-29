@@ -94,7 +94,7 @@ def test_static_section_detections_are_planned_as_stationary():
         ((-60.6, -142.), 'uncertain', 0.),       # in-lane obstacle
         ((-55.0, -144.), 'moving', 1.5),          # right-side cluster, jitter called it moving
         ((-55.0, -140.), 'uncertain', None),      # unknown speed
-        ((-63.5, -140.), 'moving', 8.),           # opposite lane: keep the tracker's judgement
+        ((-73.5, -140.), 'moving', 8.),           # outside the extended static section: retain judgement
         ((-60.0, -170.), 'moving', 8.),           # intersection before the section
         ((-60.0, -100.), 'uncertain', 0.),        # after the rejoin point
     ]))
