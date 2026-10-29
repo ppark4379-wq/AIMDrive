@@ -224,6 +224,9 @@ class RunDiscovery:
     """
     def __init__(self, root, interval=1.):
         self.root = root
+        self.roots = [root]
+        if root.resolve() == (REPO/'AIM2026/outputs/expert').resolve():
+            self.roots.append(REPO/'AIM2026/utils/scenario_runner/.runtime/tunnel_aim2026/expert')
         self.interval = interval
         self._selection = (None, [])
         self._lock = threading.Lock()
@@ -256,7 +259,7 @@ class RunDiscovery:
         return path.stat().st_mtime
 
     def _scan(self):
-        candidates = list(self.root.glob('*/inference.yaml'))
+        candidates = [path for root in self.roots for path in root.glob('*/inference.yaml')]
         started_runs = []
         for candidate in candidates:
             try:

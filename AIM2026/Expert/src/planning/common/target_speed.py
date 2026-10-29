@@ -107,6 +107,23 @@ def target_speed(self, vehicle_state, local_path, planning_path, lattice_result,
         pedestrian_target_velocity,
         crossing_velocity,
     ))
+    # The explicitly enabled MORAI deadlock override is the final obstacle
+    # authority, including duplicate legacy/person crossing ceilings. Keep
+    # signals, road/path speed and the validated corridor's capped creep speed.
+    # Freshness/manual termination still gate the command in runtime.py.
+    resume = lattice_result.debug_details.get('jamming_traffic', {}).get('forced_resume', {})
+    if (lattice_result.mode == 'static_obstacle' and lattice_result.active
+            and lattice_result.debug_details.get('jamming_corridor', {}).get('standing_only')
+            and resume.get('active') and resume.get('geometry_validated')):
+        resume['before_final_override_mps'] = target_velocity
+        protected = set(resume.get('protected_vehicle_ids', ()))
+        target_velocity = max(0., min(
+            signal_target_velocity, lattice_target_velocity,
+            lattice_result.acc_target_velocity, resume['target_mps'],
+            resume.get('vehicle_speed_cap_mps', float('inf')),
+            legacy_target_velocity if (getattr(acc, 'object_type', None) == 3
+                                       or getattr(acc, 'object_id', None) in protected) else float('inf'),
+            crossing_velocity if crossing_details.get('object_id') in protected else float('inf')))
     unconstrained_static_acceleration = target_velocity
     target_velocity = self._smooth_static_target_speed(target_velocity, vehicle_state, lattice_result)
     lattice_result.debug_details['speed_limits'] = dict(

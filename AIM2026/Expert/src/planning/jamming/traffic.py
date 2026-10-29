@@ -21,6 +21,7 @@ is taken from recent boxes, and motion from displacement. Overtaking is only for
 can walk slower than the slowest car, so speed does not tell them apart.
 """
 import math
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -34,9 +35,18 @@ from ...config.parameters.jamming import (
     ONCOMING_MIN_SPEED, TUNNEL_MAX_SPEED_KPH, TUNNEL_OVERTAKE_SPEED_KPH, TUNNEL_CLEARANCE_SPEED,
     TUNNEL_OVERTAKE_CLEARANCE_SPEED,
     ONCOMING_SWEEP_S, ENCROACHED_SWEEP_S, ENCROACH_TOLERANCE_M, GATE_MARGIN_M, GATE_DECEL, TRACK_STALE_S,
+    NEW_OBSTACLE_WINDOW_S, NEW_OBSTACLE_REACTION_S,
+    NEW_OBSTACLE_SIDE_MARGIN_M, NEW_OBSTACLE_OBSERVE_S, NEW_OBSTACLE_CLEAR_S,
+    NEW_OBSTACLE_STOP_OBSERVE_S, NEW_OBSTACLE_CAUTION_SPEED_KPH,
+    NEW_OBSTACLE_CAUTION_ACCEL_MPS2, NEW_OBSTACLE_RECHECK_MOVE_M,
+    YIELD_RESTART_SIDE_CLEARANCE_M,
+    NEW_OBSTACLE_WATCH_EXTRA_M, NEW_OBSTACLE_WATCH_HOLD_S, NEW_OBSTACLE_WATCH_SPEED_KPH,
+    TUNNEL_FORCE_RESUME_ENABLED, TUNNEL_FORCE_RESUME_WAIT_S,
+    TUNNEL_FORCE_RESUME_SPEED_KPH, TUNNEL_FORCE_RESUME_ACCEL_MPS2,
 )
 from ...config.parameters.static_obstacle import CORRIDOR_LANE_HALF_WIDTH
 from ...config.parameters.jamming import VEHICLE_MIN_LONG_M
+from ..common.dynamic_crossing import DynamicCrossingGuard
 
 FORWARD = .5*math.pi      # section frame: +y is the direction of travel
 LOST_TARGET_S = 1.        # an overtaking target not seen for this long is dropped [s]
@@ -44,6 +54,11 @@ LOST_TARGET_S = 1.        # an overtaking target not seen for this long is dropp
 
 def _stop_speed(distance, deceleration):
     return math.sqrt(2.*deceleration*max(0., distance))
+
+
+def _new_obstacle_braking_distance(speed):
+    """새 장애물 제동거리 [m]. 기존 2m 여유를 고정 포함하며 반응거리는 별도로 더한다."""
+    return speed**2/(2.*YIELD_DECEL) + 2.0
 
 
 class TunnelTraffic:
@@ -54,12 +69,23 @@ class TunnelTraffic:
         self.overtaking = {}          # track id -> committed overtake
         self.slow_since = {}          # track id -> time a car-sized lead has been slow since
         self.blockers = []
+        self._caution_time = None
+        self._caution_target = 0.
+        self._crossing_guard = None
+        self._edge_watches = {}
+        self._resume = {}
 
     def clear(self):
         self.map.set_virtual([])
         self.corridor.MAX_SPEED = TUNNEL_MAX_SPEED_KPH/3.6
         self.corridor.CLEARANCE_SPEED = TUNNEL_CLEARANCE_SPEED
         self.overtaking, self.slow_since, self.blockers = {}, {}, []
+        self._caution_time, self._caution_target = None, 0.
+        self._edge_watches.clear()
+        self._resume.clear()
+        self.corridor._restart_previous = None
+        if self._crossing_guard is not None:
+            self._crossing_guard.reset()
 
     # --- geometry -----------------------------------------------------------------------------------------------
     def _lane_line(self, y):
@@ -99,6 +125,25 @@ class TunnelTraffic:
         return out
 
     # --- before the map planner ---------------------------------------------------------------------------------
+    def _extension_objects(self, objects):
+        """New stop/restart behaviour is for person/unknown size classes only.
+
+        A large box is still unknown until TrackMotion confirms its size.
+        On confirmation, discard its extension state immediately; ordinary
+        vehicle following/overtaking and the static map keep ownership.
+        """
+        vehicles = {o['id'] for o in objects if o['size'] == 'vehicle'}
+        for identity in vehicles:
+            track = self.map.motion.tracks[identity]
+            track.pop('new_obstacle_guard', None)
+            track.pop('tunnel_side_release', None)
+            self._edge_watches.pop(identity, None)
+            if self._crossing_guard is not None:
+                self._crossing_guard._hazards.pop(identity, None)
+                self._crossing_guard._released.pop(identity, None)
+                self._crossing_guard._acc_excluded.discard(identity)
+        return [o for o in objects if o['id'] not in vehicles], vehicles
+
     def before(self, ego):
         """Decide overtakes and opposite-lane blockers; put their boxes into the map for this tick."""
         now = self.map.motion.now
@@ -257,18 +302,411 @@ class TunnelTraffic:
         side = np.sign(tx[k]*oy[rows, k]-ty[k]*ox[rows, k])
         return stations[k]+along[rows, k], side*distance[rows, k], np.arctan2(ty[k], tx[k])
 
+    @staticmethod
+    def _recent_approach_velocity(history, now):
+        """Short observed motion for crossing checks; no global motion relabelling."""
+        recent = np.array([h[:3] for h in history if now-h[0] <= .4])
+        if (len(recent) < 2 or recent[-1, 0]-recent[0, 0] < .09
+                or np.linalg.norm(recent[-1, 1:]-recent[0, 1:]) < NEW_OBSTACLE_RECHECK_MOVE_M):
+            return None
+        t = recent[:, 0]-recent[:, 0].mean()
+        return tuple((t @ (recent[:, 1:]-recent[:, 1:].mean(axis=0))) / (t @ t))
+
+    def _edge_watch(self, objects, ego, path, stations, now):
+        """Positive, bounded speed ceiling for new boxes just outside the stop gate.
+
+        Hold from the last actual observation, not from a retained track's age.
+        Missing frames/renumbering cannot remove the ceiling early or renew it
+        forever. This layer never issues a zero target or overrides a stop.
+        """
+        self._edge_watches = {k: w for k, w in self._edge_watches.items()
+                              if now-w['seen'] <= NEW_OBSTACLE_WATCH_HOLD_S}
+        length, half = self._vehicle()
+        speed = max(0., float(ego.velocity))
+        distance = speed*NEW_OBSTACLE_REACTION_S + _new_obstacle_braking_distance(speed)
+        for o in objects:
+            track = self.map.motion.tracks[o['id']]
+            if (o['age'] > TRACK_STALE_S or max(o['length'], o['width']) >= VEHICLE_MIN_LONG_M
+                    or now-track.get('first_seen', now) > NEW_OBSTACLE_WINDOW_S or speed < .5):
+                continue
+            s, d, tangent = self._project(np.array([o['x']]), np.array([o['y']]),
+                                           path[:, 0], path[:, 1], stations)
+            rel = o['heading']-tangent[0]
+            along = .5*(o['length']*abs(math.cos(rel))+o['width']*abs(math.sin(rel)))
+            across = max(.5*math.hypot(o['length'], o['width']),
+                         .5*(o['length']*abs(math.sin(rel))+o['width']*abs(math.cos(rel))))
+            side = abs(d[0])-across-half
+            forward = ((o['x']-ego.position.x)*math.cos(ego.yaw)
+                       +(o['y']-ego.position.y)*math.sin(ego.yaw))
+            if not (NEW_OBSTACLE_SIDE_MARGIN_M < side <= NEW_OBSTACLE_SIDE_MARGIN_M+NEW_OBSTACLE_WATCH_EXTRA_M
+                    and s[0]-along-length <= distance and forward+along > 0.):
+                continue
+            state = self._edge_watches.get(o['id'])
+            if state is None:
+                # Spatial continuation only carries a speed ceiling, never a
+                # clearance decision or a moving/stationary label.
+                nearby = [(math.hypot(w['x']-o['x'], w['y']-o['y']), k, w)
+                          for k, w in self._edge_watches.items() if w['seen'] < track['seen']]
+                nearest = min(nearby, default=None, key=lambda row: row[0])
+                if nearest is not None and nearest[0] <= 1.5:
+                    _, old_id, state = nearest
+                    self._edge_watches.pop(old_id)
+                else:
+                    state = dict(cap_mps=max(.5, min(speed, NEW_OBSTACLE_WATCH_SPEED_KPH/3.6)))
+            state.update(seen=track['seen'], x=o['x'], y=o['y'])
+            self._edge_watches[o['id']] = state
+        return [dict(id=k, cap_mps=w['cap_mps'], age_s=round(max(0., now-w['seen']), 3))
+                for k, w in self._edge_watches.items()]
+
+    def _record_stopped_hazards(self, objects, ego, details, now):
+        """Arm side-clearance release only after this traffic layer stopped Ego."""
+        stopped = abs(float(ego.velocity)) <= .2
+        blocked = {d['id'] for d in details['new_obstacle_guard']
+                   if d['phase'] != 'released' and d['cap_mps'] <= .05}
+        blocked.update(d['id'] for d in details['yields'] if d['cap'] <= .05)
+        crossing = details['approach_crossing']
+        if crossing.get('target_velocity', math.inf) <= .05:
+            blocked.add(crossing['object_id'])
+        for o in objects:
+            track = self.map.motion.tracks[o['id']]
+            state = track.get('tunnel_side_release')
+            if stopped and o['id'] in blocked:
+                if state is None:
+                    state = track['tunnel_side_release'] = dict(since=now, armed=False)
+                if state.get('since') is None:
+                    state['since'] = now
+                if now-state['since'] >= NEW_OBSTACLE_STOP_OBSERVE_S:
+                    state['armed'] = True
+            elif state is not None:
+                state['since'] = None
+            if state is not None and (math.hypot(*o['velocity']) > .2
+                    or self._recent_approach_velocity(track.get('history', ()), now) is not None):
+                state.update(armed=False, since=None)
+
+    def _stationary_side_clear(self, objects, ego, path, stations, now):
+        """Observed stopped pedestrians outside the body corridor may be passed slowly.
+
+        A crossing's broad anticipation margin is not an occupied body. Require
+        sustained fresh position evidence and check the entire commanded path;
+        a label, timeout or a missing detection alone cannot grant clearance.
+        Recompute each tick so resumed motion immediately restores prediction.
+        """
+        length, half = self._vehicle()
+        clear = {}
+        for o in objects:
+            if o['age'] > TRACK_STALE_S or not (o['person'] or (o['mover'] and o['size'] != 'vehicle')):
+                continue
+            track = self.map.motion.tracks[o['id']]
+            if not track.get('tunnel_side_release', {}).get('armed'):
+                continue
+            history = track.get('history', ())
+            recent = np.array([h for h in history if now-h[0] <= NEW_OBSTACLE_OBSERVE_S+.1])
+            if (len(recent) < 6 or recent[-1, 0]-recent[0, 0] < NEW_OBSTACLE_OBSERVE_S-.1
+                    or np.max(np.linalg.norm(recent[:, 1:3]-np.median(recent[:, 1:3], axis=0), axis=1)) > .35
+                    or math.hypot(*o['velocity']) > .2
+                    or self._recent_approach_velocity(history, now) is not None):
+                continue
+            # Enclose every recent box; do not trust a tiny single-frame fragment
+            # or a noisy heading while the person is standing next to the path.
+            radius = max(.3, .5*float(np.max(np.hypot(recent[:, 3], recent[:, 4]))))
+            s, d, _ = self._project(np.array([o['x']]), np.array([o['y']]),
+                                     path[:, 0], path[:, 1], stations)
+            if (s[0]+radius <= 0. or s[0]-radius > length+YIELD_RANGE_M
+                    or abs(d[0])-radius-half <= YIELD_RESTART_SIDE_CLEARANCE_M):
+                continue
+            # Restrict the slow pass to the side band that could otherwise hold
+            # a yield. Far-away and already passed objects do not cap cruise.
+            forward = ((o['x']-ego.position.x)*math.cos(ego.yaw)
+                       +(o['y']-ego.position.y)*math.sin(ego.yaw))
+            crossing_radius = max(radius, .5*math.hypot(.8, .8))
+            if abs(d[0])-crossing_radius-half <= YIELD_CLEARANCE_M:
+                # Keep body-clear evidence even just behind the path start:
+                # its clamped station is zero, which legacy yield otherwise
+                # mistakes for a pedestrian still under the vehicle. Only the
+                # part ahead/alongside warrants a slow-pass speed ceiling.
+                clear[o['id']] = forward+radius > 0.
+        return clear
+
+    @staticmethod
+    def _validated_detour(result):
+        """Use only the corridor's current, fully checked path, with body room.
+
+        The corridor solver checks road bounds, curvature and occupied cells;
+        its DP cost favours clearance, then smooth/reference/previous-path
+        tracking. Traffic has no alternate paths to rank or invent here.
+        """
+        static = result.debug_details.get('static_avoidance', {})
+        clearance = static.get('min_clearance_m')
+        return (static.get('path_validated') is True and static.get('phase') == 'follow'
+                and clearance is not None and math.isfinite(clearance)
+                and clearance >= YIELD_RESTART_SIDE_CLEARANCE_M)
+
+    def _forced_resume(self, result, ego, now, planner_speed, details):
+        """Simulator-only liveness override for a prolonged traffic stop.
+
+        This overrides person/unknown-object danger only. Confirmed vehicle
+        following/clearance, road/steering feasibility and signal/freshness
+        stops remain. Rank other-object overlap instead of requiring clearance. State
+        belongs to Ego, so track renumbering cannot restart the wait timer.
+        """
+        state = self._resume
+        protected = set(details.get('protected_vehicle_ids', ()))
+        sources = (set(state.get('source_ids', ()))
+                   if state.get('active') or abs(float(ego.velocity)) <= .2 else set()) - protected
+        sources.update(details.get('extension_stop_ids', ()))
+        vehicle_cap = details.get('vehicle_speed_cap_mps', math.inf)
+        if not sources or vehicle_cap <= .05:
+            state.clear()
+            details['forced_resume'] = dict(enabled=TUNNEL_FORCE_RESUME_ENABLED, active=False,
+                stopped_s=0., geometry_validated=False, normal_target_mps=result.acc_target_velocity,
+                normal_kind=details.get('kind'), scope='person_unknown',
+                protected_vehicle_ids=sorted(protected))
+            return
+        previous_time = state.get('time', now)
+        if not TUNNEL_FORCE_RESUME_ENABLED or not 0. <= now-previous_time <= TRACK_STALE_S:
+            state.clear()
+        dt = min(.2, max(0., now-previous_time)) if state else 0.
+        state['time'] = now
+        state['source_ids'] = sorted(sources)
+        static = result.debug_details.get('static_avoidance', {})
+        blocking = (result.acc_target_velocity <= .05 and
+                    (details.get('kind') in ('crossing', 'new_obstacle', 'caution', 'lead', 'yield', 'wait')
+                     or static.get('phase') == 'blocked'))
+        if not state.get('active'):
+            if not TUNNEL_FORCE_RESUME_ENABLED or abs(float(ego.velocity)) > .2:
+                state.pop('since', None)
+            elif blocking:
+                state.setdefault('since', now)
+            # A one-frame positive target is not an actual restart. Once a
+            # traffic stop begins, count until Ego really moves, even if the
+            # object prediction/ID flickers between stop and go meanwhile.
+        elapsed = max(0., now-state['since']) if 'since' in state else 0.
+        valid = False
+        choice = None
+        if TUNNEL_FORCE_RESUME_ENABLED and elapsed >= TUNNEL_FORCE_RESUME_WAIT_S:
+            select = getattr(self.corridor, 'least_risk_restart', None)
+            if select is not None:
+                choice = select(ego, self._objects(now))
+                valid = choice is not None
+            else:
+                valid = self._validated_detour(result) and planner_speed > .05
+        if (valid and elapsed >= TUNNEL_FORCE_RESUME_WAIT_S and TUNNEL_FORCE_RESUME_ENABLED
+                and (blocking or state.get('active'))):
+            state['active'] = True
+        if not valid:
+            state['active'] = False
+            state['target'] = 0.
+        # A sustained natural release hands speed control back to normal
+        # planning. A one-frame positive prediction must not re-arm 12 s waits.
+        if (state.get('active') and static.get('path_validated')
+                and result.acc_target_velocity >= TUNNEL_FORCE_RESUME_SPEED_KPH/3.6):
+            state.setdefault('clear_since', now)
+            if now-state['clear_since'] >= NEW_OBSTACLE_CLEAR_S:
+                state.clear()
+        else:
+            state.pop('clear_since', None)
+        info = details['forced_resume'] = dict(
+            enabled=TUNNEL_FORCE_RESUME_ENABLED, active=bool(state.get('active')),
+            stopped_s=round(elapsed, 3), geometry_validated=bool(valid),
+            normal_target_mps=result.acc_target_velocity, normal_kind=details.get('kind'),
+            scope='person_unknown', protected_vehicle_ids=sorted(protected),
+            vehicle_speed_cap_mps=vehicle_cap)
+        if not info['active']:
+            return
+        if choice is not None:
+            result.path, candidate, geometry = choice
+            result.candidates = [candidate]
+            details['restart_path'] = geometry
+            info['path_selection'] = geometry
+            # Never label a risk-ranked, potentially overlapping path as
+            # collision-free static validation; final speed has its own flag.
+            static.update(path_validated=False, phase='last_resort',
+                          min_clearance_m=geometry['min_clearance_m'])
+        previous = min(state.get('target', 0.), max(0., float(ego.velocity))+.5)
+        state['target'] = min(vehicle_cap, TUNNEL_FORCE_RESUME_SPEED_KPH/3.6,
+                              previous+TUNNEL_FORCE_RESUME_ACCEL_MPS2*dt)
+        result.acc_target_velocity = state['target']
+        result.reason = 'jamming_traffic_forced_resume'
+        details.update(kind='forced_resume', cautious_restart=True)
+        info.update(target_mps=state['target'], path_source='least_risk_restart' if choice else 'validated_corridor')
+
+    def _crossing_speed(self, objects, ego, path, now, desired_speed, side_clear=()):
+        """Reuse ordinary-road crossing prediction before tunnel class confirmation.
+
+        Feed observed world/map displacement, not box yaw or a guessed speed.
+        This check owns no path and cannot raise any existing speed ceiling.
+        The shared guard expires missing evidence and releases departing bodies.
+        """
+        if self._crossing_guard is None:
+            length, half = self._vehicle()
+            self._crossing_guard = DynamicCrossingGuard(
+                vehicle_length=length, vehicle_width=2.*half,
+                horizon=YIELD_HORIZON_S, max_distance=YIELD_RANGE_M,
+                clearance=YIELD_CLEARANCE_M, stop_margin=YIELD_STOP_GAP_M,
+                deceleration=YIELD_DECEL, reaction_time=NEW_OBSTACLE_REACTION_S,
+                release_delay=NEW_OBSTACLE_CLEAR_S,
+                approach_speed=NEW_OBSTACLE_CAUTION_SPEED_KPH/3.6)
+        entries = []
+        for o in objects:
+            if o['size'] == 'vehicle' or o['age'] > TRACK_STALE_S or o['id'] in side_clear:
+                continue
+            history = self.map.motion.tracks[o['id']].get('history', ())
+            recent = self._recent_approach_velocity(history, now)
+            vx, vy = recent if recent is not None else o['velocity']
+            # A missing vector remains zero; do not invent approach from class.
+            age = max(0., o['age'])
+            obj = SimpleNamespace(
+                unique_id=o['id'], type=2,
+                position=(o['x']+vx*age, o['y']+vy*age),
+                velocity=math.hypot(vx, vy), heading_deg=math.degrees(math.atan2(vy, vx)),
+                size_x=o['length'], size_y=o['width'],
+                speed_unknown=False, motion_uncertain=not o['mover'])
+            entries.append(dict(object_info=obj))
+        pose = SimpleNamespace(position=(float(ego.position.x), float(ego.position.y)),
+                               velocity=max(0., float(ego.velocity)))
+        return self._crossing_guard.evaluate(path, pose, entries, desired_speed, now=now)
+
+    def _new_obstacle_guard(self, objects, ego, path, stations, now):
+        """Brake for a newly appearing close hazard before motion confirmation.
+
+        Existing/far tracks retain normal planning. A triggered track latches
+        until the path clears or observation resolves it; shrinking stopping
+        distance while braking must not cause release/retrigger oscillations.
+        State belongs to TrackMotion so spatial ID inheritance carries it too.
+        """
+        length, half = self._vehicle()
+        speed = max(0., float(ego.velocity))
+        distance = speed*NEW_OBSTACLE_REACTION_S + _new_obstacle_braking_distance(speed)
+        decisions = []
+        for o in objects:
+            track = self.map.motion.tracks[o['id']]
+            if o['size'] == 'vehicle':
+                track.pop('new_obstacle_guard', None)
+                continue
+            state = track.get('new_obstacle_guard')
+            if state is not None and state['phase'] == 'released' and not state.get('cautious'):
+                continue
+            history = list(track.get('history', ()))
+            first_seen = track.get('first_seen', history[0][0] if history else now)
+            if state is None and (now-first_seen > NEW_OBSTACLE_WINDOW_S or speed < .5):
+                continue
+            vx, vy = o['velocity']
+            recent_velocity = self._recent_approach_velocity(history, now)
+            if recent_velocity is not None:
+                vx, vy = recent_velocity
+            times = np.linspace(0., NEW_OBSTACLE_REACTION_S, 5) + max(0., o['age'])
+            px, py = o['x']+vx*times, o['y']+vy*times
+            s, d, tangent = self._project(px, py, path[:, 0], path[:, 1], stations)
+            rel = o['heading']-tangent
+            along = .5*(o['length']*np.abs(np.cos(rel))+o['width']*np.abs(np.sin(rel)))
+            across = .5*(o['length']*np.abs(np.sin(rel))+o['width']*np.abs(np.cos(rel)))
+            # Compact unclassified boxes can rotate as a walking person is
+            # detected. Use their radius, rather than trusting initial yaw.
+            if max(o['length'], o['width']) < VEHICLE_MIN_LONG_M:
+                across = np.maximum(across, .5*math.hypot(o['length'], o['width']))
+            gap = s-along-length
+            forward = ((px-float(ego.position.x))*math.cos(float(ego.yaw))
+                       +(py-float(ego.position.y))*math.sin(float(ego.yaw)))
+            limit = distance if state is None else max(distance, state['distance_m'])
+            danger = bool(o['age'] <= TRACK_STALE_S and np.any(
+                (np.abs(d)-across <= half+NEW_OBSTACLE_SIDE_MARGIN_M)
+                & (gap <= limit) & (forward+along > 0.)))
+            if state is None:
+                if not danger:
+                    continue
+                state = track['new_obstacle_guard'] = dict(phase='observing', started=now,
+                                                          distance_m=distance, clear_since=None,
+                                                          cautious=max(o['length'], o['width']) < VEHICLE_MIN_LONG_M,
+                                                          stopped_since=None)
+            # Released small objects still get approach checks; label flicker
+            # or Ego simply approaching a stationary object does not re-arm.
+            approaching = (recent_velocity is not None and
+                           ((px[-1]-px[0])*math.cos(float(ego.yaw))
+                            +(py[-1]-py[0])*math.sin(float(ego.yaw)) < -.15
+                            or abs(d[-1]) < abs(d[0])-.15))
+            approach_risk = bool(danger and approaching and np.any(
+                (np.abs(d)-across <= half+YIELD_CLEARANCE_M)
+                & (gap <= limit) & (forward+along > 0.)))
+            if state['phase'] == 'released':
+                if not approach_risk:
+                    continue
+                state.update(phase='observing', stopped_since=None, clear_since=None)
+            if abs(float(ego.velocity)) <= .2:
+                state['has_stopped'] = True
+                if state.get('stopped_since') is None:
+                    state['stopped_since'] = now
+            else:
+                state['stopped_since'] = None
+            stopped_for = 0. if state.get('stopped_since') is None else now-state['stopped_since']
+            recent = np.array([h[:3] for h in history if now-h[0] <= NEW_OBSTACLE_OBSERVE_S+.1])
+            stationary = (len(recent) >= 6 and recent[-1, 0]-recent[0, 0] >= NEW_OBSTACLE_OBSERVE_S-.1
+                          and np.max(np.linalg.norm(recent[:, 1:]-np.median(recent[:, 1:], axis=0), axis=1)) <= .35)
+            release = None
+            reason = 'new_close_obstacle'
+            if state['cautious'] and o['age'] > TRACK_STALE_S:
+                # Loss is not proof of clearance. Hand off to the accumulated
+                # map at low speed, then expire with TrackMotion's bounded memory.
+                if stopped_for >= NEW_OBSTACLE_STOP_OBSERVE_S or state['phase'] == 'caution':
+                    state['phase'] = 'caution'
+                reason = 'observation_lost'
+            elif not danger:
+                if state['clear_since'] is None:
+                    state['clear_since'] = now
+                if now-state['clear_since'] >= NEW_OBSTACLE_CLEAR_S:
+                    release = 'path_clear'
+            else:
+                state['clear_since'] = None
+                if state['cautious']:
+                    if (state['phase'] == 'observing' and not state.get('has_stopped')
+                            and (o['mover'] or o['person'])):
+                        # Motion resolved before a stop: preserve normal moving
+                        # traffic handling. Cautious restart is for a held Ego.
+                        release = 'motion_confirmed'
+                        state['cautious'] = False
+                    elif (state['phase'] == 'observing' and stopped_for >= NEW_OBSTACLE_STOP_OBSERVE_S
+                            and (stationary or o['mover'] or o['person']
+                                 or stopped_for >= NEW_OBSTACLE_OBSERVE_S)):
+                        state['phase'] = 'caution'
+                    reason = 'approaching_before_confirmation' if approach_risk else 'watching_close_object'
+                elif o['mover'] or o['person']:
+                    # The normal yield/lead cap is calculated on this same
+                    # tick. Releasing this guard never overrides that cap.
+                    release = 'motion_confirmed'
+                elif stationary and now-state['started'] >= NEW_OBSTACLE_OBSERVE_S:
+                    release = 'stationary_observed'
+            if release:
+                state.update(phase='released', release_reason=release)
+            cap = 0. if state['phase'] == 'observing' else NEW_OBSTACLE_CAUTION_SPEED_KPH/3.6
+            if state['phase'] == 'caution':
+                # Permit a validated static detour, but retain room to stop
+                # before a footprint actually occupying the chosen path.
+                in_path = (np.abs(d)-across <= half+.2) & (forward+along > 0.)
+                if o['age'] <= TRACK_STALE_S and in_path.any():
+                    cap = min(cap, _stop_speed(float(np.min(gap[in_path]))-_new_obstacle_braking_distance(0.), YIELD_DECEL))
+                if approach_risk:
+                    cap = 0.
+            decisions.append(dict(id=o['id'], phase=state['phase'], gap_m=round(float(np.min(gap)), 2),
+                                  stop_distance_m=round(limit, 2), observation_s=round(now-first_seen, 3),
+                                  stopped_s=round(stopped_for, 3), cautious=state['cautious'],
+                                  cap_mps=cap if state['phase'] != 'released' else None,
+                                  reason=release or reason))
+        return decisions
+
     def after(self, result, ego):
         """Cap the planned speed for traffic; returns the same result with debug details."""
         now = self.map.motion.now
         details = dict(overtaking=sorted(self.overtaking), blockers=self.blockers, leads=[], yields=[], kind=None)
         result.debug_details['jamming_traffic'] = details
         if now is None or not self.corridor.ready or len(result.path) < 2:
+            self._resume.clear()
             return result
+        planner_speed = result.acc_target_velocity
         length, half = self._vehicle()
         path = np.array([(p.x, p.y) for p in result.path], dtype=float)
         keep = np.r_[True, np.hypot(*np.diff(path, axis=0).T) > 1e-6]
         path = path[keep]
         if len(path) < 2:
+            self._resume.clear()
             return result
         stations = np.r_[0., np.cumsum(np.hypot(*np.diff(path, axis=0).T))]
         yaw = np.arctan2(*np.diff(path, axis=0).T[::-1])
@@ -276,8 +714,34 @@ class TunnelTraffic:
         entering = (not self._encroaching_pose(ego)) and bool(encroach.any())
         s_in = float(stations[int(np.argmax(encroach))]) if entering else math.inf
         caps = []
-        for o in self._objects(now):
-            if o['age'] > TRACK_STALE_S:
+        objects = self._objects(now)
+        extension_objects, protected = self._extension_objects(objects)
+        details['protected_vehicle_ids'] = sorted(protected)
+        watches = self._edge_watch(extension_objects, ego, path, stations, now)
+        details['edge_watch'] = watches
+        caps.extend((w['cap_mps'], 'edge_watch') for w in watches)
+        side_clear = (self._stationary_side_clear(extension_objects, ego, path, stations, now)
+                      if result.debug_details.get('static_avoidance', {}).get('path_validated') else {})
+        details['stationary_side_pass'] = sorted(side_clear)
+        slow_pass = any(side_clear.values())
+        crossing_cap, crossing_details = self._crossing_speed(
+            extension_objects, ego, path, now, result.acc_target_velocity, side_clear)
+        details['approach_crossing'] = crossing_details
+        if math.isfinite(crossing_cap):
+            caps.append((crossing_cap, 'crossing'))
+        guard = self._new_obstacle_guard(extension_objects, ego, path, stations, now)
+        details['new_obstacle_guard'] = guard
+        if any(d['phase'] == 'observing' for d in guard):
+            caps.append((0., 'new_obstacle'))
+        caution = slow_pass or any(d['phase'] == 'caution' for d in guard)
+        if slow_pass:
+            caps.append((NEW_OBSTACLE_CAUTION_SPEED_KPH/3.6, 'caution'))
+        for d in guard:
+            if d['phase'] == 'caution':
+                caps.append((d['cap_mps'], 'caution'))
+        details['cautious_restart'] = caution
+        for o in objects:
+            if o['age'] > TRACK_STALE_S or o['id'] in side_clear:
                 continue
             vx, vy = o['velocity']
             if o['car'] and not o['standing'] and o['id'] not in self.overtaking:
@@ -329,6 +793,7 @@ class TunnelTraffic:
         if entering and phase == 'blocked' and (stop is None or s_in < stop):
             caps.append((_stop_speed(s_in-GATE_MARGIN_M, GATE_DECEL), 'wait'))
         details['entry_station'] = None if not math.isfinite(s_in) else round(s_in, 1)
+        self._record_stopped_hazards(extension_objects, ego, details, now)
         if caps:
             cap, kind = min(caps)
             details['cap'] = round(cap, 2)
@@ -336,4 +801,34 @@ class TunnelTraffic:
                 result.acc_target_velocity = cap
                 result.reason = 'jamming_traffic_'+kind
                 details['kind'] = kind
+        if caution:
+            # Rate-limit only increases. A new zero cap takes effect this tick;
+            # a stopped Ego cannot accumulate a large release target behind a signal.
+            dt = 0. if self._caution_time is None else min(.2, max(0., now-self._caution_time))
+            previous = min(self._caution_target, max(0., float(ego.velocity))+.5)
+            result.acc_target_velocity = min(result.acc_target_velocity,
+                                             previous+NEW_OBSTACLE_CAUTION_ACCEL_MPS2*dt)
+            self._caution_target = max(0., result.acc_target_velocity)
+            self._caution_time = now
+            details['caution_target_mps'] = self._caution_target
+        else:
+            self._caution_time, self._caution_target = None, max(0., float(ego.velocity))
+        stop_ids = {d['id'] for d in guard if d['phase'] != 'released' and d['cap_mps'] <= .05}
+        if crossing_cap <= .05 and crossing_details.get('object_id') is not None:
+            stop_ids.add(crossing_details['object_id'])
+        stop_ids.update(d['id'] for d in details['yields'] if d['cap'] <= .05 and d['id'] not in protected)
+        if phase == 'blocked' and result.acc_target_velocity <= .05:
+            for o in extension_objects:
+                radius = .5*math.hypot(o['length'], o['width'])
+                forward = (o['x']-ego.position.x)*math.cos(ego.yaw)+(o['y']-ego.position.y)*math.sin(ego.yaw)
+                side = -(o['x']-ego.position.x)*math.sin(ego.yaw)+(o['y']-ego.position.y)*math.cos(ego.yaw)
+                if (o['age'] <= TRACK_STALE_S and -radius < forward < length+YIELD_RANGE_M
+                        and abs(side) < half+radius+YIELD_CLEARANCE_M):
+                    stop_ids.add(o['id'])
+        details['extension_stop_ids'] = sorted(stop_ids)
+        vehicle_caps = [d['cap'] for d in details['leads'] if d['id'] in protected]
+        if entering and phase == 'blocked' and any(b['id'] in protected for b in self.blockers):
+            vehicle_caps.append(_stop_speed(s_in-GATE_MARGIN_M, GATE_DECEL))
+        details['vehicle_speed_cap_mps'] = min(vehicle_caps, default=math.inf)
+        self._forced_resume(result, ego, now, planner_speed, details)
         return result
