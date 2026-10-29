@@ -41,6 +41,7 @@ from ...config.parameters.jamming import (
     NEW_OBSTACLE_CAUTION_ACCEL_MPS2, NEW_OBSTACLE_RECHECK_MOVE_M,
     YIELD_RESTART_SIDE_CLEARANCE_M,
     NEW_OBSTACLE_WATCH_EXTRA_M, NEW_OBSTACLE_WATCH_HOLD_S, NEW_OBSTACLE_WATCH_SPEED_KPH,
+    STANDING_HOLD_RELEASE,
 )
 from ...config.parameters.static_obstacle import CORRIDOR_LANE_HALF_WIDTH
 from ...config.parameters.jamming import VEHICLE_MIN_LONG_M
@@ -71,6 +72,7 @@ class TunnelTraffic:
         self._caution_target = 0.
         self._crossing_guard = None
         self._edge_watches = {}
+        self._standing_released = False   # standing-body holds released by the planner's stall clock last tick
 
     def clear(self):
         self.map.set_virtual([])
@@ -78,6 +80,7 @@ class TunnelTraffic:
         self.corridor.CLEARANCE_SPEED = TUNNEL_CLEARANCE_SPEED
         self.overtaking, self.slow_since, self.blockers = {}, {}, []
         self._caution_time, self._caution_target = None, 0.
+        self._standing_released = False
         self._edge_watches.clear()
         if self._crossing_guard is not None:
             self._crossing_guard.reset()
@@ -491,7 +494,7 @@ class TunnelTraffic:
             s, d, tangent = self._project(px, py, path[:, 0], path[:, 1], stations)
             rel = o['heading']-tangent
             along = .5*(o['length']*np.abs(np.cos(rel))+o['width']*np.abs(np.sin(rel)))
-            across = .5*(o['length']*np.abs(np.sin(rel))+o['width']*np.abs(np.cos(rel)))
+            across = body_across = .5*(o['length']*np.abs(np.sin(rel))+o['width']*np.abs(np.cos(rel)))
             # Compact unclassified boxes can rotate as a walking person is
             # detected. Use their radius, rather than trusting initial yaw.
             if max(o['length'], o['width']) < VEHICLE_MIN_LONG_M:
@@ -572,7 +575,10 @@ class TunnelTraffic:
             if state['phase'] == 'caution':
                 # Permit a validated static detour, but retain room to stop
                 # before a footprint actually occupying the chosen path.
-                in_path = (np.abs(d)-across <= half+.2) & (forward+along > 0.)
+                # A stopped Ego creeps past a motionless box beside the validated path: only its measured
+                # body (not the rotation-proof radius used for the watch zone) counts as occupying the path.
+                width = across if o['mover'] or o['person'] or not stationary else body_across
+                in_path = (np.abs(d)-width <= half+.2) & (forward+along > 0.)
                 if o['age'] <= TRACK_STALE_S and in_path.any():
                     cap = min(cap, _stop_speed(float(np.min(gap[in_path]))-_new_obstacle_braking_distance(0.), YIELD_DECEL))
                 if approach_risk:
@@ -613,11 +619,16 @@ class TunnelTraffic:
                       if result.debug_details.get('static_avoidance', {}).get('path_validated') else {})
         details['stationary_side_pass'] = sorted(side_clear)
         slow_pass = any(side_clear.values())
+        # Caps set by a standing body that is neither a person nor a mover: the map planner's validated path already
+        # keeps clear of it, so the planner's stall clock may release them (3 s rule, _release_standing_hold).
+        standing_ids = {o['id'] for o in extension_objects if not (o['mover'] or o['person'])}
+        standing_holds = []
         crossing_cap, crossing_details = self._crossing_speed(
             extension_objects, ego, path, now, result.acc_target_velocity, side_clear)
         details['approach_crossing'] = crossing_details
         if math.isfinite(crossing_cap):
-            caps.append((crossing_cap, 'crossing'))
+            standing = crossing_details.get('object_id') in standing_ids
+            (standing_holds if standing else caps).append((crossing_cap, 'crossing'))
         guard = self._new_obstacle_guard(extension_objects, ego, path, stations, now)
         details['new_obstacle_guard'] = guard
         if any(d['phase'] == 'observing' for d in guard):
@@ -627,7 +638,8 @@ class TunnelTraffic:
             caps.append((NEW_OBSTACLE_CAUTION_SPEED_KPH/3.6, 'caution'))
         for d in guard:
             if d['phase'] == 'caution':
-                caps.append((d['cap_mps'], 'caution'))
+                standing = d['id'] in standing_ids and d['reason'] == 'watching_close_object'
+                (standing_holds if standing else caps).append((d['cap_mps'], 'caution'))
         details['cautious_restart'] = caution
         for o in objects:
             if o['age'] > TRACK_STALE_S or o['id'] in side_clear:
@@ -683,6 +695,7 @@ class TunnelTraffic:
             caps.append((_stop_speed(s_in-GATE_MARGIN_M, GATE_DECEL), 'wait'))
         details['entry_station'] = None if not math.isfinite(s_in) else round(s_in, 1)
         self._record_stopped_hazards(extension_objects, ego, details, now)
+        caps.extend(self._release_standing_hold(standing_holds, caps, result, ego, details))
         if caps:
             cap, kind = min(caps)
             details['cap'] = round(cap, 2)
@@ -703,3 +716,24 @@ class TunnelTraffic:
         else:
             self._caution_time, self._caution_target = None, max(0., float(ego.velocity))
         return result
+
+    def _release_standing_hold(self, holds, caps, result, ego, details):
+        """The map planner's 3 s rule (corridor_optimizer note_held) for a car held only by standing bodies.
+
+        A stop (cap <= 0.05) on the validated path that neither another cap nor the planner's own speed shares runs
+        the planner's stall clock, the same one a blocked path runs. Once it reaches FALLBACK_STALL_S the holds give
+        way to FALLBACK_SPEED until a tick without them. People, movers, leads and the lane gate keep their caps."""
+        speed = self.corridor.FALLBACK_SPEED
+        hold = min(holds) if holds else (math.inf, '')
+        others = min([cap for cap, _ in caps]+[result.acc_target_velocity])
+        validated = result.debug_details.get('static_avoidance', {}).get('path_validated')
+        if not (STANDING_HOLD_RELEASE and validated and others > .05
+                and (hold[0] <= .05 or (self._standing_released and hold[0] < speed))):
+            self._standing_released = False
+            return holds
+        self._standing_released = self.corridor.note_held(ego)
+        if not self._standing_released:
+            return holds
+        details['standing_hold_release'] = dict(kind=hold[1], cap_mps=round(hold[0], 2), speed_cap_mps=speed,
+                                                stall_s=self.corridor.FALLBACK_STALL_S)
+        return [(speed, 'standing_release')]

@@ -78,6 +78,9 @@ CORRIDOR_FALLBACK_SPEED = 2.0         # 최후 수단 경로의 속도 상한 [m
 CORRIDOR_FALLBACK_CONTACT_STALL_S = 3.0   # 접촉 감수 단계(여유 < 0)는 완전히 선 채(아래 속도 미만) 이만큼 지나야 쓴다; 0이면 바로 쓴다 [s]
 CORRIDOR_FALLBACK_CONTACT_STALL_SPEED = .3   # 접촉 감수 단계의 '완전히 섬' 기준 속도 [m/s]
 CORRIDOR_FALLBACK_RELEASE_TICKS = 5   # 정상 경로가 이만큼 연속으로 나와야 최후 수단을 끝낸다(경로가 깜빡이며 서고 가기를 반복하지 않게)
+# 곡률 한도(MAX_CURVATURE)만 넘는 경로: 여유·통로 조건을 지킨 후보 중 곡률이 가장 작은 것을 CORRIDOR_FALLBACK_SPEED 이하로
+# 바로 따라간다(곡률 때문에 서지 않는다). 아직 유효한 기존 경로가 있으면 그쪽이 먼저다. False면 예전처럼 위반 지점 앞에서 선다
+CORRIDOR_CURVATURE_OVERRIDE = True
 # 기록 경로는 모두 오른쪽 회피라 차로 왼쪽 절반이 통로에서 빠진다. 지도 차로 폭으로 왼쪽을 보충한다.
 CORRIDOR_LANE_HALF_WIDTH = 1.75       # 자차 차로 반폭; MGeo A2256W000222 width 3.5 m, 왼쪽은 중앙선 [m]
 CORRIDOR_LANE_EDGE_MARGIN = .3        # 차체와 차로 왼쪽 경계 사이에 남길 여유 [m]

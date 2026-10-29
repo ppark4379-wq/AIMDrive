@@ -3,6 +3,7 @@ by step (the road edge condition stays) and drives on slowly; a normal path ends
 import math
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -11,7 +12,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_tunnel_corridor import ROUTE, SECTION, ego, planner_with, road  # noqa: F401  (road is a fixture)
 import AIM2026.Expert.src.config.parameters.jamming as J
+from AIM2026.Expert.src.planning.jamming import traffic
 from AIM2026.Expert.src.planning.jamming.corridor import TunnelCorridorPlanner
+from AIM2026.Expert.src.planning.static_obstacle import corridor_optimizer
 from AIM2026.Expert.src.planning.static_obstacle.corridor_optimizer import RESOLVE_EVERY
 
 ROAD_LOW, ROAD_HIGH = -6.46, .54          # road edges at forward 40 m (section frame)
@@ -213,5 +216,98 @@ def test_a_free_road_is_unchanged(road):
     try:
         result = tick(jam, clock, .5, speed=5.)
         assert result.reason == 'jamming_corridor_follow' and 'fallback' not in info(result)
+    finally:
+        jam.close()
+
+
+STANDING_CAR = [(-1.8, 40., 4.5, 2.)]     # a standing car in the own lane, passed in the opposite lane
+
+
+def test_curvature_alone_does_not_stop_the_car(road, monkeypatch):
+    # Run 20261030-044207: only the curvature limit failed (0.296 > 0.24) and the car never left its start. The
+    # least-bent path keeping every clearance and road margin is driven slowly instead (limit lowered here).
+    monkeypatch.setattr(corridor_optimizer, 'MAX_CURVATURE', .01)
+    jam, _ = planner_with(road, STANDING_CAR)
+    try:
+        result = jam.run(ego(-2., 12.), ROUTE[:5], [], global_path=ROUTE)
+        d = info(result)
+        assert result.reason == 'jamming_corridor_follow' and d['path_validated'] and 'error' not in d
+        assert d['violations']['curvature'] > 0 and d['violations']['clearance'] == d['violations']['corridor'] == 0
+        assert d['curvature_override']['limit'] == .01
+        assert 0. < result.acc_target_velocity <= J.FALLBACK_SPEED+1e-9
+        assert jam.corridor.committed is None
+    finally:
+        jam.close()
+
+
+def test_curvature_override_switched_off(road, monkeypatch):
+    monkeypatch.setattr(corridor_optimizer, 'MAX_CURVATURE', .01)
+    monkeypatch.setattr(TunnelCorridorPlanner, 'CURVATURE_OVERRIDE', False)
+    jam, _ = planner_with(road, STANDING_CAR)
+    try:
+        result = jam.run(ego(-2., 12.), ROUTE[:5], [], global_path=ROUTE)
+        assert result.reason == 'jamming_corridor_blocked' and info(result)['error'] == 'smoothed_path_violation'
+    finally:
+        jam.close()
+
+
+def hold(jam, result, speed=0., caps=()):
+    """A standing body's caution cap of 0 on this tick's path, as TunnelTraffic.after() collects it."""
+    return jam.traffic._release_standing_hold([(0., 'caution')], list(caps), result, SimpleNamespace(velocity=speed), {})
+
+
+RELEASED = [(J.FALLBACK_SPEED, 'standing_release')]
+
+
+def test_a_car_held_only_by_a_standing_body_creeps_on_after_the_stall_wait(road):
+    # Run 20261030-042140: crates beside a valid path, the caution cap 0 held the car for good. The blocked path's
+    # 3 s rule now covers it: the same clock, then FALLBACK_SPEED until the hold ends.
+    jam, _, clock = setup(road, 20.)
+    try:
+        for _ in range(6):                                        # held from 0.5 s: 0-2.5 s waiting
+            assert hold(jam, tick(jam, clock, .5)) == [(0., 'caution')]
+        assert hold(jam, tick(jam, clock, .5)) == RELEASED        # 3.0 s
+        for _ in range(4):                                        # creeping past it does not withdraw it
+            assert hold(jam, tick(jam, clock, .5, speed=1.5), speed=1.5) == RELEASED
+        tick(jam, clock, .5)                                      # a tick without the hold ends it
+        assert hold(jam, tick(jam, clock, .5)) == [(0., 'caution')]
+    finally:
+        jam.close()
+
+
+def test_blocked_then_held_is_one_wait(road):
+    jam, m, clock = setup(road, 2.8)
+    try:
+        for _ in range(4):                                        # blocked from 0.5 s
+            assert tick(jam, clock, .5).reason == 'jamming_corridor_blocked'
+        m.occupied = np.zeros(m.shape, dtype=bool)                # a path again, but a standing body holds the car
+        m.version += 1
+        for _ in range(2):                                        # 2.0-2.5 s
+            result = tick(jam, clock, .5)
+            assert result.reason == 'jamming_corridor_follow'
+            assert hold(jam, result) == [(0., 'caution')]
+        assert hold(jam, tick(jam, clock, .5)) == RELEASED        # 3.0 s since the car began waiting
+    finally:
+        jam.close()
+
+
+def test_a_standing_hold_is_kept_while_moving_or_with_another_stop(road):
+    jam, _, clock = setup(road, 20.)
+    try:
+        for _ in range(10):
+            result = tick(jam, clock, .5, speed=J.FALLBACK_STALL_SPEED+.5)
+            assert hold(jam, result, speed=J.FALLBACK_STALL_SPEED+.5) == [(0., 'caution')]
+        for _ in range(10):                                       # a lead or a person also stops the car: not released
+            assert hold(jam, tick(jam, clock, .5), caps=[(0., 'lead')]) == [(0., 'caution')]
+    finally:
+        jam.close()
+
+
+def test_standing_hold_release_switched_off(road, monkeypatch):
+    monkeypatch.setattr(traffic, 'STANDING_HOLD_RELEASE', False)
+    jam, _, clock = setup(road, 20.)
+    try:
+        for _ in range(10):
+            assert hold(jam, tick(jam, clock, .5)) == [(0., 'caution')]
     finally:
         jam.close()
