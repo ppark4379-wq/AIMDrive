@@ -1,0 +1,40 @@
+{
+  "schema": "morai_dynamic_current_api_contract_v1",
+  "surface_profiles_sha256": "696232b3512982aaf19195ec76529b72e16d2a86d411d45685fc734803d57644",
+  "bounds_unchanged": true,
+  "source_reports": [
+    {
+      "path": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/calibration_bus_far_r4/report.json",
+      "sha256": "bf0afb2f51eacfe5cb55153ff8a48775348c4368c63f9ae479316701eefd9e8a"
+    }
+  ],
+  "skipped_failed_model_captures": [],
+  "models": {
+    "2016_Hyundai_Universe": {
+      "kind": "vehicle",
+      "raw_offset_flu_m": [
+        2.7714591106716604,
+        -0.06542095795316916,
+        1.230981006309877
+      ],
+      "raw_size_lwh_m": [
+        12.030643463134766,
+        2.872591257095337,
+        3.5342471599578857
+      ],
+      "offset_range_xyz_m": [
+        0.0003683717874243264,
+        0.0004669170162286823,
+        0.000828317645096277
+      ],
+      "size_range_lwh_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "views": 8,
+      "source_report": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/calibration_bus_far_r4/report.json",
+      "source_sha256": "bf0afb2f51eacfe5cb55153ff8a48775348c4368c63f9ae479316701eefd9e8a"
+    }
+  }
+}

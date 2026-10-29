@@ -18,7 +18,7 @@ from async_capture.health_policy import (
     SimulationPauseGrace, is_coherent_simulation_pause,
 )
 from async_capture.clock_health import evaluate as evaluate_local_clocks
-from async_capture.sensor_record import filename_candidates
+from async_capture.sensor_record import audit_assets, filename_candidates, inspect_directory
 from bridge.camera_ingress_filter import dropped_publish_stream
 from bridge.bridge_health import (
     BridgeMetrics, IMPLEMENTATION, OBSERVED_STREAMS, REQUIRED_STREAMS,
@@ -120,6 +120,22 @@ class InternalSensorRecordTest(unittest.TestCase):
         )
         self.assertEqual(len(candidates), 2)
         self.assertEqual(candidates[1] - candidates[0], 12 * 3600 * 10**9)
+
+    def test_wall_clock_named_first_bundle_stays_outside_the_audit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for folder, suffix in (("CAMERA_1", "_Intensity.png"), ("CAMERA_2", "_Intensity.png"),
+                                   ("CAMERA_3", "_Intensity.png"), ("CAMERA_4", "_Intensity.png"),
+                                   ("LIDAR_5", "_Intensity.bin"), ("GPS_6", ".txt"), ("IMU_7", ".txt")):
+                (root / folder).mkdir()
+                for name in ("26-10-27-05-56-10-220753", "01-01-01-12-01-56-101005"):
+                    (root / folder / (name + suffix)).write_bytes(b"x")
+            rows = inspect_directory(root)
+            self.assertEqual(sorted(len(r["filename_time_candidates_ns"]) for r in rows), [0] * 7 + [2] * 7)
+            audit = audit_assets(root, 0, 1000 * 10**9, validator=lambda role, raw: {})
+            self.assertEqual(len(audit["outside_window"]), 7)
+            self.assertEqual(audit["complete_bundles"], 1)
+            self.assertEqual(audit["errors"], [])
 
     def test_bridge_camera_drop_is_explicit_and_lidar_is_forwarded(self):
         camera = json.dumps({

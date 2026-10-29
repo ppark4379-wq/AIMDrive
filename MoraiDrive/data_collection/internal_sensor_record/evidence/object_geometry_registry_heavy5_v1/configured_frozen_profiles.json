@@ -1,0 +1,50 @@
+{
+  "schema": "morai_dynamic_default_surface_profiles_v1",
+  "source_report": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/calibration_bus_far_r4/report.json",
+  "source_sha256": "bf0afb2f51eacfe5cb55153ff8a48775348c4368c63f9ae479316701eefd9e8a",
+  "additional_sources": [],
+  "script_sha256": "fd5891816ec09aefef156dc28a9ad768d41c18f2142b0e0f816e4fc6d8483803",
+  "method": "Union of all source visible foreground points in actor-local FLU, min/max + 0.02m each face",
+  "policy": {
+    "containment_margin_m": 0.1,
+    "min_points_per_view": 10,
+    "min_usable_views": 6,
+    "min_each_view_containment": 0.95,
+    "min_distances": 2,
+    "min_yaws": 4,
+    "camera_review_required": true
+  },
+  "models": {
+    "2016_Hyundai_Universe": {
+      "kind": "vehicle",
+      "scale_xyz": [
+        1,
+        1,
+        1
+      ],
+      "center_offset_flu_m": [
+        2.8085225181088207,
+        0.010201727288052465,
+        1.2826012269199656
+      ],
+      "size_lwh_m": [
+        11.973239041626604,
+        2.894208460632191,
+        3.333262388952268
+      ],
+      "fit_points": 4855,
+      "fit_views": 8,
+      "raw_size_lwh_m": [
+        12.030643463134766,
+        2.872591257095337,
+        3.5342471599578857
+      ],
+      "raw_offset_flu_m": [
+        2.772226332469728,
+        3.692951913456075e-05,
+        1.231022193868634
+      ],
+      "approved": false
+    }
+  }
+}

@@ -92,7 +92,7 @@ echo "      ROS master       : $ROS_MASTER_URI"
 echo "      원본 저장 경로   : $MORAI_STORAGE_ROOT"
 if [[ "$RUN_MODE" == "capture" ]]; then
     echo "      센서셋 파일      : $MORAI_SENSOR_SET_PATH"
-    /usr/bin/python3 "$INTERNAL/tools/preflight_local_storage.py" --reserve-gib 70
+    /usr/bin/python3 "$INTERNAL/tools/preflight_local_storage.py" --reserve-gib "${MORAI_STORAGE_RESERVE_GIB:-70}"
 
     clock_report="$MORAI_PROJECT_ROOT/.runtime/data_collection/clock_preflight.json"
     /usr/bin/python3 "$INTERNAL/tools/preflight_local_clock.py" \

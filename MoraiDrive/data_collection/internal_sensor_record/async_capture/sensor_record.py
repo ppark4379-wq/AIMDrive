@@ -48,6 +48,15 @@ def gps_text_matches_ros(fields, ros_values):
                math.isclose(fields[k],ros_values[k],rel_tol=5e-14,abs_tol=1e-12) for k in names)
 
 
+class FilenameEpochError(ValueError):
+    """A native filename not on the simulation-time epoch (year 01, 12-hour clock).
+
+    Sensor Record has named the first bundle of a session by the host's wall clock
+    (26-10-27-05-56-10-220753) before the simulation-time names began; such a file
+    has no simulation time and stays outside every audited interval.
+    """
+
+
 def filename_candidates(name, role):
     match = PATTERN.fullmatch(name)
     if match is None:
@@ -58,7 +67,7 @@ def filename_candidates(name, role):
     if match.groups()[7:] != expected or role not in ROLES.values():
         raise ValueError('Filename does not match sensor role')
     if not 1 <= hour <= 12 or yy != 1:
-        raise ValueError('Unsupported filename epoch or 12-hour clock')
+        raise FilenameEpochError('Unsupported filename epoch or 12-hour clock')
     epoch = datetime(1, 1, 1)
     values = []
     for h in (hour % 12, hour % 12 + 12):
@@ -100,7 +109,10 @@ def inspect_directory(root, *, max_files=100000, progress=None):
             if not stat.S_ISREG(st.st_mode):
                 raise ValueError('Unexpected native target entry: ' + str(path))
             # Validate identity now, retain both possible clock interpretations.
-            candidates = filename_candidates(path.name, role)
+            try:
+                candidates = filename_candidates(path.name, role)
+            except FilenameEpochError:
+                candidates = ()  # role/format matched; no simulation time (audit: outside_window)
             result.append(dict(role=role, relative_path=str(path.relative_to(root)),
                                size_bytes=st.st_size, mtime_ns=st.st_mtime_ns,
                                filename_time_candidates_ns=list(candidates)))

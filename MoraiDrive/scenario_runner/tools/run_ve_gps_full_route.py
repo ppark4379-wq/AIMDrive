@@ -93,6 +93,8 @@ def configure_scenario(config, args):
         result.setdefault('tunnel_vehicle_dynamic', {}).update(behavior=args.tunnel_vehicle_behavior, random_behavior=False)
     elif args.tunnel_vehicle_random:
         result.setdefault('tunnel_vehicle_dynamic', {})['random_behavior'] = True
+    if args.tunnel_vehicle_model:
+        result.setdefault('tunnel_vehicle_dynamic', {})['model'] = args.tunnel_vehicle_model
     return result
 
 
@@ -426,6 +428,8 @@ def main(argv=None):
                         help='full_loop_tunnel_vehicle 미션의 터널 안 차량 행동 하나를 고정')
     parser.add_argument('--tunnel-vehicle-random', action='store_true',
                         help='full_loop_tunnel_vehicle 미션에서 --seed로 행동을 무작위 선택')
+    parser.add_argument('--tunnel-vehicle-model',
+                        help='full_loop_tunnel_vehicle 미션의 차량 모델 고정 (예: 2016_Hyundai_Universe, 대형차 인식 시험)')
     parser.add_argument('--aim2026-runtime', type=Path,
                         help='Drive with the unified AIM2026 entry (AIM2026/Expert/main.py) using this sensor/UDP YAML '
                              'instead of the development GPS runner.')
@@ -463,7 +467,8 @@ def main(argv=None):
         parser.error('--tunnel-candidate-id requires --mission full_loop_tunnel_dynamic')
     if args.tunnel_dynamic_speed is not None and (args.mission != 'full_loop_tunnel_dynamic' or not 0. < args.tunnel_dynamic_speed <= 5.):
         parser.error('--tunnel-dynamic-speed requires --mission full_loop_tunnel_dynamic and 0 < speed <= 5 m/s')
-    if (args.tunnel_vehicle_behavior or args.tunnel_vehicle_random) and args.mission != 'full_loop_tunnel_vehicle':
+    if ((args.tunnel_vehicle_behavior or args.tunnel_vehicle_random or args.tunnel_vehicle_model)
+            and args.mission != 'full_loop_tunnel_vehicle'):
         parser.error('--tunnel-vehicle-* requires --mission full_loop_tunnel_vehicle')
     if args.tunnel_vehicle_behavior and args.tunnel_vehicle_random:
         parser.error('--tunnel-vehicle-behavior and --tunnel-vehicle-random are exclusive')

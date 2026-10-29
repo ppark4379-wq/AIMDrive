@@ -1,0 +1,113 @@
+{
+  "schema": "morai_dynamic65_independent_confirmation_v1",
+  "profile_sha256": "696232b3512982aaf19195ec76529b72e16d2a86d411d45685fc734803d57644",
+  "inputs": [
+    {
+      "capture": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_bus_r4/report.json",
+      "capture_sha256": "594d207f321d1d3a5e568d0eb5818707220f44666a0e08bff7fe6d3f925c2c99",
+      "evaluation": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/bus_universe_v1/confirmation_bus_r4_review/report.json",
+      "evaluation_sha256": "d737075e8f6889c680b113a2a532cf76ce73c4c8e7808b1b70767a7d46f807a3",
+      "integrity": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/bus_universe_v1/confirmation_bus_r4_integrity.json",
+      "integrity_sha256": "c1cfeacc8663ea6922fc66ae2c20c7302cff686350363554ef8fd4ccd5d6e386"
+    }
+  ],
+  "scope": "Default-scale visible 3D surfaces in held moving poses; exposure synchronization during translation is separately audited",
+  "physical_simultaneity_verified": false,
+  "models": {
+    "2016_Hyundai_Universe": {
+      "model": "2016_Hyundai_Universe",
+      "kind": "vehicle",
+      "metrics": [
+        {
+          "directory": "000_vehicle_2016_Hyundai_Universe_8eee0227/d1900_l+0000_v0",
+          "distance_m": 19.0,
+          "view": 0,
+          "points": 415,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_bus_r4"
+        },
+        {
+          "directory": "000_vehicle_2016_Hyundai_Universe_8eee0227/d1900_l+0000_v1",
+          "distance_m": 19.0,
+          "view": 1,
+          "points": 1111,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_bus_r4"
+        },
+        {
+          "directory": "000_vehicle_2016_Hyundai_Universe_8eee0227/d1900_l+0000_v2",
+          "distance_m": 19.0,
+          "view": 2,
+          "points": 1066,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_bus_r4"
+        },
+        {
+          "directory": "000_vehicle_2016_Hyundai_Universe_8eee0227/d1900_l+0000_v3",
+          "distance_m": 19.0,
+          "view": 3,
+          "points": 717,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_bus_r4"
+        },
+        {
+          "directory": "000_vehicle_2016_Hyundai_Universe_8eee0227/d2500_l+0000_v0",
+          "distance_m": 25.0,
+          "view": 0,
+          "points": 247,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_bus_r4"
+        },
+        {
+          "directory": "000_vehicle_2016_Hyundai_Universe_8eee0227/d2500_l+0000_v1",
+          "distance_m": 25.0,
+          "view": 1,
+          "points": 579,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_bus_r4"
+        },
+        {
+          "directory": "000_vehicle_2016_Hyundai_Universe_8eee0227/d2500_l+0000_v2",
+          "distance_m": 25.0,
+          "view": 2,
+          "points": 497,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_bus_r4"
+        },
+        {
+          "directory": "000_vehicle_2016_Hyundai_Universe_8eee0227/d2500_l+0000_v3",
+          "distance_m": 25.0,
+          "view": 3,
+          "points": 484,
+          "containment": 1.0,
+          "outside_p95_m": 0.0,
+          "source": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/confirmation_bus_r4"
+        }
+      ],
+      "motion_speeds_kmh": [
+        3.6
+      ],
+      "images": [
+        {
+          "path": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/bus_universe_v1/confirmation_bus_r4_review/2016_Hyundai_Universe.jpg",
+          "sha256": "1af03986bd8a40e27cf5216e27cea9937f1d884026e21fe0bcde57299a8fc10c"
+        }
+      ],
+      "usable_views": 8,
+      "min_containment": 1.0,
+      "lidar_pass": true,
+      "configured_speed_coverage_pass": true,
+      "camera_review": "pending",
+      "approved": false
+    }
+  },
+  "all_lidar_pass": true,
+  "all_configured_speed_coverage_pass": true
+}

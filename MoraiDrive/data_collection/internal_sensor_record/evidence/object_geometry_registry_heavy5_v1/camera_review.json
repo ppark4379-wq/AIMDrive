@@ -1,0 +1,29 @@
+{
+  "schema": "morai_dynamic_camera_review_v1",
+  "profile_sha256": "696232b3512982aaf19195ec76529b72e16d2a86d411d45685fc734803d57644",
+  "confirmation_sha256": "983c72d55c8b60e80619c215b0c2793af24bdc7165cae8f587d96839e2cc3589",
+  "scope": "8 independent held-pose views (19 m and 25 m, 4 headings), not full driving dataset semantic certification",
+  "models": {
+    "2016_Hyundai_Universe": {
+      "pass": true,
+      "motion_pose_review_pass": true,
+      "reviewer": "assistant visual inspection",
+      "reviewed_views": 8,
+      "distances_m": [
+        19,
+        25
+      ],
+      "images": [
+        {
+          "path": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/bus_universe_v1/confirmation_bus_r4_review/2016_Hyundai_Universe.jpg",
+          "sha256": "1af03986bd8a40e27cf5216e27cea9937f1d884026e21fe0bcde57299a8fc10c"
+        },
+        {
+          "path": "/home/dydwns/AIMDrive/MoraiDrive/.runtime/heavy_vehicle_bbox_20261015/bus_universe_v1/far_review/2016_Hyundai_Universe.jpg",
+          "sha256": "91ba08ff4cb83570bace230c5faad1f08d4bd5bea59c4c9cff504c9ee541089b"
+        }
+      ],
+      "notes": "Reviewed all four headings at both independent distances. Body, wheels and roof align with the LiDAR-only default-scale 3D envelope (11.97 x 2.89 x 3.33 m); MORAI raw box sits above the roof (3.53 m). Image refinement was rejected: its change mask included the cast shadow and pushed the right face out by the 0.5 m cap (kept as refined_rejected_shadow.json). Calibration from the 18/24 m capture only: the 12 m capture was refused by MORAI spawn (NOT_CREATE_OBJECT)."
+    }
+  }
+}
