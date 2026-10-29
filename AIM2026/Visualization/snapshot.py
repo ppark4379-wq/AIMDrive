@@ -48,8 +48,14 @@ def write_snapshot(target, result, vehicle, objects, selected_path, signal=None)
                            selected_path=selected_path, signal=signal))
     # JSON cannot preserve shared list identity; preserve the renderer's selected color explicitly.
     for row, candidate in zip(document['result']['__object__']['candidates'], result.candidates):
+        # The corridor planner copies its chosen point list. Equal geometry is
+        # still the selected path; this only affects the RViz display color.
+        same_geometry = (bool(candidate.points) and len(candidate.points) == len(result.path)
+                         and all(float(a.x) == float(b.x) and float(a.y) == float(b.y)
+                                 for a, b in zip(candidate.points, result.path)))
         row['__object__']['selected_preview'] = (candidate.points is result.path
-                                                or getattr(candidate,'selected_preview',False))
+                                                or getattr(candidate,'selected_preview',False)
+                                                or (candidate.valid and same_geometry))
     temporary = target.with_suffix('.tmp')
     temporary.write_text(json.dumps(document, allow_nan=False),encoding='utf-8')
     temporary.replace(target)

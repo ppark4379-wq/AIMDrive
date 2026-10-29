@@ -30,7 +30,7 @@ def line(ns, identity, points, color, width=.15, z=.02):
 
 
 class WorldOverlay:
-    def __init__(self, renderer):
+    def __init__(self, renderer, recorded_left=False):
         self.renderer = renderer
         self.signals = []
         self.static = MarkerArray()
@@ -46,10 +46,36 @@ class WorldOverlay:
                 self.static.markers.append(line('roundabout_circulating_lane', i, row['points'], (.4,1.,.55,.9), .3, .08))
         # Load only recordings actually selected by the static planner manifest.
         folder = ROOT/'AIM2026/Expert/data/recorded_paths/static_obstacle'
+        self.review_points = []
+        if recorded_left:
+            colors = [(1.,.25,.25,1.), (.2,1.,.3,1.), (.2,.65,1.,1.),
+                      (1.,.8,.15,1.), (1.,.3,1.,1.)]
+            files = sorted((folder/'recordings').glob('left_static_obstacle_*.csv'))
+            if not files:
+                raise ValueError('No left_static_obstacle recordings found')
+            for i, path in enumerate(files):
+                with path.open(newline='', encoding='utf-8-sig') as stream:
+                    points = [(float(r['x']), float(r['y'])) for r in csv.DictReader(stream)]
+                if len(points) < 2 or not all(math.isfinite(v) for p in points for v in p):
+                    raise ValueError('Invalid recording: ' + str(path))
+                self.review_points.extend(points)
+                color = colors[i % len(colors)]
+                ns = path.stem
+                self.static.markers.append(line(ns, 0, points, color, .25, .3+i*.03))
+                for j, (tag, point) in enumerate((('START', points[0]), ('END', points[-1]))):
+                    label = marker(ns, j+1, Marker.TEXT_VIEW_FACING, color)
+                    label.pose.position = Point(x=point[0]+i*2., y=point[1]+j*2., z=1.+i*.6)
+                    label.scale.z = .7
+                    label.text = f'{i+1:02d} {tag}'
+                    self.static.markers.append(label)
+                print(f'[Recorded paths] {path.name}: {len(points)} points', flush=True)
         for i, name in enumerate(json.loads((folder/'routes.json').read_text())['routes']):
             with (folder/'recordings'/name).open(newline='', encoding='utf-8-sig') as f:
                 points = [(float(r['x']), float(r['y'])) for r in csv.DictReader(f)]
-            self.static.markers.append(line('static_reference_recordings', i, points, (.75,.4,.85,.3), .08))
+            left = name.startswith('left_static_obstacle_')
+            self.static.markers.append(line(
+                'static_left_reference_recordings' if left else 'static_reference_recordings',
+                i, points, (.2,.75,1.,.45) if left else (.75,.4,.85,.3), .08))
         band = renderer._segment_box_points(sections.STATIC_OBSTACLE_ZONE_START,
             sections.STATIC_OBSTACLE_ZONE_END, sections.STATIC_OBSTACLE_ZONE_HALF_WIDTH, z=.06)
         self.static.markers.append(line('static_planning_zone', 0, [(p.x,p.y) for p in band], (.95,.55,.2,.9), .23))
@@ -63,7 +89,7 @@ class WorldOverlay:
                 self.signals.append((str(row['traffic_light_id']), row['point']))
         for i, (text, point, color) in enumerate((
             ('ROUNDABOUT APPROACH / ENTRY', lattice.ROUNDABOUT_ENTRY_APPROACH_START, (.2,.85,.85,1.)),
-            ('STATIC AVOIDANCE\nFaint purple: recorded references', sections.STATIC_OBSTACLE_ZONE_START, (.95,.55,.2,1.)),
+            ('STATIC AVOIDANCE\nReferences: right purple / left cyan', sections.STATIC_OBSTACLE_ZONE_START, (.95,.55,.2,1.)),
         )):
             label = marker('course_labels', i, Marker.TEXT_VIEW_FACING, color)
             label.pose.position = Point(x=point[0]-12.,y=point[1],z=2.)

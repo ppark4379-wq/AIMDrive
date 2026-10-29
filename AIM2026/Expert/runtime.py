@@ -287,7 +287,7 @@ def main(argv=None, control_tick=None):
     context, controller, policy = prepare(args, output)
     if args.lane_motion_tracking:
         from AIM2026.Inference.vision.lane_tracking import LaneTracker
-        geometry = LaneTracker.from_context(context)
+        geometry = LaneTracker.from_map(context.map_loader.link_set)
         cfg['Inference']['vision']['large_vehicle_lanes'] = {
             name: lane.points for name, lane in geometry.lanes.items()}
     generation = str(uuid.uuid4())

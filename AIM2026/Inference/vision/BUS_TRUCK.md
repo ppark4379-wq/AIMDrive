@@ -1,5 +1,12 @@
 # Bus/truck perception supplement
 
+Lane geometry uses the existing map loader and the fixed road link lists in
+`Expert/src/config/highway_lanes.json`, without reading NPC spawn configuration.
+The merge-adjacent chain follows 000420 -> 000408 and the mainline successors
+445 -> 153 -> 451 -> 446 instead of the NPC exit 179 -> 1105.
+Middle/left geometry and tracking algorithms remain unchanged.
+The existing Expert map, route and signal-policy connections are preserved.
+
 `VisionRuntime` runs `BusTruckSupplement` after the ordinary VE box decoder,
 before publishing the existing `morai_ve_udp_objects_v2` packets to Expert.
 The supplement returns normal `Box` objects; Expert receives no new lane veto,

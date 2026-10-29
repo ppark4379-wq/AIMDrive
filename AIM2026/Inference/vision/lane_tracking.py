@@ -55,17 +55,9 @@ class LaneTracker:
         self.last_time = None
 
     @classmethod
-    def from_context(cls, context):
-        managed = context.cfg['highway_npc']['managed_traffic']
-        definitions = (managed['competition']['lanes'] if managed.get('policy') == 'competition'
-                       else managed['lanes'])
-        lanes = {}
-        for row in definitions:
-            # Shared approach/forks are ambiguous: start only on the assigned lane.
-            route = row['route']
-            route = route[route.index(row.get('offset_origin_link', route[0])):]
-            lanes[row['name']] = [p for link in route for p in context.map_loader.get_link_points(link)]
-        return cls(lanes)
+    def from_map(cls, link_set):
+        from .road_lanes import map_lanes
+        return cls(map_lanes(link_set))
 
     @staticmethod
     def fit(history):

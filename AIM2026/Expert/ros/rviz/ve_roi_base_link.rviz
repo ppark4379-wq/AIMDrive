@@ -6,6 +6,13 @@ Panels:
 Visualization Manager:
   Class: ""
   Displays:
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /perception/final_boxes
+      Name: Bus Truck Supplement (green)
+      Namespaces: {}
+      Queue Size: 1
+      Value: true
     - Class: rviz/Grid
       Name: Grid (1 metre)
       Enabled: true

@@ -18,6 +18,23 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
 
+class MasterProbeTransport(xmlrpc.client.Transport):
+    """Bound localhost probes even when WSL drops connection attempts."""
+    def make_connection(self, host):
+        connection = super().make_connection(host)
+        connection.timeout = .3
+        return connection
+
+
+def master_ready(uri):
+    try:
+        with xmlrpc.client.ServerProxy(uri, transport=MasterProbeTransport()) as master:
+            code, _, _ = master.getPid('/udp_expert_view')
+            return code == 1
+    except (OSError, xmlrpc.client.Error):
+        return False
+
+
 def latest_record(path, max_age=.75):
     """Read only a bounded tail; ignore partial writes and stale files.
 
@@ -43,7 +60,7 @@ def latest_record(path, max_age=.75):
 
 class OriginalDisplay:
     """Publish the map-view planner topics using the retained renderer."""
-    def __init__(self):
+    def __init__(self, recorded_left=False):
         import rospy
         from nav_msgs.msg import Path, Odometry
         from AIM2026.Expert.src.visualization.rviz_visualizer import LatticeRvizVisualizer
@@ -55,7 +72,7 @@ class OriginalDisplay:
         self._route = None
         from AIM2026.Visualization.world import WorldOverlay
         from visualization_msgs.msg import MarkerArray
-        self.world = WorldOverlay(self.renderer)
+        self.world = WorldOverlay(self.renderer, recorded_left=recorded_left)
         self.world_pub = rospy.Publisher('/expert/map', MarkerArray, queue_size=1, latch=True)
         self.overlay_pub = rospy.Publisher('/expert/overlays', MarkerArray, queue_size=1)
         self.world_pub.publish(self.world.static)
@@ -312,12 +329,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--runs-root', type=Path, default=REPO/'AIM2026/outputs/expert')
     parser.add_argument('--markers-only', action='store_true')
+    parser.add_argument('--recorded-left', action='store_true', help='Review left static recordings in distinct colors')
+    parser.add_argument('--source', choices=('expert',), default='expert')
+    parser.add_argument('--ve-file', type=Path, default=REPO/'AIM2026/outputs/ve/visualization.json')
     views = parser.add_mutually_exclusive_group()
     views.add_argument('--roi', dest='roi', action='store_true', help='October 14 local VE ROI display')
     views.add_argument('--map', dest='roi', action='store_false', help='Whole-course map + moving VE ROI (default)')
     parser.set_defaults(roi=False)
     parser.add_argument('--seconds', type=float, default=0.)
     args = parser.parse_args()
+    if args.recorded_left:
+        args.roi = False
     # Prevent two readers from alternating markers on the same ROS topics.
     # Linux flock is automatically released on exit, including crashes.
     import fcntl
@@ -340,19 +362,21 @@ def main():
     # Isolated visualization master; never joins the simulator ROS bridge.
     master_uri = 'http://127.0.0.1:11412'
     try:
-        try:
-            xmlrpc.client.ServerProxy(master_uri).getPid('/udp_expert_view')
-        except OSError:
-            owned_master = subprocess.Popen(['roscore', '-p', '11412'], stdout=subprocess.DEVNULL,
+        if not master_ready(master_uri):
+            print('[RViz] Starting visualization ROS master on port 11412...', flush=True)
+            # roslaunch/roscore probes an absent master before starting it;
+            # on WSL that probe can hang. This viewer only needs the master
+            # and parameter server, so start them directly without roslaunch.
+            owned_master = subprocess.Popen(['rosmaster', '--core', '-p', '11412'], stdout=subprocess.DEVNULL,
                                             stderr=subprocess.STDOUT, start_new_session=True)
             for _ in range(50):
                 if stopped[0]:
                     return 0
-                try:
-                    xmlrpc.client.ServerProxy(master_uri).getPid('/udp_expert_view')
+                if master_ready(master_uri):
                     break
-                except OSError:
-                    time.sleep(.1)
+                if owned_master.poll() is not None:
+                    raise RuntimeError('Visualization ROS master exited during startup')
+                time.sleep(.1)
             else:
                 raise RuntimeError('Visualization ROS master failed to start')
         rospy.init_node('udp_expert_view', anonymous=True, disable_signals=True)
@@ -360,12 +384,28 @@ def main():
             from AIM2026.Visualization.roi import RoiDisplay
             display = RoiDisplay()
         else:
-            display = OriginalDisplay()
+            display = OriginalDisplay(recorded_left=args.recorded_left)
+        from AIM2026.Visualization.lidar_overlay import LidarDisplay
+        from AIM2026.Visualization.ve_direct import DirectReader
+        supplement_display = LidarDisplay(local=args.roi)
+        supplement_reader = DirectReader(args.ve_file)
         broadcaster = tf.TransformBroadcaster()
         if not args.markers_only:
             config = REPO/'AIM2026/Visualization/expert.rviz'
             if args.roi:
                 config = REPO/'AIM2026/Expert/ros/rviz/ve_roi_base_link.rviz'
+            if args.recorded_left:
+                import yaml
+                settings = yaml.safe_load(config.read_text(encoding='utf-8'))
+                points = display.world.review_points
+                xs, ys = zip(*points)
+                view = settings['Visualization Manager']['Views']['Current']
+                view['Target Frame'] = 'map'
+                view['Name'] = 'Recorded Left Paths'
+                view['Focal Point'] = dict(X=(min(xs)+max(xs))/2, Y=(min(ys)+max(ys))/2, Z=0)
+                view['Distance'] = max(50., max(max(xs)-min(xs), max(ys)-min(ys))*1.8)
+                config = Path(tempfile.gettempdir()) / f'aim2026-left-paths-{os.getuid()}.rviz'
+                config.write_text(yaml.safe_dump(settings, sort_keys=False), encoding='utf-8')
             viewer = subprocess.Popen(['rviz', '-d', str(config)], start_new_session=True)
         folder, route = None, []
         reader = SnapshotReader()
@@ -400,6 +440,12 @@ def main():
                     round(display.snapshot_age_s, 2) if state else None), flush=True)
                 next_status = time.monotonic() + 2.
             stamp = rospy.Time.now()
+            supplement_state, supplement_stale = supplement_reader.read()
+            supplement_display.refresh_connections()
+            supplement_key = (supplement_reader.signature, supplement_stale)
+            if supplement_key != getattr(supplement_display, '_render_key', None):
+                supplement_display.publish(supplement_state, stamp, supplement_stale)
+                supplement_display._render_key = supplement_key
             if args.roi:
                 # Display-only fixed frame; the ROI does not move with map TF.
                 broadcaster.sendTransform((0.,0.,0.), (0.,0.,0.,1.), stamp,
