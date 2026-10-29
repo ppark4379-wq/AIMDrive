@@ -20,6 +20,7 @@ from . import checkpoint as checkpoints
 from .contract import checkpoint_contract
 from .model import decode_native_signal, decode_phase, decode_signal
 from .postprocess import decode_world_boxes
+from .bus_truck import BusTruckSupplement
 from .preprocess import InputBuilder
 from .arrow_rule import left_arrow
 
@@ -130,6 +131,9 @@ class Perception:
     counts: dict            # decode rejections (candidates, NMS, invalid speeds, ...)
     inference_ms: float
     phase_signal: dict = None   # five-phase head {'code': 1|4|16|33|48|None, 'confidence'}; None without that head
+    raw_head: object = None     # Optional offline evidence; never sent to the planner.
+    lidar_candidates: tuple = ()  # Current observed extents, including tentative candidates.
+    supplement_indices: tuple = ()  # Visualization only; excluded from Expert UDP packets.
 
 
 def _view_tokens(model, tokens, global_token, view_index, global_index):
@@ -207,7 +211,11 @@ class VisionRuntime:
     def __init__(self, checkpoint='P1', *, device='cuda', lidar_to_base=DEFAULT_LIDAR_TO_BASE,
                  signal_head=True, checkpoint_path=None, checkpoint_sha256=None, cpu_threads=4,
                  object_head=None, lidar_heading=True, lidar_centers=True, phase_head=False, big_vehicles=False,
-                 fragment_merge=None, left_arrow_rule=False):
+                 fragment_merge=None, left_arrow_rule=False,
+                 large_vehicle_hold_s=2., large_vehicle_lanes=None,
+                 bus_truck_supplement=True):
+        if big_vehicles and bus_truck_supplement:
+            raise ValueError('Choose either remote big_vehicles or local bus_truck_supplement, not both')
         if checkpoint_path is not None:
             if not checkpoint_sha256:
                 raise ValueError('checkpoint_sha256 is required with checkpoint_path')
@@ -230,6 +238,8 @@ class VisionRuntime:
         self.lidar_heading = bool(lidar_heading)
         self.lidar_centers = bool(lidar_centers)
         self.big_vehicles = bool(big_vehicles)
+        self.lidar_tracker = (BusTruckSupplement(large_vehicle_hold_s, large_vehicle_lanes)
+                              if bus_truck_supplement else None)
         # Overlapping boxes of one long object (a truck in pieces) are joined into one; None: with the object head.
         self.fragment_merge = bool(object_head) if fragment_merge is None else bool(fragment_merge)
         self.left_arrow_rule = bool(left_arrow_rule)
@@ -261,14 +271,22 @@ class VisionRuntime:
         p = p[(p[:, 2] > .3) & (p[:, 2] < 2.)]
         return np.stack([-p[:, 1], p[:, 0]], 1), p[:, 2]
 
+    def _body_points_3d(self, lidar):
+        """Preserve height for the separate tall, long-body evidence gate."""
+        if lidar is None:
+            return None
+        p = np.asarray(lidar, dtype=np.float64)[:, :3] @ self._lidar_rotation.T + self._lidar_offset
+        return np.stack([-p[:, 1], p[:, 0], p[:, 2]], 1)
+
     @torch.no_grad()
-    def infer(self, images, lidar, speed_mps, pose):
+    def infer(self, images, lidar, speed_mps, pose, *, observation_time=None):
         """One frame of perception.
 
         images    rgb_front/left/right/rear as JPEG bytes (UDP camera) or RGB arrays
         lidar     Nx4 sweep in the sensor frame (UDP LidarReceiver output)
         speed_mps vehicle speed; the model uses its magnitude
         pose      x, y, yaw_grid_rad on the map grid at capture time (UDP EgoPose or dict)
+        observation_time  LiDAR source seconds (receipt seconds if unavailable)
         """
         begin = time.monotonic()
         inputs = self.inputs.build(images, lidar, speed_mps, self.device,
@@ -286,12 +304,25 @@ class VisionRuntime:
                                            lidar_points=points if self.lidar_heading else None,
                                            cluster_points=points if self.lidar_centers else None,
                                            big_points=(points, heights) if self.big_vehicles and points is not None
-                                           else None)
+                                           else None,
+                                           observation_time=begin if observation_time is None else observation_time)
+        ve_box_count = len(boxes)
+        if self.lidar_tracker is not None:
+            boxes, supplement_counts = self.lidar_tracker.apply(
+                boxes, self._body_points_3d(lidar),
+                (float(get('x')), float(get('y')), float(get('yaw_grid_rad'))),
+                begin if observation_time is None else observation_time)
+            counts.update(supplement_counts)
         if _RAW_DUMP:
             _dump_raw(detection[0], float(get('x')), float(get('y')), float(get('yaw_grid_rad')), lidar)
         if _TOKEN_DUMP:
             _dump_token(light_token[0], light[0], float(get('x')), float(get('y')), float(get('yaw_grid_rad')), speed_mps)
         # the most likely phase with its confidence; the Expert applies its own threshold
         phase = decode_phase(self.phase_head(light_token), threshold=1e-6)[0] if self.phase_head is not None else None
+        raw_head = (detection[0].detach().float().cpu().numpy().copy()
+                    if getattr(self, 'capture_evidence', False)
+                    or __import__('os').environ.get('AIM_COLLISION_TRACE') else None)
         return Perception(tuple(boxes), signal, decode_native_signal(light)[0], counts,
-                          (time.monotonic() - begin) * 1e3, phase)
+                          (time.monotonic() - begin) * 1e3, phase,
+                          raw_head, tuple(self.lidar_tracker.observations) if self.lidar_tracker else (),
+                          tuple(range(ve_box_count, len(boxes))))

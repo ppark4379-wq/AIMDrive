@@ -58,10 +58,14 @@ class HighwayDensityOptionTests(unittest.TestCase):
         with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
             self.check(['--rear-npcs', 'few'])                               # needs the competition traffic
 
-    def test_dense_choice_keeps_the_default_traffic(self):
-        _, default = self.check([])
+    def test_dense_choice_uses_twenty_vehicles_with_large_vehicle_guarantees(self):
         _, dense = self.check(['--highway-density', 'dense'])
-        self.assertEqual(dense['highway_npc'], default['highway_npc'])
+        managed = dense['highway_npc']['managed_traffic']
+        self.assertEqual(sum(len(lane['offsets_m']) for lane in managed['lanes']), 20)
+        self.assertEqual(managed['required_total_vehicles'], 20)
+        self.assertTrue(managed['guaranteed_large_vehicles'])
+        self.assertFalse(managed['randomize_adjacent_count'])
+        self.assertFalse(dense['highway_merge_static_vehicle']['enabled'])
 
     def test_the_option_is_for_the_highway_launcher_only(self):
         with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
@@ -99,7 +103,7 @@ class HighwayDensityOptionTests(unittest.TestCase):
             self.assertEqual(len(incidents), 1)
             command = json.loads((incidents[0] / 'rerun.json').read_text(encoding='utf-8'))['command']
             self.assertEqual(command, 'bash AIM2026/Expert/run_highway.sh --seed 124 --validation-events '
-                                      '--highway-density competition')
+                                      '--detection-hold-s 2.0 --highway-density competition')
 
 
 if __name__ == '__main__':

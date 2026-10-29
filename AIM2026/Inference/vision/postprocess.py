@@ -8,7 +8,6 @@ The fixed policy is sigmoid >= 0.5, float64 oriented-IoU NMS at 0.3.
 import math
 
 import numpy as np
-from scipy.spatial import cKDTree
 
 from AIM2026.UDP.Detection import Box, MAX_BOX_SIZE_M, MAX_SPEED_MPS
 
@@ -257,6 +256,8 @@ def object_points(points, center, max_m=LIDAR_CLUSTER_MAX_M, as_index=False, nea
         member[index[int(np.argmin(distance))]] = True
     else:
         member[index[distance < LIDAR_SEED_RADIUS_M]] = True
+    # Offline score/NMS replay needs only numpy; scipy is for LiDAR refinement.
+    from scipy.spatial import cKDTree
     tree = cKDTree(centres)
     frontier = np.flatnonzero(member)
     while len(frontier):
@@ -413,6 +414,7 @@ def apply_big_vehicles(prediction, boxes, points, heights):
     tall = points[heights >= BIG_TALL_M]
     if len(tall) < BIG_TALL_POINTS:
         return boxes, 0, 0
+    from scipy.spatial import cKDTree
     tree = cKDTree(tall)
 
     def tall_near(centres):
@@ -465,10 +467,12 @@ def apply_big_vehicles(prediction, boxes, points, heights):
 
 
 def decode_world_boxes(prediction, x, y, yaw_grid_rad, merge=False, lidar_points=None, cluster_points=None,
+                       large_vehicle_tracker=None, body_points_3d=None, observation_time=None, lidar_tracker=None,
                        big_points=None):
     """Detection head + the pose the inputs were captured at -> (UDP Box list, counts).
 
-    Speed is the head's scalar speed (no direction); invalid values become None.
+    Speed is the head's scalar speed, or measured world motion for LiDAR tracks.
+    Invalid values become None.
     Values outside the Detection wire limits would make the sender reject the
     whole frame, so such a speed becomes None and such a box is dropped (counted).
     ``lidar_points`` turns on the LiDAR heading fix; ``cluster_points`` (the same body points) adds each box's LiDAR
@@ -500,16 +504,25 @@ def decode_world_boxes(prediction, x, y, yaw_grid_rad, merge=False, lidar_points
         boxes, counts['big_grown'], counts['big_rescued'] = apply_big_vehicles(prediction, boxes, *big_points)
         counts['decoded_boxes'] = len(boxes)
     values = prediction.detach().float().cpu().numpy() if hasattr(prediction, 'detach') else np.asarray(prediction)
+    tracker = lidar_tracker if lidar_tracker is not None else large_vehicle_tracker
+    if tracker is not None:
+        if observation_time is None:
+            raise ValueError('LiDAR tracking requires an observation time')
+        boxes, tracking = tracker.apply(
+            boxes, body_points_3d, (x, y, yaw_grid_rad), observation_time)
+        counts.update(tracking)
     result, invalid_speeds, oversize = [], 0, 0
     for box in boxes:
         if box['length'] > MAX_BOX_SIZE_M or box['width'] > MAX_BOX_SIZE_M:
             oversize += 1
             continue
-        speed = float(values[box['cell_index'], 7]) * SPEED_SCALE
-        if not math.isfinite(speed) or not 0. <= speed <= MAX_SPEED_MPS:
+        speed = (box['tracked_speed'] if 'tracked_speed' in box
+                 else float(values[box['cell_index'], 7]) * SPEED_SCALE)
+        if speed is not None and (not math.isfinite(speed) or not 0. <= speed <= MAX_SPEED_MPS):
             speed, invalid_speeds = None, invalid_speeds + 1
-        lidar_center = lidar_count = None
-        if cluster_points is not None and len(cluster_points):
+        lidar_center = box.get('tracked_lidar_center')
+        lidar_count = box.get('tracked_lidar_count')
+        if lidar_center is None and cluster_points is not None and len(cluster_points):
             cluster = object_points(cluster_points, box['center'])
             if len(cluster) >= LIDAR_CENTER_MIN_POINTS:
                 lidar_center = to_world(cluster.mean(0), (0., 1.), x, y, yaw_grid_rad)[0]
@@ -519,5 +532,7 @@ def decode_world_boxes(prediction, x, y, yaw_grid_rad, merge=False, lidar_points
                 box = _cover(box, object_points(cluster_points, box['center'], nearest_only=True))
         (wx, wy), heading_deg = to_world(box['center'], box['heading'], x, y, yaw_grid_rad)
         result.append(Box(wx, wy, heading_deg, float(box['width']), float(box['length']), speed,
-                          lidar_center, lidar_count))
+                          lidar_center, lidar_count, lidar_track_id=box.get('track_id'),
+                          observed_only=box.get('observed_only', False),
+                          observation_time=box.get('observation_time'), lidar_hits=box.get('lidar_hits')))
     return result, dict(counts, invalid_speed_values=invalid_speeds, oversize_boxes=oversize)

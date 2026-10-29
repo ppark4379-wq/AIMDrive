@@ -571,6 +571,7 @@ def update_highway_actor_lifecycle(self, elapsed, ego_state, current_s):
         return highway_competition.update(self, elapsed, ego_state, current_s)
     if highway_traffic.enabled(self):
         from . import highway_flow
+        highway_traffic.update_lane_lifecycle(self, elapsed)
         return highway_flow.update(self, elapsed, ego_state, current_s)
     if (
         getattr(self, "nearby_highway_stopped", False)

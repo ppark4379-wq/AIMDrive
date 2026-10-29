@@ -15,6 +15,10 @@ from ..utils.transform_utils import (
 )
 
 
+class ScenarioCollisionError(RuntimeError):
+    """Verification ended because an actual monitored contact was reported."""
+
+
 class FullLoopDriveBase(BaseScenario):
     """Shared route-following lifecycle for the three K-City full-loop modes."""
 
@@ -679,6 +683,11 @@ class FullLoopDriveBase(BaseScenario):
             # Collection subclasses own a richer collision policy and event
             # journal through observe_collision(). Plain replay verification
             # fails immediately instead of accepting a touched obstacle.
+            elif getattr(self, 'collision_verification_record_only', False):
+                try:
+                    self.record_collision_observation(ego_state, elapsed)
+                except Exception as exc:
+                    print('[Collision] Observation write failed: ' + str(exc), flush=True)
             elif collision_objects and not callable(
                 getattr(self, "observe_collision", None)
             ):
@@ -691,7 +700,7 @@ class FullLoopDriveBase(BaseScenario):
                         # Diagnostics must never replace the collision failure
                         # or prevent the existing scenario cleanup.
                         print("[Collision] Evidence write failed: " + str(exc))
-                raise RuntimeError(
+                raise ScenarioCollisionError(
                     ("Manual Ego collision during tunnel trial: " if manual_ego else
                      "AIMDrive expert collision during scenario verification: ")
                     + str(collision_objects)

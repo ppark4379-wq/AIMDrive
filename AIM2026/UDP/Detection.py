@@ -61,6 +61,12 @@ class Box:
     # Optional: centre (map x, y) and size of the LiDAR point cluster on the box; absent without LiDAR evidence.
     lidar_center: tuple = None
     lidar_points: int = None
+    # Local visualization metadata only; deliberately excluded from to_wire().
+    lidar_track_id: int = None
+    observed_only: bool = False
+    observation_time: float = None
+    lidar_hits: int = None
+    detection_origin: str = 've'
 
     def to_wire(self):
         width, length = _finite(self.width_m, 'box.width_m'), _finite(self.length_m, 'box.length_m')
@@ -72,6 +78,10 @@ class Box:
         row = dict(center_world=[_finite(self.x, 'box.x'), _finite(self.y, 'box.y')],
                    heading_deg=_finite(self.heading_deg, 'box.heading_deg'),
                    width_m=width, length_m=length, speed_mps=speed)
+        if self.detection_origin not in ('ve', 'lidar_supplement'):
+            raise ValueError('Unknown detection origin')
+        if self.detection_origin != 've':
+            row['detection_origin'] = self.detection_origin
         if self.lidar_center is not None:
             if not isinstance(self.lidar_center, (list, tuple)) or len(self.lidar_center) != 2:
                 raise ValueError('box.lidar_center: expected [x, y]')
@@ -79,6 +89,14 @@ class Box:
                 raise ValueError('box.lidar_points: expected a positive integer with lidar_center')
             row.update(lidar_center=[_finite(v, 'box.lidar_center') for v in self.lidar_center],
                        lidar_points=self.lidar_points)
+        if self.observed_only:
+            if type(self.lidar_track_id) is not int or self.lidar_track_id < 1:
+                raise ValueError('Observed extent requires a positive LiDAR track ID')
+            if type(self.lidar_hits) is not int or self.lidar_hits < 1:
+                raise ValueError('Observed extent requires observation hits')
+            row.update(source='lidar', extent_kind='observed', track_id=self.lidar_track_id,
+                       observation_time=_finite(self.observation_time, 'box.observation_time'),
+                       consecutive_hits=self.lidar_hits)
         return row
 
     @classmethod
@@ -88,7 +106,10 @@ class Box:
             raise ValueError('box.center_world: expected [x, y]')
         lidar_center = row.get('lidar_center')
         box = cls(center[0], center[1], row['heading_deg'], row['width_m'], row['length_m'], row.get('speed_mps'),
-                  tuple(lidar_center) if isinstance(lidar_center, list) else lidar_center, row.get('lidar_points'))
+                  tuple(lidar_center) if isinstance(lidar_center, list) else lidar_center, row.get('lidar_points'),
+                  lidar_track_id=row.get('track_id'), observed_only=row.get('extent_kind') == 'observed',
+                  observation_time=row.get('observation_time'), lidar_hits=row.get('consecutive_hits'),
+                  detection_origin=row.get('detection_origin', 've'))
         box.to_wire()
         return box
 

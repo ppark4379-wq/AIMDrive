@@ -85,7 +85,8 @@ def wire_command(command, max_steering, hold_steer=0.):
 class Inputs:
     """Pin one publisher and reject stale/reordered frames before updating state."""
     def __init__(self, generation, digest, tracker, memory=None, static_map=None, resolver=None, dedup=True, alias=None,
-                 tunnel_map=None, ve_object_speed=False):
+                 tunnel_map=None, ve_object_speed=False, ve_lead_memory=None):
+        self.ve_lead_memory = ve_lead_memory
         self.ve_object_speed = ve_object_speed
         self.generation, self.digest, self.tracker = generation, digest, tracker
         self.dedup = dedup
@@ -118,6 +119,8 @@ class Inputs:
             self.sequences[is_pose] = seq
             self.reason = str(exc)
             if is_pose or exc.reason in HARD_NOT_READY:
+                if self.ve_lead_memory is not None:
+                    self.ve_lead_memory.reset()
                 if is_pose:
                     self.pose = None
                 else:
@@ -128,6 +131,8 @@ class Inputs:
             self.held_frames += 1
             return 'held_detection'
         except (ValueError, KeyError, TypeError) as exc:
+            if self.ve_lead_memory is not None:
+                self.ve_lead_memory.reset()
             if is_pose:
                 self.pose = None
             else:
@@ -157,6 +162,9 @@ class Inputs:
         if self.ve_object_speed:
             from AIM2026.Expert.ve_speed_experiment import use_ve_speed
             self.packet = use_ve_speed(self.packet)
+        # This output is never fed back into the observed-only tracker/memories.
+        if self.ve_lead_memory is not None:
+            self.packet = self.ve_lead_memory.apply(self.packet)
         self.frames += 1
         return 'detection'
 
@@ -192,6 +200,12 @@ def main(argv=None, control_tick=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--ve-object-speed', action='store_true',
                         help='Experiment: use raw VE speed for moving/uncertain objects; retain stationary handling')
+    parser.add_argument('--no-lidar-rules', action='store_true',
+                        help='Disable VE LiDAR refinement; bus/truck supplement has its own config switch')
+    parser.add_argument('--detection-hold-s', type=float, default=2.,
+                        help='Inference: hold missing large-vehicle detections for this many seconds')
+    parser.add_argument('--lane-motion-tracking', action='store_true',
+                        help='Inference: track only large-vehicle candidates along mapped highway lanes')
     parser.add_argument('--config', type=Path, default=ROOT/'AIM2026/config_local.yaml')
     parser.add_argument('--check', action='store_true')
     parser.add_argument('--drive', action='store_true', help='Send vehicle commands; default is observation only')
@@ -248,6 +262,13 @@ def main(argv=None, control_tick=None):
     if not math.isfinite(args.seconds) or args.seconds < 0:
         parser.error('seconds must be finite and nonnegative')
     cfg = read_config(args.config)
+    if not math.isfinite(args.detection_hold_s) or args.detection_hold_s < 0:
+        parser.error('detection-hold-s must be finite and nonnegative')
+    cfg['Inference']['vision']['large_vehicle_hold_s'] = args.detection_hold_s
+    if args.no_lidar_rules:
+        cfg['Inference']['vision'].update(
+            lidar_heading=False, lidar_centers=False)
+        print('[Perception] VE LiDAR refinements disabled; bus/truck supplement uses its own config', flush=True)
     positive = cfg.get('Control', {}).get('positive_steer')
     if positive not in ('left', 'right'):
         parser.error('Control.positive_steer must be left or right')
@@ -264,13 +285,22 @@ def main(argv=None, control_tick=None):
     output = (args.output or ROOT/'AIM2026/outputs/expert'/time.strftime('%Y%m%d-%H%M%S')).resolve()
     output.mkdir(parents=True, exist_ok=False)
     context, controller, policy = prepare(args, output)
+    if args.lane_motion_tracking:
+        from AIM2026.Inference.vision.lane_tracking import LaneTracker
+        geometry = LaneTracker.from_context(context)
+        cfg['Inference']['vision']['large_vehicle_lanes'] = {
+            name: lane.points for name, lane in geometry.lanes.items()}
     generation = str(uuid.uuid4())
     child_cfg = publisher_config(cfg, output, generation)
     config_path = output/'inference.yaml'
     config_path.write_text(yaml.safe_dump(child_cfg, sort_keys=False), encoding='utf-8')
     print(json.dumps(dict(output=str(output), model=label, weights=str(weights),
                          sim_profile=args.sim_profile,
-                         object_speed_source='ve_raw_experiment' if args.ve_object_speed else 'tracked',
+                         object_speed_source=('lane_motion_tracking_with_fallback' if args.lane_motion_tracking
+                                              else 've_raw_experiment' if args.ve_object_speed else 'tracked'),
+                         detection_hold_s=args.detection_hold_s,
+                         ve_lead_hold_s=cfg['Inference']['vision'].get('ve_lead_hold_s', 0.),
+                         lane_motion_tracking=args.lane_motion_tracking,
                          ignored_signals=args.ignore_signals,
                          steering_sign=-1 if args.sim_profile == 'normal' else 1,
                          command_target=[cfg['Ego']['ip'],cfg['Ego']['cmd_port']],
@@ -282,6 +312,7 @@ def main(argv=None, control_tick=None):
     # inference process still owns the sensor ports.
     UDPManager(child_cfg)._probe_ports()
     from inference.ve_object_tracking import VeObjectTracker
+    from AIM2026.Inference.vision.ve_lead_memory import VeLeadMemory
     from AIM2026.Expert.src.autonomous_driving import AutonomousDriving
     inputs = Inputs(generation, sha, VeObjectTracker(
         static_geometry_fusion=args.static_geometry_fusion, moving_carry_s=args.moving_carry_s,
@@ -293,7 +324,11 @@ def main(argv=None, control_tick=None):
         alias=None if args.no_track_alias else TrackAliaser(),
         static_map=None if args.no_static_map else StaticObstacleMap(),
         tunnel_map=None if args.no_static_map else TunnelObstacleMap(),
-        ve_object_speed=args.ve_object_speed)
+        ve_object_speed=args.ve_object_speed,
+        ve_lead_memory=VeLeadMemory(cfg['Inference']['vision'].get('large_vehicle_lanes'),
+            cfg['Inference']['vision'].get('ve_lead_hold_s', 0.)))
+    print('[Perception] VE same-lane lead hold=%ss (no LiDAR seed; after tracking)' %
+          cfg['Inference']['vision'].get('ve_lead_hold_s', 0.), flush=True)
     stop = []
     old_handlers = {sig: signal.signal(sig, lambda *_: stop.append(True))
                     for sig in (signal.SIGINT, signal.SIGTERM)}

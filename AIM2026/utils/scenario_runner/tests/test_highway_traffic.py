@@ -13,6 +13,174 @@ from ..scenarios.full_loop_parts import highway, highway_traffic as traffic
 
 
 class HighwayTrafficTests(unittest.TestCase):
+    def test_bus_heavy_fleet_has_exact_counts_speeds_and_no_spawn_overlap(self):
+        from ..utils.highway_density import apply_highway_density, apply_bus_heavy_fleet
+        from ..scenarios.full_loop_parts.tunnel_static_parts.layout import boxes_overlap
+        context = self.context()
+        apply_highway_density(context.cfg, 'dense')
+        apply_bus_heavy_fleet(context.cfg)
+        for seed in [2385576734200624830, 6986037702628052809] + list(range(20)):
+            context.run_seed = seed
+            plans, models = traffic.build_plan(context)
+            self.assertEqual(len(plans), 22)
+            self.assertEqual(models.count('2016_Hyundai_Universe'), 8)
+            self.assertEqual(models.count('2013_Hyundai_Xcient(P520)'), 2)
+            self.assertEqual(len(set(m for m in models if m not in
+                ('2016_Hyundai_Universe', '2013_Hyundai_Xcient(P520)'))), 12)
+            self.assertEqual(sum(p.get('additional_bus', False) for p in plans), 6)
+            self.assertEqual(sum(p['merge_adjacent'] and p['required_model']=='2016_Hyundai_Universe' for p in plans), 2)
+            moved = [p for p in plans if p.get('relocation', {}).get('reason')=='upstream_to_downstream']
+            self.assertEqual(len(moved), 5)
+            self.assertTrue(all(p['offset_m']>=0 and -135<=p['yaw_deg']<=-45 for p in moved))
+            self.assertTrue(all(p['relocation']['original']['offset_m']<=-80 for p in moved))
+            self.assertTrue(all(20 <= p['speed_kmh'] <= 100 for p in plans))
+            for i, plan in enumerate(plans):
+                for other in plans[:i]:
+                    self.assertFalse(boxes_overlap(dict(traffic._universe_box(plan), width_m=3.146),
+                        dict(traffic._universe_box(other), width_m=3.146), .25))
+        traffic.prepare(context)
+        self.assertEqual(context.grpc.spawn_vehicle.call_count, 22)
+        self.assertEqual(sum(p['model']=='2016_Hyundai_Universe' for p in context.highway_npcs), 8)
+
+    def test_three_extra_buses_preserve_base_population_and_safe_slots(self):
+        from ..utils.highway_density import apply_highway_density
+        from ..scenarios.full_loop_parts.tunnel_static_parts.layout import boxes_overlap
+        context = self.context()
+        apply_highway_density(context.cfg, 'dense')
+        for seed in [2385576734200624830] + list(range(10)):
+            context.run_seed = seed
+            traffic_cfg = context.cfg['highway_npc']['managed_traffic']
+            traffic_cfg['extra_buses'] = 0
+            base, base_models = traffic.build_plan(context)
+            traffic_cfg['extra_buses'] = 3
+            context.cfg['highway_npc']['collection_maximum_total_vehicles'] = 23
+            plans, models = traffic.build_plan(context)
+            self.assertEqual(plans[:20], base)
+            self.assertEqual(models[:20], base_models)
+            self.assertEqual(len(plans), 23)
+            self.assertEqual(models[20:], ['2016_Hyundai_Universe'] * 3)
+            self.assertEqual([p['lane'] for p in plans[20:]], ['merge_adjacent', 'middle', 'left'])
+            for i, plan in enumerate(plans):
+                for other in plans[:i]:
+                    self.assertFalse(boxes_overlap(dict(traffic._universe_box(plan), width_m=3.146),
+                        dict(traffic._universe_box(other), width_m=3.146), .25))
+        traffic.prepare(context)
+        self.assertEqual(context.grpc.spawn_vehicle.call_count, 23)
+        self.assertEqual(len(context.highway_npcs), 23)
+
+    def test_dense_twenty_and_large_vehicle_lane_guarantees(self):
+        from ..utils.highway_density import apply_highway_density
+        from ..scenarios.full_loop_parts.tunnel_static_parts.layout import boxes_overlap
+        context = self.context()
+        apply_highway_density(context.cfg, 'dense')
+        large = {'2016_Hyundai_Universe', '2013_Hyundai_Xcient(P520)'}
+        for seed in range(30):
+            context.run_seed = seed
+            plans, models = traffic.build_plan(context)
+            self.assertEqual(len(plans), 20)
+            self.assertEqual(models, [p['required_model'] for p in plans])
+            self.assertEqual(sum(p['merge_adjacent'] and p['required_model'] in large for p in plans), 1)
+            self.assertEqual(sum(not p['merge_adjacent'] and p['required_model'] in large for p in plans), 3)
+            for index, plan in enumerate(plans):
+                for other in plans[:index]:
+                    self.assertFalse(boxes_overlap(
+                        dict(traffic._universe_box(plan), width_m=3.146),
+                        dict(traffic._universe_box(other), width_m=3.146), .25))
+        traffic.prepare(context)
+        self.assertEqual(context.grpc.spawn_vehicle.call_count, 20)
+        self.assertEqual(len(context.highway_npcs), 20)
+        self.assertFalse(context.cfg['highway_merge_static_vehicle']['enabled'])
+
+    def test_dense_fixed_models_and_failed_required_spawn(self):
+        from ..utils.highway_density import apply_highway_density
+        for model in ('2016_Hyundai_Universe', '2013_Hyundai_Xcient(P520)'):
+            context = self.context()
+            apply_highway_density(context.cfg, 'dense')
+            context.cfg['highway_npc']['managed_traffic']['fixed_model'] = model
+            traffic.prepare(context)
+            self.assertEqual(len(context.highway_npcs), 20)
+            self.assertEqual({p['model'] for p in context.highway_npcs}, {model})
+        context = self.context()
+        apply_highway_density(context.cfg, 'dense')
+        context.grpc.spawn_vehicle.side_effect = lambda **kw: None
+        with self.assertRaises(RuntimeError):
+            traffic.prepare(context)
+        self.assertEqual(context.grpc.spawn_vehicle.call_count, 1)
+
+    def test_xcient_only_population_and_collision_free_slots(self):
+        from ..scenarios.full_loop_parts.tunnel_static_parts.layout import boxes_overlap
+        context = self.context()
+        original, _ = traffic.build_plan(context)
+        context.cfg['highway_npc']['managed_traffic']['fixed_model'] = '2013_Hyundai_Xcient(P520)'
+        plans, models = traffic.build_plan(context)
+        self.assertEqual([(p['lane'],p['speed_kmh']) for p in plans],
+                         [(p['lane'],p['speed_kmh']) for p in original])
+        self.assertEqual(models,['2013_Hyundai_Xcient(P520)']*25)
+        traffic.prepare(context)
+        self.assertEqual(context.grpc.spawn_vehicle.call_count,25)
+        self.assertEqual({p['model'] for p in context.highway_npcs},{'2013_Hyundai_Xcient(P520)'})
+        for seed in [5488920826684496123] + list(range(30)):
+            context.run_seed=seed
+            plans,_=traffic.build_plan(context)
+            for i,plan in enumerate(plans):
+                for other in plans[:i]:
+                    self.assertFalse(boxes_overlap(traffic._xcient_box(plan),traffic._xcient_box(other),.25))
+
+    def test_fixed_universe_preserves_population_speeds_and_spawns_every_slot(self):
+        context = self.context()
+        original, _ = traffic.build_plan(context)
+        context.cfg['highway_npc']['managed_traffic']['fixed_model'] = '2016_Hyundai_Universe'
+        plans, models = traffic.build_plan(context)
+        self.assertEqual([(p['lane'], p['speed_kmh']) for p in plans],
+                         [(p['lane'], p['speed_kmh']) for p in original])
+        self.assertEqual(models, ['2016_Hyundai_Universe'] * len(plans))
+        traffic.prepare(context)
+        self.assertEqual(context.grpc.spawn_vehicle.call_count, len(plans))
+        self.assertEqual({p['model'] for p in context.highway_npcs}, {'2016_Hyundai_Universe'})
+        calls = context.grpc.spawn_vehicle.call_args_list
+        self.assertEqual(len({c.kwargs['request_id'] for c in calls}), len(plans))
+        self.assertTrue(all(c.kwargs['model_name'] == '2016_Hyundai_Universe' for c in calls))
+        self.assertTrue(all(c.kwargs['lookup_before_create'] is False for c in calls))
+
+    def test_universe_fork_collision_regression_and_seed_variations(self):
+        from ..scenarios.full_loop_parts.tunnel_static_parts.layout import boxes_overlap
+        context = self.context()
+        context.run_seed = 13285474119529461107
+        original, _ = traffic.build_plan(context)
+        self.assertTrue(boxes_overlap(traffic._universe_box(original[12]),
+                                      traffic._universe_box(original[2])))
+        context.cfg['highway_npc']['managed_traffic']['fixed_model'] = '2016_Hyundai_Universe'
+        for seed in [13285474119529461107] + list(range(30)):
+            context.run_seed = seed
+            plans, _ = traffic.build_plan(context)
+            self.assertEqual(len(plans), 25)
+            for i, plan in enumerate(plans):
+                for other in plans[:i]:
+                    self.assertFalse(boxes_overlap(traffic._universe_box(plan),
+                                                  traffic._universe_box(other), .25))
+                    if plan['lane'] == other['lane']:
+                        gap = 20 if plan['merge_adjacent'] else 30
+                        self.assertGreaterEqual(plan['route_distance_m']-other['route_distance_m'], gap)
+                points = context.map_loader.get_link_points(plan['route'][0])
+                actual = traffic.interpolate_on_polyline(points, plan['spawn_link_s_m'])
+                self.assertEqual(actual, tuple(plan[k] for k in ('x', 'y', 'z', 'yaw_deg')))
+                self.assertLess(plan['waypoint'], len(points))
+
+    def test_fixed_model_never_falls_back_to_other_vehicle(self):
+        context = self.context()
+        context.cfg['highway_npc']['managed_traffic']['fixed_model'] = '2016_Hyundai_Universe'
+        context.grpc.spawn_vehicle.side_effect = lambda **kw: None
+        with self.assertRaisesRegex(RuntimeError, 'fixed_model'):
+            traffic.prepare(context)
+        self.assertEqual(context.grpc.spawn_vehicle.call_count, 1)
+
+    def test_missing_fixed_model_fails_before_spawn(self):
+        context = self.context()
+        context.cfg['highway_npc']['managed_traffic']['fixed_model'] = 'missing_model'
+        with self.assertRaisesRegex(RuntimeError, 'unavailable'):
+            traffic.prepare(context)
+        context.grpc.spawn_vehicle.assert_not_called()
+
     @classmethod
     def setUpClass(cls):
         cls.global_cfg, _, cls.config = load_configuration()
@@ -240,20 +408,25 @@ class HighwayTrafficTests(unittest.TestCase):
         self.assertEqual(len({row['model'] for row in context.highway_npcs}), 25)
         self.assertNotIn(first, [row['model'] for row in context.highway_npcs])
 
-    def test_mainline_routes_continue_past_exit_without_moving_spawn_slots(self):
+    def test_middle_lane_retires_before_taper_without_moving_spawn_slots(self):
         context = self.context()
         plans, _ = traffic.build_plan(context)
         baseline = self.context()
         for lane in baseline.cfg['highway_npc']['managed_traffic']['lanes']:
             if lane['name'] == 'middle':
-                lane['route'] = lane['route'][:lane['route'].index('A2256W000422') + 1]
+                self.assertEqual(lane['route'][-1], 'A2256W000434')
+                self.assertTrue(lane['retire_at_route_end'])
+                self.assertEqual(lane['lane_end_margin_m'], 30.)
+                lane['route'] += ['A2256W000422', 'A2256W000153', 'A2256W000451', 'A2256W000446']
             elif lane['name'] == 'left':
                 lane['route'] = lane['route'][:lane['route'].index('A2256W000432') + 1]
         old, _ = traffic.build_plan(baseline)
         for before, after in zip(old, plans):
             for key in ('x', 'y', 'z', 'yaw_deg', 'waypoint', 'offset_m', 'speed_kmh'):
                 self.assertEqual(before[key], after[key])
-            if after['lane'] in ('middle', 'left'):
+            if after['lane'] == 'middle':
+                self.assertEqual(after['route'][-1], 'A2256W000434')
+            elif after['lane'] == 'left':
                 end = self.loader.get_link_points(after['route'][-1])[-1]
                 self.assertLess(end[1], -460.)
         traffic.prepare(context)

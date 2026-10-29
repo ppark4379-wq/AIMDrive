@@ -41,11 +41,13 @@ class SpawnContactVerifier:
         while len(self.births) > 128:
             self.births.popitem(last=False)
 
-    def assess(self, reports, now, query_s, ego_xy, targets):
+    def assess(self, reports, now, query_s, ego_xy, targets, *, entry_review=False):
         """Return per-ID evidence; defer only when every check proves separation.
 
         targets contains {actor_id: (x,y)} from one fresh all-actor query. Unknown
-        IDs, unavailable/stale queries, possible contact and history gaps stop.
+        IDs and unavailable/stale queries stop. During the pre-merge approach,
+        entry_review permits a continuing distant spawn label across a history
+        gap; this is monitoring policy, not proof of collision-free travel.
         """
         reports = list(dict.fromkeys(map(str, reports)))
         for identity in set(self.continuing) - set(reports):
@@ -90,9 +92,15 @@ class SpawnContactVerifier:
                     if (math.dist(ego, anchor['ego']) > bound or math.dist(target, anchor['target']) > bound):
                         evidence['reason'] = 'discontinuous_geometry'
                     elif min(distance, lower) <= self.CONTACT_ENVELOPE:
-                        evidence['reason'] = 'contact_possible'
+                        if (entry_review and previous
+                                and min(distance, anchor['distance']) > self.CONTACT_ENVELOPE):
+                            evidence.update(action='continue_with_review',
+                                            reason='entry_distant_report_review')
+                        else:
+                            evidence['reason'] = 'contact_possible'
                     else:
                         evidence.update(action='continue_with_review', reason='verified_distant_spawn_report')
+                    if evidence['action'] == 'continue_with_review':
                         # Snapshot capture can occur anywhere inside the RPC.
                         # Anchor at its start so the next check also budgets
                         # the preceding query's uncertainty in observation time.

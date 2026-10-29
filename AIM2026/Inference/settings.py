@@ -23,6 +23,10 @@ def read_config(path):
     cfg = yaml.safe_load(Path(path).read_text(encoding='utf-8-sig'))
     options = cfg['Inference']
     vision = options['vision']
+    if type(vision.get('evaluation_recording', False)) is not bool:
+        raise ValueError('Inference.vision.evaluation_recording: true or false')
+    if vision.get('evaluation_recording') and not options.get('status_file'):
+        raise ValueError('Evaluation recording requires Inference.status_file for its run directory')
     if vision.get('checkpoint') not in CHECKPOINTS:
         raise ValueError('Inference.vision.checkpoint must be one of %s' % sorted(CHECKPOINTS))
     if vision.get('object_head') not in (None, 'truck'):
@@ -31,6 +35,18 @@ def read_config(path):
         raise ValueError('Inference.vision.lidar_heading: true or false')
     if type(vision.get('big_vehicles', False)) is not bool:
         raise ValueError('Inference.vision.big_vehicles: true or false')
+    if type(vision.get('lidar_centers', True)) is not bool:
+        raise ValueError('Inference.vision.lidar_centers: true or false')
+    hold = vision.get('large_vehicle_hold_s', 2.)
+    ve_hold = vision.get('ve_lead_hold_s', 0.)
+    if type(ve_hold) not in (int, float) or not math.isfinite(ve_hold) or not 0 <= ve_hold <= 1.:
+        raise ValueError('Inference.vision.ve_lead_hold_s: finite within 0..1 second')
+    if type(vision.get('bus_truck_supplement', True)) is not bool:
+        raise ValueError('Inference.vision.bus_truck_supplement: true or false')
+    if vision.get('big_vehicles', False) and vision.get('bus_truck_supplement', True):
+        raise ValueError('Choose either remote big_vehicles or local bus_truck_supplement, not both')
+    if type(hold) not in (int, float) or not math.isfinite(hold) or hold < 0:
+        raise ValueError('Inference.vision.large_vehicle_hold_s: finite and nonnegative')
     if vision.get('fragment_merge') not in (None, True, False):
         raise ValueError('Inference.vision.fragment_merge: null, true or false')
     if type(vision.get('left_arrow_rule', True)) is not bool:

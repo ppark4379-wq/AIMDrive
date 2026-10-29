@@ -136,6 +136,16 @@ class VePublisher:
         self._signal_frame_at = 0.
         self.imu_method = None
         self.imu_methods = {}
+        self.visualization_file = None
+
+    def _visualize(self, result=None, ego=None):
+        if self.visualization_file is None:
+            return
+        from AIM2026.Visualization.ve_direct import write_frame
+        try:
+            write_frame(self.visualization_file, self.last_lidar, result, ego, self.reason)
+        except (OSError, ValueError) as exc:
+            print('[VE] Visualization write failed: %s' % exc, flush=True)
 
     def _fresh(self, record, now):
         return record is not None and record.value is not None and 0 <= now - record.received_at <= self.max_age_s
@@ -186,6 +196,7 @@ class VePublisher:
                                           max_skew_s=min(.15, self.max_age_s))
         if not self._fresh(chosen['gps'], now):
             missing.append('gps')
+        chosen['lidar_observation_time'] = lidar_time if lidar_time is not None else lidar.received_at
         return (None, missing) if missing else (chosen, alignment)
 
     def step(self):
@@ -205,7 +216,7 @@ class VePublisher:
             pose = self.projector.project(chosen['gps'].value, chosen['imu'].value)
             speed = float(chosen['vehicle_status'].value['speed'])
             result = self.runtime.infer({name: chosen[name].value for name in CAMERAS},
-                                        lidar.value, speed, pose)
+                                        lidar.value, speed, pose, observation_time=chosen['lidar_observation_time'])
         except ValueError as exc:
             return self._not_ready('input_rejected: ' + str(exc))
         if _FRAME_DUMP:
@@ -234,7 +245,41 @@ class VePublisher:
         # The sender downgrades a frame whose sensors aged past 0.5 s during inference.
         sender = getattr(self.udp, 'detection', None)
         delivered = getattr(sender, 'last_ready', True) is not False
+        trace = getattr(self, 'collision_trace', None)
+        if trace is not None:
+            try:
+                from AIM2026.utils.perception_evidence import detection_evidence
+                sequence = sender.sequence
+                stem = 'frame_%08d' % sequence
+                head = getattr(result, 'raw_head', None)
+                files = [(stem+'.npy', head)] if head is not None else []
+                cameras = {}
+                if now-getattr(self, '_trace_camera_at', -float('inf')) >= .5:
+                    for name in CAMERAS:
+                        value = chosen[name].value
+                        if isinstance(value, (bytes, bytearray, memoryview)):
+                            cameras[name] = stem+'_'+name+'.jpg'
+                            files.append((cameras[name], bytes(value)))
+                    if hasattr(lidar.value, 'copy'):
+                        files.append((stem+'_lidar.npy', lidar.value.copy()))
+                    self._trace_camera_at = now
+                trace.submit(dict(sequence=sequence, sensor_received_ns=round(oldest*1e9),
+                    object_received_ns=round(lidar.received_at*1e9), completed_ns=time.monotonic_ns(),
+                    ego_pose=pose, head_file=stem+'.npy' if head is not None else None,
+                    cameras=cameras, lidar_file=next((name for name,_ in files if name.endswith('_lidar.npy')), None),
+                    counts=result.counts, delivered=delivered,
+                    inference_ms=result.inference_ms,
+                    wall_ns=time.time_ns(), speed_mps=speed,
+                    lidar_observation_time=chosen.get('lidar_observation_time'),
+                    input_source_stamp_ns={k: getattr(v, 'source_stamp_ns', None)
+                                           for k, v in chosen.items() if hasattr(v, 'received_at')},
+                    **detection_evidence(result),
+                    input_received_ns={k: round(v*1e9) for k,v in received.items()}), files)
+            except Exception as exc:
+                trace.stats['errors'] += 1
+                trace.stats['last_error'] = str(exc)
         self.reason = None if delivered else getattr(sender, 'last_reason', 'not_ready')
+        self._visualize(result, ego_pose)
         if delivered:
             self.ready_frames += 1
         else:
@@ -275,6 +320,7 @@ class VePublisher:
     def _not_ready(self, reason):
         self.reason = reason
         self.udp.send_detection_not_ready(reason)
+        self._visualize()
         return reason
 
     def status(self):
@@ -296,6 +342,9 @@ def main():
     parser.add_argument('--generation', help='Shared sender identity when launched by the common Expert')
     parser.add_argument('--run-id', help='Scenario Runner identity for publisher audit')
     parser.add_argument('--audit-dir', type=Path, help='Write publisher timing records for incident capture')
+    parser.add_argument('--visualization-file', type=Path,
+                        default=ROOT / 'AIM2026/outputs/ve/visualization.json',
+                        help='Latest direct VE frame for RViz (no Expert required)')
     args = parser.parse_args()
     config = read_config(args.config)
     if args.generation is not None:
@@ -335,12 +384,18 @@ def main():
                             phase_head=bool(vision.get('phase_head', True)),
                             big_vehicles=bool(vision.get('big_vehicles', False)),
                             fragment_merge=vision.get('fragment_merge'),
+                            large_vehicle_hold_s=vision.get('large_vehicle_hold_s', 2.),
+                            large_vehicle_lanes=vision.get('large_vehicle_lanes'),
+                            bus_truck_supplement=vision.get('bus_truck_supplement', True),
                             left_arrow_rule=bool(vision.get('left_arrow_rule', True)))
     print('[VE] %s loaded (%s), signal head=%s, phase head=%s, object head=%s, lidar heading=%s, lidar centers=%s, '
           'big vehicles=%s, fragment merge=%s, left arrow rule=%s' % (
         vision['checkpoint'], options['device'], runtime.signal_head is not None, runtime.phase_head is not None,
         runtime.object_head, runtime.lidar_heading, runtime.lidar_centers, runtime.big_vehicles, runtime.fragment_merge,
         runtime.left_arrow_rule), flush=True)
+    print('[Perception] bus/truck geometry supplement=%s, hold=%ss, lane tracking=%s' % (
+        vision.get('bus_truck_supplement', True), vision.get('large_vehicle_hold_s', 2.),
+        bool(vision.get('large_vehicle_lanes'))), flush=True)
     stop = []
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stop.append(True))
@@ -351,6 +406,8 @@ def main():
     timer.__enter__()
     udp.start()
     audit = None
+    collision_trace = None
+    gt_recorder = None
     try:
         if args.audit_dir:
             try:
@@ -359,6 +416,22 @@ def main():
             except OSError as error:
                 print('[VE audit unavailable] ' + str(error), flush=True)
         publisher = VePublisher(udp, runtime, udp.pose.projector, max_age_s=vision['max_sensor_age_s'])
+        trace_dir = __import__('os').environ.get('AIM_COLLISION_TRACE')
+        if vision.get('evaluation_recording', False):
+            trace_dir = Path(options['status_file']).parent / 'perception_evidence'
+            runtime.capture_evidence = True
+            try:
+                from AIM2026.utils.perception_evidence import GroundTruthRecorder
+                gt_recorder = GroundTruthRecorder(trace_dir, config, args.run_id,
+                    target=vision.get('evaluation_gt_target', '127.0.0.1:7789'))
+                print('[Evaluation] Per-frame detections + sampled sensors + 10 Hz GT: %s' % trace_dir, flush=True)
+            except Exception as error:
+                print('[Evaluation] GT recorder unavailable: %s' % error, flush=True)
+        if trace_dir:
+            from AIM2026.utils.diagnostic_trace import DiagnosticTrace
+            collision_trace = DiagnosticTrace(trace_dir, 'publisher')
+            publisher.collision_trace = collision_trace
+        publisher.visualization_file = args.visualization_file
         if options.get('status_file'):
             publisher.signal_frames = Path(options['status_file']).parent / 'signal_frames'
         print('[VE] receiving: %s -> Detection/pose %s:%s' % (', '.join(udp.receivers),
@@ -387,6 +460,10 @@ def main():
                 time.sleep(.002)
             if time.monotonic() >= next_status:
                 row = publisher.status()
+                if collision_trace is not None:
+                    row['evidence_writer'] = dict(collision_trace.stats)
+                if gt_recorder is not None:
+                    row['gt_writer'] = dict(gt_recorder.writer.stats)
                 print(json.dumps(row, ensure_ascii=False, default=str), flush=True)
                 if options.get('status_file'):
                     target = Path(options['status_file'])
@@ -394,6 +471,10 @@ def main():
                     target.write_text(json.dumps(row, ensure_ascii=False, indent=1, default=str), encoding='utf-8')
                 next_status = time.monotonic() + options['status_interval_s']
     finally:
+        if gt_recorder is not None:
+            gt_recorder.close()
+        if collision_trace is not None:
+            collision_trace.close()
         if audit is not None:
             try:
                 audit.close()

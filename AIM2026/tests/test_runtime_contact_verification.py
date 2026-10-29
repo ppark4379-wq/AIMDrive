@@ -91,6 +91,29 @@ class ContactVerificationTests(unittest.TestCase):
         self.assess(now=100.6, reports=[])
         self.assertEqual(self.assess(now=100.7)['npc']['action'], 'stop')
 
+    def test_entry_gap_policy_preserves_stop_conditions(self):
+        for entry, query, distance, expected in (
+                (True, .01, 100.47194361620241, 'continue_with_review'),
+                (False, .01, 100.47194361620241, 'stop'),
+                (True, .01, 25., 'stop'),
+                (True, .3, 100.47194361620241, 'stop')):
+            with self.subTest(entry=entry, query=query, distance=distance):
+                self.check.continuing['npc'] = dict(time=100., ego=(0., 0.),
+                    target=(120.12874328462847, 0.), distance=120.12874328462847)
+                result = self.check.assess(['npc', 'wall'], 101.57733668992296,
+                    query, (0., 0.), {'npc': (distance, 0.)}, entry_review=entry)
+                self.assertEqual(result['npc']['action'], expected)
+                self.assertEqual(result['wall']['action'], 'stop')
+                if expected == 'continue_with_review':
+                    self.assertEqual(result['npc']['reason'], 'entry_distant_report_review')
+                    self.assertIn('npc', self.check.review_ids)
+
+    def test_entry_gap_exception_requires_continuing_report(self):
+        self.check.record_spawn('npc', 100., 100., (0., 0.), (120., 0.), (120., 0.))
+        result = self.check.assess(['npc'], 101.58, .01, (0., 0.),
+                                  {'npc': (100., 0.)}, entry_review=True)
+        self.assertEqual(result['npc']['action'], 'stop')
+
     def test_continuing_report_is_rechecked_and_near_contact_stops(self):
         self.birth()
         self.assess()
@@ -129,7 +152,9 @@ class ContactVerificationTests(unittest.TestCase):
             self.assertEqual(result['raw_collision_objects'], ['Ego', 'npc', 'wall'])
             self.assertEqual(state['collision_objects'], ['npc', 'wall'])
             evidence = json.loads((scene.output/'runtime_contact_checks.jsonl').read_text())
-            self.assertEqual(evidence['decisions']['npc']['action'], 'continue_with_review')
+            self.assertEqual(evidence['decisions']['npc']['action'], 'record_only')
+            self.assertEqual(evidence['decisions']['npc']['assessment_action'], 'continue_with_review')
+            self.assertEqual(evidence['decisions']['wall']['action'], 'record_only')
             world.get_all_actors_state.side_effect = RuntimeError('RPC unavailable')
             with patch('AIM2026.Expert.run_highway.time.monotonic', return_value=100.6):
                 self.assertEqual(scene._verify_runtime_contacts(state)['collision_objects'], ['npc', 'wall'])
@@ -145,6 +170,18 @@ class ContactVerificationTests(unittest.TestCase):
         scene._spawn_contact_verifier = None  # --strict-collisions
         self.assertIs(scene._verify_runtime_contacts(raw), raw)
 
+    def test_entry_policy_is_limited_to_driving_on_approach_link(self):
+        scene = object.__new__(HighwayScenario)
+        scene._spawn_contact_verifier = Mock(births={}, continuing={})
+        scene._spawn_contact_verifier.assess.return_value = {}
+        for driving, link, expected in ((True, 'A2256W000846', True),
+                                        (True, 'A2256W000411', False),
+                                        (True, None, False),
+                                        (False, 'A2256W000846', False)):
+            scene._contact_drive_active = driving
+            scene._contact_startup_active = not driving
+            scene._verify_runtime_contacts(dict(collision_objects=[], current_link=link))
+            self.assertEqual(scene._spawn_contact_verifier.assess.call_args.kwargs['entry_review'], expected)
     def test_spawn_evidence_hook_runs_only_during_drive_and_verifies_actor_id(self):
         with TemporaryDirectory() as directory:
             scene = object.__new__(HighwayScenario)

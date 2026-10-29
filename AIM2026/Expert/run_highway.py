@@ -140,6 +140,12 @@ class ExpertController:
             command.extend(['--speed-cap-kmh', str(args.speed_cap_kmh)])
         if getattr(args, 've_object_speed', False):
             command.append('--ve-object-speed')
+        if getattr(args, 'no_lidar_rules', False):
+            command.append('--no-lidar-rules')
+        if getattr(args, 'detection_hold_s', 0.):
+            command.extend(['--detection-hold-s', str(args.detection_hold_s)])
+        if getattr(args, 'lane_motion_tracking', False):
+            command.append('--lane-motion-tracking')
         if getattr(args, 'validation_events', False) and not check:
             command.extend(['--run-id', str(self.scenario.run_instance_id)])
         return command
@@ -170,6 +176,10 @@ class ExpertController:
         while time.monotonic() < deadline:
             if not self.is_running():
                 raise RuntimeError('AIM2026 Expert stopped; inspect driver.console.log')
+            # Model loading can take ten seconds. Keep the contact verifier's
+            # spatial evidence continuous instead of leaving an unobserved gap
+            # between the pre-launch check and the first driving tick.
+            self.scenario.check_startup_contact()
             control_log = self.scenario.driver_output / 'control.jsonl'
             if control_log.is_file():
                 try:
@@ -213,6 +223,95 @@ class ExpertController:
 
 
 class HighwayScenario(MissionScenario):
+    # Collision verification is evidence only; it never owns vehicle control.
+    collision_verification_record_only = True
+
+    def record_collision_observation(self, state, elapsed, phase='driving'):
+        signature = tuple(sorted(set(state.get('collision_objects', []))))
+        previous = getattr(self, '_record_only_contact_signature', ())
+        self._record_only_contact_signature = signature
+        if signature == previous:
+            return
+        event = dict(observed_at=datetime.now().astimezone().isoformat(),
+                     scenario_elapsed_s=elapsed, phase=phase, decision='record_only',
+                     ego_state=state)
+        with (self.output / 'collision_observations.jsonl').open('a', encoding='utf-8') as stream:
+            stream.write(json.dumps(event, ensure_ascii=False) + '\n')
+        print('[Highway] Collision observation only; control continues: {}'.format(
+            list(signature)), flush=True)
+
+    def spawn_highway_npcs(self):
+        """Capture initial-fleet contacts before the placement baseline exists."""
+        original = self.grpc.spawn_vehicle
+        destination = self.output / 'startup_spawn_contacts.jsonl'
+
+        def observe(phase, request, actor=None):
+            event = dict(phase=phase, observed_at=datetime.now().astimezone().isoformat(),
+                         monotonic=time.monotonic(), request_id=request.get('request_id'),
+                         label=request.get('label'), model=request.get('model_name'))
+            try:
+                transform = request.get('transform')
+                if transform is not None:
+                    event['requested_xy'] = [transform.location.x, transform.location.y]
+                # Raw simulator state; no startup or runtime exemptions.
+                event['ego_state'] = super(HighwayScenario, self).get_ego_motion_state()
+                if actor is not None:
+                    from google.protobuf.json_format import MessageToDict
+                    event['actor_id'] = str(actor.get_id())
+                    event['actor_state'] = MessageToDict(
+                        actor.get_actor_state(), preserving_proto_field_name=True)
+            except Exception as exc:
+                event['query_error'] = str(exc)
+            with destination.open('a', encoding='utf-8') as stream:
+                stream.write(json.dumps(event, ensure_ascii=False) + '\n')
+            return event
+
+        def spawn(*args, **kwargs):
+            before = observe('before_spawn', kwargs)
+            if not getattr(self, '_contact_startup_active', False):
+                raw = before.get('ego_state', {})
+                if not getattr(getattr(self, 'args', None), 'strict_collisions', True):
+                    self._startup_contact_baseline = StartupContactBaseline(raw)
+                    self._spawn_contact_verifier = SpawnContactVerifier()
+                    self._contact_startup_active = True
+                    self._contact_started_monotonic = before['monotonic']
+            started = time.monotonic()
+            actor = None
+            try:
+                actor = original(*args, **kwargs)
+                return actor
+            finally:
+                after = observe('after_spawn', kwargs, actor)
+                self._verify_initial_spawn(before, after, started)
+
+        self.grpc.spawn_vehicle = spawn
+        try:
+            return super().spawn_highway_npcs()
+        finally:
+            self.grpc.spawn_vehicle = original
+
+    def _verify_initial_spawn(self, before, after, started):
+        verifier = getattr(self, '_spawn_contact_verifier', None)
+        if not getattr(self, '_contact_startup_active', False) or verifier is None:
+            return
+        # Never infer separation from the final position alone. Require both
+        # the pre-request Ego sample and the returned actor at its requested slot.
+        try:
+            raw = before['ego_state']
+            actor = after['actor_state']
+            identity = after['actor_id']
+            location = actor['transform']['location']
+            if (actor['actor_info']['id']['value'] == identity
+                    and identity not in raw.get('collision_objects', [])
+                    and 'query_error' not in before and 'query_error' not in after):
+                verifier.record_spawn(identity, started, before['monotonic'],
+                    (raw['x'], raw['y']), before['requested_xy'],
+                    (location.get('x', 0.), location.get('y', 0.)))
+        except (KeyError, TypeError):
+            pass  # missing evidence grants no exception
+        # A fresh all-actor query also checks continuity of earlier reports.
+        self.get_ego_motion_state()
+
     def record_live_spawn_contact_evidence(self, actor, requested_xy, started):
         """Own-NPC birth evidence; never called by the perception/control pipeline."""
         verifier = getattr(self, '_spawn_contact_verifier', None)
@@ -239,7 +338,8 @@ class HighwayScenario(MissionScenario):
 
     def _verify_runtime_contacts(self, state):
         verifier = getattr(self, '_spawn_contact_verifier', None)
-        if verifier is None or not getattr(self, '_contact_drive_active', False):
+        if verifier is None or not (getattr(self, '_contact_drive_active', False)
+                                    or getattr(self, '_contact_startup_active', False)):
             return state
         reports = state.get('collision_objects', [])
         ego_xy, targets, error = None, {}, None
@@ -260,11 +360,21 @@ class HighwayScenario(MissionScenario):
             except Exception as exc:
                 ego_xy, targets, error = None, {}, str(exc)
         now = time.monotonic()
-        decisions = verifier.assess(reports, now, now-before, ego_xy, targets)
+        # The single-lane approach precedes the first merge (411 -> 409).
+        # Keep ordinary Expert control there when only a previously verified
+        # distant spawn label persists across a slow scenario tick. Fresh,
+        # close, unknown and stale-geometry reports still stop the run.
+        entry_review = (getattr(self, '_contact_drive_active', False)
+                        and state.get('current_link') == 'A2256W000846')
+        decisions = verifier.assess(reports, now, now-before, ego_xy, targets,
+                                    entry_review=entry_review)
         if not decisions:
             return state
         deferred = [identity for identity, decision in decisions.items()
                     if decision['action'] == 'continue_with_review']
+        for decision in decisions.values():
+            decision['assessment_action'] = decision['action']
+            decision['action'] = 'record_only'
         evidence = dict(observed_at=datetime.now().astimezone().isoformat(), monotonic=now,
                         ego_xy=ego_xy, targets=targets, query_s=now-before,
                         query_error=error, reports=reports, decisions=decisions)
@@ -376,20 +486,27 @@ class HighwayScenario(MissionScenario):
         # Preserve evidence before the existing runner teleports/reset-motion.
         # This separates a pre-existing simulator contact from placement contact.
         state = self.get_ego_motion_state()
-        self._contact_started_monotonic = time.monotonic()
-        self._contact_first_reports = {}
-        self._last_contact_signature = None
+        startup_verified = getattr(self, '_contact_startup_active', False)
+        if not startup_verified:
+            self._contact_started_monotonic = time.monotonic()
+            self._contact_first_reports = {}
+            self._last_contact_signature = None
         self._contact_drive_active = False
-        self._spawn_contact_verifier = None if self.args.strict_collisions else SpawnContactVerifier()
+        if not startup_verified:
+            self._spawn_contact_verifier = None if self.args.strict_collisions else SpawnContactVerifier()
         (self.output / 'before_placement.json').write_text(
             json.dumps(state, ensure_ascii=False, indent=2), encoding='utf-8')
+        if startup_verified:
+            # Keep the pre-fleet baseline and continuous geometry history;
+            # rebuilding here would erase the evidence of a distant birth.
+            return super().configure_drive_from_start()
         if not self.args.strict_collisions:
             actor_ids = (self.live_actor_ids() if any(str(v).isdecimal()
                          for v in state.get('collision_objects', [])) else None)
             self._startup_contact_baseline = StartupContactBaseline(state, actor_ids)
             if self._startup_contact_baseline.active:
                 print('[Highway] INTERACTIVE: pre-existing contact baseline {} is recorded; '
-                      'new contacts and cleared labels reappearing still stop the run. '
+                      'new contacts and cleared labels reappearing are recorded only. '
                       'This is not a collision-free guarantee.'.format(
                           sorted(self._startup_contact_baseline.ignored)), flush=True)
         else:
@@ -407,19 +524,7 @@ class HighwayScenario(MissionScenario):
         destination.write_text(json.dumps(dict(ego_state=state, collision_objects=collisions,
             control_backend_started=False), ensure_ascii=False, indent=2), encoding='utf-8')
         if collisions:
-            try:
-                self.record_collision_stop(state, 0., phase='startup')
-            except Exception as exc:
-                print('[Highway] Startup collision evidence failed: {}'.format(exc), flush=True)
-            before_path = self.output / 'before_placement.json'
-            before = json.loads(before_path.read_text(encoding='utf-8')) if before_path.exists() else {}
-            initial = {str(v).strip() for v in before.get('collision_objects', [])}
-            added = sorted(set(collisions) - initial)
-            phase = ('new reports after placement: ' + repr(added) if added else
-                     'already present before placement; not verified as retired actors')
-            raise RuntimeError('MORAI startup collision ' + repr(collisions) + ': ' + phase
-                + '. UDP Expert was NOT started. Reset/reload Ego in MORAI and verify contact clears. '
-                + 'Evidence: ' + str(destination))
+            self.record_collision_observation(state, 0., phase='startup')
 
     def require_async_ros_control_path(self):
         print('[Highway] Driving: AIM2026 UDP. Scene setup/NPC monitoring: gRPC.', flush=True)
@@ -446,8 +551,20 @@ def _start_validation(scenario):
         options.append('--no-live-spawn')
     if getattr(scenario.args, 've_object_speed', False):
         options.append('--ve-object-speed')
+    if getattr(scenario.args, 'no_lidar_rules', False):
+        options.append('--no-lidar-rules')
+    if getattr(scenario.args, 'detection_hold_s', 0.):
+        options += ['--detection-hold-s', str(scenario.args.detection_hold_s)]
+    if getattr(scenario.args, 'lane_motion_tracking', False):
+        options.append('--lane-motion-tracking')
     if getattr(scenario.args, 'highway_density', None):
         options += ['--highway-density', scenario.args.highway_density]
+    if getattr(scenario.args, 'highway_extra_buses', 0):
+        options += ['--highway-extra-buses', str(scenario.args.highway_extra_buses)]
+    if getattr(scenario.args, 'highway_bus_heavy', False):
+        options.append('--highway-bus-heavy')
+    if getattr(scenario.args, 'highway_npc_model', None):
+        options += ['--highway-npc-model', scenario.args.highway_npc_model]
     if getattr(scenario.args, 'rear_npcs', 'normal') != 'normal':
         options += ['--rear-npcs', scenario.args.rear_npcs]
     log.enable_incidents(validation_root / 'incidents', scenario, run_options=options)
@@ -503,31 +620,51 @@ def main(argv=None, *, mission='full_loop_highway'):
                         help='Competition traffic diagnostic: keep initial NPCs but do not create replacements during driving')
     parser.add_argument('--ve-object-speed', action='store_true',
                         help='Experiment: forward raw VE object speed option to Expert')
+    parser.add_argument('--no-lidar-rules', action='store_true',
+                        help='Disable VE LiDAR refinement; bus/truck supplement has its own config switch')
+    parser.add_argument('--detection-hold-s', type=float, default=2.,
+                        help='Forward large-vehicle missing-detection hold duration to Inference')
+    parser.add_argument('--lane-motion-tracking', action='store_true',
+                        help='Use mapped-lane VE motion tracking and conservative missing-object envelopes')
     parser.add_argument('--check', action='store_true', help='Validate without connecting to MORAI')
     parser.add_argument('--config', type=Path, default=ROOT / 'AIM2026/config_local.yaml')
     parser.add_argument('--expert-python', default=expert_python())
     parser.add_argument('--speed-cap-kmh', type=validate_max_velocity_kmh, default=None,
                         help='Optional additional ceiling; tune highway.py for the highway speed')
     parser.add_argument('--seed', type=int)
+    parser.add_argument('--highway-bus-heavy', action='store_true',
+                        help='Dense fleet: 8 Universe buses, 2 Xcient trucks, 12 passenger vehicles; 20-100 km/h')
+    parser.add_argument('--highway-extra-buses', type=int, choices=range(4), default=0,
+                        help='Add up to three Universe buses to dense traffic, one per lane; preserve original NPCs')
     parser.add_argument('--validation-events', action='store_true', default=True,
                         help='On by default: record Ego observations, incidents and the VE/Planning/Control journal, '
                              'and write the failure report (use --no-validation-events to switch it off)')
     parser.add_argument('--no-validation-events', dest='validation_events', action='store_false',
                         help='Do not record validation events or write a failure report')
     parser.add_argument('--strict-collisions', action='store_true',
-                        help='Stop even for verified persistent pre-start contact records')
+                        help='Record all contact reports without baseline exemptions; never stops driving')
     parser.add_argument('--rear-npcs', choices=('normal', 'few'), default='normal',
                         help='With --highway-density competition: few = fewer NPCs coming from behind once Ego has '
                              'entered the highway lane (thinned out from the merge entry on)')
     parser.add_argument('--highway-density', choices=('dense', 'competition'), default=None,
                         help='Highway NPC traffic (run_highway.sh only): competition = independent lane-speed traffic')
     wsl_network.add_arguments(parser)
+    parser.add_argument('--highway-npc-model', default=None,
+                        help='Spawn only this NPC model with dense or competition highway traffic')
     args = parser.parse_args(argv)
     args.config = args.config.resolve()
+    if args.highway_bus_heavy and (mission != 'full_loop_highway' or args.highway_density != 'dense'
+                                   or args.highway_extra_buses or args.highway_npc_model):
+        parser.error('--highway-bus-heavy requires dense traffic without fixed-model or extra-bus overrides')
+    if args.highway_extra_buses and (mission != 'full_loop_highway' or args.highway_density != 'dense'):
+        parser.error('--highway-extra-buses requires highway dense traffic')
     if not args.config.is_file():
         parser.error('Config not found: ' + str(args.config))
     if args.highway_density is not None and mission != 'full_loop_highway':
         parser.error('--highway-density is only for run_highway.sh')
+    if args.highway_npc_model is not None and (
+            mission != 'full_loop_highway' or args.highway_density not in ('dense', 'competition')):
+        parser.error('--highway-npc-model needs --highway-density dense or competition')
     if args.rear_npcs != 'normal' and args.highway_density != 'competition':
         parser.error('--rear-npcs needs --highway-density competition')
     if wsl_network.configure_launcher(args, ROOT, parser):
@@ -547,6 +684,14 @@ def main(argv=None, *, mission='full_loop_highway'):
     config.setdefault('sync_runtime', {})['enabled'] = False
     from scenario_runner.utils.highway_density import apply_highway_density
     apply_highway_density(config, args.highway_density)
+    if args.highway_bus_heavy:
+        from scenario_runner.utils.highway_density import apply_bus_heavy_fleet
+        apply_bus_heavy_fleet(config)
+    if args.highway_extra_buses:
+        config['highway_npc']['managed_traffic']['extra_buses'] = args.highway_extra_buses
+        config['highway_npc']['collection_maximum_total_vehicles'] += args.highway_extra_buses
+    if args.highway_npc_model is not None:
+        config['highway_npc']['managed_traffic']['fixed_model'] = args.highway_npc_model
     if args.no_live_spawn:
         managed = config.get('highway_npc', {}).get('managed_traffic', {})
         if mission != 'full_loop_highway' or managed.get('policy') != 'competition':

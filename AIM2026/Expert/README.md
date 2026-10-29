@@ -26,6 +26,44 @@ AIM2026/Expert/
 
 ## 통합 실행
 
+### 고밀도 고속도로 반복 실행
+
+저장소 루트에서 WSL/Linux Bash로 실행한다. 스크립트는 자신의 위치를 기준으로
+경로를 찾으므로 사용자 이름이나 체크아웃 위치가 달라도 된다.
+
+```sh
+sh highway_dense_repeat.sh               # 혼합: 버스 8 + 트럭 2 + 승용차 12
+sh highway_dense_repeat.sh --bus-only    # Universe 버스 20대
+sh highway_dense_repeat.sh --truck-only  # Xcient P520 트럭 20대
+```
+
+혼합 교통은 합류 인접 버스 2대, 북쪽 접근 차량 5대의 남향 본선 재배치,
+20–100 km/h 목표 속도를 사용한다. 세 모드 모두 차선 기반 대형차 추적을 켜며,
+`config_local.yaml`의 LiDAR 보정·버스/트럭 보완 검출·VE 선행차 기억 설정을 사용한다.
+완료 후 1초 간격으로 반복하며 Ctrl+C로 종료한다. 현재 고속도로 충돌 검증은
+접촉을 기록만 하고 주행을 중단하지 않는다. 실행 오류는 반복하지 않고 종료한다.
+
+다른 컴퓨터에서는 같은 커밋과 MORAI K-City 지도·차량 모델 목록, 센서 설정을
+사용해야 한다. [시나리오 실행 환경 안내](../utils/scenario_runner/README.md)에 따라
+Python/ROS/gRPC 환경을 준비하고 `AIM2026/config_local.yaml`의 IP·포트를 맞춘다.
+모델 가중치는 Git에 포함되지 않으므로 `AIM2026/Weights/VE/`에 별도로 준비한다:
+`ve_p1_20261014.pth.tar`, `signal_head_p1_20261014.pt`,
+`object_head_truck_20261024.pt`. 선택 파일 `signal_phase_head_p1_20261027.pt`의
+존재 여부도 원래 컴퓨터와 맞춰야 한다. 기본 모델과 객체 헤드의 SHA256은
+`Inference/vision/checkpoint.py`에 고정되어 있다.
+
+위 반복 명령은 매회 새로운 무작위 시드를 사용한다. 동일한 초기 배치·목표 속도를
+재현하려면 기록된 시드를 지정해 아래처럼 실행한다(예시 시드: 123):
+
+```sh
+bash AIM2026/Expert/run_highway.sh --highway-density dense --lane-motion-tracking --highway-bus-heavy --seed 123
+bash AIM2026/Expert/run_highway.sh --highway-density dense --lane-motion-tracking --highway-npc-model 2016_Hyundai_Universe --seed 123
+bash AIM2026/Expert/run_highway.sh --highway-density dense --lane-motion-tracking --highway-npc-model '2013_Hyundai_Xcient(P520)' --seed 123
+```
+
+같은 시드는 초기 시나리오 재현용이며, 비동기 센서 처리·시뮬레이터 타이밍까지
+동일한 주행 결과를 보장하지는 않는다.
+
 `AIM2026/main.py`는 자율주행과 시각화를 기본으로 켜고, 사용자 폴더의 Windows `lmdrive` 환경을 자동으로 선택한다. 모델 추론도 자동으로 시작된다. WSL Bash에서 실행한다.
 
 ```bash

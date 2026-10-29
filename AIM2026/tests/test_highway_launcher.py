@@ -11,6 +11,80 @@ from AIM2026 import main as integrated_main
 
 
 class HighwayLauncherTest(unittest.TestCase):
+    def test_placement_preserves_initial_spawn_verification_history(self):
+        from AIM2026.Expert.run_highway import MissionScenario, SpawnContactVerifier
+        scenario = object.__new__(HighwayScenario)
+        scenario.output = self.output
+        scenario._contact_startup_active = True
+        baseline = scenario._startup_contact_baseline = StartupContactBaseline(
+            {'collision_objects': ['Ego', '-100']})
+        verifier = scenario._spawn_contact_verifier = SpawnContactVerifier()
+        verifier.review_ids.add('bus')
+        scenario.get_ego_motion_state = Mock(return_value={
+            'collision_objects': [], 'raw_collision_objects': ['Ego', 'bus']})
+        with patch.object(MissionScenario, 'configure_drive_from_start', return_value=True):
+            self.assertTrue(scenario.configure_drive_from_start())
+        self.assertIs(scenario._startup_contact_baseline, baseline)
+        self.assertIs(scenario._spawn_contact_verifier, verifier)
+        self.assertEqual(verifier.review_ids, {'bus'})
+
+    def test_initial_distant_birth_uses_geometry_and_keeps_review_evidence(self):
+        import time
+        from AIM2026.Expert.run_highway import MissionScenario, SpawnContactVerifier
+        for distance, expected in ((509., []), (10., ['bus'])):
+            with self.subTest(distance=distance):
+                scenario = object.__new__(HighwayScenario)
+                scenario.output = self.output
+                scenario._contact_startup_active = True
+                scenario._spawn_contact_verifier = SpawnContactVerifier()
+                scenario._startup_contact_baseline = StartupContactBaseline(
+                    {'collision_objects': ['Ego', '-100']})
+                def actor(identity, x):
+                    return SimpleNamespace(actor_info=SimpleNamespace(id=SimpleNamespace(value=identity)),
+                        transform=SimpleNamespace(location=SimpleNamespace(x=x, y=0.)))
+                world = Mock()
+                world.get_all_actors_state.return_value = SimpleNamespace(
+                    states=[actor('Ego', 0.), actor('bus', distance)])
+                scenario.grpc = SimpleNamespace(world=world)
+                before = dict(monotonic=time.monotonic() - .1, requested_xy=[distance, 0.],
+                    ego_state=dict(x=0., y=0., collision_objects=['Ego', '-100']))
+                after = dict(actor_id='bus', actor_state=dict(
+                    actor_info={'id': {'value': 'bus'}},
+                    transform={'location': {'x': distance, 'y': 0.}}))
+                raw = dict(x=0., y=0., collision_objects=['Ego', 'bus'])
+                with patch.object(MissionScenario, 'get_ego_motion_state', return_value=raw):
+                    scenario._verify_initial_spawn(before, after, before['monotonic'] + .01)
+                    observed = scenario.get_ego_motion_state()
+                    self.assertEqual(observed['collision_objects'], expected)
+                    self.assertEqual(bool(scenario._spawn_contact_verifier.review_ids), not expected)
+                    if not expected:
+                        world.get_all_actors_state.side_effect = RuntimeError('query failed')
+                        self.assertEqual(scenario.get_ego_motion_state()['collision_objects'], ['bus'])
+
+    def test_initial_spawn_trace_preserves_contacts_and_restores_adapter_on_failure(self):
+        from AIM2026.Expert.run_highway import MissionScenario
+        scenario = object.__new__(HighwayScenario)
+        scenario.output = self.output
+        original = Mock(side_effect=RuntimeError('spawn failed'))
+        scenario.grpc = SimpleNamespace(spawn_vehicle=original)
+
+        def prepare(instance):
+            instance.grpc.spawn_vehicle(label='bus', request_id='current_bus')
+
+        before = {'collision_objects': ['Ego']}
+        after = {'collision_objects': ['Ego', 'current_bus']}
+        with patch.object(MissionScenario, 'spawn_highway_npcs', prepare), \
+             patch.object(MissionScenario, 'get_ego_motion_state', side_effect=[before, after]):
+            with self.assertRaisesRegex(RuntimeError, 'spawn failed'):
+                scenario.spawn_highway_npcs()
+        self.assertIs(scenario.grpc.spawn_vehicle, original)
+        records = [json.loads(line) for line in
+                   (self.output / 'startup_spawn_contacts.jsonl').read_text(encoding='utf-8').splitlines()]
+        self.assertEqual([row['phase'] for row in records], ['before_spawn', 'after_spawn'])
+        self.assertEqual(records[0]['ego_state'], before)
+        self.assertEqual(records[1]['ego_state'], after)
+        self.assertEqual(records[1]['request_id'], 'current_bus')
+
     def test_no_live_spawn_is_private_scenario_setting_not_expert_or_port_setting(self):
         from AIM2026.Expert import run_highway
         base = {'highway_npc': {'managed_traffic': {
@@ -167,12 +241,10 @@ class HighwayLauncherTest(unittest.TestCase):
         state = scenario._startup_contact_baseline.apply(raw)
         scenario.get_ego_motion_state = Mock(return_value=state)
         (self.output / 'before_placement.json').write_text(json.dumps(raw), encoding='utf-8')
-        with self.assertRaisesRegex(RuntimeError, 'not verified as retired actors'):
-            scenario.check_startup_contact()
-        report = json.loads((self.output / 'collision_stop.json').read_text(encoding='utf-8'))
+        scenario.check_startup_contact()
+        report = json.loads((self.output / 'collision_observations.jsonl').read_text(encoding='utf-8'))
         self.assertEqual(report['phase'], 'startup')
-        self.assertFalse(report['control_backend_started'])
-        self.assertEqual(report['startup_live_actor_ids'], ['19', 'Ego'])
+        self.assertEqual(report['decision'], 'record_only')
         self.assertEqual(report['ego_state']['collision_objects'], ['Ego', '19'])
 
     def test_only_preexisting_anonymous_contact_is_baselined(self):
@@ -224,8 +296,8 @@ class HighwayLauncherTest(unittest.TestCase):
             self.assertTrue(scenario.configure_drive_from_start())
             scenario.check_startup_contact()
             scenario.grpc.world.get_all_actors_state.return_value = None
-            with self.assertRaisesRegex(RuntimeError, '27'):
-                scenario.check_startup_contact()
+            scenario.check_startup_contact()
+            self.assertTrue((self.output / 'collision_observations.jsonl').exists())
 
     def test_clean_or_mixed_start_does_not_create_exemption(self):
         for contacts in ([], ['vehicle_7'], ['Ego', 'vehicle_7']):
@@ -245,10 +317,10 @@ class HighwayLauncherTest(unittest.TestCase):
             self.assertEqual(scenario.get_ego_motion_state()['collision_objects'], [])
             raw['collision_objects'] = ['Ego', 'barrier']
             self.assertEqual(scenario.get_ego_motion_state()['collision_objects'], ['barrier'])
-            with self.assertRaisesRegex(RuntimeError, 'barrier'):
-                scenario.check_startup_contact()
+            scenario.check_startup_contact()
+            self.assertTrue((self.output / 'collision_observations.jsonl').exists())
 
-    def test_strict_mode_preserves_startup_rejection(self):
+    def test_strict_mode_records_without_startup_rejection(self):
         from scenario_runner.scenarios.segment_modes.scenario import MissionScenario
         scenario = object.__new__(HighwayScenario)
         scenario.output = self.output
@@ -256,8 +328,8 @@ class HighwayLauncherTest(unittest.TestCase):
         with patch.object(MissionScenario, 'get_ego_motion_state', return_value={'collision_objects': ['Ego']}), \
              patch.object(MissionScenario, 'configure_drive_from_start', return_value=True):
             scenario.configure_drive_from_start()
-            with self.assertRaisesRegex(RuntimeError, 'Ego'):
-                scenario.check_startup_contact()
+            scenario.check_startup_contact()
+            self.assertTrue((self.output / 'collision_observations.jsonl').exists())
 
     def setUp(self):
         self.temporary = TemporaryDirectory()
@@ -300,17 +372,20 @@ class HighwayLauncherTest(unittest.TestCase):
         process.terminate.assert_not_called()
         self.assertIsNone(self.controller.process)
 
-    def test_startup_contact_blocks_launch_including_ego_only(self):
-        state = {'x': 1., 'y': 2., 'speed_mps': 0., 'collision_objects': ['Ego']}
-        self.scenario.get_ego_motion_state = Mock(return_value=state)
-        self.scenario.check_startup_contact = lambda: HighwayScenario.check_startup_contact(self.scenario)
-        with patch('AIM2026.Expert.run_highway.subprocess.Popen') as launch:
-            with self.assertRaisesRegex(RuntimeError, 'Ego'):
-                self.controller.start_process()
-            launch.assert_not_called()
-        snapshot = json.loads((self.output / 'startup_contact.json').read_text(encoding='utf-8'))
-        self.assertEqual(snapshot['collision_objects'], ['Ego'])
-        self.assertFalse(snapshot['control_backend_started'])
+    def test_startup_contact_records_without_blocking_or_stopping(self):
+        scenario = object.__new__(HighwayScenario)
+        scenario.output = self.output
+        scenario.get_ego_motion_state = Mock(return_value={'collision_objects': ['Ego', 'bus']})
+        scenario.stop_drive_control = Mock()
+        scenario.check_startup_contact()
+        scenario.check_startup_contact()
+        scenario.stop_drive_control.assert_not_called()
+        rows = (self.output / 'collision_observations.jsonl').read_text().splitlines()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(json.loads(rows[0])['decision'], 'record_only')
+        scenario.record_collision_observation({'collision_objects': []}, 1.)
+        scenario.record_collision_observation({'collision_objects': ['bus']}, 2.)
+        self.assertEqual(len((self.output / 'collision_observations.jsonl').read_text().splitlines()), 3)
 
     def test_clear_startup_contact_is_recorded_and_allowed(self):
         self.scenario.get_ego_motion_state = Mock(return_value={'collision_objects': []})
@@ -351,6 +426,9 @@ class HighwayLauncherTest(unittest.TestCase):
              patch.object(Path, 'open', flaky_open):
             self.controller.start_process()                              # ready on the third look, no exception
         self.assertEqual(len(calls), 3)
+        # One pre-launch check plus one check on each readiness poll: slow model
+        # startup must not leave a multi-second hole in contact verification.
+        self.assertEqual(self.scenario.check_startup_contact.call_count, 4)
         self.controller.stop_process()
 
     def test_other_read_errors_while_waiting_still_fail(self):
