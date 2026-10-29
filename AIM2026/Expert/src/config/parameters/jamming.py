@@ -42,6 +42,7 @@ TIGHT_GAP_SPEED = 2.0                # 빠듯한 구간 속도 상한 [m/s]
 
 # 5-1. 막힘 최후 수단: 경로가 없다고 판단해 멈춘 채 오래 서 있으면 여유 기준을 단계적으로 낮춰 다시 계획해 천천히 간다
 #      (서 있으면 감점이 충돌 한 번보다 크다). 터널 벽(도로 경계) 조건은 낮추지 않는다. FALLBACK_STALL_S = 0이면 끈다
+#      정적 구간도 같은 동작을 static_obstacle.py의 CORRIDOR_FALLBACK_* 값으로 쓴다
 FALLBACK_STALL_S = 3.0               # 막힘(blocked)이고 서 있거나 천천히 다가가는(FALLBACK_STALL_SPEED 미만) 상태가 이만큼 이어지면 켠다 [s]
 FALLBACK_STALL_SPEED = 2.0          # 막힘이고 이 속도 미만이면 시간을 센다; 막힌 지점까지 조금씩 기어가는 동안(최대 약 1.3 m/s)도 센다 [m/s]
 FALLBACK_CLEARANCES = (.20, .10, 0., -.30)   # 차체와 점유 칸의 최소 여유를 차례로 낮춰 본다(음수: 접촉 감수) [m]

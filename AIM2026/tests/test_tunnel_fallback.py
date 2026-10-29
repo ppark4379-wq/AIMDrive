@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_tunnel_corridor import ROUTE, SECTION, ego, planner_with, road  # noqa: F401  (road is a fixture)
 import AIM2026.Expert.src.config.parameters.jamming as J
-from AIM2026.Expert.src.planning.jamming import corridor as corridor_module
+from AIM2026.Expert.src.planning.jamming.corridor import TunnelCorridorPlanner
 from AIM2026.Expert.src.planning.static_obstacle.corridor_optimizer import RESOLVE_EVERY
 
 ROAD_LOW, ROAD_HIGH = -6.46, .54          # road edges at forward 40 m (section frame)
@@ -124,7 +124,7 @@ def test_the_contact_stage_waits_for_a_full_stop(road):
 
 
 def test_without_the_contact_wait_the_contact_stage_is_used_while_creeping(road, monkeypatch):
-    monkeypatch.setattr(corridor_module, 'FALLBACK_CONTACT_STALL_S', 0.)
+    monkeypatch.setattr(TunnelCorridorPlanner, 'FALLBACK_CONTACT_STALL_S', 0.)
     jam, _, clock = setup(road, 2.0)
     try:
         for speed in (1.5, .5, 1.0, .5, 1.0, .5, 1.0):
@@ -198,7 +198,7 @@ def test_a_mover_in_play_keeps_its_own_rules_and_no_last_resort_starts(road, mon
 
 
 def test_switched_off_the_planner_behaves_as_before(road, monkeypatch):
-    monkeypatch.setattr(corridor_module, 'FALLBACK_STALL_S', 0.)
+    monkeypatch.setattr(TunnelCorridorPlanner, 'FALLBACK_STALL_S', 0.)
     jam, _, clock = setup(road, 2.8)
     try:
         for _ in range(10):
