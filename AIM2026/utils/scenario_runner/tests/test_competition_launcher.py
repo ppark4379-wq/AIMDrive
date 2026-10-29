@@ -275,6 +275,27 @@ class HighwayOptionsTest(unittest.TestCase):
         self.assertEqual(bare, {'highway_merge_static_vehicle': {'enabled': False}})
 
 
+class ConfigDefaultsTest(unittest.TestCase):
+    def test_the_general_road_pedestrian_pool_leaves_out_the_models_morai_removes(self):
+        import yaml
+        config = yaml.safe_load((Path(run_competition.__file__).resolve().parents[1] / 'config/full_loop.yaml').read_text(encoding='utf-8'))
+        pool = set(config['full_loop']['dynamic_obstacle_models'] if 'full_loop' in config else _find(config, 'dynamic_obstacle_models'))
+        self.assertFalse(pool & {'Man6', 'Man7', 'Man8', 'Woman4', 'Woman5', 'Woman6', 'Woman7', 'Woman8',
+                                 'Deer1', 'Dog1', 'Dog2', 'Ped_Pet1'})
+        self.assertTrue({'Man1', 'Woman1', 'Boy1'} <= pool)
+
+
+def _find(node, key):
+    if isinstance(node, dict):
+        if key in node:
+            return node[key]
+        for value in node.values():
+            found = _find(value, key)
+            if found is not None:
+                return found
+    return None
+
+
 class EmptyTunnelTest(unittest.TestCase):
     def test_the_empty_tunnel_switches_every_tunnel_scenario_off(self):
         scenario = object.__new__(run_competition.CompetitionScenario)

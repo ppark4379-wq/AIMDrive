@@ -110,6 +110,7 @@ scenarios:
     # MORAI deletes these models about 3 s (7.4 m) after they are spawned, so a pedestrian vanished in front of
     # Ego and the run failed with "pedestrian state unavailable": Deer1, Dog1, Dog2, Man6, Man7, Man8, Woman4-8
     # (same list as tunnel_pedestrian_dynamic.models; seeds 2006/2015 reproduced it on the competition MORAI).
+    # Ped_Pet1 (dog) vanished the same way on a teammate PC (2026-10-29), so it is left out here too.
     dynamic_obstacle_models:
       - Man1
       - Man2
@@ -128,7 +129,6 @@ scenarios:
       - Girl1
       - Girl2
       - Dog10
-      - Ped_Pet1
     # npc_vehicle_models: [VEHICLE_1, VEHICLE_2]
 
     # Dynamic crossings are selected only from the approved catalogue in

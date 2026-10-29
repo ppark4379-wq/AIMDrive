@@ -3,6 +3,9 @@
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/project_env.sh"
 export PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 GRPC_POLL_STRATEGY=epoll1
+# An active conda environment (CONDA_PREFIX) breaks the shapely import the static tunnel scene needs. This script runs
+# on the system interpreter, so the variable is dropped for this run only; the caller's shell is not touched.
+unset CONDA_PREFIX
 # The runner keeps pip --user packages out of its interpreter (PYTHONNOUSERSITE). When no package directory is
 # configured (AIM2026_PYTHON_DEPS / MORAI_ASYNC_DEPS) and the system interpreter cannot import what the run needs,
 # use the user's own package directory, so the command works without exporting anything first.

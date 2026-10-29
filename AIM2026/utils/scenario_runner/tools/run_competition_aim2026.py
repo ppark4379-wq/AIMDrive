@@ -183,6 +183,10 @@ def run_one(argv, options=None, record=None, limits=None, scene=None):
                   max_laps=1, auto_repeat=False, route_setup_attempts=1)
     config.setdefault('sync_runtime', {})['enabled'] = False
     apply_highway_options(config, options)
+    if options.get('ignore_collisions'):
+        # Watching the run by eye: a pedestrian MORAI removes mid-event is recorded as lost (unverified, not passed)
+        # and the run goes on, as in the stand-alone dynamic-obstacle launcher.
+        config.setdefault('dynamic_obstacle', {})['continue_on_confirmed_actor_loss'] = True
     if args.seed is not None:
         config['random_seed'] = args.seed
     stamp = 'competition-' + datetime.now().strftime('%Y%m%d-%H%M%S-%f')
