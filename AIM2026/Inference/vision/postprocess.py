@@ -231,15 +231,17 @@ def lshape_axis(points):
 LIDAR_VOXEL_M = .1
 
 
-def object_points(points, center, nearest_only=False):
-    """The LiDAR points connected to the detector's centre (gaps < LIDAR_CLUSTER_GAP_M), within LIDAR_CLUSTER_MAX_M.
+def object_points(points, center, max_m=LIDAR_CLUSTER_MAX_M, as_index=False, nearest_only=False):
+    """The LiDAR points connected to the detector's centre (gaps < LIDAR_CLUSTER_GAP_M), within ``max_m``.
 
     Connectivity is computed on 0.1 m voxels: the all-pairs version took up to 0.5 s on a frame next to a building
     wall (4000 points), which stalled the inference; on the benchmark both give the same points for 1401 of 1403 boxes.
+    ``as_index`` returns the indices into ``points`` instead of the points.
     """
-    near = points[np.hypot(points[:, 0] - center[0], points[:, 1] - center[1]) < LIDAR_CLUSTER_MAX_M]
+    selected = np.flatnonzero(np.hypot(points[:, 0] - center[0], points[:, 1] - center[1]) < max_m)
+    near = points[selected]
     if not len(near):
-        return near
+        return selected if as_index else near
     voxels, index = np.unique(np.floor(near / LIDAR_VOXEL_M).astype(np.int64), axis=0, return_inverse=True)
     index = index.reshape(-1)
     centres = np.zeros((len(voxels), 2))
@@ -251,7 +253,7 @@ def object_points(points, center, nearest_only=False):
         # Grow from the one point nearest the centre: a second object within the seed radius (two firewalls side
         # by side 0.6 m apart) is then left out unless the points really connect.
         if distance.min() >= LIDAR_SEED_RADIUS_M:
-            return near[:0]
+            return selected[:0] if as_index else near[:0]
         member[index[int(np.argmin(distance))]] = True
     else:
         member[index[distance < LIDAR_SEED_RADIUS_M]] = True
@@ -261,7 +263,31 @@ def object_points(points, center, nearest_only=False):
         reached = np.unique(np.concatenate(tree.query_ball_point(centres[frontier], LIDAR_CLUSTER_GAP_M)))
         frontier = reached[~member[reached]]
         member[frontier] = True
-    return near[member[index]]
+    return selected[member[index]] if as_index else near[member[index]]
+
+
+def _outline_box(box, axis, cluster, long_side, short_side, length_from_cluster=False):
+    """Rectangle along ``axis`` (forward sign closest to the box's) covering the box's footprint and every cluster
+    point; length and width are at least the outline's. ``length_from_cluster``: the length is the cluster's alone
+    (a large vehicle's outline shows its whole side; the detector's short box sits off its centre)."""
+    u = np.array([math.cos(axis), math.sin(axis)])
+    if float(u @ box['heading']) < 0.:
+        u = -u
+    v = np.array([-u[1], u[0]])
+    center = np.asarray(box['center'], dtype=np.float64)
+    # The head's longer side goes along the measured axis: a barricade lying across the lane comes from the head
+    # as 0.6 m long x 2.2 m wide; taking its width as the new width made it 2.2 m deep instead of 0.6.
+    head_long, head_short = max(box['length'], box['width']), min(box['length'], box['width'])
+    length, width = max(head_long, long_side), max(head_short, short_side)
+    along, across = (cluster - center) @ u, (cluster - center) @ v
+    if length_from_cluster:
+        lo_u, hi_u = along.min(), along.max()
+    else:
+        lo_u, hi_u = min(-length / 2, along.min()), max(length / 2, along.max())
+    lo_v, hi_v = min(-width / 2, across.min()), max(width / 2, across.max())
+    refined = _rectangle(center + u * (lo_u + hi_u) / 2 + v * (lo_v + hi_v) / 2, u, hi_u - lo_u, hi_v - lo_v)
+    refined.update({k: box[k] for k in ('score', 'cell_index')}, partial=_partial(refined), head_heading=box['heading'])
+    return refined
 
 
 def refine_heading_with_lidar(boxes, points):
@@ -302,27 +328,9 @@ def refine_heading_with_lidar(boxes, points):
             # 1.3 m into the bypass, and blocked the tunnel planner where the GT boxes pass. Tunnel benchmark: 1 of
             # 2051 refined car frames and 2 of 369 open-door G80 frames are this wide.
             continue
-        u = np.array([math.cos(axis), math.sin(axis)])
-        if float(u @ box['heading']) < 0.:
-            u = -u
-        v = np.array([-u[1], u[0]])
-        center = np.asarray(box['center'], dtype=np.float64)
-        # The head's longer side goes along the measured axis: a barricade lying across the lane comes from the head
-        # as 0.6 m long x 2.2 m wide; taking its width as the new width made it 2.2 m deep instead of 0.6.
-        head_long, head_short = max(box['length'], box['width']), min(box['length'], box['width'])
-        length, width = max(head_long, long_side), max(head_short, short_side)
         # cover both the detector's footprint (now along the measured axis) and every object point
-        along, across = (cluster - center) @ u, (cluster - center) @ v
-        if small and not shown:
-            # A small prop's length is its own outline: the head box sat 0.3 m off the firewall and stretched it to
-            # 1.7 m (1.36 m long), into the gap the planner needed.
-            lo_u, hi_u = along.min(), along.max()
-        else:
-            lo_u, hi_u = min(-length / 2, along.min()), max(length / 2, along.max())
-        lo_v, hi_v = min(-width / 2, across.min()), max(width / 2, across.max())
-        refined = _rectangle(center + u * (lo_u + hi_u) / 2 + v * (lo_v + hi_v) / 2, u, hi_u - lo_u, hi_v - lo_v)
-        refined.update({k: box[k] for k in ('score', 'cell_index')}, partial=_partial(refined),
-                       head_heading=box['heading'])
+        # A small prop's length is its own outline: the head box sat 0.3 m off the firewall and stretched it to 1.7 m.
+        refined = _outline_box(box, axis, cluster, long_side, short_side, length_from_cluster=small and not shown)
         box.clear()
         box.update(refined)
         changed += 1
@@ -347,7 +355,117 @@ def _cover(box, cluster):
     return dict(box, center=center + u * (lo_u + hi_u) / 2 + v * (lo_v + hi_v) / 2, length=hi_u - lo_u, width=hi_v - lo_v)
 
 
-def decode_world_boxes(prediction, x, y, yaw_grid_rad, merge=False, lidar_points=None, cluster_points=None):
+BIG_SCORE = .2              # head candidates down to this score are kept where the LiDAR shows a large vehicle
+BIG_RADIUS_M = 9.           # a large vehicle's points are searched this far from the candidate centre ...
+BIG_OPEN_M = 8.5            # ... and a cluster reaching past this runs into something longer (wall, guardrail)
+BIG_LONG_M = (7., 13.5)     # outline length of a bus or truck
+BIG_MIN_WIDTH_M = 1.2       # both sides seen (a wall or guardrail is a thin line)
+BIG_MIN_HEIGHT_M = 1.5      # 90th percentile of the points' height above the road: vehicle sides, not low barriers
+BIG_MAX_CANDIDATES = 30     # rejected candidates looked at per frame, best first
+BIG_TALL_M = 1.6            # before any clustering a centre needs points this high above the road ...
+BIG_TALL_POINTS = 5         # ... this many within BIG_TALL_RADIUS_M (highway dumps: 93-95 % of bus/truck cells,
+BIG_TALL_RADIUS_M = 3.      # 3-25 % of car cells)
+BIG_REPEAT_M = 1.5          # a candidate this close to one already judged not a bus is skipped
+
+
+def _inside(point, box):
+    """Whether the point lies within the box's rectangle."""
+    u = np.asarray(box['heading'], dtype=np.float64)
+    u = u / np.linalg.norm(u)
+    d = np.asarray(point, dtype=np.float64) - box['center']
+    return abs(float(d @ u)) <= box['length'] / 2 and abs(float(d @ np.array([-u[1], u[0]]))) <= box['width'] / 2
+
+
+def _may_be_big(points, heights, center):
+    """Cheap test before the wide search: the ordinary cluster runs to its radius limit and stands vehicle-tall."""
+    idx = object_points(points, center, as_index=True)
+    if len(idx) < LIDAR_MIN_POINTS:
+        return False
+    cluster = points[idx]
+    return bool(np.hypot(cluster[:, 0] - center[0], cluster[:, 1] - center[1]).max() > LIDAR_CLUSTER_MAX_M - .5
+                and np.percentile(heights[idx], 90) >= BIG_MIN_HEIGHT_M)
+
+
+def big_vehicle(points, heights, center):
+    """(axis, long side, short side, cluster) when the LiDAR cluster at ``center`` outlines a bus or truck, else None."""
+    idx = object_points(points, center, BIG_RADIUS_M, as_index=True)
+    if len(idx) < LIDAR_MIN_POINTS:
+        return None
+    cluster = points[idx]
+    if (np.hypot(cluster[:, 0] - center[0], cluster[:, 1] - center[1]).max() > BIG_OPEN_M
+            or np.percentile(heights[idx], 90) < BIG_MIN_HEIGHT_M):
+        return None
+    axis, long_side, short_side = lshape_axis(cluster)
+    if not BIG_LONG_M[0] <= long_side <= BIG_LONG_M[1] or short_side < BIG_MIN_WIDTH_M:
+        return None
+    return axis, long_side, short_side, cluster
+
+
+def apply_big_vehicles(prediction, boxes, points, heights):
+    """Large vehicles (buses, trucks) from the detector's boxes and the LiDAR; returns (boxes, grown, rescued).
+
+    The head misses about half the frames of a 9-12 m vehicle on the highway (its cells score 0.2-0.5) and reports the
+    ones it finds at ~0.7 of their length, sometimes as two pieces. A kept box on a bus-sized LiDAR cluster is grown to
+    the cluster; a rejected candidate (score >= BIG_SCORE) on such a cluster that no box covers yet is added. Boxes
+    that end up on the same vehicle are suppressed as duplicates.
+    """
+    grown = rescued = 0
+    tall = points[heights >= BIG_TALL_M]
+    if len(tall) < BIG_TALL_POINTS:
+        return boxes, 0, 0
+    tree = cKDTree(tall)
+
+    def tall_near(centres):
+        return tree.query_ball_point(np.asarray(centres, dtype=np.float64).reshape(-1, 2), BIG_TALL_RADIUS_M,
+                                     return_length=True) >= BIG_TALL_POINTS
+
+    out = []
+    screen = tall_near([b['center'] for b in boxes]) if boxes else []
+    for box, near in zip(boxes, screen):
+        found = big_vehicle(points, heights, box['center']) if near and _may_be_big(points, heights, box['center']) else None
+        if found and found[1] > box['length'] + .5:
+            box = _outline_box(box, found[0], found[3], found[1], found[2], length_from_cluster=True)
+            grown += 1
+        out.append(box)
+    # Rejected cells are screened on the raw head before any box is built: the full decode with NMS over every
+    # candidate >= BIG_SCORE stalled frames on the dense highway.
+    values = prediction.detach().float().cpu().numpy() if hasattr(prediction, 'detach') else np.asarray(prediction)
+    logits = values[:, 0]
+    cells = np.flatnonzero(np.isfinite(logits) & (logits >= math.log(BIG_SCORE / (1. - BIG_SCORE)))
+                           & (logits < math.log(CONFIDENCE / (1. - CONFIDENCE))))
+    if len(cells):
+        rows, cols = np.divmod(cells, 50)
+        centres = np.stack([cols - 24.5 + values[cells, 1] * 3.5, 29.5 - rows + values[cells, 2] * 3.5], 1)
+        cells = cells[tall_near(centres)]
+        cells = cells[np.argsort(-logits[cells], kind='stable')][:BIG_MAX_CANDIDATES]
+    if len(cells):
+        masked = values.copy()
+        masked[:, 0] = -50.
+        masked[cells, 0] = values[cells, 0]
+        candidates, _ = decode_boxes(masked, score_threshold=BIG_SCORE, nms_iou=None)
+        failed = []         # neighbouring cells of one object: judge its cluster once
+        for candidate in candidates:
+            c = candidate['center']
+            if (any(_inside(c, b) for b in out)
+                    or any(abs(c[0] - f[0]) < BIG_REPEAT_M and abs(c[1] - f[1]) < BIG_REPEAT_M for f in failed)):
+                continue
+            found = big_vehicle(points, heights, c) if _may_be_big(points, heights, c) else None
+            if not found:
+                failed.append(c)
+                continue
+            out.append(_outline_box(candidate, found[0], found[3], found[1], found[2], length_from_cluster=True))
+            rescued += 1
+    if not grown and not rescued:
+        return boxes, 0, 0
+    kept = []
+    for box in out:
+        if not any(oriented_iou(box, earlier) > NMS_IOU for earlier in kept):
+            kept.append(box)
+    return kept, grown, rescued
+
+
+def decode_world_boxes(prediction, x, y, yaw_grid_rad, merge=False, lidar_points=None, cluster_points=None,
+                       big_points=None):
     """Detection head + the pose the inputs were captured at -> (UDP Box list, counts).
 
     Speed is the head's scalar speed (no direction); invalid values become None.
@@ -359,6 +477,7 @@ def decode_world_boxes(prediction, x, y, yaw_grid_rad, merge=False, lidar_points
     A box is also grown to cover its cluster when the result stays within LIDAR_COVER_MAX_M: a barrier lying across
     the lane came out half its length (GT footprint covered 0.37 -> 0.98 in the tunnel benchmark, all objects
     0.74 -> 0.82, area x1.2). Boxes are never shrunk; cars and wall-attached clusters exceed the limit and stay as they are.
+    ``big_points`` = (points, heights above the road) turns on apply_big_vehicles.
     """
     boxes, counts = decode_boxes(prediction, merge=merge)
     if lidar_points is not None:
@@ -377,6 +496,9 @@ def decode_world_boxes(prediction, x, y, yaw_grid_rad, merge=False, lidar_points
                 boxes, merges = merge_fragments(boxes)
                 counts['fragment_merges'] = counts.get('fragment_merges', 0) + merges
             counts['decoded_boxes'] = len(boxes)
+    if big_points is not None and len(big_points[0]):
+        boxes, counts['big_grown'], counts['big_rescued'] = apply_big_vehicles(prediction, boxes, *big_points)
+        counts['decoded_boxes'] = len(boxes)
     values = prediction.detach().float().cpu().numpy() if hasattr(prediction, 'detach') else np.asarray(prediction)
     result, invalid_speeds, oversize = [], 0, 0
     for box in boxes:

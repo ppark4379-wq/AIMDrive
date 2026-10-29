@@ -110,6 +110,7 @@ Inference:
     object_head: truck      # Weights/VE/object_head_truck_20261024.pt: 객체 검출 헤드 (P1 속도·신호등 헤드는 유지)
     lidar_heading: true     # 길쭉한 물체(주차 차량, 방호벽)의 방향·길이를 LiDAR 윤곽으로 보정 (켜짐이 기본, false로 끔)
     lidar_centers: true     # 박스마다 LiDAR 점 덩어리 중심을 함께 전송 (Expert 중복 제거·정지 판정에 사용)
+    big_vehicles: false     # 버스·트럭: LiDAR 군집(길이 7~13.5 m, 높이 1.5 m+)으로 박스 길이 보정, 놓친 후보(점수 0.2+) 복구 (시험 중, 기본 끔)
     fragment_merge: null    # 겹친 박스(트럭 조각 등)를 하나로 합치기; null이면 object_head 쓸 때 켜짐, false로 끔
     signal_head: true       # P1 three-phase signal head (Weights/VE/signal_head_p1_20261014.pt)
     max_sensor_age_s: 0.5   # older camera/LiDAR/GPS/IMU/status -> not-ready packet

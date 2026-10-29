@@ -333,12 +333,13 @@ def main():
                             lidar_heading=bool(vision.get('lidar_heading', True)),
                             lidar_centers=bool(vision.get('lidar_centers', True)),
                             phase_head=bool(vision.get('phase_head', True)),
+                            big_vehicles=bool(vision.get('big_vehicles', False)),
                             fragment_merge=vision.get('fragment_merge'),
                             left_arrow_rule=bool(vision.get('left_arrow_rule', True)))
     print('[VE] %s loaded (%s), signal head=%s, phase head=%s, object head=%s, lidar heading=%s, lidar centers=%s, '
-          'fragment merge=%s, left arrow rule=%s' % (
+          'big vehicles=%s, fragment merge=%s, left arrow rule=%s' % (
         vision['checkpoint'], options['device'], runtime.signal_head is not None, runtime.phase_head is not None,
-        runtime.object_head, runtime.lidar_heading, runtime.lidar_centers, runtime.fragment_merge,
+        runtime.object_head, runtime.lidar_heading, runtime.lidar_centers, runtime.big_vehicles, runtime.fragment_merge,
         runtime.left_arrow_rule), flush=True)
     stop = []
     for sig in (signal.SIGINT, signal.SIGTERM):

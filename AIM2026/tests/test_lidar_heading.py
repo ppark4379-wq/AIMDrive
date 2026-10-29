@@ -163,3 +163,54 @@ def test_a_short_box_grows_over_its_cluster_but_a_car_or_wall_cluster_does_not()
     assert _cover(box, wall) is box
     inside = np.array([[0., 10.2], [.1, 9.9]])
     assert _cover(box, inside) is box                                              # never shrunk, unchanged
+
+
+def _bus(center=(3., 12.), length=12., width=2.5, height=1.8):
+    """Left side and rear of a bus driving along +forward to the right of the sensor (an L shape), 3 cm noise."""
+    import numpy as np
+    rng = np.random.default_rng(1)
+    x0, y0 = center[0] - width / 2, center[1] - length / 2
+    pts = [(x0, y0 + t) for t in np.linspace(0, length, 120)] + [(x0 + t, y0) for t in np.linspace(0, width, 25)]
+    pts = np.asarray(pts) + rng.normal(0, .03, (len(pts), 2))
+    return pts, np.full(len(pts), height)
+
+
+def _head(cells):
+    """Raw (2500, 8) head with the given (right, forward, score, length, width) cells heading +forward."""
+    import numpy as np
+    values = np.zeros((2500, 8)); values[:, 0] = -20.
+    for right, forward, score, length, width in cells:
+        col, row = int(round(right + 24.5)), int(round(29.5 - forward))
+        values[row * 50 + col] = [math.log(score / (1 - score)), (right - (col - 24.5)) / 3.5,
+                                  (forward - (29.5 - row)) / 3.5, 0., -1., length / 7., width / 4., 1.]
+    return values
+
+
+def test_a_short_bus_box_grows_to_the_lidar_outline():
+    pts, h = _bus()
+    boxes, counts = postprocess.decode_world_boxes(_head([(3., 13.5, .8, 8.5, 2.4)]), 0., 0., math.pi / 2,
+                                                   big_points=(pts, h))
+    assert counts['big_grown'] == 1 and len(boxes) == 1
+    assert abs(boxes[0].length_m - 12.) < .3
+
+
+def test_a_missed_bus_candidate_is_rescued_but_not_without_the_outline():
+    pts, h = _bus()
+    boxes, counts = postprocess.decode_world_boxes(_head([(3., 12., .3, 8., 2.4)]), 0., 0., math.pi / 2,
+                                                   big_points=(pts, h))
+    assert counts['big_rescued'] == 1 and len(boxes) == 1 and boxes[0].length_m > 11.5
+    _, counts = postprocess.decode_world_boxes(_head([(3., 12., .3, 8., 2.4)]), 0., 0., math.pi / 2)
+    assert counts['decoded_boxes'] == 0                       # without the LiDAR option nothing changes
+
+
+def test_guardrails_walls_and_cars_are_not_buses():
+    import numpy as np
+    head = _head([(3., 12., .3, 8., 2.4)])
+    pts, h = _bus()
+    low = postprocess.decode_world_boxes(head, 0., 0., math.pi / 2, big_points=(pts, np.full(len(h), .8)))[1]
+    assert low['big_rescued'] == 0                             # a 0.8 m high barrier
+    wall = np.array([[1.75, f] for f in np.linspace(-5., 30., 300)])
+    assert postprocess.decode_world_boxes(head, 0., 0., math.pi / 2,
+                                          big_points=(wall, np.full(len(wall), 1.8)))[1]['big_rescued'] == 0
+    car, hc = _bus(length=4.6, width=1.9, height=1.5)
+    assert postprocess.decode_world_boxes(head, 0., 0., math.pi / 2, big_points=(car, hc))[1]['big_rescued'] == 0

@@ -25,6 +25,7 @@ from .arrow_rule import left_arrow
 
 # Development only: VE_RAW_DUMP=<file.jsonl> appends every candidate cell (score >= 0.2, before NMS) per frame.
 _RAW_DUMP = __import__('os').environ.get('VE_RAW_DUMP', '')
+_RAW_ALL_POINTS = __import__('os').environ.get('VE_RAW_ALL_POINTS', '') == '1'
 
 
 # Development only: VE_SIGNAL_TOKEN_DUMP=<file.jsonl> appends the traffic-light token (the signal heads' input) per frame.
@@ -77,7 +78,21 @@ def _dump_raw(prediction, x, y, yaw, lidar=None):
         cells.append([box['cell_index'], round(box['score'], 3), round(wx, 2), round(wy, 2), round(heading, 1),
                       round(box['length'], 2), round(box['width'], 2)])
     points = []
-    if lidar is not None and candidates:
+    if lidar is not None and _RAW_ALL_POINTS:
+        # VE_RAW_ALL_POINTS=1: every body point within 35 m (0.1 m grid, highest per cell), candidates or not.
+        p = np.asarray(lidar, dtype=np.float64)[:, :3]
+        forward, right, height = p[:, 0] + 1.0, -p[:, 1], p[:, 2] + 1.48
+        keep = (height > .3) & (height < 2.) & (np.hypot(forward, right) < 35.)
+        forward, right, height = forward[keep], right[keep], height[keep]
+        order = np.argsort(-height)
+        _, first = np.unique(np.round(np.stack([forward, right], 1)[order] * 10).astype(np.int64), axis=0,
+                             return_index=True)
+        sel = order[first]
+        c, s_ = math.cos(yaw), math.sin(yaw)
+        wx = x + c * forward[sel] + s_ * right[sel]
+        wy = y + s_ * forward[sel] - c * right[sel]
+        points = np.round(np.stack([wx, wy, height[sel]], 1), 2).tolist()
+    elif lidar is not None and candidates:
         # MORAI FLU sensor frame -> vehicle base (sensor 1.0 m ahead, 1.48 m up) -> map grid; 0.3-2.0 m above the road,
         # only within 7 m of a confident candidate.
         p = np.asarray(lidar, dtype=np.float64)[:, :3]
@@ -191,7 +206,7 @@ class VisionRuntime:
 
     def __init__(self, checkpoint='P1', *, device='cuda', lidar_to_base=DEFAULT_LIDAR_TO_BASE,
                  signal_head=True, checkpoint_path=None, checkpoint_sha256=None, cpu_threads=4,
-                 object_head=None, lidar_heading=True, lidar_centers=True, phase_head=False,
+                 object_head=None, lidar_heading=True, lidar_centers=True, phase_head=False, big_vehicles=False,
                  fragment_merge=None, left_arrow_rule=False):
         if checkpoint_path is not None:
             if not checkpoint_sha256:
@@ -214,6 +229,7 @@ class VisionRuntime:
         self.object_head = object_head
         self.lidar_heading = bool(lidar_heading)
         self.lidar_centers = bool(lidar_centers)
+        self.big_vehicles = bool(big_vehicles)
         # Overlapping boxes of one long object (a truck in pieces) are joined into one; None: with the object head.
         self.fragment_merge = bool(object_head) if fragment_merge is None else bool(fragment_merge)
         self.left_arrow_rule = bool(left_arrow_rule)
@@ -238,12 +254,12 @@ class VisionRuntime:
                       'red/green head only' % phase_path, flush=True)
 
     def _body_points(self, lidar):
-        """Raw sweep (sensor FLU) -> (right, forward) base-frame points 0.3-2.0 m above the road."""
+        """Raw sweep (sensor FLU) -> (right, forward) base-frame points 0.3-2.0 m above the road, and their heights."""
         if lidar is None:
-            return None
+            return None, None
         p = np.asarray(lidar, dtype=np.float64)[:, :3] @ self._lidar_rotation.T + self._lidar_offset
         p = p[(p[:, 2] > .3) & (p[:, 2] < 2.)]
-        return np.stack([-p[:, 1], p[:, 0]], 1)
+        return np.stack([-p[:, 1], p[:, 0]], 1), p[:, 2]
 
     @torch.no_grad()
     def infer(self, images, lidar, speed_mps, pose):
@@ -263,11 +279,14 @@ class VisionRuntime:
         if self.left_arrow_rule and signal is not None:
             signal = _left_arrow_signal(signal, images.get('rgb_front'))
         get = pose.get if isinstance(pose, dict) else lambda key: getattr(pose, key)
-        points = self._body_points(lidar) if self.lidar_heading or self.lidar_centers else None
+        points, heights = (self._body_points(lidar) if self.lidar_heading or self.lidar_centers or self.big_vehicles
+                           else (None, None))
         boxes, counts = decode_world_boxes(detection[0], float(get('x')), float(get('y')),
                                            float(get('yaw_grid_rad')), merge=self.fragment_merge,
                                            lidar_points=points if self.lidar_heading else None,
-                                           cluster_points=points if self.lidar_centers else None)
+                                           cluster_points=points if self.lidar_centers else None,
+                                           big_points=(points, heights) if self.big_vehicles and points is not None
+                                           else None)
         if _RAW_DUMP:
             _dump_raw(detection[0], float(get('x')), float(get('y')), float(get('yaw_grid_rad')), lidar)
         if _TOKEN_DUMP:
