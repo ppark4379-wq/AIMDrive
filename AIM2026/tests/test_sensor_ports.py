@@ -151,3 +151,51 @@ def test_shared_destination_rejects_ambiguous_sender_ports():
     cfg['Camera']['Cam_Left']['host_port'] = cfg['Camera']['Cam_Front']['host_port']
     with pytest.raises(ValueError, match='distinct host_port'):
         UDPManager(cfg)._validate_ports()
+
+
+def test_competition_config_takes_the_windows_relay_as_sender():
+    """WSL behind the Windows UDP relay: every packet comes from the relay (Windows host, an ephemeral port), not
+    from the MORAI PC's 192.168.0.1:750x in config_competition.yaml. Sensors alone on their port must take it."""
+    cfg = yaml.safe_load((ROOT/'config_competition.yaml').read_text(encoding='utf8'))
+    cfg['Ego']['cmd_port'] = cfg['Ego']['cmd_source_port'] = None
+    cfg['Detection'] = {}
+    cfg['Localization']['enabled'] = False
+    rows = dict(rgb_front=cfg['Camera']['Cam_Front'], rgb_left=cfg['Camera']['Cam_Left'],
+                rgb_right=cfg['Camera']['Cam_Right'], rgb_rear=cfg['Camera']['Cam_Rear'],
+                gps=cfg['GPS'], imu=cfg['IMU'], lidar=cfg['LiDAR'])
+    assert all(row['ip'] == '192.168.0.1' and row['host_port'] for row in rows.values())
+    reservations = [udp_socket() for _ in range(len(rows)+1)]
+    ports = [s.getsockname()[1] for s in reservations]
+    for sock in reservations:
+        sock.close()
+    for row, port in zip(rows.values(), ports):
+        row.update(dest_port=port, bind='127.0.0.1')
+    cfg['Ego'].update(vehicle_status_port=ports[-1], bind='127.0.0.1')
+    relay = udp_socket()
+    manager = UDPManager(cfg)
+    names = ('rgb_front', 'rgb_left', 'rgb_right', 'rgb_rear')
+    images = [b'\xff\xd8'+bytes([i])*30+b'\xff\xd9' for i in range(4)]
+    try:
+        manager.start()
+        time.sleep(2.5)  # spawned children import the packages before they read the port
+        for name, image in zip(names, images):
+            relay.sendto(struct.pack('<3s4i', b'MOR', 1, 1, 0, len(image))+image+b'EI',
+                         ('127.0.0.1', rows[name]['dest_port']))
+        relay.sendto(b'$GPGGA,123519,3723.000,N,12646.000,E,1,08,0.9,1.0,M,0,M,,\r\n',
+                     ('127.0.0.1', rows['gps']['dest_port']))
+        imu = ImuPacket()
+        imu.header, imu.sec, imu.ori_w = b'#IMUData$', 1, 1.
+        relay.sendto(bytes(imu), ('127.0.0.1', rows['imu']['dest_port']))
+        deadline = time.monotonic()+10
+        while time.monotonic() < deadline:
+            if (all(manager.receivers[name].snapshot()[2] == 1 for name in names)
+                    and manager.receivers['gps'].samples == 1 and manager.receivers['imu'].samples == 1):
+                break
+            time.sleep(.02)
+        for name, image in zip(names, images):
+            assert manager.receivers[name].snapshot()[0] == image
+        assert manager.receivers['gps'].snapshot()[0]['latitude'] == pytest.approx(37+23/60)
+        assert manager.receivers['imu'].snapshot()[0]['yaw'] == 0.
+    finally:
+        manager.close()
+        relay.close()
