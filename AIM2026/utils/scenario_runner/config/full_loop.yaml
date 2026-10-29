@@ -107,6 +107,10 @@ scenarios:
 
     # 26.R1 live-verified movable dynamic models. police1 and NCAP_EPTc are
     # intentionally excluded because they failed spawn/movement verification.
+    # MORAI deletes these models about 3 s (7.4 m) after they are spawned, so a pedestrian vanished in front of
+    # Ego and the run failed with "pedestrian state unavailable": Deer1, Dog1, Dog2, Man6, Man7, Man8, Woman4-8
+    # (same list as tunnel_pedestrian_dynamic.models; seeds 2006/2015 reproduced it on the competition MORAI).
+    # Ped_Pet1 (dog) vanished the same way on a teammate PC (2026-10-29), so it is left out here too.
     dynamic_obstacle_models:
       - Man1
       - Man2
@@ -116,14 +120,6 @@ scenarios:
       - Woman3
       - Man4
       - Man5
-      - Man6
-      - Man7
-      - Man8
-      - Woman4
-      - Woman5
-      - Woman6
-      - Woman7
-      - Woman8
       - NCAP_EBT
       - NCAP_EPTa
       - police_m_2
@@ -132,11 +128,7 @@ scenarios:
       - Boy1
       - Girl1
       - Girl2
-      - Deer1
-      - Dog1
-      - Dog2
       - Dog10
-      - Ped_Pet1
     # npc_vehicle_models: [VEHICLE_1, VEHICLE_2]
 
     # Dynamic crossings are selected only from the approved catalogue in

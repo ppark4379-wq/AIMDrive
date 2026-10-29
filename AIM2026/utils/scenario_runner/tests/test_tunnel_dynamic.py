@@ -85,6 +85,32 @@ class TunnelDynamicTest(unittest.TestCase):
         )
         return context, actor
 
+    def spawn_after_rejections(self, rejections, bystanders):
+        context, actor = self.make_route_context()
+        answers = [None] * rejections
+        context.grpc.spawn_pedestrian.side_effect = lambda **kw: answers.pop(0) if answers else actor
+        context.grpc.world = SimpleNamespace(get_all_actors_state=lambda **kw: SimpleNamespace(states=bystanders))
+        self.assertTrue(prepare_tunnel_dynamic(context))
+        arm_tunnel_dynamic(context)
+        return context
+
+    def test_a_rejected_spawn_on_a_free_spot_is_retried(self):
+        context = self.spawn_after_rejections(2, [])
+        with patch("scenario_runner.scenarios.full_loop_parts.tunnel_dynamic.time.sleep"):
+            update_tunnel_dynamic(context, 1.0, {"speed_mps": 4.0}, 31.0)
+        self.assertEqual(context.grpc.spawn_pedestrian.call_count, 3)
+        self.assertEqual(context.tunnel_dynamic_result["spawn_attempts"], 3)
+        self.assertTrue(context.tunnel_dynamic_result["spawned"])
+
+    def test_a_rejected_spawn_next_to_another_actor_is_not_retried_and_names_it(self):
+        start = SimpleNamespace(actor_info=SimpleNamespace(id=SimpleNamespace(value="9"), object_type=3),
+                                transform=SimpleNamespace(location=SimpleNamespace(x=45.0, y=2.0, z=0.0)))
+        context = self.spawn_after_rejections(1, [start])
+        with patch("scenario_runner.scenarios.full_loop_parts.tunnel_dynamic.time.sleep"), \
+                self.assertRaisesRegex(RuntimeError, r"occupied by \['9'\]"):
+            update_tunnel_dynamic(context, 1.0, {"speed_mps": 4.0}, 31.0)
+        self.assertEqual(context.grpc.spawn_pedestrian.call_count, 1)
+
     def test_one_pedestrian_moves_a_to_b_to_c_then_is_removed(self):
         context, actor = self.make_route_context()
         actor.get_actor_state.side_effect = [

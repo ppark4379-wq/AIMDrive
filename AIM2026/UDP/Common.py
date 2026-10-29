@@ -26,6 +26,11 @@ class _Packet(ctypes.Structure):
 # Linux reports socket-queue drops on the next datagram (SO_RXQ_OVFL).
 SO_RXQ_OVFL = 40
 WSAEMSGSIZE = 10040
+# A source clock that goes back is a simulator reset only once this many samples in a row stay behind the last
+# accepted one. MORAI sends the odd IMU stamp one second back (sec not yet advanced at a second boundary: 542.000
+# between 542.998 and 543.030; 5 of 2.8 M IMU samples, 10-25..10-29). Treated as a reset, it emptied the IMU history
+# and the tunnel dead reckoning failed for good (Ego stopped in the GPS blackout, twice).
+RESET_CONFIRM_SAMPLES = 2
 
 
 class _Receiver:
@@ -134,6 +139,8 @@ class _Receiver:
             return
         meta = self.sample_metadata(sample)
         with self._lock:
+            # Samples behind the last accepted stamp, held until the clock shows whether it really went back.
+            behind = self.__dict__.setdefault('_behind', [])
             previous = self._history[-1].source_stamp_ns if self._history else None
             # A zero stamp means "no stamp" (e.g. an unfilled IMU stamp field), as in
             # VLDrive; deduplicating it would drop every packet after the first.
@@ -143,17 +150,34 @@ class _Receiver:
                     self._count('duplicate_source_time')
                     return
                 if source_ns < previous:
-                    # Simulator reset/restart: never join samples across it.
+                    behind.append((sample, received_ns, source_time, meta, source_ns))
+                    if len(behind) < RESET_CONFIRM_SAMPLES:
+                        return
+                    # Simulator reset/restart: never join samples across it. The held samples start the new clock.
                     self._history.clear()
                     self.clock_epoch += 1
                     self._count('source_time_resets')
-            self._latest = sample
-            self._stamp = time.time()
-            self._monotonic_stamp = received_ns / 1e9
-            self.samples += 1
-            self._history.append(ReceivedSample(sample, self._monotonic_stamp,
-                                                self.samples, source_time, meta,
-                                                received_ns, source_ns, self.clock_epoch))
+                    held, behind[:] = behind[:-1], []
+                    for args in held:
+                        if not self._history or args[4] > self._history[-1].source_stamp_ns:
+                            self._append(*args)
+                    if self._history and source_ns <= self._history[-1].source_stamp_ns:
+                        return
+                elif behind:
+                    # The old clock goes on: the held samples carried a bad stamp. Drop them.
+                    self._count('source_time_glitches', len(behind))
+                    behind.clear()
+            self._append(sample, received_ns, source_time, meta, source_ns)
+
+    def _append(self, sample, received_ns, source_time, meta, source_ns):
+        """Accept one sample (lock held)."""
+        self._latest = sample
+        self._stamp = time.time()
+        self._monotonic_stamp = received_ns / 1e9
+        self.samples += 1
+        self._history.append(ReceivedSample(sample, self._monotonic_stamp,
+                                            self.samples, source_time, meta,
+                                            received_ns, source_ns, self.clock_epoch))
 
     def source_time(self, sample):
         return sample.get('sim_time') if isinstance(sample, dict) else None

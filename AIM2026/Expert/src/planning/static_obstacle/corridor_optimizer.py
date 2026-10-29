@@ -13,7 +13,10 @@ recorded drivable corridor, widened by the map lanes). Each tick:
 4. Validation with the path's own heading. Violated margins are linearized in the station variables and added to
    the smoothing, a few rounds. Speed from curvature, clearance and stopping distance.
 The same MIN_CLEARANCE decides planning and stopping, so a valid plan never stops the car at its own pose.
+Last resort: blocked and standing (or creeping) for FALLBACK_STALL_S, the same solve is retried with the required
+clearance lowered step by step (the corridor condition stays) and the car drives on slowly.
 """
+from collections import deque
 import json
 import math
 import time
@@ -42,6 +45,13 @@ from ...config.parameters.static_obstacle import (
     CORRIDOR_LANE_HALF_WIDTH,
     CORRIDOR_LANE_EDGE_MARGIN,
     CORRIDOR_MAP_LINKS,
+    CORRIDOR_FALLBACK_STALL_S,
+    CORRIDOR_FALLBACK_STALL_SPEED,
+    CORRIDOR_FALLBACK_CLEARANCES,
+    CORRIDOR_FALLBACK_SPEED,
+    CORRIDOR_FALLBACK_CONTACT_STALL_S,
+    CORRIDOR_FALLBACK_CONTACT_STALL_SPEED,
+    CORRIDOR_FALLBACK_RELEASE_TICKS,
 )
 from ..lattice.structures import CandidatePath, LatticePlanningResult
 
@@ -72,6 +82,14 @@ class StaticCorridorPlanner:
     TIGHT_SPEED = math.inf       # speed cap in a tight gap [m/s]
     MAX_SPEED = None             # speed cap [m/s]; None: the static-obstacle limit
     CLEARANCE_SPEED = CORRIDOR_CLEARANCE_SPEED   # (speed at the minimum clearance [m/s], gain per metre more)
+    # Last resort when blocked (static_obstacle.py CORRIDOR_FALLBACK_*; the tunnel sets its own)
+    FALLBACK_STALL_S = CORRIDOR_FALLBACK_STALL_S             # blocked and below FALLBACK_STALL_SPEED this long [s]; 0: off
+    FALLBACK_STALL_SPEED = CORRIDOR_FALLBACK_STALL_SPEED     # [m/s]
+    FALLBACK_CLEARANCES = CORRIDOR_FALLBACK_CLEARANCES       # required clearance per stage, tried in order [m]
+    FALLBACK_SPEED = CORRIDOR_FALLBACK_SPEED                 # speed cap on a last-resort path [m/s]
+    FALLBACK_CONTACT_STALL_S = CORRIDOR_FALLBACK_CONTACT_STALL_S         # full stop before a contact stage (< 0) [s]
+    FALLBACK_CONTACT_STALL_SPEED = CORRIDOR_FALLBACK_CONTACT_STALL_SPEED  # [m/s]
+    FALLBACK_RELEASE_TICKS = CORRIDOR_FALLBACK_RELEASE_TICKS # fresh normal paths in a row that end the last resort
 
     def __init__(self, base, occupancy, map_data_dir=None):
         self.base = base              # RecordedStaticPlanner: geometry, global curve, recorded corridor
@@ -82,12 +100,21 @@ class StaticCorridorPlanner:
         self.circle_t = (np.arange(count)+.5)*length/count
         self.circle_r = math.hypot(half_width, .5*length/count)
         self.ready = False
-        self.min_clearance = CORRIDOR_MIN_CLEARANCE   # required body clearance [m]; a subclass relaxes it as a last resort
+        self.min_clearance = CORRIDOR_MIN_CLEARANCE   # required body clearance [m]; relaxed only by the last resort
         self.previous = None          # (ys, xs) of the last station solution
         self.committed = None         # (yy, xx, yaw, curvature) dense samples of the last valid path
         self._since_solve = RESOLVE_EVERY   # ticks since the last full solve
         self._held_error = (math.inf, math.inf)   # (distance, heading) of the car from the committed path
         self._global_xy = None
+        self.clock = time.monotonic             # replaced by the replay's clock in offline checks
+        self._stall_since = None                # when the car began standing or creeping blocked
+        self._fallback_active = False           # stays on until a path passes the normal clearance again
+        self._fallback_stage = None             # index of the last stage that gave a path
+        self._clear_ticks = 0                   # consecutive ticks with a normal path
+        self._committed_relaxed = False         # the committed path came from a last-resort solve
+        self._standing_since = None             # when the car came to a full stop, blocked
+        self._contact_granted = False           # the contact stages are allowed until the last resort ends
+        self.fallback_log = deque(maxlen=1000)  # (clock, stage clearance) of the recent ticks that used the last resort
 
     # ------------------------------------------------------------------ geometry
     def goal_y(self):
@@ -335,7 +362,110 @@ class StaticCorridorPlanner:
 
     # ------------------------------------------------------------------ main entry
     def run(self, ego, reference_path, global_path):
-        """Plan one tick. A numerical failure stops the car for this tick instead of ending the control loop."""
+        """Plan one tick; blocked for long, the last resort (FALLBACK_*) retries with lower clearance."""
+        result = self._solve(ego, reference_path, global_path)
+        if self.FALLBACK_STALL_S <= 0.:
+            return result
+        info = None if result is None else result.debug_details['static_avoidance']
+        if info is None or info.get('phase') != 'blocked':
+            if info is not None and info.get('source') == 'new':
+                self._committed_relaxed = False     # a fresh normal solve replaced the committed path
+            if self._fallback_active and info is not None and info.get('source') == 'previous' and self._committed_relaxed:
+                # The normal solve still holds the last-resort path the car is on: that is no proof the gap is wide
+                # enough, keep the last resort (and its speed) until a fresh normal solve passes.
+                self._cap(result, info, None)
+                return result
+            # A fresh normal path: the last resort ends once it has held for FALLBACK_RELEASE_TICKS ticks (a path
+            # that passes and fails tick by tick would start and stop the car again).
+            self._clear_ticks += 1
+            if not self._fallback_active or info is None or self._clear_ticks >= self.FALLBACK_RELEASE_TICKS:
+                self._reset_fallback()
+            return result
+        self._clear_ticks = 0
+        now = self.clock()
+        if abs(ego.velocity) < self.FALLBACK_CONTACT_STALL_SPEED:
+            self._standing_since = now if self._standing_since is None else self._standing_since
+        else:
+            self._standing_since = None
+        if getattr(self.occupancy, 'virtual', None):
+            self._reset_fallback()        # tunnel: a mover is being overtaken or yielded to, its own rules decide
+            return result
+        if not self._fallback_active:
+            # Blocked, the planner still lets the car close in on the stop point 1 m before the obstacle, and the
+            # point moves on as the map changes: the car crept forward twice (to 1.3 m/s) and a 0.3 m/s standing test
+            # restarted the wait each time (9 s instead of 3, competition tunnel 10-29). Slow approach counts too.
+            if abs(ego.velocity) >= self.FALLBACK_STALL_SPEED:
+                self._stall_since = None
+                return result
+            if self._stall_since is None:
+                self._stall_since = now
+            if now-self._stall_since < self.FALLBACK_STALL_S:
+                return result
+            self._fallback_active = True
+        relaxed = self._relaxed_plan(ego, reference_path, global_path)
+        if relaxed is None:
+            return result
+        return relaxed
+
+    def _reset_fallback(self):
+        self._stall_since = None
+        self._fallback_active = False
+        self._fallback_stage = None
+        self._standing_since = None
+        self._contact_granted = False
+
+    def _contact_allowed(self):
+        """The contact stages only after a full stop of FALLBACK_CONTACT_STALL_S; once used, until the last resort ends
+        (the car moving along that path is no reason to stop it again)."""
+        if self.FALLBACK_CONTACT_STALL_S <= 0.:
+            return True
+        if not self._contact_granted and self._standing_since is not None:
+            self._contact_granted = self.clock()-self._standing_since >= self.FALLBACK_CONTACT_STALL_S
+        return self._contact_granted
+
+    def _relaxed_plan(self, ego, reference_path, global_path):
+        """The same solve with the required clearance lowered step by step (corridor condition unchanged); the stage
+        that worked last tick goes first. Without any path, the committed path ahead of the car, if the car is on it."""
+        stages = self.FALLBACK_CLEARANCES
+        order = list(range(len(stages)))
+        if self._fallback_stage is not None:
+            order.remove(self._fallback_stage)
+            order.insert(0, self._fallback_stage)
+        nominal = self.min_clearance
+        # A failed attempt must leave no trace in the normal planning (its last solution, committed path and solve
+        # cadence): every stage starts from the state before the attempt, and without any path it is restored.
+        saved = (self.previous, self.committed, self._since_solve, self._held_error)
+        try:
+            for stage in order:
+                if stages[stage] < 0. and not self._contact_allowed():
+                    continue
+                self.previous, self.committed, self._since_solve, self._held_error = saved
+                self.min_clearance = stages[stage]
+                self._since_solve = 1 << 30         # a held path of the stricter solve is not reused: solve afresh
+                result = self._solve(ego, reference_path, global_path)
+                if result is None:
+                    continue
+                info = result.debug_details['static_avoidance']
+                if info.get('phase') == 'blocked':
+                    continue
+                self._fallback_stage = stage
+                self._committed_relaxed = True
+                self._cap(result, info, stages[stage])
+                return result
+            self.previous, self.committed, self._since_solve, self._held_error = saved
+        finally:
+            self.min_clearance = nominal
+        return None
+
+    def _cap(self, result, info, clearance):
+        """Speed cap and log of a last-resort tick; ``clearance`` None: the normal solve held the last-resort path."""
+        result.acc_target_velocity = min(result.acc_target_velocity, self.FALLBACK_SPEED)
+        info['fallback'] = dict(active=True, required_clearance_m=clearance, speed_cap_mps=self.FALLBACK_SPEED,
+                                source='held' if clearance is None else 'relaxed')
+        self.fallback_log.append((self.clock(), clearance))
+
+    def _solve(self, ego, reference_path, global_path):
+        """One solve. A numerical failure stops the car for this tick instead of ending the control loop."""
         begin = time.perf_counter()
         try:
             return self._plan(ego, reference_path, global_path, begin)

@@ -81,6 +81,9 @@ class TrackMotion:
             if identity not in self.tracks:
                 self.tracks[identity] = self._successor(x, y, now, max(box['length_m'], box['width_m']))
             track = self.tracks[identity]
+            # Observation age survives short ID changes; it does not alter
+            # the existing motion/size classification or packet contents.
+            track.setdefault('first_seen', now)
             last = track.get('box')
             if (last is not None and now-track['seen'] <= JUMP_GAP_S and not track.get('mover')
                     and math.hypot(x-last['center_world'][0], y-last['center_world'][1]) > JUMP_M):
@@ -88,6 +91,9 @@ class TrackMotion:
                 # of barriers). Count motion again from here instead of counting the jump as travel (its size and
                 # standing evidence stay: the row is still there).
                 track.update(first=None, origin=None, run=0)
+                track['first_seen'] = now
+                track.pop('new_obstacle_guard', None)
+                track.pop('tunnel_side_release', None)
             moving = box.get('motion_state') == 'moving'
             track['run'] = track['run']+1 if moving else 0
             track['seen'], track['box'] = now, box
@@ -139,8 +145,11 @@ class TrackMotion:
         if best is None or (best[1].get('size') == 'person' and size > PERSON_MAX_LONG_M):
             return dict(first=None, run=0, mover=False, anchor=(x, y), still=now)
         old = best[1]
-        keep = ('first', 'mover', 'anchor', 'still', 'observed_moving', 'person', 'size', 'origin', 'near_since', 'frames')
+        keep = ('first', 'mover', 'anchor', 'still', 'observed_moving', 'person', 'size', 'origin', 'near_since', 'frames',
+                'first_seen', 'new_obstacle_guard', 'tunnel_side_release')
         track = {k: old[k] for k in keep if k in old}
+        if 'tunnel_side_release' in track:
+            track['tunnel_side_release'] = dict(track['tunnel_side_release'])
         track.update(run=0, history=deque(old.get('history', ())), inherited=True)
         return track
 

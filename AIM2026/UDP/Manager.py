@@ -1,5 +1,6 @@
 import math
 import socket
+from collections import Counter
 from copy import deepcopy
 
 from .Camera import CameraReceiver
@@ -201,21 +202,28 @@ class UDPManager:
                 if key not in self.shared_ports and name not in handled:
                     self.shared_ports[key] = SharedPort(*key)
             specs, forward_ports = {}, {}
+            # The sender filter (Sensor ip/host_port) only tells apart sensors that share a destination port. A sensor
+            # alone on its port takes every sender: through the Windows relay to WSL the packets come from the relay
+            # (Windows host address, an ephemeral port), not from the MORAI PC's 192.168.0.1:750x in the
+            # competition config, and were all dropped (VE never ready); the relay itself uses those host ports.
+            sharing = Counter((cfg.get('bind') or '0.0.0.0', cfg['dest_port']) for cfg in self.sensor_config.values())
             for name, cfg in self.sensor_config.items():
                 options = {key: cfg[key] for key in ('elevations', 'distance_scale', 'frame_policy')
                            if name == 'lidar' and key in cfg}
+                together = sharing[(cfg.get('bind') or '0.0.0.0', cfg['dest_port'])] > 1
+                source_ip, source_port = (cfg.get('ip'), cfg.get('host_port')) if together else (None, None)
                 if name == 'vehicle_status':
                     options['local_status_bytes'] = self.config['Ego'].get('local_status_bytes')
                 options['history_size'] = 200 if name in ('vehicle_status', 'imu', 'gps') else 16
                 bind = cfg.get('bind') or '0.0.0.0'
                 if name in isolated['names']:
                     specs[name] = dict(name=name, factory=factories[name], port=cfg['dest_port'], bind=bind,
-                                       source_ip=cfg.get('ip'), source_port=cfg.get('host_port'), options=options)
+                                       source_ip=source_ip, source_port=source_port, options=options)
                     continue
                 if name in isolated['forwarded']:
                     forward_ports[name] = self._free_loopback_port()
                     specs[name] = dict(name=name, factory=factories[name], port=cfg['dest_port'], bind=bind,
-                                       source_ip=cfg.get('ip'), source_port=cfg.get('host_port'), options=options,
+                                       source_ip=source_ip, source_port=source_port, options=options,
                                        forward=('127.0.0.1', forward_ports[name]))
                     # The parent keeps the ordinary receiver, fed over loopback instead of the shared port.
                     self.receivers[name] = factories[name](
@@ -225,7 +233,7 @@ class UDPManager:
                     cfg['dest_port'], bind=bind, name=name,
                     drop_audit=True,
                     shared_port=self.shared_ports[(bind, cfg['dest_port'])],
-                    source_ip=cfg.get('ip'), source_port=cfg.get('host_port'), **options)
+                    source_ip=source_ip, source_port=source_port, **options)
             for shared in self.shared_ports.values():
                 shared.start()
             for group_plan in isolated['groups']:

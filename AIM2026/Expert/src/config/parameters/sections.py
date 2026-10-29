@@ -8,10 +8,13 @@
 STATIC_OBSTACLE_ZONE_START = (-60.18083478654391, -162.36788516811984)
 STATIC_OBSTACLE_ZONE_END = (-60.057962937774064, -54.031780525899286)
 STATIC_OBSTACLE_ZONE_HALF_WIDTH = 3.0
+# Match the existing right-side activation reach about the section centre x=-60.
+# Only the static section uses this geometry; shared planner defaults stay unchanged.
+STATIC_RECORDED_ACTIVE_X = (-76.0, -44.0)
 # 이 영역의 VE 박스는 이동 판정(uncertain/moving)을 버리고 정지 물체로 계획한다.
-# x: 자차 차로 왼쪽 경계(-61.75, 반대 차로 제외)부터 기록 회피 경로 오른쪽 끝(-50.6)+여유까지
+# x: 왼쪽 기록 경로도 포함하며, 기존 오른쪽 수집 범위를 x=-60 기준으로 왼쪽에 동일하게 적용
 # y: 정적 구간 시작(교차로 제외)부터 전역 경로 복귀점(-116.7)까지
-STATIC_OBSTACLE_CERTAIN_X = (-62.0, -48.0)
+STATIC_OBSTACLE_CERTAIN_X = (-72.0, -48.0)
 STATIC_OBSTACLE_CERTAIN_Y = (STATIC_OBSTACLE_ZONE_START[1], -116.7)
 
 # =============================================================================

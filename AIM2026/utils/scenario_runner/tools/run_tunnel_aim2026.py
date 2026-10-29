@@ -27,6 +27,8 @@ from datetime import datetime
 import json
 import os
 from pathlib import Path
+import re
+import shutil
 import signal
 import subprocess
 import tarfile
@@ -111,6 +113,108 @@ def _load(path):
     if not isinstance(document, dict):
         raise ValueError('Expected a YAML mapping: ' + str(path))
     return document
+
+
+def clear_actors_with(stub, filter_type, info_type, attempts=3, pause_s=.5):
+    """Destroy every actor but the Ego; returns the (id, type) pairs removed. Raises if some stay after ``attempts``."""
+    removed = []
+    for _ in range(attempts):
+        states = stub.GetAllActorsState(
+            filter_type(client_key="", vehicle=True, pedestrian=True, obstacle=True), timeout=5).states
+        left = [state.actor_info for state in states if str(state.actor_info.id.value).lower() != 'ego']
+        if not left:
+            return removed
+        for actor in left:
+            info = info_type()
+            info.id.value = actor.id.value
+            info.object_type = actor.object_type
+            stub.DestroyActor(info)
+            removed.append((str(actor.id.value), int(actor.object_type)))
+        time.sleep(pause_s)
+    states = stub.GetAllActorsState(
+        filter_type(client_key="", vehicle=True, pedestrian=True, obstacle=True), timeout=5).states
+    stuck = [str(state.actor_info.id.value) for state in states if str(state.actor_info.id.value).lower() != 'ego']
+    if stuck:
+        raise RuntimeError('Leftover actors could not be removed: ' + ', '.join(stuck))
+    return removed
+
+
+def clear_leftover_actors():
+    """Between runs: remove whatever a failed run left in MORAI (every actor except the Ego).
+
+    A failed run can leave a half-placed obstacle behind. The next run then stops at its first check ("Foreign actors
+    occupy the tunnel preview corridor") and so does every run after it. Only for a simulator used for these runs.
+    """
+    from scenario_runner.adapters.morai_grpc import MoraiGrpcClient
+    global_cfg, _, _ = load_configuration()
+    client = MoraiGrpcClient(global_cfg)
+    client.connect()
+    from proto.morai.actor.actor_get_pb2 import GetAllActorsFilter
+    from proto.morai.common.object_info_pb2 import ObjectInfo
+    try:
+        removed = clear_actors_with(client.client._sim_adapter._actor_stub, GetAllActorsFilter, ObjectInfo)
+    finally:
+        try:
+            client.client.disconnect()
+        except Exception:
+            pass
+    if removed:
+        print('[Tunnel] removed {} actor(s) left in MORAI: {}'.format(
+            len(removed), ', '.join('{}(type {})'.format(*item) for item in removed)), flush=True)
+    return removed
+
+
+SENSOR_UDP_PORTS = (9090, 2368)     # camera/GPS/IMU and LiDAR packets MORAI sends to the Expert
+_PORT_HOLDERS = ("$ports = @(%s); $rows = @(); foreach ($e in Get-NetUDPEndpoint | "
+                 "Where-Object { $ports -contains $_.LocalPort }) { "
+                 "$p = Get-CimInstance Win32_Process -Filter \"ProcessId=$($e.OwningProcess)\"; "
+                 "$alive = $false; if ($p.CommandLine -match 'parent_pid=(\\d+)') { "
+                 "$alive = [bool](Get-Process -Id ([int]$Matches[1]) -ErrorAction SilentlyContinue) }; "
+                 "$rows += [pscustomobject]@{pid=[int]$e.OwningProcess; port=[int]$e.LocalPort; "
+                 "cmd=[string]$p.CommandLine; parent_alive=$alive} }; "
+                 "ConvertTo-Json -InputObject @($rows) -Compress")
+
+
+def stale_sensor_receivers(holders):
+    """Split port holders into (orphans, others).
+
+    An orphan is a multiprocessing worker whose parent Expert is gone: it only keeps the port bound and
+    swallows the packets the next run waits for. Anything else (e.g. a live Expert in another terminal)
+    is never touched.
+    """
+    orphans, others = [], []
+    for holder in holders:
+        command = holder.get('cmd') or ''
+        spawned = 'multiprocessing.spawn' in command and re.search(r'parent_pid=\d+', command)
+        (orphans if spawned and not holder.get('parent_alive') else others).append(holder)
+    return orphans, others
+
+
+def clear_stale_sensor_receivers(ports=SENSOR_UDP_PORTS):
+    """Stop Windows Python workers a killed run left on the sensor UDP ports; refuse if something else holds them."""
+    shell = shutil.which('powershell.exe') or shutil.which('powershell')
+    if shell is None:
+        return
+    script = _PORT_HOLDERS % ','.join(str(port) for port in ports)
+    # errors='replace': a non-ASCII Windows user name in a command line is not valid UTF-8 for WSL.
+    result = subprocess.run([shell, '-NoProfile', '-Command', script], capture_output=True, text=True,
+                            errors='replace', timeout=60)
+    try:
+        holders = json.loads(result.stdout.strip() or '[]')
+    except ValueError:
+        print('[Tunnel] Could not read the sensor port owners; continuing', flush=True)
+        return
+    orphans, others = stale_sensor_receivers(holders)
+    if orphans:
+        pids = sorted({holder['pid'] for holder in orphans})
+        subprocess.run([shell, '-NoProfile', '-Command', 'Stop-Process -Force -Id ' + ','.join(map(str, pids))],
+                       capture_output=True, text=True, errors='replace', timeout=60)
+        print('[Tunnel] Stopped leftover sensor receivers of an earlier run: PID {}'.format(
+            ', '.join(map(str, pids))), flush=True)
+    if others:
+        raise SystemExit('Sensor UDP ports are in use by another process (a run still active?): {}. '
+                         'Stop it first; this launcher only removes leftovers of a killed run.'.format(
+                             ', '.join('PID {} port {}'.format(h['pid'], h['port']) for h in others)))
 
 
 def competition_config(base_config, folder):
@@ -494,6 +598,9 @@ def main(argv=None):
     parser.add_argument('--results', type=Path,
                         help='JSON-lines file with one row per run when repeating '
                              '(default .runtime/tunnel_aim2026/results/tunnel-<time>.jsonl)')
+    parser.add_argument('--clear-leftovers', action='store_true',
+                        help='Before every run, remove all actors but the Ego from MORAI, so a failed run cannot block '
+                             'the following ones (only for a simulator used for these runs)')
     parser.add_argument('--no-virtual-gps', dest='virtual_gps', action='store_false',
                         help='Keep real GPS inside the tunnel; the dead-reckoning provider stays idle')
     parser.add_argument('--config', type=Path, default=AIM_ROOT / 'config_local.yaml')
@@ -601,8 +708,17 @@ def main(argv=None):
         # One validation per scene; with all that is every scene of the rotation.
         checks = [run_one(arguments(0), variant, options) for variant in (rotation if rotating else (args.variant,))]
         return 0 if not any(checks) else 1
+    def prepare_run():
+        clear_stale_sensor_receivers()      # a killed run's workers keep the sensor ports and fail every later run
+        if args.clear_leftovers:
+            try:
+                clear_leftover_actors()
+            except Exception as error:
+                print('[Tunnel] could not clear leftover actors: {}: {}'.format(type(error).__name__, error), flush=True)
+
     if runs == 1:
         try:
+            prepare_run()
             return run_one(arguments(0), variant_of(0), options, limits=limits)
         except RoundTimeout:
             return 1
@@ -616,6 +732,7 @@ def main(argv=None):
         record, started = {}, datetime.now()
         outcome, reason = 'completed', None
         try:
+            prepare_run()
             code = run_one(arguments(index), variant, options, record=record, limits=limits)
             if code == INTERRUPTED:
                 outcome = 'interrupted'

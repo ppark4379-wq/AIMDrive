@@ -10,6 +10,7 @@ from .control_input import ControlInput
 from ..planning.lattice import parameters as lattice_parameters
 from ..planning.roundabout import diagnostics as roundabout_debug
 from ..config.parameters import highway as highway_parameters
+from ..config.parameters.jamming import NEW_OBSTACLE_CAUTION_THROTTLE
 
 
 class PathController:
@@ -55,6 +56,10 @@ class PathController:
 
     def _calculate_control(self, vehicle_state, planning_path, target_velocity, lattice_result,
                            *, pedestrian_released=False):
+        tunnel_caution = bool(lattice_result.debug_details.get('jamming_traffic', {}).get('cautious_restart'))
+        if tunnel_caution and not getattr(self, '_tunnel_caution_active', False):
+            self.pid.reset()
+        self._tunnel_caution_active = tunnel_caution
         if self.previous_target_velocity is not None:
             if (
                 target_velocity
@@ -93,10 +98,11 @@ class PathController:
         if fast_stop_release:
             self.pid.reset()
         # 속도 제어를 위한 PID control
+        integral_before = self.pid.integral_error
         acc_cmd = self.pid.get_output(
             target_velocity, vehicle_state.velocity,
             derivative_on_measurement=(lattice_result.mode in ("roundabout_entry", "highway_lane")
-                                       or fast_pedestrian_release),
+                                       or fast_pedestrian_release or tunnel_caution),
             acceleration_p_gain=(entry_merge_launch_gain or second_merge_launch_gain or self._highway_escape_acceleration_gain(
                 target_velocity, vehicle_state, lattice_result
             ) or self._roundabout_entry_acceleration_gain(
@@ -125,6 +131,9 @@ class PathController:
             acc_cmd = max(0.0, acc_cmd)
         else:
             acc_cmd = self._smooth_longitudinal_command(acc_cmd)
+        if tunnel_caution and acc_cmd > NEW_OBSTACLE_CAUTION_THROTTLE:
+            acc_cmd = NEW_OBSTACLE_CAUTION_THROTTLE
+            self.pid.integral_error = integral_before  # no windup against this temporary pedal cap
         self.previous_target_velocity = float(target_velocity)
         self.previous_acc_cmd = float(acc_cmd)
         # 경로 추종을 위한 pure pursuit control

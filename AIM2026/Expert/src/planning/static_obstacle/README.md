@@ -22,7 +22,8 @@ static_obstacle/
 ```
 
 `routes.json`의 사용 순서는 `right_01`, `right_02`, `right_03`, `right_04`,
-`right_05`, `right_06_retry`다. 목록 밖의 두 파일도 원본으로 보관한다.
+`right_05`, `right_06_retry` 뒤에 `left_static_obstacle_01`부터 `05`까지를 추가했다.
+오른쪽 6개와 왼쪽 5개를 같은 로더와 연결·충돌 검사에 넣는다. 목록 밖의 두 파일도 원본으로 보관한다.
 리팩토링에서는 CSV 좌표·행 순서·파일 내용을 변경하지 않았다.
 경로 로딩 시 수행하던 초반 후진 제거·샘플 선택·연결 검사는 그대로 유지한다.
 
@@ -32,6 +33,14 @@ static_obstacle/
 설정은 `src/config/parameters/static_obstacle.py`와
 `lattice.py`의 정적 장애물 항목에서 관리한다. 구간 활성 영역은 `sections.py`다.
 각 설정의 기존 값·단위·초기 계산 시점을 유지한다.
+
+왼쪽 회피 연결은 기록 목록과 정적 구간 범위만 확장한다. `sections.py`의
+`STATIC_RECORDED_ACTIVE_X=(-76,-44)`와 `STATIC_OBSTACLE_CERTAIN_X=(-72,-48)`는
+기존 오른쪽 범위를 구간 중심 x=-60 기준으로 왼쪽에 동일하게 적용한 값이다.
+시작/종료 y, 전역 경로 복귀점과 전역 경로 추출 범위는 유지한다.
+탐색·비용·곡률·차체 충돌·속도·막힘 처리 코드는 변경하지 않는다.
+누적 지도를 쓰면 기존 통로 최적화에 왼쪽이 포함되며, 기록 경로 플래너는
+기존 오른쪽 6개 이후 왼쪽 5개를 순서대로 검사한다.
 
 경로 기록은 `tools/paths/record_route.py`를 사용한다.
 기록기는 개발용 ROS `/Ego_topic`을 사용하며 차량 제어 명령을 보내지 않는다.

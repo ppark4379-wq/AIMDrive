@@ -11,6 +11,13 @@ import yaml
 from ..tools import run_tunnel_aim2026 as run_tunnel
 
 
+def setUpModule():
+    # The real cleanup asks Windows PowerShell for the UDP port owners (seconds per run); it has its own tests.
+    patcher = patch.object(run_tunnel, 'clear_stale_sensor_receivers')
+    patcher.start()
+    unittest.addModuleCleanup(patcher.stop)
+
+
 class TunnelLauncherTest(unittest.TestCase):
     def setUp(self):
         directory = TemporaryDirectory()
@@ -332,8 +339,10 @@ class TunnelLauncherTest(unittest.TestCase):
 
     def test_the_competition_morai_model_list_filters_the_static_scene_without_any_folder(self):
         models = run_tunnel.competition_models()
-        self.assertTrue({'woodbox', 'cargobox', 'steelbarricade'} <= models)
-        self.assertFalse({'rubbercone', 'colorcone', 'barbedwirefence'} & models)
+        self.assertTrue({'bollard04', 'concretebarricade01', 'lane_separation_bar'.replace('_', '')} <= models)
+        self.assertFalse({'rubbercone', 'colorcone', 'barbedwirefence'} & models)   # not shipped
+        self.assertFalse({'woodbox', 'cargobox', 'pefirewallwhite', 'pefirewallorange', 'pedrum', 'redbarrel', 'yellowbarrel',
+                           'steelbarricade'} & models)   # shipped, but fall through the tunnel floor
         code, calls = self.run_main(['--variant', 'static', '--competition-morai'])
         self.assertEqual((code, calls[0][2]['installed_models']), (0, models))
         with patch('sys.stderr'), self.assertRaises(SystemExit) as raised:
@@ -374,6 +383,56 @@ class TunnelLauncherTest(unittest.TestCase):
             with patch('sys.stderr'), self.assertRaises(SystemExit) as raised:
                 self.run_main(argv)
             self.assertEqual(raised.exception.code, 2)
+
+    @staticmethod
+    def fake_world(actors, sticky=()):
+        """A MORAI stand-in: DestroyActor removes an actor unless its id is in ``sticky``."""
+        world = dict(actors)
+        calls = []
+
+        class Stub:
+            def GetAllActorsState(self, query, timeout=None):
+                return SimpleNamespace(states=[
+                    SimpleNamespace(actor_info=SimpleNamespace(id=SimpleNamespace(value=key), object_type=kind))
+                    for key, kind in world.items()])
+
+            def DestroyActor(self, info):
+                calls.append((info.id.value, info.object_type))
+                if info.id.value not in sticky:
+                    world.pop(info.id.value, None)
+
+        class Info:
+            def __init__(self):
+                self.id = SimpleNamespace(value='')
+                self.object_type = 0
+        return Stub(), Info, world, calls
+
+    def test_leftover_actors_are_all_removed_except_the_ego(self):
+        stub, info, world, calls = self.fake_world({'Ego': 1, '1': 3, '2': 2, '3': 3})
+        removed = run_tunnel.clear_actors_with(stub, lambda **kw: None, info, pause_s=0)
+        self.assertEqual(sorted(removed), [('1', 3), ('2', 2), ('3', 3)])
+        self.assertEqual(world, {'Ego': 1})
+        self.assertEqual(run_tunnel.clear_actors_with(stub, lambda **kw: None, info, pause_s=0), [])   # nothing to do
+
+    def test_an_actor_that_will_not_go_is_reported_instead_of_ignored(self):
+        stub, info, world, calls = self.fake_world({'Ego': 1, '7': 3}, sticky={'7'})
+        with self.assertRaisesRegex(RuntimeError, 'could not be removed: 7'):
+            run_tunnel.clear_actors_with(stub, lambda **kw: None, info, attempts=2, pause_s=0)
+
+    def test_clear_leftovers_runs_before_every_run_only_when_asked(self):
+        with patch.object(run_tunnel, 'clear_leftover_actors') as clear:
+            self.run_main(['--variant', 'pedestrian', '--runs', '3'])
+            self.assertEqual(clear.call_count, 0)
+            self.run_main(['--variant', 'pedestrian', '--runs', '3', '--clear-leftovers'])
+            self.assertEqual(clear.call_count, 3)
+            clear.reset_mock()
+            self.run_main(['--variant', 'pedestrian', '--clear-leftovers'])          # a single run too
+            self.assertEqual(clear.call_count, 1)
+
+    def test_a_failing_clean_up_does_not_stop_the_run(self):
+        with patch.object(run_tunnel, 'clear_leftover_actors', side_effect=RuntimeError('boom')):
+            code, calls = self.run_main(['--variant', 'pedestrian', '--runs', '2', '--clear-leftovers'])
+        self.assertEqual((code, len(calls)), (0, 2))
 
     def test_a_present_library_keeps_static_and_restores_the_evidence_line_ends(self):
         calls = []

@@ -68,6 +68,16 @@ CORRIDOR_WEIGHTS = dict(clearance=4.0, reference=.05, previous=.5, slope=1.0,   
 CORRIDOR_LATERAL_ACCEL = 2.0          # 곡률 속도 제한의 횡가속도 [m/s^2]
 CORRIDOR_CLEARANCE_SPEED = (2.5, 4.0) # 최소 여유에서의 속도 [m/s], 여유 1 m 증가당 속도 증가 [m/s]
 CORRIDOR_STOP_BUFFER = 1.0            # 통과 불가 지점 앞에 남길 정지 여유 [m]
+# 막힘 최후 수단: 경로가 없다고 판단해 멈춘 채 오래 서 있으면 여유 기준을 단계적으로 낮춰 다시 계획해 천천히 간다
+# (서 있으면 감점이 충돌 한 번보다 크다). 통로(기록 통로·지도 차로) 조건은 낮추지 않는다. 터널은 jamming.py 5-1 값을 쓴다.
+# CORRIDOR_FALLBACK_STALL_S = 0이면 끈다
+CORRIDOR_FALLBACK_STALL_S = 3.0       # 막힘(blocked)이고 서 있거나 천천히 다가가는(CORRIDOR_FALLBACK_STALL_SPEED 미만) 상태가 이만큼 이어지면 켠다 [s]
+CORRIDOR_FALLBACK_STALL_SPEED = 2.0   # 막힘이고 이 속도 미만이면 시간을 센다; 막힌 지점까지 조금씩 기어가는 동안도 센다 [m/s]
+CORRIDOR_FALLBACK_CLEARANCES = (.20, .10, 0., -.30)   # 차체와 점유 칸의 최소 여유를 차례로 낮춰 본다(음수: 접촉 감수) [m]
+CORRIDOR_FALLBACK_SPEED = 2.0         # 최후 수단 경로의 속도 상한 [m/s]
+CORRIDOR_FALLBACK_CONTACT_STALL_S = 3.0   # 접촉 감수 단계(여유 < 0)는 완전히 선 채(아래 속도 미만) 이만큼 지나야 쓴다; 0이면 바로 쓴다 [s]
+CORRIDOR_FALLBACK_CONTACT_STALL_SPEED = .3   # 접촉 감수 단계의 '완전히 섬' 기준 속도 [m/s]
+CORRIDOR_FALLBACK_RELEASE_TICKS = 5   # 정상 경로가 이만큼 연속으로 나와야 최후 수단을 끝낸다(경로가 깜빡이며 서고 가기를 반복하지 않게)
 # 기록 경로는 모두 오른쪽 회피라 차로 왼쪽 절반이 통로에서 빠진다. 지도 차로 폭으로 왼쪽을 보충한다.
 CORRIDOR_LANE_HALF_WIDTH = 1.75       # 자차 차로 반폭; MGeo A2256W000222 width 3.5 m, 왼쪽은 중앙선 [m]
 CORRIDOR_LANE_EDGE_MARGIN = .3        # 차체와 차로 왼쪽 경계 사이에 남길 여유 [m]

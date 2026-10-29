@@ -13,6 +13,7 @@ from ...utils.transform_utils import (
 )
 from .tunnel_dynamic_catalog import generate_tunnel_candidates, select_tunnel_mix
 from .dynamic_obstacle import _route_intersections
+from .vehicle_common import actors_near
 from .pedestrian_timing import interaction_timing
 from . import tunnel_dynamic_timing as trajectory_timing
 from .tunnel_static_parts.screening import POLICY as TUNNEL_GEOMETRY_POLICY
@@ -36,6 +37,8 @@ TRIGGER_DEFAULTS = {
 # Bound initialization in host time rather than treating three fast ticks as
 # proof of a lost moving actor. This never verifies an unobserved spawn.
 INITIAL_STATE_TIMEOUT_WALL_SEC = 1.0
+SPAWN_ATTEMPTS = 3
+SPAWN_RETRY_PAUSE_SEC = 0.5
 
 # An oncoming pedestrian keeps walking toward its endpoint after Ego brakes.
 # Preserve the original lead for these conflicting paths; the shorter crossing
@@ -591,16 +594,37 @@ class TunnelDynamicHandler:
         # Straight candidates use the same native yaw/velocity movement as
         # dynamic_obstacle. In the live tunnel trial, both waypoint APIs
         # reported the destination immediately instead of observed traversal.
-        try:
-            actor = context.grpc.spawn_pedestrian(
+        def spawn_once():
+            return context.grpc.spawn_pedestrian(
                 transform=transform, model_name=plan["model"], label=label,
                 velocity=plan["speed_kmh"], active_dist=0.0,
                 move_dist=plan["path_length_m"] + 2.0, start_action=True,
             )
+
+        try:
+            actor = spawn_once()
         except Exception as error:
             self._fail(context, f"Tunnel pedestrian spawn RPC failed: {error}")
+        # A rejected spawn is retried only while nothing stands near the start point: an occupied spot cannot
+        # be fixed by asking again, and a pedestrian that appeared despite the rejection must not be duplicated.
+        attempts = 1
+        while actor is None and attempts < SPAWN_ATTEMPTS:
+            time.sleep(SPAWN_RETRY_PAUSE_SEC)        # let an actor made by the rejected request show up first
+            if actors_near(context, a["x"], a["y"], 12.0):
+                break
+            attempts += 1
+            print(f"[TunnelDynamic] spawn rejected; retry {attempts}/{SPAWN_ATTEMPTS}")
+            try:
+                actor = spawn_once()
+            except Exception as error:
+                self._fail(context, f"Tunnel pedestrian spawn RPC failed: {error}")
+        context.tunnel_dynamic_result["spawn_attempts"] = attempts
         if actor is None:
-            self._fail(context, "Failed to spawn tunnel pedestrian")
+            nearby = actors_near(context, a["x"], a["y"], 12.0)
+            context.tunnel_dynamic_result["spawn_failure_nearby_actors"] = nearby
+            print(f"[TunnelDynamic] spawn failed at ({a['x']:.1f},{a['y']:.1f}); actors within 12 m: {nearby}")
+            self._fail(context, "Failed to spawn tunnel pedestrian"
+                       + (f" (occupied by {[n['id'] for n in nearby]})" if nearby else ""))
         context.tunnel_dynamic_actor = actor
         context.scenario_actors.append(actor)
         try:

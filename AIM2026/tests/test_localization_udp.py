@@ -58,15 +58,40 @@ def test_history_deduplicates_source_resets_epoch_and_retains_zero_stamp():
     value._store(dict(sim_time=-1.), received_ns=1)
     assert value.samples == 0
     assert value.audit_counts['negative_source_time'] == 1
-    for stamp in (1., 1., .5, 0., 0.):
+    # A reset is two samples in a row behind the last accepted one; the held first one starts the new clock.
+    for stamp in (1., 1., .5, .6, 0., 0.):
         value._store(dict(sim_time=stamp), received_ns=1_000_000_000+value.samples)
-    assert value.samples == 4
-    assert [r.source_time for r in value.recent()] == [.5, 0., 0.]
+    assert value.samples == 5
+    assert [r.source_time for r in value.recent()] == [.5, .6, 0., 0.]
+    assert [r.clock_epoch for r in value.recent()] == [1, 1, 1, 1]
     assert value.clock_epoch == 1
     assert value.audit_counts['duplicate_source_time'] == 1
+    assert value.audit_counts['source_time_resets'] == 1
     for index in range(250):
         value._store(dict(sim_time=0.), received_ns=2_000_000_000+index)
     assert len(value.recent()) == 200
+
+
+def test_one_stamp_a_second_back_is_dropped_and_keeps_the_history():
+    # MORAI IMU, competition build 10-29: 542.998, then 542.000 (should be 543.000), then 543.030 ...
+    value = receiver()
+    for k, stamp in enumerate((542.95, 542.998, 542.000, 543.030, 543.069)):
+        value._store(dict(sim_time=stamp), received_ns=1_000_000_000+k*20_000_000)
+    assert [r.source_time for r in value.recent()] == [542.95, 542.998, 543.030, 543.069]
+    assert value.clock_epoch == 0 and all(r.clock_epoch == 0 for r in value.recent())
+    assert value.audit_counts['source_time_glitches'] == 1
+    assert value.audit_counts['source_time_resets'] == 0
+    assert value.latest()[0]['sim_time'] == 543.069
+
+
+def test_a_real_restart_still_starts_a_new_epoch_with_every_new_sample():
+    value = receiver()
+    for k, stamp in enumerate((900.0, 900.05, 900.1, 3.0, 3.05, 3.1)):
+        value._store(dict(sim_time=stamp), received_ns=1_000_000_000+k*50_000_000)
+    assert [r.source_time for r in value.recent()] == [3.0, 3.05, 3.1]
+    assert value.clock_epoch == 1 and all(r.clock_epoch == 1 for r in value.recent())
+    assert value.audit_counts['source_time_resets'] == 1
+    assert value.audit_counts['source_time_glitches'] == 0
 
 
 def test_parsers_preserve_raw_integer_source_time_separately_from_legacy_rounding():

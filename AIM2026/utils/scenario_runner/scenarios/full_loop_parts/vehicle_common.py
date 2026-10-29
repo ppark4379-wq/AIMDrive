@@ -1,4 +1,5 @@
 """Vehicle helpers shared by full-loop traffic zones."""
+import math
 
 
 def vehicle_models(self):
@@ -105,3 +106,22 @@ def _spawn_highway_vehicle(
     if on_spawn is None:
         self.scenario_actors.append(actor)
     return actor
+
+
+def actors_near(context, x, y, radius_m):
+    """Non-Ego actors currently within radius_m of a point (id, type, distance); empty if the query fails."""
+    found = []
+    try:
+        response = context.grpc.world.get_all_actors_state(vehicle=True, pedestrian=True, obstacle=True)
+        for state in list(getattr(response, "states", [])):
+            info = state.actor_info
+            if str(info.id.value).strip() == "Ego":
+                continue
+            place = state.transform.location
+            distance = math.hypot(place.x - x, place.y - y)
+            if distance <= radius_m:
+                found.append({"id": str(info.id.value).strip(), "type": int(info.object_type),
+                              "distance_m": round(distance, 1)})
+    except Exception:
+        return []
+    return sorted(found, key=lambda item: item["distance_m"])

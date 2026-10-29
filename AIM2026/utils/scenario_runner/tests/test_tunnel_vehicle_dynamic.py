@@ -540,6 +540,37 @@ class TunnelVehicleTest(unittest.TestCase):
                 self.assertEqual(c.scenario_actors, [])
                 self.assertFalse(c.tunnel_vehicle_result["completed"])
 
+    def rejected_then_accepted(self, rejections, bystanders):
+        c, actor = self.make_context("vehicle_slow")
+        prepare_tunnel_vehicle(c)
+        h = c.tunnel_vehicle_handler
+        h.arm(c)
+        accept = c.grpc.spawn_vehicle.side_effect
+        answers = [None] * rejections
+        c.grpc.spawn_vehicle.side_effect = lambda **kw: answers.pop(0) if answers else accept(**kw)
+        c.grpc.world.get_all_actors_state.return_value = NS(states=bystanders)
+        return c, h
+
+    def test_a_rejected_spawn_on_a_free_spot_is_retried(self):
+        c, h = self.rejected_then_accepted(2, [])
+        with patch("scenario_runner.scenarios.full_loop_parts.tunnel_vehicle_dynamic.time.sleep"):
+            self.start(c, h)
+        self.assertEqual(c.grpc.spawn_vehicle.call_count, 3)
+        self.assertEqual(c.tunnel_vehicle_result["spawn_attempts"], 3)
+        self.assertTrue(c.tunnel_vehicle_result["spawned"])
+
+    def test_a_rejected_spawn_next_to_another_actor_is_not_retried_and_names_it(self):
+        c, h = self.rejected_then_accepted(1, [])
+        target = c.tunnel_vehicle_plan["spawn_target"]
+        c.grpc.world.get_all_actors_state.return_value = NS(states=[
+            NS(actor_info=NS(id=NS(value="7"), object_type=3),
+               transform=NS(location=NS(x=target["x"] + 2., y=target["y"], z=0.)))])
+        with patch("scenario_runner.scenarios.full_loop_parts.tunnel_vehicle_dynamic.time.sleep"), \
+                self.assertRaisesRegex(RuntimeError, r"occupied by \['7'\]"):
+            self.start(c, h)
+        self.assertEqual(c.grpc.spawn_vehicle.call_count, 1)
+        self.assertEqual(c.tunnel_vehicle_result["spawn_failure_nearby_actors"][0]["id"], "7")
+
     def test_native_assigned_route_cannot_stop_at_a_prefix_before_cleanup(self):
         c, _ = self.make_context("vehicle_oncoming")
         prepare_tunnel_vehicle(c)

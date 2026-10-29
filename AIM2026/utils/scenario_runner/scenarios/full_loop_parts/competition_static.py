@@ -230,7 +230,10 @@ def prepare(context):
     """Select and pin one existing curated layout without contacting MORAI."""
     selected, geometry, pins, selection = _select_layout(context)
     candidate = copy.deepcopy(selected["candidate"])
-    validate_candidate(candidate, context.map_loader)
+    # The candidate's own geometry: for the library's two-lane layouts it carries the expanded placement domain, so the
+    # observed footprints are held to the road margin the layout was generated for, not to the nominal own-lane rules
+    # (those reject every layout that places an obstacle in the opposing lane).
+    geometry = validate_candidate(candidate, context.map_loader)
     report = dict(
         schema="aimdrive_full_loop_competition_static_environment_v1",
         phase="prepared", run_seed=context.run_seed, selected_candidate_sha256=selected["id"],

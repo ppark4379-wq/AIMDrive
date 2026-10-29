@@ -42,6 +42,7 @@ TIGHT_GAP_SPEED = 2.0                # 빠듯한 구간 속도 상한 [m/s]
 
 # 5-1. 막힘 최후 수단: 경로가 없다고 판단해 멈춘 채 오래 서 있으면 여유 기준을 단계적으로 낮춰 다시 계획해 천천히 간다
 #      (서 있으면 감점이 충돌 한 번보다 크다). 터널 벽(도로 경계) 조건은 낮추지 않는다. FALLBACK_STALL_S = 0이면 끈다
+#      정적 구간도 같은 동작을 static_obstacle.py의 CORRIDOR_FALLBACK_* 값으로 쓴다
 FALLBACK_STALL_S = 3.0               # 막힘(blocked)이고 서 있거나 천천히 다가가는(FALLBACK_STALL_SPEED 미만) 상태가 이만큼 이어지면 켠다 [s]
 FALLBACK_STALL_SPEED = 2.0          # 막힘이고 이 속도 미만이면 시간을 센다; 막힌 지점까지 조금씩 기어가는 동안(최대 약 1.3 m/s)도 센다 [m/s]
 FALLBACK_CLEARANCES = (.20, .10, 0., -.30)   # 차체와 점유 칸의 최소 여유를 차례로 낮춰 본다(음수: 접촉 감수) [m]
@@ -55,7 +56,7 @@ FALLBACK_RELEASE_TICKS = 5            # 정상 경로가 이만큼 연속으로 
 # 6. 터널 교통(동적 장애물): 물체 분류·앞차 따라가기·보행자 양보·추월·반대 차로 진입. 터널(재밍 구간)에서만 쓰인다
 # =============================================================================
 TUNNEL_TRAFFIC_ENABLED = True        # False면 이전 방식(이동체가 있으면 기존 동적 판단이 속도 결정)으로 돌아간다
-TUNNEL_MAX_SPEED_KPH = 30.0          # 터널 지도 플래너의 기본 속도 상한 [km/h]
+TUNNEL_MAX_SPEED_KPH = 25.0          # 터널 지도 플래너의 기본 속도 상한 [km/h]; 작은 동물의 늦은 검출에도 제동 여유 확보
 TUNNEL_OVERTAKE_SPEED_KPH = 55.0     # 차를 추월하는 동안의 속도 상한(반대 차로에 머무는 시간을 줄임) [km/h]
 TUNNEL_CLEARANCE_SPEED = (3.5, 5.0)  # 장애물 옆 속도: 최소 여유(0.35 m)에서 [m/s], 여유 1 m 늘 때마다 더하는 속도 [m/s]
 TUNNEL_OVERTAKE_CLEARANCE_SPEED = (6.0, 6.0)  # 추월 중 장애물 옆 속도(같은 형식); 빠듯한 틈 감속(5절 TIGHT_GAP)은 그대로 [m/s]
@@ -76,6 +77,21 @@ STALL_S = 3.0                        # 움직이던 차가 이 시간 이상 멈
 VELOCITY_WINDOW_S = 1.0              # 이동체 속도를 위치로 추정하는 시간 창 [s]
 TRACK_STALE_S = .5                   # 이보다 오래 안 보인 물체는 따라가기·양보 판단에서 뺀다 [s]
 
+# 6-1a. 사람 크기·불명확 객체의 추가 제동/관찰; 차량 크기로 분류되면 기존 차량 로직 사용
+NEW_OBSTACLE_WINDOW_S = .7           # 최초 관측 후 이 시간 안의 객체만 긴급 정지 시작 대상 [s]
+NEW_OBSTACLE_REACTION_S = 1.1         # 분류·인지 지연 동안 갈 거리를 정지거리에 추가 [s]
+NEW_OBSTACLE_SIDE_MARGIN_M = 1.3     # 갑자기 진로로 들어올 수 있는 차체 옆 여유 [m]; 모든 옆차를 검사하지 않음
+NEW_OBSTACLE_OBSERVE_S = 1.2         # 정지한 새 객체를 우회 판단으로 넘기기 위한 연속 위치 관측 시간 [s]
+NEW_OBSTACLE_CLEAR_S = .3            # 위험 영역을 벗어난 상태가 이 시간 유지되면 긴급 정지 해제 [s]
+NEW_OBSTACLE_STOP_OBSERVE_S = .3     # 작은 새 객체로 완전히 정지한 뒤 최소 관찰 시간 [s]
+NEW_OBSTACLE_CAUTION_SPEED_KPH = 8.0 # 해당 객체를 계속 감시하며 재출발할 때 속도 상한 [km/h]
+NEW_OBSTACLE_CAUTION_ACCEL_MPS2 = .5 # 주의 주행 목표속도의 최대 증가율 [m/s^2]; 제동은 제한하지 않음
+NEW_OBSTACLE_CAUTION_THROTTLE = .15  # 주의 주행 가속 페달 상한 [0~1]; 목표속도 증가 때 급가속 방지
+NEW_OBSTACLE_RECHECK_MOVE_M = .35    # 최근 0.4초 위치 변화가 이 이상이면 이동 확정 전 접근 재검사 [m]
+NEW_OBSTACLE_WATCH_EXTRA_M = .5     # 긴급제동 옆 경계 바깥의 새 작은 객체를 먼저 감속하며 살필 추가 폭 [m]
+NEW_OBSTACLE_WATCH_HOLD_S = .6      # 마지막 실제 관측 후 감속을 유지할 시간 [s]; 누락 프레임으로 연장하지 않음
+NEW_OBSTACLE_WATCH_SPEED_KPH = 15.0 # 경계 주변 새 객체 확인 중 속도 상한 [km/h]; 긴급제동은 항상 우선
+
 # 6-2. 앞차 따라가기 (같은 차로의 차 크기 물체: 이동 중·멈춤·아직 판단 전)
 FOLLOW_MIN_GAP_M = 8.                # 앞차와의 최소 목표 간격(범퍼 사이) [m]
 FOLLOW_TIME_GAP_S = 1.5              # 목표 간격에 더하는 시간 간격 [s]
@@ -91,6 +107,7 @@ YIELD_CLEARANCE_M = 1.0              # 보행자와 차체 옆면 사이에 남�
 YIELD_STOP_GAP_M = 3.0               # 보행자 앞 정지 여유 [m]
 YIELD_DECEL = 3.0                    # 양보 정지 감속도 [m/s^2]
 YIELD_RANGE_M = 35.                  # 이 거리 안의 충돌 지점만 본다 [m]
+YIELD_RESTART_SIDE_CLEARANCE_M = .3  # 정지한 보행자 옆 저속 재출발에 필요한 실제 차체 간 여유 [m]
 
 # 6-4. 저속 앞차 추월 (차로 확정된 앞차만; 사람·불명 크기는 추월하지 않는다)
 OVERTAKE_MAX_SPEED = 3.0             # 이 속도 이하로 달리는 앞차를 추월 대상으로 본다 [m/s]
