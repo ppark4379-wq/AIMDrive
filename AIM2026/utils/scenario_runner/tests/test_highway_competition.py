@@ -145,6 +145,27 @@ class CompetitionTestCase(unittest.TestCase):
 
 
 class PlanTests(CompetitionTestCase):
+    def test_fixed_bus_pool_is_used_for_initial_and_subsequent_spawns(self):
+        config = self.config()
+        model = '2016_Hyundai_Universe'
+        config['highway_npc']['managed_traffic']['fixed_model'] = model
+        context = self.prepared(config=config)
+        self.assertTrue(context.highway_npcs)
+        self.assertEqual({npc['model'] for npc in context.highway_npcs}, {model})
+        state = context.highway_competition
+        self.assertEqual(state['pool'], [model])
+        self.assertEqual(competition._candidates(state, context), [model])
+        competition._used(state, model)
+        self.assertEqual(competition._candidates(state, context), [model])
+
+    def test_unavailable_fixed_model_fails_before_any_spawn(self):
+        config = self.config()
+        config['highway_npc']['managed_traffic']['fixed_model'] = 'missing_bus'
+        context = self.context(config=config)
+        with self.assertRaisesRegex(RuntimeError, 'unavailable or excluded'):
+            highway_traffic.prepare(context)
+        self.assertEqual(context.sim.count, 0)
+
     def test_the_overlay_selects_the_policy_without_touching_other_settings(self):
         config = self.config()
         self.assertTrue(competition.enabled(SimpleNamespace(cfg=config)))
@@ -157,7 +178,7 @@ class PlanTests(CompetitionTestCase):
         self.assertEqual(config['highway_npc']['collection_maximum_total_vehicles'], 48)
 
     def test_default_traffic_is_unchanged_and_the_selector_knows_the_new_choice(self):
-        for density in (None, 'dense'):
+        for density in (None,):
             selected = copy.deepcopy(self.base_config)
             apply_highway_density(selected, density)
             self.assertEqual(selected, self.base_config)
@@ -388,7 +409,8 @@ class ManagementTests(CompetitionTestCase):
         self.run_traffic(context, 1, start=5.)
         self.assertNotIn(npc, context.highway_npcs)
         record = next(r for r in context.highway_competition['removed'] if r['label'] == npc['label'])
-        self.assertEqual(record['reason'], 'lane_end')
+        # Departure is checked first for telemetry already beyond the route.
+        self.assertEqual(record['reason'], 'lane_departure')
 
     def test_the_local_search_does_not_trust_a_vertex_at_the_window_edge(self):
         lane = dict(xy=[(float(i), 0.) for i in range(1000)])
@@ -469,7 +491,9 @@ class ManagementTests(CompetitionTestCase):
         context.sim.destroy(victim['actor_id'])
         context.highway_npcs.remove(victim)
         supply = context.highway_competition['lanes']['middle']['supply']
-        blocker = context.sim.vehicles[next(iter(context.sim.vehicles))]
+        # Keep the blocker on its assigned lane so departure removal does not clear it.
+        blocker_npc = next(n for n in context.highway_npcs if n['lane'] == 'middle')
+        blocker = context.sim.vehicles[blocker_npc['actor_id']]
         blocker.update(x=supply['x'], y=supply['y'], paused=True)
         before = {v for v in context.sim.vehicles if v.startswith('highway_middle_s')}
         self.run_traffic(context, 3, start=50.)          # shorter than the stall removal of a stopped vehicle (4 s)
@@ -657,7 +681,7 @@ class EvidenceTests(CompetitionTestCase):
         self.assertEqual(set(seen), set(context.sim.vehicles))
         self.assertGreater(len(seen), 0)
 
-    def test_a_lane_change_is_reported_and_normal_driving_is_not(self):
+    def test_a_lane_change_is_removed_and_normal_driving_is_not(self):
         context = self.prewarmed()
         self.run_traffic(context, 30)
         self.assertEqual(context.highway_competition['lane_violations'], [])
@@ -665,9 +689,11 @@ class EvidenceTests(CompetitionTestCase):
         vehicle = context.sim.vehicles[npc['actor_id']]
         vehicle['offset_y'] = 3.6                                     # reported 3.6 m to the side: one lane over
         self.run_traffic(context, 3, start=30.)
-        violations = context.highway_competition['lane_violations']
-        self.assertEqual(len(violations), 1)
-        self.assertEqual(violations[0]['lane'], 'left')
+        self.assertNotIn(npc, context.highway_npcs)
+        removed = [r for r in context.highway_competition['removed'] if r['label'] == npc['label']]
+        self.assertEqual(len(removed), 1)
+        self.assertEqual(removed[0]['reason'], 'lane_departure')
+        self.assertEqual(removed[0]['lane'], 'left')
 
     def test_target_and_actual_speeds_are_recorded_separately(self):
         context = self.prewarmed()

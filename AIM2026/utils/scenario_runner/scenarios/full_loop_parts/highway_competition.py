@@ -298,8 +298,15 @@ def build_plan(context):
         plan['speed_kmh'] = lanes[plan['lane']]['speed_kmh']
         plan['retire_at_route_end'] = lanes[plan['lane']]['retire_at_route_end']
         plan['merge_adjacent'] = lanes[plan['lane']]['merge_adjacent']
-    pool = highway_traffic.model_candidates(context)
-    if len(pool) < min(cfg['cap'], 25):
+    fixed_model = _managed(context).get('fixed_model')
+    if fixed_model:
+        excluded = highway_traffic.EXCLUDED_MODELS | set(_managed(context).get('excluded_models', []))
+        if fixed_model in excluded or fixed_model not in context.vehicle_models():
+            raise RuntimeError(f'Fixed highway NPC model is unavailable or excluded: {fixed_model}')
+        pool = [fixed_model]
+    else:
+        pool = highway_traffic.model_candidates(context)
+    if not fixed_model and len(pool) < min(cfg['cap'], 25):
         raise RuntimeError(f'Need {min(cfg["cap"], 25)} distinct highway models; only {len(pool)} available')
     return cfg, plans, lanes, zone_list, pool
 
@@ -558,6 +565,9 @@ def _remove_finished(context, state, ego, elapsed):
             continue                                    # no telemetry for this actor is not evidence of arrival
         lane = state['lanes'][item['lane']]
         remaining = lane['total'] - lane['cum'][hint]
+        if item.get('lane_error_m', 0.) > float(state['cfg']['lane_keeping']['max_lateral_error_m']):
+            _remove(context, state, item, 'lane_departure', ego, elapsed)
+            continue
         if lane['retire_at_route_end']:
             if remaining <= float(removal['lane_end_margin_m']):
                 _remove(context, state, item, 'lane_end', ego, elapsed)    # mandatory: it must not enter the taper

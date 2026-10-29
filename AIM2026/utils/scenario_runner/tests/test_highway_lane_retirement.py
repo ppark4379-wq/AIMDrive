@@ -62,6 +62,15 @@ class LaneRetirementTest(unittest.TestCase):
         self.assertEqual(len(context.highway_npcs), 1)
         self.assertEqual(len(context.scenario_actors), 1)
 
+    def test_competition_removes_lane_departure(self):
+        context = self.context()
+        context.highway_npcs[0].update(x_now=30., lane_hint=30, lane_error_m=2.)
+        state = dict(cfg=dict(removal={}, lane_keeping={'max_lateral_error_m': 1.9}),
+                     lanes={'middle': {'total': 100., 'cum': list(range(101))}})
+        with patch.object(competition, '_remove') as remove:
+            competition._remove_finished(context, state, None, 10.)
+        self.assertEqual(remove.call_args.args[3], 'lane_departure')
+
 
 if __name__ == '__main__':
     unittest.main()
